@@ -1,3 +1,0 @@
-@echo off
-echo Starting VCP Chat Desktop...
-npm start
