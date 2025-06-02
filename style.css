@@ -609,6 +609,22 @@ body.light-theme .message-item.assistant {
     border: 1px solid var(--border-color);
 }
 
+/* --- 话题创建时间戳气泡 --- */
+.topic-timestamp-bubble {
+    display: none; /* 默认隐藏，由JS控制显示 */
+    text-align: center;
+    padding: 3px 12px; /* 细长的感觉 */
+    font-size: 0.75em; /* 较小的字体 */
+    color: var(--secondary-text);
+    background-color: var(--accent-bg); /* 使用强调背景色 */
+    border-radius: 12px; /* 圆角使其像胶囊 */
+    margin: 6px auto 8px auto; /* 上方与header间距，下方与聊天内容间距，左右自动居中 */
+    max-width: fit-content; /* 宽度适应内容 */
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1); /* 轻微阴影 */
+    opacity: 0.8; /* 略微透明 */
+}
+
+
 /* VCP Tool Request Bubble */
 .vcp-tool-request-bubble {
     background-color: var(--tool-bubble-bg);
