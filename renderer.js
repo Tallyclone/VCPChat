@@ -46,33 +46,57 @@ async function filterTopicList() {
 
         const topicTitle = (topic.name || '').toLowerCase();
         let contentMatches = false;
+        let dateMatches = false;
 
         // console.log(`[filterTopicList] Processing topic: "${topicTitle}" (ID: ${topicId})`);
 
         if (searchTerm.length > 0) {
-            const history = await window.electronAPI.getChatHistory(currentAgentId, topicId);
-            if (history && !history.error) {
-                // console.log(`[filterTopicList] History for topic "${topicTitle}" (ID: ${topicId}):`, history.length, "messages.");
-                contentMatches = history.some(msg => {
-                    const messageContent = msg.content && typeof msg.content === 'string' ? msg.content.toLowerCase() : '';
-                    const attachmentsText = msg.attachments ? msg.attachments.some(att =>
-                        att.extractedText && typeof att.extractedText === 'string' && att.extractedText.toLowerCase().includes(searchTerm)
-                    ) : false;
-                    
-                    const matches = messageContent.includes(searchTerm) || attachmentsText;
-                    // if (matches) {
-                    //     console.log(`[filterTopicList] Match found in message/attachment for topic "${topicTitle}" (ID: ${topicId}).`);
-                    // }
-                    return matches;
-                });
-            } else {
-                // console.error(`[filterTopicList] Error getting history for topic ${topicId}:`, history?.error);
+            // Date matching
+            if (topic.createdAt) {
+                const date = new Date(topic.createdAt);
+                const year = date.getFullYear().toString();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                const hours = String(date.getHours()).padStart(2, '0');
+                const minutes = String(date.getMinutes()).padStart(2, '0');
+
+                const fullDateTime = `${year}-${month}-${day} ${hours}:${minutes}`;
+                const justDate = `${year}-${month}-${day}`;
+                const monthDay = `${month}-${day}`;
+                
+                const dateStringsToSearch = [
+                    fullDateTime,
+                    justDate,
+                    monthDay,
+                    year,
+                    hours,
+                    minutes,
+                    `${hours}:${minutes}`
+                ];
+
+                dateMatches = dateStringsToSearch.some(ds => ds.toLowerCase().includes(searchTerm));
+            }
+
+            // Content matching (only if not already matched by date or title for performance)
+            if (!topicTitle.includes(searchTerm) && !dateMatches) {
+                const history = await window.electronAPI.getChatHistory(currentAgentId, topicId);
+                if (history && !history.error) {
+                    contentMatches = history.some(msg => {
+                        const messageContent = msg.content && typeof msg.content === 'string' ? msg.content.toLowerCase() : '';
+                        const attachmentsText = msg.attachments ? msg.attachments.some(att =>
+                            att.extractedText && typeof att.extractedText === 'string' && att.extractedText.toLowerCase().includes(searchTerm)
+                        ) : false;
+                        return messageContent.includes(searchTerm) || attachmentsText;
+                    });
+                } else {
+                    // console.error(`[filterTopicList] Error getting history for topic ${topicId}:`, history?.error);
+                }
             }
         }
 
-        if (topicTitle.includes(searchTerm) || contentMatches) {
+        if (topicTitle.includes(searchTerm) || contentMatches || dateMatches) {
             item.style.display = ''; // Show
-            // console.log(`[filterTopicList] Showing topic: "${topicTitle}" (ID: ${topicId})`);
+            // console.log(`[filterTopicList] Showing topic: "${topicTitle}" (ID: ${topicId}) due to title, content or date match.`);
         } else {
             item.style.display = 'none'; // Hide
             // console.log(`[filterTopicList] Hiding topic: "${topicTitle}" (ID: ${topicId})`);
@@ -191,7 +215,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.log('[RENDERER_INIT] VCPLog listeners registered.');
  
     // Listener for VCP stream chunks
-    window.electronAPI.onVCPStreamChunk((eventData) => { // Renamed data to eventData for clarity
+    window.electronAPI.onVCPStreamChunk(async (eventData) => { // Renamed data to eventData for clarity, and made async
         if (!window.messageRenderer) {
             console.error("VCPStreamChunk: messageRenderer not available.");
             return;
@@ -218,6 +242,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             window.messageRenderer.appendStreamChunk(streamMessageId, eventData.chunk);
         } else if (eventData.type === 'end') {
             window.messageRenderer.finalizeStreamedMessage(streamMessageId, eventData.finish_reason || 'completed');
+            // Attempt summarization after stream ends
+            await attemptTopicSummarizationIfNeeded();
             if (activeStreamingMessageId === streamMessageId) {
                 activeStreamingMessageId = null; // Clear global active stream ID only if it matches
             } else {
@@ -503,6 +529,9 @@ async function loadChatHistory(agentId, topicId) {
     const result = await window.electronAPI.getChatHistory(agentId, topicId);
     loadingMessageDiv.remove();
 
+    // Display topic creation timestamp
+    await displayTopicTimestampBubble(agentId, topicId);
+
     if (result.error) {
         if (window.messageRenderer) {
             window.messageRenderer.initializeMessageRenderer({ currentChatHistory, currentAgentId, currentTopicId: topicId, globalSettings, chatMessagesDiv, electronAPI, markedInstance, scrollToBottom, summarizeTopicFromMessages, openModal, autoResizeTextarea });
@@ -535,6 +564,109 @@ function scrollToBottom() {
     }
 }
 
+async function displayTopicTimestampBubble(agentId, topicId) {
+    const chatMessagesContainer = document.querySelector('.chat-messages-container'); // Parent of chatMessagesDiv
+    const chatMessagesDivElement = document.getElementById('chatMessages'); // The direct container for messages and this bubble
+
+    if (!chatMessagesDivElement || !chatMessagesContainer) {
+        console.warn('[displayTopicTimestampBubble] Missing chatMessagesDivElement or chatMessagesContainer.');
+        const existingBubble = document.getElementById('topicTimestampBubble');
+        if (existingBubble) existingBubble.style.display = 'none';
+        return;
+    }
+
+    let timestampBubble = document.getElementById('topicTimestampBubble');
+    if (!timestampBubble) {
+        timestampBubble = document.createElement('div');
+        timestampBubble.id = 'topicTimestampBubble';
+        timestampBubble.className = 'topic-timestamp-bubble';
+        // Insert as the first child of chatMessagesDiv, so it scrolls with messages
+        // and appears at the "top" due to column-reverse on parent
+        if (chatMessagesDivElement.firstChild) {
+            chatMessagesDivElement.insertBefore(timestampBubble, chatMessagesDivElement.firstChild);
+        } else {
+            chatMessagesDivElement.appendChild(timestampBubble);
+        }
+    } else {
+        // Ensure it's the first child if it already exists
+        if (chatMessagesDivElement.firstChild !== timestampBubble) {
+            chatMessagesDivElement.insertBefore(timestampBubble, chatMessagesDivElement.firstChild);
+        }
+    }
+
+
+    if (!agentId || !topicId) {
+        // If no agent or topic, hide the bubble
+        timestampBubble.style.display = 'none';
+        return;
+    }
+
+    try {
+        const agentConfig = await window.electronAPI.getAgentConfig(agentId);
+        if (agentConfig && !agentConfig.error && agentConfig.topics) {
+            const currentTopic = agentConfig.topics.find(t => t.id === topicId);
+            if (currentTopic && currentTopic.createdAt) {
+                const date = new Date(currentTopic.createdAt);
+                const formattedDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+                timestampBubble.textContent = `话题创建于: ${formattedDate}`;
+                timestampBubble.style.display = 'block'; // Or 'flex' based on CSS, 'block' is fine for center alignment with margin auto
+            } else {
+                console.warn(`[displayTopicTimestampBubble] Topic ${topicId} not found or has no createdAt timestamp for agent ${agentId}.`);
+                timestampBubble.style.display = 'none';
+            }
+        } else {
+            console.error('[displayTopicTimestampBubble] Could not load agent config or topics for agent', agentId, 'Error:', agentConfig?.error);
+            timestampBubble.style.display = 'none';
+        }
+    } catch (error) {
+        console.error('[displayTopicTimestampBubble] Error fetching topic creation time for agent', agentId, 'topic', topicId, ':', error);
+        timestampBubble.style.display = 'none';
+    }
+}
+
+
+// Helper function to attempt topic summarization
+async function attemptTopicSummarizationIfNeeded() {
+    if (currentChatHistory.length >= 4 && currentTopicId) {
+        try {
+            const agentConfigForSummary = await window.electronAPI.getAgentConfig(currentAgentId);
+            if (!agentConfigForSummary || agentConfigForSummary.error) {
+                console.error('[TopicSummary] Failed to get agent config for summarization:', agentConfigForSummary?.error);
+                return;
+            }
+            const topics = agentConfigForSummary.topics || [];
+            const currentTopicObject = topics.find(t => t.id === currentTopicId);
+            const existingTopicTitle = currentTopicObject ? currentTopicObject.name : "主要对话";
+            const currentAgentName = agentConfigForSummary.name || 'AI';
+
+            if (existingTopicTitle === "主要对话" || existingTopicTitle.startsWith("新话题")) {
+                // Ensure summarizeTopicFromMessages is available
+                if (typeof summarizeTopicFromMessages === 'function') {
+                    const summarizedTitle = await summarizeTopicFromMessages(currentChatHistory.filter(m => !m.isThinking), currentAgentName);
+                    if (summarizedTitle) {
+                        const saveResult = await window.electronAPI.saveAgentTopicTitle(currentAgentId, currentTopicId, summarizedTitle);
+                        if (saveResult.success) {
+                            console.log(`AI 自动总结并保存话题 "${currentTopicId}" 标题: "${summarizedTitle}" for agent ${currentAgentId}`);
+                            if (document.getElementById('tabContentTopics').classList.contains('active')) {
+                                loadTopicList();
+                            }
+                        } else {
+                            console.error(`[TopicSummary] Failed to save new topic title "${summarizedTitle}":`, saveResult.error);
+                        }
+                    } else {
+                        console.log('[TopicSummary] summarizeTopicFromMessages returned null, no title generated.');
+                    }
+                } else {
+                    console.error('[TopicSummary] summarizeTopicFromMessages function is not defined or not accessible.');
+                }
+            } else {
+                // console.log('[TopicSummary] Topic title is already custom, skipping summarization.');
+            }
+        } catch (error) {
+            console.error('[TopicSummary] Error during attemptTopicSummarizationIfNeeded:', error);
+        }
+    }
+}
 
 async function handleSendMessage() {
     const content = messageInput.value.trim();
@@ -788,11 +920,14 @@ async function handleSendMessage() {
                 }
             }
             await window.electronAPI.saveChatHistory(currentAgentId, currentTopicId, currentChatHistory.filter(msg => !msg.isThinking));
-        } else {
+            // Attempt summarization after non-streamed response is processed
+            await attemptTopicSummarizationIfNeeded();
+        } else { // Handling for streaming responses (vcpResponse.streamError or !vcpResponse.streamingStarted)
             if (vcpResponse && vcpResponse.streamError) {
                 console.error("Streaming setup failed in main process:", vcpResponse.errorDetail || vcpResponse.error);
+                // Note: attemptTopicSummarizationIfNeeded will be called by onVCPStreamChunk 'end' or 'error' event for streams
             } else if (vcpResponse && !vcpResponse.streamingStarted && !vcpResponse.streamError) {
-                console.warn("Expected streaming to start, but main process returned:", vcpResponse);
+                console.warn("Expected streaming to start, but main process returned non-streaming or error:", vcpResponse);
                 activeStreamingMessageId = null;
                 const thinkingMsgDom = chatMessagesDiv.querySelector(`.message-item[data-message-id="${thinkingMessage.id}"]`);
                 if (thinkingMsgDom) thinkingMsgDom.remove();
@@ -800,31 +935,14 @@ async function handleSendMessage() {
                 if (thinkingMsgIndexHist > -1) currentChatHistory.splice(thinkingMsgIndexHist, 1);
                 
                 if (window.messageRenderer) {
-                    window.messageRenderer.renderMessage({ role: 'system', content: '请求流式回复失败，收到非流式响应。', timestamp: Date.now() });
+                    window.messageRenderer.renderMessage({ role: 'system', content: '请求流式回复失败，收到非流式响应或错误。', timestamp: Date.now() });
                 }
+                // Save history here as the stream didn't start as expected.
                 await window.electronAPI.saveChatHistory(currentAgentId, currentTopicId, currentChatHistory.filter(msg => !msg.isThinking));
+                // Attempt summarization as this path is effectively a non-stream completion (or failure)
+                await attemptTopicSummarizationIfNeeded();
             }
-        }
-        
-        if (!useStreaming && currentChatHistory.length >= 4 && currentTopicId) {
-            const agentConfigForSummary = await window.electronAPI.getAgentConfig(currentAgentId);
-            const topics = agentConfigForSummary.topics || [];
-            const currentTopicObject = topics.find(t => t.id === currentTopicId);
-            const existingTopicTitle = currentTopicObject ? currentTopicObject.name : "主要对话";
-            const currentAgentName = agentConfigForSummary.name || 'AI';
-
-            if (existingTopicTitle === "主要对话" || existingTopicTitle.startsWith("新话题")) {
-                const summarizedTitle = await summarizeTopicFromMessages(currentChatHistory.filter(m => !m.isThinking), currentAgentName);
-                if (summarizedTitle) {
-                    const saveResult = await window.electronAPI.saveAgentTopicTitle(currentAgentId, currentTopicId, summarizedTitle);
-                    if (saveResult.success) {
-                        console.log(`AI 自动总结并保存话题 "${currentTopicId}" 标题: "${summarizedTitle}" for agent ${currentAgentId}`);
-                        if (document.getElementById('tabContentTopics').classList.contains('active')) {
-                            loadTopicList();
-                        }
-                    }
-                }
-            }
+            // For successful streaming, summarization is handled in onVCPStreamChunk 'end' event
         }
 
     } catch (error) {
@@ -1089,6 +1207,8 @@ function showTopicContextMenu(event, topicItemElement, agentConfig, topic) { // 
                     window.messageRenderer.initializeMessageRenderer({ currentChatHistory, currentAgentId, currentTopicId, globalSettings, chatMessagesDiv, electronAPI, markedInstance, scrollToBottom, summarizeTopicFromMessages, openModal, autoResizeTextarea });
                     window.messageRenderer.renderMessage({ role: 'system', content: `话题 "${topic.name}" 的聊天记录已清空。`, timestamp: Date.now() });
                 }
+                // Ensure timestamp bubble is still displayed correctly as topic itself hasn't changed
+                await displayTopicTimestampBubble(currentAgentId, topic.id);
             }
             // Optionally, rename the topic to indicate it's cleared, or just leave as is.
             // For example: await window.electronAPI.saveAgentTopicTitle(currentAgentId, topic.id, `${topic.name} (已清空)`);
@@ -1119,6 +1239,7 @@ function showTopicContextMenu(event, topicItemElement, agentConfig, topic) { // 
                     } else { // Should not happen if main.js ensures a default topic
                         currentTopicId = null;
                         chatMessagesDiv.innerHTML = '<div class="message-item system"><div class="sender-name">系统</div><div>所有话题均已删除。</div></div>';
+                        await displayTopicTimestampBubble(currentAgentId, null); // Hide bubble if all topics gone
                     }
                 }
             } else {
@@ -1594,6 +1715,7 @@ async function deleteCurrentAgent() {
                 messageInput.disabled = true;
                 sendMessageBtn.disabled = true;
                 attachFileBtn.disabled = true;
+                await displayTopicTimestampBubble(null, null); // Hide bubble as no agent/topic selected
             }
             
             await loadAgentList(); // Refresh agent list
@@ -1645,6 +1767,7 @@ async function createNewContextFromCurrentAgent() {
             if (document.getElementById('tabContentTopics').classList.contains('active')) {
                 loadTopicList();
             }
+            await displayTopicTimestampBubble(currentAgentId, currentTopicId); // Display for new topic
             console.log(`已为助手 "${agentName}" 创建并切换到新话题: "${result.topicName}" (ID: ${result.topicId})`);
             messageInput.focus();
         } else {

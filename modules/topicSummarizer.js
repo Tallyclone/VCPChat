@@ -19,29 +19,52 @@ async function summarizeTopicFromMessages(messages, agentName) {
 
     console.log('[TopicSummarizer] 准备总结的内容:', recentMessagesContent);
 
-    // --- Placeholder for AI summarization logic ---
-    // 在实际应用中，这里会调用VCP或其他AI服务进行总结
-    // 例如:
-    // const summaryPrompt = `根据以下对话内容，为这个话题生成一个简洁的标题（10个字以内）：\n${recentMessagesContent}`;
-    // const vcpSummaryResponse = await window.electronAPI.sendToVCP(
-    //     globalSettings.vcpServerUrl,
-    //     globalSettings.vcpApiKey,
-    //     [{ role: 'user', content: summaryPrompt }],
-    //     { model: 'gpt-3.5-turbo', temperature: 0.3, max_tokens: 20 } // 使用一个快速、便宜的模型
-    // );
-    // if (vcpSummaryResponse && vcpSummaryResponse.choices && vcpSummaryResponse.choices.length > 0) {
-    //     let title = vcpSummaryResponse.choices[0].message.content.trim();
-    //     // 清理标题，移除可能的引号等
-    //     title = title.replace(/^["']|["']$/g, '');
-    //     return title;
-    // }
+    // --- AI summarization logic ---
+    const summaryPrompt = `请根据以下对话内容，仅返回一个简洁的话题标题。要求：1. 标题长度控制在10个汉字以内。2. 标题本身不能包含任何标点符号、数字编号或任何非标题文字。3. 直接给出标题文字，不要添加任何解释或前缀。\n\n对话内容：\n${recentMessagesContent}`;
+    const vcpSummaryResponse = await window.electronAPI.sendToVCP(
+        globalSettings.vcpServerUrl,
+        globalSettings.vcpApiKey,
+        [{ role: 'user', content: summaryPrompt }],
+        { model: 'gemini-2.5-flash-preview-05-20', temperature: 0.3, max_tokens: 30 } // 稍微增加max_tokens以防标题被截断
+    );
+    if (vcpSummaryResponse && vcpSummaryResponse.choices && vcpSummaryResponse.choices.length > 0) {
+        let rawTitle = vcpSummaryResponse.choices[0].message.content.trim();
+        
+        // 尝试提取第一行作为标题，以应对AI可能返回多行的情况
+        rawTitle = rawTitle.split('\n')[0].trim();
+
+        // 移除所有标点符号、数字编号和常见的前缀/后缀
+        // 保留汉字、字母、数字（如果需要数字的话，但提示词要求不要数字编号，这里可以更严格）
+        // 这里我们先移除所有非字母和非汉字的字符，除了空格（稍后处理）
+        let cleanedTitle = rawTitle.replace(/[^\u4e00-\u9fa5a-zA-Z\s]/g, '');
+        
+        // 进一步移除特定模式，如 "1. " 或 "标题："
+        cleanedTitle = cleanedTitle.replace(/^\s*\d+\s*[\.\uff0e\s]\s*/, ''); // 移除 "1. ", "1 . " 等
+        cleanedTitle = cleanedTitle.replace(/^(标题|总结|Topic)[:：\s]*/i, ''); // 移除 "标题：" 等
+
+        // 移除所有空格
+        cleanedTitle = cleanedTitle.replace(/\s+/g, '');
+
+        // 截断到12个字符
+        if (cleanedTitle.length > 12) {
+            cleanedTitle = cleanedTitle.substring(0, 12);
+        }
+        
+        console.log('[TopicSummarizer] AI 原始返回:', rawTitle);
+        console.log('[TopicSummarizer] 清理并截断后的标题:', cleanedTitle);
+
+        if (cleanedTitle) { // 确保清理后仍有内容
+            return cleanedTitle;
+        }
+    }
     // ---------------------------------------------
 
-    // 临时的占位符逻辑：简单地从用户最新消息中提取一些关键词
+    // 如果AI总结失败，回退到临时逻辑或返回null
+    console.warn('[TopicSummarizer] AI 总结失败，尝试临时逻辑。');
     const lastUserMessage = messages.filter(m => m.role === 'user').pop()?.content;
     if (lastUserMessage) {
-        const tempTitle = `关于 "${lastUserMessage.substring(0, 15)}${lastUserMessage.length > 15 ? '...' : ''}"`;
-        console.log('[TopicSummarizer] 临时生成的标题:', tempTitle);
+        const tempTitle = `关于 "${lastUserMessage.substring(0, 15)}${lastUserMessage.length > 15 ? '...' : ''}" (备用)`;
+        console.log('[TopicSummarizer] 临时生成的标题 (备用):', tempTitle);
         return tempTitle;
     }
 
