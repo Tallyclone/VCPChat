@@ -1684,6 +1684,59 @@ if (window.marked) {
             breaks: true // Enable GFM line breaks
         });
         console.log("Marked library initialized with custom options (sanitize: false).");
+
+        // Wrap the original parse method to add custom quote handling
+        const originalParse = markedInstance.parse.bind(markedInstance);
+        markedInstance.parse = (text) => {
+            if (typeof text !== 'string') {
+                return originalParse(text); // Pass non-strings directly
+            }
+
+            // Step 1: Get the initial HTML from marked
+            const html = originalParse(text);
+
+            // Step 2: Process the HTML string to add spans for quotes
+            const applyQuoteSpansToHtml = (inputHtml) => {
+                let resultHtml = inputHtml;
+
+                // Process Chinese quotes: “content” -> “<span class='quoted-text'>content</span>”
+                // The content [^”<>]* allows empty content and avoids crossing HTML tags or our own spans.
+                resultHtml = resultHtml.replace(/(“)([^”<>]*?)(”)/g, (_match, openQuote, innerContent, closeQuote) => {
+                    if (innerContent.includes('class="quoted-text"')) { // Avoid double wrapping
+                        return _match;
+                    }
+                    return `<span class="quoted-text">${openQuote}${innerContent}${closeQuote}</span>`;
+                });
+
+                // Process English quotes: "content" -> "<span class='quoted-text'>content</span>"
+                // This is applied carefully to avoid breaking HTML attributes.
+                // Split the HTML by tags, process text segments, and rejoin.
+                const parts = resultHtml.split(/(<[^>]+>)/); // Split by tags, keeping tags as delimiters
+                for (let i = 0; i < parts.length; i++) {
+                    if (i % 2 === 0) { // This is a text segment (even indices)
+                        // Apply to English quotes. Content [^"<>]*? is non-greedy.
+                        parts[i] = parts[i].replace(/(")([^"<>]*?)(")/g, (_match, openQuote, innerContent, closeQuote) => {
+                            if (innerContent.includes('class="quoted-text"')) { // Avoid double wrapping
+                                return _match;
+                            }
+                            // Avoid wrapping if it looks like an empty attribute value e.g. alt=""
+                            // This check is heuristic. A more robust solution would require full HTML parsing.
+                            if (innerContent.length === 0 && _match.length === 2) { // e.g. ""
+                                // Check context in parts[i] if this is part of an attribute
+                                // For now, we allow empty quoted spans if they are not attributes.
+                                }
+                                return `<span class="quoted-text">${openQuote}${innerContent}${closeQuote}</span>`;
+                            });
+                        }
+                    }
+                resultHtml = parts.join('');
+                return resultHtml;
+            };
+
+            return applyQuoteSpansToHtml(html);
+        };
+        console.log("Marked library's parse method wrapped for custom quote handling (after initial parse).");
+
     } catch (err) {
         console.warn("Failed to initialize marked with custom options, using default or basic fallback.", err);
         // Fallback to default marked if custom init fails, or our basic one if marked itself is missing.

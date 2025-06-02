@@ -31,6 +31,7 @@
     --scrollbar-track-dark: rgba(40, 40, 40, 0.5);
     --scrollbar-thumb-dark: rgba(100, 100, 100, 0.6);
     --scrollbar-thumb-hover-dark: rgba(120, 120, 120, 0.8);
+    --quoted-text-dark: #FFB74D; /* 深色模式引用文本 - 柔和橙色 */
 
     /* --- 亮色主题 --- */
     --primary-bg-light: #f4f6f8;      /* 非常浅的灰蓝色 */
@@ -56,6 +57,7 @@
     --scrollbar-track-light: rgba(200, 200, 200, 0.5);
     --scrollbar-thumb-light: rgba(150, 150, 150, 0.6);
     --scrollbar-thumb-hover-light: rgba(120, 120, 120, 0.8);
+    --quoted-text-light: #007bff; /* 浅色模式引用文本 - 蓝色 */
 
     /* --- 通用/当前主题变量 --- */
     /* 默认使用暗色主题变量 */
@@ -82,6 +84,7 @@
     --scrollbar-track: var(--scrollbar-track-dark);
     --scrollbar-thumb: var(--scrollbar-thumb-dark);
     --scrollbar-thumb-hover: var(--scrollbar-thumb-hover-dark);
+    --quoted-text: var(--quoted-text-dark); /* 新增：引用文本颜色 */
 }
 
 /* --- 亮色主题应用 --- */
@@ -109,6 +112,7 @@ body.light-theme {
     --scrollbar-track: var(--scrollbar-track-light);
     --scrollbar-thumb: var(--scrollbar-thumb-light);
     --scrollbar-thumb-hover: var(--scrollbar-thumb-hover-light);
+    --quoted-text: var(--quoted-text-light); /* 新增：引用文本颜色 */
 }
 
 body.light-theme .main-content {
@@ -126,6 +130,9 @@ body {
     height: 100vh;
     overflow: hidden;
     font-size: 15px;
+    -webkit-font-smoothing: antialiased; /* 提升字体渲染清晰度 */
+    -moz-osx-font-smoothing: grayscale; /* 提升字体渲染清晰度 (Firefox) */
+    text-rendering: optimizeLegibility; /* 优化文本渲染 */
 }
 
 /* --- Custom Title Bar --- */
@@ -1489,3 +1496,9 @@ body.light-theme .notification-item {
 }
 
 /* .notifications-header adjustments are now at the top of this diff block */
+
+/* --- 引号内文本样式 --- */
+.message-item .md-content .quoted-text {
+    color: var(--quoted-text);
+    /* font-style: italic; */ /* 可选：如果需要斜体 */
+}
