@@ -1040,7 +1040,14 @@ async function loadTopicList() {
             return;
         }
 
-        const topics = agentConfig.topics || [{ id: "default", name: "主要对话", createdAt: Date.now() }];
+        let topics = agentConfig.topics || [{ id: "default", name: "主要对话", createdAt: Date.now() }];
+
+        // Sort topics by createdAt in descending order (newest first)
+        topics.sort((a, b) => {
+            const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return dateB - dateA;
+        });
 
         if (topics.length === 0) {
             topicListUl.innerHTML = `<li><p>助手 ${agentNameForLoading} 还没有任何话题。您可以点击上方的“新建上下文”按钮创建一个。</p></li>`;
