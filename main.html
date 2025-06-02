@@ -161,7 +161,11 @@
         <div class="resizer" id="resizerRight"></div>
         <aside class="notifications-sidebar" id="notificationsSidebar">
             <header class="notifications-header">
-                <h4>VCP 通知</h4>
+                <h4 id="notificationTitle" style="display: none;">VCP 通知</h4>
+                <div class="datetime-container">
+                    <div id="digitalClock" class="digital-clock"></div>
+                    <div id="dateDisplay" class="date-display"></div>
+                </div>
                 <button id="clearNotificationsBtn" title="清空通知">清空</button>
             </header>
             <div class="notifications-status" id="vcpLogConnectionStatus">

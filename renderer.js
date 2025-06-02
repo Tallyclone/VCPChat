@@ -161,6 +161,9 @@ const maximizeBtn = document.getElementById('maximize-btn');
 const restoreBtn = document.getElementById('restore-btn');
 const closeBtn = document.getElementById('close-btn');
 const settingsBtn = document.getElementById('settings-btn'); // Add this line
+const notificationTitleElement = document.getElementById('notificationTitle');
+const digitalClockElement = document.getElementById('digitalClock');
+const dateDisplayElement = document.getElementById('dateDisplay');
 
 // --- Initialization ---
 document.addEventListener('DOMContentLoaded', async () => {
@@ -286,11 +289,48 @@ document.addEventListener('DOMContentLoaded', async () => {
         setupTopicSearch(); // New: Setup topic search event listeners
         autoResizeTextarea(messageInput);
         loadAndApplyThemePreference();
+        initializeDigitalClock(); // Initialize the digital clock
 
     } catch (error) {
         console.error('Error during DOMContentLoaded initialization:', error);
     }
 });
+
+function initializeDigitalClock() {
+    if (digitalClockElement && notificationTitleElement && dateDisplayElement) {
+        notificationTitleElement.style.display = 'none'; // Hide the original title
+        updateDateTimeDisplay(); // Initial call to display time and date immediately
+        setInterval(updateDateTimeDisplay, 1000); // Update every second
+    } else {
+        console.error('Digital clock, notification title, or date display element not found.');
+    }
+}
+
+function updateDateTimeDisplay() {
+    const now = new Date();
+    if (digitalClockElement) {
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        
+        // Check if the structure is already set up
+        if (!digitalClockElement.querySelector('.colon')) {
+            // First time setup, or if structure was cleared
+            digitalClockElement.innerHTML = `<span class="hours">${hours}</span><span class="colon">:</span><span class="minutes">${minutes}</span>`;
+        } else {
+            // Only update text content of existing spans
+            const hoursSpan = digitalClockElement.querySelector('.hours');
+            const minutesSpan = digitalClockElement.querySelector('.minutes');
+            if (hoursSpan) hoursSpan.textContent = hours;
+            if (minutesSpan) minutesSpan.textContent = minutes;
+        }
+    }
+    if (dateDisplayElement) {
+        const month = String(now.getMonth() + 1).padStart(2, '0'); // Months are 0-indexed
+        const day = String(now.getDate()).padStart(2, '0');
+        const dayOfWeek = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][now.getDay()];
+        dateDisplayElement.textContent = `${month}-${day} ${dayOfWeek}`;
+    }
+}
 
 function loadAndApplyThemePreference() {
     const currentTheme = localStorage.getItem('theme');

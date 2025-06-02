@@ -1,4 +1,11 @@
 /* style.css */
+@font-face {
+    font-family: 'Maven Pro ExtraBold'; /* Corrected font name with space */
+    src: url('./assets/font/MavenPro-ExtraBold.ttf') format('truetype');
+    font-weight: 800;
+    font-style: normal;
+}
+
 :root {
     /* --- 默认暗色主题 (墨色系) --- */
     --primary-bg-dark: #1c1c1e;      /* 深墨灰 - 近黑 */
@@ -701,18 +708,22 @@ body.light-theme #sendMessageBtn svg, body.light-theme #attachFileBtn svg {
     padding: 0; /* Header will have padding */
 }
 .notifications-header {
-    padding: 15px;
+    padding: 10px 15px; /* Adjusted padding */
     background-color: var(--accent-bg);
     display: flex;
-    justify-content: space-between;
+    justify-content: space-between; /* Puts datetime-container to left, button to right */
     align-items: center;
     border-bottom: 1px solid var(--border-color);
 }
-.notifications-header h4 {
-    margin: 0;
-    font-size: 1.1em;
-    color: var(--highlight-text);
+
+/* Removed .notifications-header h4 style as it's hidden */
+
+.datetime-container {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start; /* Align text to the left */
 }
+
 #clearNotificationsBtn {
     background: transparent;
     border: 1px solid var(--button-bg);
@@ -1435,3 +1446,46 @@ body.light-theme .notification-item {
 }
 
 /* .topic-search-button styles removed as the button is no longer in use */
+
+/* --- Digital Clock Styles --- */
+.digital-clock {
+    font-size: 2.0em; /* Reduced font size */
+    color: var(--highlight-text);
+    font-family: 'Maven Pro ExtraBold', 'Arial Black', sans-serif;
+    font-weight: 800;
+    letter-spacing: 1px;
+    line-height: 1;
+    margin-bottom: -1px; /* Adjusted for new font size */
+    text-align: left;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+}
+
+.date-display {
+    font-size: 0.7em; /* Reduced font size for date */
+    color: var(--secondary-text);
+    font-weight: 500;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1;
+    text-align: left;
+    margin-top: 0px;
+    position: relative;
+    top: -1px;
+    left: 3px;           /* Increased left value to move date further right */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+@keyframes blinkColon {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.2; } /* Or 0 for full blink */
+}
+
+.digital-clock .colon {
+    animation: blinkColon 2s infinite; /* Changed duration to 2 seconds */
+    position: relative;
+    /* top: -0.05em; */
+}
+
+/* .notifications-header adjustments are now at the top of this diff block */
