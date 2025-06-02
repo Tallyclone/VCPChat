@@ -104,7 +104,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     closeWindow: () => ipcRenderer.send('close-window'),
     openDevTools: () => ipcRenderer.send('open-dev-tools'), // Add this line
     onWindowMaximized: (callback) => ipcRenderer.on('window-maximized', (_event) => callback()),
-    onWindowUnmaximized: (callback) => ipcRenderer.on('window-unmaximized', (_event) => callback())
+    onWindowUnmaximized: (callback) => ipcRenderer.on('window-unmaximized', (_event) => callback()),
+
+    // Image Context Menu
+    showImageContextMenu: (imageUrl) => ipcRenderer.send('show-image-context-menu', imageUrl),
+    // Open Image in New Window
+    openImageInNewWindow: (imageUrl, imageTitle) => ipcRenderer.send('open-image-in-new-window', imageUrl, imageTitle)
 });
 
 // Log the electronAPI object as it's defined in preload.js right after exposing it
@@ -119,7 +124,9 @@ const electronAPIForLogging = {
     connectVCPLog: "function", disconnectVCPLog: "function", onVCPLogMessage: "function",
     onVCPLogStatus: "function", readImageFromClipboard: "function", readTextFromClipboard: "function",
     minimizeWindow: "function", maximizeWindow: "function", unmaximizeWindow: "function", closeWindow: "function",
-    onWindowMaximized: "function", onWindowUnmaximized: "function"
+    onWindowMaximized: "function", onWindowUnmaximized: "function",
+    showImageContextMenu: "function", // Added for logging
+    openImageInNewWindow: "function" // Added for logging
 };
 console.log('[Preload] electronAPI object that *should* be exposed (structure check):', electronAPIForLogging);
 console.log('preload.js loaded and contextBridge exposure attempted.');

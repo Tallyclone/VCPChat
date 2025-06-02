@@ -1,6 +1,6 @@
 // main.js - Electron 主进程
 
-const { app, BrowserWindow, ipcMain, dialog, nativeTheme, Menu, shell, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, nativeTheme, Menu, shell, clipboard, net, nativeImage } = require('electron'); // Added net and nativeImage
 const path = require('path');
 const fs = require('fs-extra'); // Using fs-extra for convenience
 const os = require('os');
@@ -1060,5 +1060,113 @@ ipcMain.on('open-dev-tools', () => {
         if (!mainWindow) console.error('[Main Process] mainWindow is null or undefined.');
         else if (!mainWindow.webContents) console.error('[Main Process] mainWindow.webContents is null or undefined.');
         else if (mainWindow.webContents.isDestroyed()) console.error('[Main Process] mainWindow.webContents is destroyed.');
+    }
+});
+
+// IPC Handler for opening image in a new window
+ipcMain.on('open-image-in-new-window', (event, imageUrl, imageTitle) => {
+    console.log(`[Main Process] Received open-image-in-new-window for URL: ${imageUrl}, Title: ${imageTitle}`);
+    const imageViewerWindow = new BrowserWindow({
+        width: 800,
+        height: 600,
+        minWidth: 400,
+        minHeight: 300,
+        title: imageTitle || '图片预览',
+        parent: mainWindow, // Optional: make it a child of the main window
+        modal: false, // Non-modal
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'), // Re-use preload for consistency if needed, or omit if not needed for viewer
+            contextIsolation: true,
+            nodeIntegration: false,
+            devTools: true // Enable devtools for the viewer window for debugging
+        },
+        icon: path.join(__dirname, 'assets', 'icon.png'), // Use the same app icon
+        show: false // Don't show until ready
+    });
+
+    const viewerUrl = `file://${path.join(__dirname, 'image-viewer.html')}?src=${encodeURIComponent(imageUrl)}&title=${encodeURIComponent(imageTitle || '图片预览')}`;
+    console.log(`[Main Process] Loading URL in new window: ${viewerUrl}`);
+    imageViewerWindow.loadURL(viewerUrl);
+    
+    imageViewerWindow.setMenu(null); // No menu for the image viewer window
+
+    imageViewerWindow.once('ready-to-show', () => {
+        imageViewerWindow.show();
+    });
+
+    // Optional: Handle closure, etc.
+    // imageViewerWindow.on('closed', () => {
+    //     // Dereference the window object
+    // });
+});
+
+
+// IPC Handler for showing image context menu
+ipcMain.on('show-image-context-menu', (event, imageUrl) => {
+    console.log(`[Main Process] Received show-image-context-menu for URL: ${imageUrl}`);
+    const template = [
+        {
+            label: '复制图片',
+            click: async () => {
+                console.log(`[Main Process] Context menu: "复制图片" clicked for ${imageUrl}`);
+                if (!imageUrl || (!imageUrl.startsWith('http:') && !imageUrl.startsWith('https:'))) {
+                    console.error('[Main Process] Invalid image URL for copying:', imageUrl);
+                    dialog.showErrorBox('复制错误', '无效的图片URL。');
+                    return;
+                }
+
+                try {
+                    const request = net.request(imageUrl);
+                    let chunks = [];
+                    request.on('response', (response) => {
+                        response.on('data', (chunk) => {
+                            chunks.push(chunk);
+                        });
+                        response.on('end', () => {
+                            if (response.statusCode === 200) {
+                                const buffer = Buffer.concat(chunks);
+                                const image = nativeImage.createFromBuffer(buffer);
+                                if (!image.isEmpty()) {
+                                    clipboard.writeImage(image);
+                                    console.log('[Main Process] Image copied to clipboard successfully.');
+                                    // Optionally notify renderer of success, though clipboard is usually silent
+                                } else {
+                                    console.error('[Main Process] Failed to create native image from buffer or image is empty.');
+                                    dialog.showErrorBox('复制失败', '无法从URL创建图片对象。');
+                                }
+                            } else {
+                                console.error(`[Main Process] Failed to download image. Status: ${response.statusCode}`);
+                                dialog.showErrorBox('复制失败', `下载图片失败，服务器状态: ${response.statusCode}`);
+                            }
+                        });
+                        response.on('error', (error) => {
+                            console.error('[Main Process] Error in image download response:', error);
+                            dialog.showErrorBox('复制失败', `下载图片响应错误: ${error.message}`);
+                        });
+                    });
+                    request.on('error', (error) => {
+                        console.error('[Main Process] Error making net request for image:', error);
+                        dialog.showErrorBox('复制失败', `请求图片失败: ${error.message}`);
+                    });
+                    request.end();
+                } catch (e) {
+                    console.error('[Main Process] Exception during image copy process:', e);
+                    dialog.showErrorBox('复制失败', `复制过程中发生意外错误: ${e.message}`);
+                }
+            }
+        },
+        { type: 'separator' },
+        {
+            label: '在新标签页中打开图片',
+            click: () => {
+                shell.openExternal(imageUrl);
+            }
+        }
+    ];
+    const menu = Menu.buildFromTemplate(template);
+    if (mainWindow) {
+        menu.popup({ window: mainWindow });
+    } else {
+        console.error("[Main Process] Cannot popup image context menu, mainWindow is not available.");
     }
 });

@@ -622,13 +622,10 @@ body.light-theme .message-item.assistant {
     border-top: 1px solid var(--border-color);
     display: flex;
     align-items: flex-end; /* Align items to bottom for multi-line textarea */
+    flex-wrap: wrap; /* Allow items to wrap */
 }
-.attachment-preview-area {
-    display: flex;
-    gap: 5px;
-    margin-bottom: 15px; /* 增加底部外边距，避免与输入框交叉 */
-    flex-wrap: wrap;
-}
+/* .attachment-preview-area specific styles are defined around line 1295 */
+/* The old .attachment-preview-area style at line 627 will be overridden or removed by the more specific one if it targets the same ID/class */
 .attachment-preview-area .file-preview {
     background-color: var(--accent-bg);
     padding: 3px 6px;
@@ -1296,8 +1293,11 @@ body.light-theme .notification-item {
     display: flex;
     flex-wrap: wrap; /* 允许换行 */
     gap: 8px; /* 附件之间的间距 */
-    padding: 8px 0; /* 上下留出一些空间 */
-    margin-bottom: 5px;
+    /* padding: 8px 0; */ /* 上下留出一些空间 */
+    width: 100%; /* Take full width to occupy the first "row" */
+    order: -1; /* Ensure it's visually the first item in the flex container */
+    margin-bottom: 8px; /* Space below the preview area and above the input row */
+    /* padding-bottom: 8px; */ /* Optional: if items inside need bottom padding */
 }
 
 .attachment-preview-item {

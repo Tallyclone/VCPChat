@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图片预览</title>
+    <style>
+        body { 
+            margin: 0; 
+            background-color: #2c2c2e; /* Dark background for better contrast */
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            height: 100vh; 
+            overflow: hidden; 
+            font-family: sans-serif;
+            color: #f0f0f0;
+        }
+        img { 
+            max-width: 98vw; /* Slightly less than 100 to avoid scrollbars due to potential padding/border */
+            max-height: 98vh; 
+            object-fit: contain; 
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            border-radius: 4px;
+        }
+        .error-message {
+            padding: 20px;
+            background-color: #444;
+            border-radius: 5px;
+            font-size: 1.2em;
+        }
+    </style>
+</head>
+<body>
+    <img id="viewerImage" src="" alt="图片加载中或加载失败..." style="display:none;"/>
+    <div id="errorMessage" class="error-message" style="display:none;">无法加载图片。</div>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const params = new URLSearchParams(window.location.search);
+            const imageUrl = params.get('src');
+            const imageTitle = params.get('title') || '图片预览';
+            
+            document.title = decodeURIComponent(imageTitle);
+            const imgElement = document.getElementById('viewerImage');
+            const errorDiv = document.getElementById('errorMessage');
+
+            if (imageUrl) {
+                const decodedImageUrl = decodeURIComponent(imageUrl);
+                console.log('Image Viewer: Loading image -', decodedImageUrl);
+                imgElement.src = decodedImageUrl;
+                imgElement.alt = decodeURIComponent(imageTitle);
+                imgElement.style.display = 'block'; // Show image element
+
+                imgElement.onload = () => {
+                    console.log('Image Viewer: Image loaded successfully.');
+                    errorDiv.style.display = 'none'; // Hide error message if image loads
+                };
+                imgElement.onerror = () => {
+                    console.error('Image Viewer: Error loading image -', decodedImageUrl);
+                    imgElement.style.display = 'none'; // Hide broken image icon
+                    errorDiv.textContent = `无法加载图片: ${decodeURIComponent(imageTitle)}`;
+                    errorDiv.style.display = 'block'; // Show error message
+                };
+
+            } else {
+                console.error('Image Viewer: No image URL provided.');
+                imgElement.style.display = 'none';
+                errorDiv.textContent = '未提供图片URL。';
+                errorDiv.style.display = 'block';
+            }
+        });
+    </script>
+</body>
+</html>

@@ -38,6 +38,40 @@ function injectEnhancedStyles() {
                 100% { background-position: 0% 50%; }
             }
 
+            /* Loading dots animation */
+            @keyframes vcp-loading-dots {
+              0%, 20% {
+                color: rgba(0,0,0,0);
+                text-shadow:
+                  .25em 0 0 rgba(0,0,0,0),
+                  .5em 0 0 rgba(0,0,0,0);
+              }
+              40% {
+                color: currentColor; /* Or a specific color */
+                text-shadow:
+                  .25em 0 0 rgba(0,0,0,0),
+                  .5em 0 0 rgba(0,0,0,0);
+              }
+              60% {
+                text-shadow:
+                  .25em 0 0 currentColor, /* Or a specific color */
+                  .5em 0 0 rgba(0,0,0,0);
+              }
+              80%, 100% {
+                text-shadow:
+                  .25em 0 0 currentColor, /* Or a specific color */
+                  .5em 0 0 currentColor; /* Or a specific color */
+              }
+            }
+
+            .thinking-indicator-dots {
+              display: inline-block;
+              font-size: 1em; /* Match parent font-size by default */
+              line-height: 1; /* Ensure it doesn't add extra height */
+              vertical-align: baseline; /* Align with the text */
+              animation: vcp-loading-dots 1.4s infinite;
+            }
+
             /* 主气泡样式 - VCP ToolUse */
             .vcp-tool-use-bubble {
                 background: linear-gradient(145deg, #3a7bd5 0%, #00d2ff 100%) !important;
@@ -469,14 +503,15 @@ let mainRendererReferences = {
     scrollToBottom: () => {},
     summarizeTopicFromMessages: async () => "",
     openModal: () => {},
-    autoResizeTextarea: () => {}, 
+    openImagePreviewModal: () => {}, // Added reference for image preview
+    autoResizeTextarea: () => {},
     activeStreamingMessageId: null,
 };
 
 function initializeMessageRenderer(refs) {
     mainRendererReferences.currentChatHistory = refs.currentChatHistory;
     mainRendererReferences.currentAgentId = refs.currentAgentId;
-    mainRendererReferences.currentTopicId = refs.currentTopicId; 
+    mainRendererReferences.currentTopicId = refs.currentTopicId;
     mainRendererReferences.globalSettings = refs.globalSettings;
     mainRendererReferences.chatMessagesDiv = refs.chatMessagesDiv;
     mainRendererReferences.electronAPI = refs.electronAPI;
@@ -484,8 +519,9 @@ function initializeMessageRenderer(refs) {
     mainRendererReferences.scrollToBottom = refs.scrollToBottom;
     mainRendererReferences.summarizeTopicFromMessages = refs.summarizeTopicFromMessages;
     mainRendererReferences.openModal = refs.openModal;
+    mainRendererReferences.openImagePreviewModal = refs.openImagePreviewModal; // Store the reference
     mainRendererReferences.autoResizeTextarea = refs.autoResizeTextarea;
-    injectEnhancedStyles(); 
+    injectEnhancedStyles();
 }
 
 function setCurrentAgentId(agentId) {
@@ -529,7 +565,7 @@ function renderMessage(message, isInitialLoad = false) {
     contentDiv.classList.add('md-content');
 
     if (message.isThinking) {
-        contentDiv.innerHTML = `<span class="thinking-indicator">${message.content || '思考中...'}</span>`;
+        contentDiv.innerHTML = `<span class="thinking-indicator">${message.content || '思考中'}<span class="thinking-indicator-dots">...</span></span>`;
         messageItem.classList.add('thinking');
     } else {
         // Always parse with marked first
@@ -538,6 +574,28 @@ function renderMessage(message, isInitialLoad = false) {
         contentDiv.innerHTML = markedInstance.parse(processedContent);
         // Then process for special blocks
         processAllPreBlocksInContentDiv(contentDiv);
+
+        // Add click to zoom for AI-generated images within contentDiv
+        const imagesInContent = contentDiv.querySelectorAll('img');
+        imagesInContent.forEach(img => {
+            // Avoid adding to images that are already part of user attachments (if any could be rendered this way)
+            if (!img.classList.contains('message-attachment-image-thumbnail')) {
+                img.style.cursor = 'pointer';
+                img.title = `点击在新窗口预览: ${img.alt || img.src}\n右键可复制图片`; // Update title
+                img.addEventListener('click', (e) => {
+                    e.stopPropagation(); // Prevent other clicks if image is inside other clickable elements
+                    // mainRendererReferences.openImagePreviewModal(img.src, img.alt || img.src.split('/').pop()); // Old modal
+                    mainRendererReferences.electronAPI.openImageInNewWindow(img.src, img.alt || img.src.split('/').pop() || 'AI 图片');
+                });
+                // Add context menu for AI images
+                img.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    mainRendererReferences.electronAPI.showImageContextMenu(img.src);
+                });
+            }
+        });
+
     }
     messageItem.appendChild(contentDiv);
     
@@ -548,11 +606,15 @@ function renderMessage(message, isInitialLoad = false) {
             let attachmentElement;
             if (att.type.startsWith('image/')) {
                 attachmentElement = document.createElement('img');
-                attachmentElement.src = att.src;
+                attachmentElement.src = att.src; // This src is usually file:// for user attachments
                 attachmentElement.alt = `附件图片: ${att.name}`;
-                attachmentElement.title = `点击查看原图: ${att.name}`;
+                attachmentElement.title = `点击在新窗口预览: ${att.name}`;
                 attachmentElement.classList.add('message-attachment-image-thumbnail');
-                attachmentElement.onclick = () => electronAPI.openPath(att.src.replace('file://', ''));
+                attachmentElement.onclick = (e) => {
+                    e.stopPropagation();
+                    // mainRendererReferences.openImagePreviewModal(att.src, att.name); // Old modal
+                    mainRendererReferences.electronAPI.openImageInNewWindow(att.src, att.name);
+                };
             } else if (att.type.startsWith('audio/')) {
                 attachmentElement = document.createElement('audio');
                 attachmentElement.src = att.src;
@@ -637,7 +699,9 @@ function startStreamingMessage(message) {
 
     const contentDiv = messageItem.querySelector('.md-content');
     if (contentDiv) {
-        contentDiv.innerHTML = ''; 
+        contentDiv.innerHTML = ''; // 清空现有内容
+        // 流式传输开始时，重新插入一个持续的加载指示器
+        contentDiv.innerHTML = `<span class="thinking-indicator">正在接收<span class="thinking-indicator-dots">...</span></span>`;
     }
     
     const historyIndex = mainRendererReferences.currentChatHistory.findIndex(m => m.id === message.id);

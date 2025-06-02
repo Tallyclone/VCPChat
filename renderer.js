@@ -256,7 +256,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 markedInstance: markedInstance,
                 scrollToBottom: scrollToBottom,
                 summarizeTopicFromMessages: summarizeTopicFromMessages,
-                openModal: openModal,
+                openModal: openModal, // Generic modal opener
+                // openImagePreviewModal: openImagePreviewModal, // Specific for image preview - REMOVED
                 autoResizeTextarea: autoResizeTextarea
             });
             console.log('[RENDERER_INIT] messageRenderer module initialized.');
@@ -285,6 +286,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         setupTopicSearch(); // New: Setup topic search event listeners
         autoResizeTextarea(messageInput);
         loadAndApplyThemePreference();
+
     } catch (error) {
         console.error('Error during DOMContentLoaded initialization:', error);
     }
@@ -536,7 +538,7 @@ async function handleSendMessage() {
     }
 
     messageInput.value = '';
-    attachedFiles = [];
+    attachedFiles.length = 0; // Clear the array without reassigning
     updateAttachmentPreview();
     autoResizeTextarea(messageInput);
     messageInput.focus();
@@ -1343,13 +1345,24 @@ function initializeResizers() {
 
 
 function updateAttachmentPreview() {
-    attachmentPreviewArea.innerHTML = '';
-    if (attachedFiles.length === 0) {
-        attachmentPreviewArea.style.display = 'none';
+    console.log('[Renderer] updateAttachmentPreview called. Current attachedFiles:', JSON.stringify(attachedFiles.map(f => ({ name: f.originalName, type: f.file.type, size: f.file.size, localPath: f.localPath }))));
+    if (!attachmentPreviewArea) {
+        console.error('[Renderer] updateAttachmentPreview: attachmentPreviewArea is null or undefined!');
         return;
     }
-    attachmentPreviewArea.style.display = 'flex';
+    console.log('[Renderer] updateAttachmentPreview: attachmentPreviewArea display style before change:', attachmentPreviewArea.style.display);
+
+    attachmentPreviewArea.innerHTML = ''; // Clear previous previews
+    if (attachedFiles.length === 0) {
+        attachmentPreviewArea.style.display = 'none';
+        console.log('[Renderer] updateAttachmentPreview: No files, hiding preview area.');
+        return;
+    }
+    attachmentPreviewArea.style.display = 'flex'; // Ensure it's visible
+    console.log('[Renderer] updateAttachmentPreview: Displaying preview area for', attachedFiles.length, 'files.');
+
     attachedFiles.forEach((af, index) => {
+        console.log(`[Renderer] updateAttachmentPreview: Processing file ${index + 1}: ${af.originalName}`);
         const prevDiv = document.createElement('div');
         prevDiv.className = 'attachment-preview-item'; // New class for better styling
         prevDiv.title = af.originalName; // Show full name on hover
@@ -1403,6 +1416,10 @@ function closeModal(modalId) { // This function is still used for globalSettings
     // Removed agentSettingsModal specific logic from here as it's no longer a modal
     // Avatar preview and input clearing should be handled by displayAgentSettingsInTab or when an agent is deselected/changed.
 }
+
+// --- Image Preview Modal Functions (Removed as per new strategy) ---
+// function openImagePreviewModal(src, caption = '') { ... }
+// function closeImagePreviewModal() { ... }
 
 async function displayAgentSettingsInTab() {
     if (currentAgentId) {

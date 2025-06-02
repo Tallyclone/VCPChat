@@ -68,6 +68,7 @@ function initializeInputEnhancer(refs) {
 
         const agentId = currentAgentIdRef();
         const topicId = currentTopicIdRef();
+        console.log(`[InputEnhancer] Drop event - currentAgentId: ${agentId}, currentTopicId: ${topicId}`); // Added log
 
         if (!agentId || !topicId) {
             alert("请先选择一个Agent和话题才能拖拽文件。");
@@ -172,6 +173,7 @@ function initializeInputEnhancer(refs) {
         console.log('[InputEnhancer] paste event triggered.');
         const agentId = currentAgentIdRef();
         const topicId = currentTopicIdRef();
+        console.log(`[InputEnhancer] Paste event - currentAgentId: ${agentId}, currentTopicId: ${topicId}`); // Added log
 
         if (!agentId || !topicId) {
             console.warn('[InputEnhancer] Paste handling skipped: Agent ID or Topic ID missing. Allowing default paste.');
