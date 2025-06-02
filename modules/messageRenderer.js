@@ -850,8 +850,10 @@ function showContextMenu(event, messageItem, message) {
         copyOption.classList.add('context-menu-item');
         copyOption.textContent = '复制文本';
         copyOption.onclick = () => {
-            navigator.clipboard.writeText(message.content)
-                .then(() => console.log('Message content copied to clipboard.'))
+            // 移除 HTML 图像标签
+            const textToCopy = message.content.replace(/<img[^>]*>/g, '').trim();
+            navigator.clipboard.writeText(textToCopy)
+                .then(() => console.log('Message content (without img tags) copied to clipboard.'))
                 .catch(err => console.error('Failed to copy message content: ', err));
             closeContextMenu();
         };
