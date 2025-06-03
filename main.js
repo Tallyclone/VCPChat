@@ -244,7 +244,7 @@ ipcMain.handle('save-settings', async (event, settings) => {
 ipcMain.handle('get-agents', async () => {
     try {
         const agentFolders = await fs.readdir(AGENT_DIR);
-        const agents = [];
+        let agents = [];
         for (const folderName of agentFolders) {
             const agentPath = path.join(AGENT_DIR, folderName);
             const stat = await fs.stat(agentPath);
@@ -259,22 +259,21 @@ ipcMain.handle('get-agents', async () => {
                 if (await fs.pathExists(configPath)) {
                     const config = await fs.readJson(configPath);
                     agentData.name = config.name || folderName;
-                    // agentData.topicTitle is now managed within the topics array
                     let topicsArray = config.topics && Array.isArray(config.topics) && config.topics.length > 0
                                        ? config.topics
                                        : [{ id: "default", name: "主要对话", createdAt: Date.now() }];
                     
                     if (!config.topics || !Array.isArray(config.topics) || config.topics.length === 0) {
                         try {
-                            config.topics = topicsArray; // Use the default one we just set/ensured
+                            config.topics = topicsArray;
                             await fs.writeJson(configPath, config, { spaces: 2 });
                         } catch (e) {
                             console.error(`Error saving default/fixed topics for agent ${folderName}:`, e);
                         }
                     }
-                    agentData.topics = topicsArray; // Assign to agentData
-                    agentData.config = config; // Keep full config as well
-                } else { // config.json itself did not exist
+                    agentData.topics = topicsArray;
+                    agentData.config = config;
+                } else {
                     agentData.name = folderName;
                     agentData.topics = [{ id: "default", name: "主要对话", createdAt: Date.now() }];
                     const defaultConfigData = {
@@ -305,10 +304,116 @@ ipcMain.handle('get-agents', async () => {
                 agents.push(agentData);
             }
         }
-        return agents.sort((a, b) => a.name.localeCompare(b.name));
+
+        // Apply saved order if it exists
+        let settings = {};
+        try {
+            if (await fs.pathExists(SETTINGS_FILE)) {
+                settings = await fs.readJson(SETTINGS_FILE);
+            }
+        } catch (readError) {
+            console.warn('Could not read settings file for agent order:', readError);
+        }
+
+        if (settings.agentOrder && Array.isArray(settings.agentOrder)) {
+            const orderedAgents = [];
+            const agentMap = new Map(agents.map(agent => [agent.id, agent]));
+            settings.agentOrder.forEach(id => {
+                if (agentMap.has(id)) {
+                    orderedAgents.push(agentMap.get(id));
+                    agentMap.delete(id); // Remove from map to handle agents not in order array
+                }
+            });
+            // Add any agents not in the order array to the end
+            orderedAgents.push(...agentMap.values());
+            agents = orderedAgents;
+        } else {
+            // Default sort by name if no order is saved
+            agents.sort((a, b) => a.name.localeCompare(b.name));
+        }
+        return agents;
     } catch (error) {
         console.error('获取Agent列表失败:', error);
         return { error: error.message };
+    }
+});
+
+ipcMain.handle('save-agent-order', async (event, orderedAgentIds) => {
+    console.log('[Main IPC] Received save-agent-order with IDs:', orderedAgentIds);
+    try {
+        let settings = {};
+        try {
+            if (await fs.pathExists(SETTINGS_FILE)) {
+                const data = await fs.readFile(SETTINGS_FILE, 'utf-8');
+                settings = JSON.parse(data);
+            }
+        } catch (readError) {
+            if (readError.code !== 'ENOENT') {
+                console.error('Failed to read settings file for saving agent order:', readError);
+                return { success: false, error: '读取设置文件失败' };
+            }
+            console.log('Settings file not found, will create a new one for agent order.');
+        }
+
+        settings.agentOrder = orderedAgentIds; // Store the order of agent IDs
+
+        await fs.writeFile(SETTINGS_FILE, JSON.stringify(settings, null, 2));
+        console.log('Agent order saved successfully to:', SETTINGS_FILE);
+        return { success: true };
+    } catch (error) {
+        console.error('Error saving agent order:', error);
+        return { success: false, error: error.message || '保存Agent顺序时发生未知错误' };
+    }
+});
+
+ipcMain.handle('save-topic-order', async (event, agentId, orderedTopicIds) => {
+    console.log(`[Main IPC] Received save-topic-order for agent ${agentId} with Topic IDs:`, orderedTopicIds);
+    if (!agentId || !Array.isArray(orderedTopicIds)) {
+        return { success: false, error: '无效的 agentId 或 topic IDs' };
+    }
+
+    const agentConfigPath = path.join(AGENT_DIR, agentId, 'config.json');
+    try {
+        let agentConfig = {};
+        try {
+            const data = await fs.readFile(agentConfigPath, 'utf-8');
+            agentConfig = JSON.parse(data);
+        } catch (readError) {
+            if (readError.code === 'ENOENT') {
+                 console.error(`Agent config file not found for ID ${agentId} at ${agentConfigPath}`);
+                return { success: false, error: `Agent配置文件 ${agentId} 未找到` };
+            }
+            console.error(`Failed to read agent config file ${agentConfigPath}:`, readError);
+            return { success: false, error: '读取Agent配置文件失败' };
+        }
+
+        if (!Array.isArray(agentConfig.topics)) {
+            agentConfig.topics = [];
+        }
+
+        const newTopicsArray = [];
+        const topicMap = new Map(agentConfig.topics.map(topic => [topic.id, topic]));
+
+        orderedTopicIds.forEach(id => {
+            if (topicMap.has(id)) {
+                newTopicsArray.push(topicMap.get(id));
+                topicMap.delete(id); // Remove from map to handle topics not in ordered list
+            } else {
+                console.warn(`Topic ID ${id} from ordered list not found in agent ${agentId}'s config.topics.`);
+            }
+        });
+        
+        // Add any topics not in the ordered list to the end
+        newTopicsArray.push(...topicMap.values());
+        
+        agentConfig.topics = newTopicsArray;
+
+        await fs.writeFile(agentConfigPath, JSON.stringify(agentConfig, null, 2));
+        console.log(`Topic order for agent ${agentId} saved successfully to: ${agentConfigPath}`);
+        return { success: true };
+    } catch (error) {
+        console.error(`Error saving topic order for agent ${agentId}:`, error);
+        return { success: false, error: error.message || `保存Agent ${agentId} 的话题顺序时发生未知错误` };
     }
 });
 

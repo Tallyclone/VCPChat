@@ -41,6 +41,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getTextContent: (filePath, fileType) => ipcRenderer.invoke('get-text-content', filePath, fileType),
     handleTextPasteAsFile: (agentId, topicId, textContent) => ipcRenderer.invoke('handle-text-paste-as-file', agentId, topicId, textContent),
     handleFileDrop: (agentId, topicId, droppedFilesData) => ipcRenderer.invoke('handle-file-drop', agentId, topicId, droppedFilesData),
+ 
+    // Agent and Topic Order
+    saveAgentOrder: (orderedAgentIds) => ipcRenderer.invoke('save-agent-order', orderedAgentIds),
+    saveTopicOrder: (agentId, orderedTopicIds) => ipcRenderer.invoke('save-topic-order', agentId, orderedTopicIds),
 
     // VCP Communication
     sendToVCP: (vcpUrl, vcpApiKey, messages, modelConfig, messageId) => ipcRenderer.invoke('send-to-vcp', vcpUrl, vcpApiKey, messages, modelConfig, messageId),

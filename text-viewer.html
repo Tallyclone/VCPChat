@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文本阅读模式</title>
+    <link rel="stylesheet" href="style.css"> <!-- 复用主项目的样式 -->
+    <script>
+        // KaTeX (LaTeX rendering) - Ensure these are correctly pathed if not using CDN
+        // If you have these locally, adjust the paths.
+        // For simplicity, using CDN here. In a real app, bundle them.
+    </script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.0/dist/katex.min.css" integrity="sha384-Xi8rHCmBmhbuyyhbI88391ZKP2dmfnOl4rT9ZfN75gOKfDRLUEAGtDsNxKggEPJ8" crossorigin="anonymous">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.0/dist/katex.min.js" integrity="sha384-X/XCfMm41VSsqRNwNEgmSMAXLsEuOdkUOlMVfYOTWpUperformEnA/SMoYSvRaXJ_t" crossorigin="anonymous"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.0/dist/contrib/auto-render.min.js" integrity="sha384-+XBljXPPiv+OzfbB3cVmLHfLdhbWKgLoS_YlHVF_M2wL_N_H_w_S_p_hH+G1R_w_b" crossorigin="anonymous"></script>
+    <!-- Highlight.js for syntax highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+    <style>
+        /* Define CSS variables for dark theme (default) */
+        :root {
+            --viewer-bg-color: #282c34;
+            --viewer-primary-text: #abb2bf;
+            --viewer-message-bg-assistant: #32363e;
+            --viewer-code-bg: #21252b;
+            --viewer-code-text: #c8ccd4;
+            --viewer-inline-code-text: #e06c75;
+            --viewer-button-text: #abb2bf;
+            --viewer-code-bg-hover: #2a2e36;
+            --viewer-button-active-bg: #666a73;
+            --viewer-top-light-effect-bg: rgba(250, 250, 210, 0.7);
+        }
+
+        /* Define CSS variables for light theme */
+        .light-theme {
+            --viewer-bg-color: #ffffff;
+            --viewer-primary-text: #2c3e50;
+            --viewer-message-bg-assistant: #f4f4f4e3;
+            --viewer-code-bg: #f1f3f5;
+            --viewer-code-text: #343a40;
+            --viewer-inline-code-text: #d6336c;
+            --viewer-button-text: #495057;
+            --viewer-code-bg-hover: #c8d4dd;
+            --viewer-button-active-bg: #ced4da;
+            --viewer-top-light-effect-bg: rgba(173, 216, 230, 0.7); /* Light blue for light theme */
+        }
+
+        body {
+            font-family: var(--font-family-sans-serif, sans-serif);
+            background-color: var(--viewer-bg-color);
+            color: var(--viewer-primary-text);
+            padding: 20px;
+            margin: 0;
+            overflow-y: auto;
+            line-height: 1.6;
+        }
+        .top-light-effect {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 200px; /* 根据用户圈图调整宽度 */
+            max-width: 300px;
+            height: 25px; /* 略微增加高度以获得更好的椭圆感 */
+            background-color: var(--viewer-top-light-effect-bg);
+            border-radius: 0 0 50% 50% / 0 0 100% 100%; /* 底部椭圆角 */
+            z-index: -1; /* 确保在内容下方 */
+        }
+        .content-container {
+            background-color: var(--viewer-message-bg-assistant);
+            color: var(--viewer-primary-text); /* Ensure text inside container is also readable */
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-top: 15px; /* 调整向下移动的距离 */
+        }
+        /* Ensure pre/code blocks are styled similarly to the main app if possible */
+        pre {
+            background-color: var(--viewer-code-bg);
+            color: var(--viewer-code-text);
+            padding: 1em;
+            border-radius: 5px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        code {
+            font-family: var(--font-family-monospace, monospace);
+            background-color: transparent; /* Background for inline code */
+            color: var(--viewer-inline-code-text);
+            padding: 0.2em 0.4em;
+            border-radius: 3px;
+        }
+        img { /* Ensure images are hidden if any slip through the stripping process */
+            display: none !important;
+        }
+        /* Style for the copy button */
+        .copy-button {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 5px;
+            background-color: var(--viewer-code-bg);
+            color: var(--viewer-button-text);
+            border: none; /* 移除边框 */
+            border-radius: 6px; /* 稍微增加圆角 */
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.3s, background-color 0.3s, border-color 0.3s;
+            width: 26px;
+            height: 26px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2); /* 添加轻微阴影 */
+        }
+        .copy-button:hover {
+            background-color: var(--viewer-code-bg-hover);
+        }
+        .copy-button svg {
+            width: 16px; /* SVG 图标大小 */
+            height: 16px; /* SVG 图标大小 */
+        }
+        pre:hover .copy-button {
+            opacity: 1; /* Show on hover */
+        }
+        .copy-button:active {
+            background-color: var(--viewer-button-active-bg);
+        }
+    </style>
+</head>
+<body>
+    <div class="top-light-effect"></div> <!-- 新增的半椭圆形元素 -->
+    <div class="content-container" id="textContent">
+        <!-- 文本内容将在这里被渲染 -->
+    </div>
+    <script>
+        // Marked (Markdown rendering) - Ensure marked.min.js is available
+        // Assuming it's in the root or accessible path.
+        // In a real app, you'd bundle this or ensure correct pathing.
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const params = new URLSearchParams(window.location.search);
+            const textContent = params.get('text');
+            const windowTitle = params.get('title') || '文本阅读模式';
+            const theme = params.get('theme') || 'dark'; // Get theme from URL, default to dark
+
+            document.title = decodeURIComponent(windowTitle);
+            const contentDiv = document.getElementById('textContent');
+
+            // Apply theme
+            if (theme === 'light') {
+                document.body.classList.add('light-theme');
+            } else {
+                document.body.classList.remove('light-theme');
+            }
+
+            if (textContent) {
+                const decodedText = decodeURIComponent(textContent);
+                // Render Markdown
+                if (window.marked) {
+                    contentDiv.innerHTML = marked.parse(decodedText);
+                    // Apply syntax highlighting after Markdown is rendered
+                    if (window.hljs) {
+                        hljs.highlightAll();
+                        // Add copy buttons to code blocks
+                        document.querySelectorAll('pre code.hljs').forEach((block) => {
+                            const preElement = block.parentElement;
+                            preElement.style.position = 'relative'; // Needed for absolute positioning of the button
+
+                            const button = document.createElement('button');
+                            // 使用SVG图标替换文字
+                            button.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>`;
+                            button.className = 'copy-button';
+                            button.setAttribute('title', '复制'); // 添加title提示
+
+                            button.addEventListener('click', (e) => {
+                                e.stopPropagation(); // 防止点击事件冒泡到 pre 元素
+                                const codeToCopy = block.innerText;
+                                navigator.clipboard.writeText(codeToCopy).then(() => {
+                                    // 可以在这里添加一个短暂的视觉反馈，例如改变图标颜色或边框颜色
+                                    button.style.borderColor = 'var(--success-color, #4CAF50)';
+                                    setTimeout(() => {
+                                        button.style.borderColor = 'var(--button-border-color, #4f535c)';
+                                    }, 1500);
+                                }).catch(err => {
+                                    console.error('无法复制到剪贴板:', err);
+                                    button.style.borderColor = 'var(--error-color, #F44336)';
+                                    setTimeout(() => {
+                                        button.style.borderColor = 'var(--button-border-color, #4f535c)';
+                                    }, 1500);
+                                });
+                            });
+                            preElement.appendChild(button);
+                        });
+                    }
+                } else {
+                    // Fallback if marked is not loaded
+                    const pre = document.createElement('pre');
+                    pre.textContent = decodedText;
+                    contentDiv.appendChild(pre);
+                }
+
+                // Render LaTeX if KaTeX is available
+                if (window.renderMathInElement) {
+                    try {
+                        renderMathInElement(contentDiv, {
+                            delimiters: [
+                                {left: "$$", right: "$$", display: true},
+                                {left: "$", right: "$", display: false},
+                                {left: "\\(", right: "\\)", display: false},
+                                {left: "\\[", right: "\\]", display: true}
+                            ],
+                            throwOnError: false
+                        });
+                    } catch (e) {
+                        console.error("KaTeX rendering error:", e);
+                    }
+                }
+            } else {
+                contentDiv.textContent = '没有提供文本内容。';
+            }
+        });
+    </script>
+</body>
+</html>

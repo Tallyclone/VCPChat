@@ -1,4 +1,3 @@
-console.log('renderer.js script execution started'); // DEBUG
 // --- Globals ---
 let globalSettings = {};
 let currentAgentId = null;
@@ -18,11 +17,10 @@ async function filterTopicList() {
     const topicListUl = document.getElementById('topicList'); 
     const topicItems = topicListUl ? topicListUl.querySelectorAll('.topic-item') : [];
 
-    console.log(`[filterTopicList] Searching for: "${searchTerm}"`);
-    // console.log(`[filterTopicList] Number of topic items found: ${topicItems.length}`);
+    // console.log(`[filterTopicList] Searching for: "${searchTerm}"`);
 
     if (!currentAgentId) {
-        console.log("[filterTopicList] No agent selected. Showing all topics if search term is empty, else hiding all.");
+        // console.log("[filterTopicList] No agent selected. Showing all topics if search term is empty, else hiding all.");
         topicItems.forEach(item => item.style.display = searchTerm.length === 0 ? '' : 'none');
         return;
     }
@@ -33,13 +31,11 @@ async function filterTopicList() {
         return;
     }
     const allTopics = agentConfig.topics || [];
-    // console.log(`[filterTopicList] All topics for current agent (${currentAgentId}):`, allTopics.map(t => t.name));
 
     for (const item of topicItems) {
         const topicId = item.dataset.topicId;
         const topic = allTopics.find(t => t.id === topicId);
         if (!topic) {
-            // console.warn(`[filterTopicList] Topic data not found for ID: ${topicId}. Hiding item.`);
             item.style.display = 'none';
             continue;
         }
@@ -48,7 +44,6 @@ async function filterTopicList() {
         let contentMatches = false;
         let dateMatches = false;
 
-        // console.log(`[filterTopicList] Processing topic: "${topicTitle}" (ID: ${topicId})`);
 
         if (searchTerm.length > 0) {
             // Date matching
@@ -88,38 +83,30 @@ async function filterTopicList() {
                         ) : false;
                         return messageContent.includes(searchTerm) || attachmentsText;
                     });
-                } else {
-                    // console.error(`[filterTopicList] Error getting history for topic ${topicId}:`, history?.error);
                 }
             }
         }
 
         if (topicTitle.includes(searchTerm) || contentMatches || dateMatches) {
             item.style.display = ''; // Show
-            // console.log(`[filterTopicList] Showing topic: "${topicTitle}" (ID: ${topicId}) due to title, content or date match.`);
         } else {
             item.style.display = 'none'; // Hide
-            // console.log(`[filterTopicList] Hiding topic: "${topicTitle}" (ID: ${topicId})`);
         }
     }
 }
 
 function setupTopicSearch() {
-    // Ensure topicSearchInput is defined at the top of the script
-    const topicSearchInputElement = document.getElementById('topicSearchInput'); 
+    const topicSearchInputElement = document.getElementById('topicSearchInput');
     if (topicSearchInputElement) {
         topicSearchInputElement.addEventListener('input', filterTopicList); // Keep for live filtering
         topicSearchInputElement.addEventListener('keydown', (event) => {
             if (event.key === 'Enter') {
-                event.preventDefault(); 
+                event.preventDefault();
                 filterTopicList();
             }
         });
-        console.log('[Renderer] Global Topic search event listeners (input and Enter key) set up.');
+        // console.log('[Renderer] Global Topic search event listeners (input and Enter key) set up.');
     } else {
-        // This might be called before DOM is fully ready if not careful,
-        // but DOMContentLoaded should handle it. If it still fails,
-        // it means topicSearchInput is not in main.html or ID is wrong.
         console.error('[Renderer] Global Topic search input element (topicSearchInput) not found during setup.');
     }
 }
@@ -138,7 +125,6 @@ const globalSettingsForm = document.getElementById('globalSettingsForm');
 
 const createNewAgentBtn = document.getElementById('createNewAgentBtn');
 
-// const agentSettingsModal = document.getElementById('agentSettingsModal'); // No longer a modal
 const agentSettingsContainerTitle = document.getElementById('agentSettingsContainerTitle'); // New title element in tab
 const selectedAgentNameForSettingsSpan = document.getElementById('selectedAgentNameForSettings');
 const agentSettingsForm = document.getElementById('agentSettingsForm'); // Form is now directly in tabContentSettings
@@ -184,14 +170,13 @@ const minimizeBtn = document.getElementById('minimize-btn');
 const maximizeBtn = document.getElementById('maximize-btn');
 const restoreBtn = document.getElementById('restore-btn');
 const closeBtn = document.getElementById('close-btn');
-const settingsBtn = document.getElementById('settings-btn'); // Add this line
+const settingsBtn = document.getElementById('settings-btn');
 const notificationTitleElement = document.getElementById('notificationTitle');
 const digitalClockElement = document.getElementById('digitalClock');
 const dateDisplayElement = document.getElementById('dateDisplay');
 
 // --- Initialization ---
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('DOMContentLoaded event fired.'); // DEBUG
     // Register VCPLog listeners
     window.electronAPI.onVCPLogStatus((statusUpdate) => {
         if (window.notificationRenderer) {
@@ -212,17 +197,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             window.notificationRenderer.renderVCPLogNotification(logData, originalRawMessage, notificationsListUl, themeColors);
         }
     });
-    console.log('[RENDERER_INIT] VCPLog listeners registered.');
+    // console.log('[RENDERER_INIT] VCPLog listeners registered.');
  
     // Listener for VCP stream chunks
-    window.electronAPI.onVCPStreamChunk(async (eventData) => { // Renamed data to eventData for clarity, and made async
+    window.electronAPI.onVCPStreamChunk(async (eventData) => {
         if (!window.messageRenderer) {
             console.error("VCPStreamChunk: messageRenderer not available.");
             return;
         }
-        // console.log('Received VCP stream chunk:', eventData); // DEBUG
+        // console.log('Received VCP stream chunk:', eventData);
  
-        // IMPORTANT: We now expect eventData to contain the messageId from main.js
         const streamMessageId = eventData.messageId;
  
         if (!streamMessageId) {
@@ -268,7 +252,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
     });
-    console.log('[RENDERER_INIT] VCP stream chunk listener registered (now expects messageId in eventData).');
+    // console.log('[RENDERER_INIT] VCP stream chunk listener registered (now expects messageId in eventData).');
   
     try {
         await loadAndApplyGlobalSettings();
@@ -285,12 +269,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 markedInstance: markedInstance,
                 scrollToBottom: scrollToBottom,
                 summarizeTopicFromMessages: summarizeTopicFromMessages,
-                openModal: openModal, // Generic modal opener
-                // openImagePreviewModal: openImagePreviewModal, // Specific for image preview - REMOVED
+                openModal: openModal,
                 autoResizeTextarea: autoResizeTextarea,
-                handleCreateBranch: handleCreateBranch // Add this line
+                handleCreateBranch: handleCreateBranch
             });
-            console.log('[RENDERER_INIT] messageRenderer module initialized.');
+            // console.log('[RENDERER_INIT] messageRenderer module initialized.');
         } else {
             console.error('[RENDERER_INIT] messageRenderer module not found!');
         }
@@ -304,19 +287,19 @@ document.addEventListener('DOMContentLoaded', async () => {
                 getCurrentAgentId: () => currentAgentId,
                 getCurrentTopicId: () => currentTopicId
             });
-            console.log('[RENDERER_INIT] inputEnhancer module initialized.');
+            // console.log('[RENDERER_INIT] inputEnhancer module initialized.');
         } else {
             console.error('[RENDERER_INIT] inputEnhancer module not found! Drag/drop and enhanced paste might not work.');
         }
  
-        setupEventListeners(); // This will now have some paste logic potentially overridden or complemented by inputEnhancer
+        setupEventListeners();
         setupSidebarTabs();
         initializeResizers();
-        setupTitleBarControls(); // Add this call
-        setupTopicSearch(); // New: Setup topic search event listeners
+        setupTitleBarControls();
+        setupTopicSearch();
         autoResizeTextarea(messageInput);
         loadAndApplyThemePreference();
-        initializeDigitalClock(); // Initialize the digital clock
+        initializeDigitalClock();
 
     } catch (error) {
         console.error('Error during DOMContentLoaded initialization:', error);
@@ -424,24 +407,49 @@ async function loadAgentList() {
             li.addEventListener('click', () => selectAgent(agent.id, agent.name));
             agentListUl.appendChild(li);
         });
-        // Optionally, select the first agent or last active agent
-        if (!currentAgentId && result.length > 0) {
-            // selectAgent(result[0].id, result[0].name); 
-            // Let user click to select initially
-        } else if (currentAgentId) {
+        if (currentAgentId) {
             highlightActiveAgent(currentAgentId);
+        }
+
+        // Initialize SortableJS for agent list
+        if (typeof Sortable !== 'undefined') {
+            new Sortable(agentListUl, {
+                animation: 150,
+                ghostClass: 'sortable-ghost', // Class name for the drop placeholder
+                chosenClass: 'sortable-chosen', // Class name for the chosen item
+                dragClass: 'sortable-drag', // Class name for the dragging item
+                onEnd: async function (evt) {
+                    const agentItems = Array.from(evt.to.children);
+                    const orderedAgentIds = agentItems.map(item => item.dataset.agentId);
+                    // console.log('New agent order:', orderedAgentIds);
+                    try {
+                        const result = await window.electronAPI.saveAgentOrder(orderedAgentIds);
+                        if (result && result.success) {
+                            // console.log('Agent order saved successfully.');
+                        } else {
+                            console.error('Failed to save agent order:', result?.error);
+                            alert('保存助手顺序失败: ' + (result?.error || '未知错误'));
+                            loadAgentList();
+                        }
+                    } catch (error) {
+                        console.error('Error calling saveAgentOrder:', error);
+                        alert('调用保存助手顺序API时出错: ' + error.message);
+                        loadAgentList();
+                    }
+                }
+            });
+        } else {
+            console.warn('SortableJS library not found. Agent list drag-and-drop ordering will not be available.');
         }
     }
 }
  
 async function selectAgent(agentId, agentName) {
-    // Prevent reloading if the same agent is clicked and a topic is already loaded.
-    // If currentTopicId is null (e.g., after app start or error), proceed to load topics.
     if (currentAgentId === agentId && currentTopicId) {
         return;
     }
  
-    console.log(`选择 Agent: ${agentName} (ID: ${agentId})`);
+    // console.log(`选择 Agent: ${agentName} (ID: ${agentId})`);
     currentAgentId = agentId;
     currentTopicId = null; // Reset current topic ID
     currentChatHistory = [];
@@ -480,14 +488,14 @@ async function selectAgent(agentId, agentName) {
             if (window.messageRenderer) {
                 window.messageRenderer.setCurrentTopicId(currentTopicId);
             }
-            console.log(`Agent ${agentId} - 选择话题: ${currentTopicId}`);
-            await loadChatHistory(currentAgentId, currentTopicId); // This will handle adding the glow
+            // console.log(`Agent ${agentId} - 选择话题: ${currentTopicId}`);
+            await loadChatHistory(currentAgentId, currentTopicId);
         } else if (topics.error) {
             console.error(`加载Agent ${agentId} 的话题列表失败:`, topics.error);
             chatMessagesDiv.innerHTML = `<div class="message-item system"><div class="sender-name">系统</div><div>加载话题列表失败: ${topics.error}</div></div>`;
         } else {
-            console.warn(`Agent ${agentId} 没有找到话题。将尝试加载一个空的聊天记录。`);
-            await loadChatHistory(currentAgentId, null); // This will handle adding the glow (or not, if no topic)
+            // console.warn(`Agent ${agentId} 没有找到话题。将尝试加载一个空的聊天记录。`);
+            await loadChatHistory(currentAgentId, null);
         }
     } catch (e) {
         console.error(`选择 Agent ${agentId} 时发生错误: `, e);
@@ -571,14 +579,8 @@ async function loadChatHistory(agentId, topicId) {
     }
 }
  
-// renderMessage, showContextMenu, closeContextMenu, closeContextMenuOnClickOutside, toggleEditMode, handleRegenerateResponse
-// have been moved to modules/messageRenderer.js
- 
 function scrollToBottom() {
-    // With flex-direction: column-reverse, scrolling to top shows latest messages
-    chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight; // This should scroll to the "end" which is visually the bottom
-    // Actually, for column-reverse, to see the newest message (which is added as the last child, but appears at the bottom),
-    // we need to scroll to the bottom of the container.
+    chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight;
     const parentContainer = document.querySelector('.chat-messages-container');
     if (parentContainer) {
         parentContainer.scrollTop = parentContainer.scrollHeight;
@@ -667,7 +669,7 @@ async function attemptTopicSummarizationIfNeeded() {
                     if (summarizedTitle) {
                         const saveResult = await window.electronAPI.saveAgentTopicTitle(currentAgentId, currentTopicId, summarizedTitle);
                         if (saveResult.success) {
-                            console.log(`AI 自动总结并保存话题 "${currentTopicId}" 标题: "${summarizedTitle}" for agent ${currentAgentId}`);
+                            // console.log(`AI 自动总结并保存话题 "${currentTopicId}" 标题: "${summarizedTitle}" for agent ${currentAgentId}`);
                             if (document.getElementById('tabContentTopics').classList.contains('active')) {
                                 loadTopicList();
                             }
@@ -675,13 +677,11 @@ async function attemptTopicSummarizationIfNeeded() {
                             console.error(`[TopicSummary] Failed to save new topic title "${summarizedTitle}":`, saveResult.error);
                         }
                     } else {
-                        console.log('[TopicSummary] summarizeTopicFromMessages returned null, no title generated.');
+                        // console.log('[TopicSummary] summarizeTopicFromMessages returned null, no title generated.');
                     }
                 } else {
                     console.error('[TopicSummary] summarizeTopicFromMessages function is not defined or not accessible.');
                 }
-            } else {
-                // console.log('[TopicSummary] Topic title is already custom, skipping summarization.');
             }
         } catch (error) {
             console.error('[TopicSummary] Error during attemptTopicSummarizationIfNeeded:', error);
@@ -759,25 +759,24 @@ async function handleSendMessage() {
             let vcpAttachments = [];
             if (msg.attachments && msg.attachments.length > 0) {
                 vcpAttachments = await Promise.all(msg.attachments.map(async att => {
-                    console.log('[Renderer - handleSendMessage] Processing attachment for VCP:', JSON.stringify(att, (key, value) => {
-                        if (key === 'data' && typeof value === 'string' && value.length > 200) {
-                            return `${value.substring(0, 50)}...[Base64, length: ${value.length}]...${value.substring(value.length - 50)}`;
-                        }
-                        return value;
-                    }, 2)); // Log each attachment being processed
+                    // console.log('[Renderer - handleSendMessage] Processing attachment for VCP:', JSON.stringify(att, (key, value) => {
+                    //     if (key === 'data' && typeof value === 'string' && value.length > 200) {
+                    //         return `${value.substring(0, 50)}...[Base64, length: ${value.length}]...${value.substring(value.length - 50)}`;
+                    //     }
+                    //     return value;
+                    // }, 2));
                     if (att.type.startsWith('image/')) {
                         try {
-                            // 'att.src' is now the internal file:// URL from AppData
                             const internalPath = att.src;
-                            console.log(`[Renderer - handleSendMessage] Attachment is image/audio. Calling getFileAsBase64 for internal path: ${internalPath}`);
-                            const base64Result = await window.electronAPI.getFileAsBase64(internalPath); // No need for .replace('file://', '') if main.js handles it
+                            // console.log(`[Renderer - handleSendMessage] Attachment is image/audio. Calling getFileAsBase64 for internal path: ${internalPath}`);
+                            const base64Result = await window.electronAPI.getFileAsBase64(internalPath);
                             
                             if (base64Result && base64Result.error) {
                                 console.error(`[Renderer - handleSendMessage] Error from getFileAsBase64 for ${att.name} (internal: ${internalPath}):`, base64Result.error);
                                 return { type: att.type, name: att.name, error: `Failed to load image/audio data: ${base64Result.error}` };
                             } else if (typeof base64Result === 'string' && base64Result.length > 0) {
-                                console.log(`[Renderer - handleSendMessage] Successfully got Base64 for ${att.name} (internal: ${internalPath}), length: ${base64Result.length}`);
-                                return { type: att.type, name: att.name, data: base64Result, internalPath: internalPath }; // Keep internalPath for reference
+                                // console.log(`[Renderer - handleSendMessage] Successfully got Base64 for ${att.name} (internal: ${internalPath}), length: ${base64Result.length}`);
+                                return { type: att.type, name: att.name, data: base64Result, internalPath: internalPath };
                             } else {
                                 console.warn(`[Renderer - handleSendMessage] getFileAsBase64 returned unexpected data for ${att.name} (internal: ${internalPath}):`,
                                     (typeof base64Result === 'string' && base64Result.length > 200)
@@ -796,21 +795,20 @@ async function handleSendMessage() {
                                   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                                   'application/javascript',
                                   'application/json',
-                                  // Add other script/document MIME types that should be text-extracted
                                  ].includes(att.type) ||
-                                 /\.(txt|md|log|js|json|html|css|py|java|c|cpp|cs|go|rb|php|swift|kt|ts|sh|xml|yaml|toml)$/i.test(att.name) // Check extension as fallback
+                                 /\.(txt|md|log|js|json|html|css|py|java|c|cpp|cs|go|rb|php|swift|kt|ts|sh|xml|yaml|toml)$/i.test(att.name)
                                 ) {
                         try {
-                            const internalPath = att.src; // This is the internal file:// URL
-                            console.log(`[Renderer - handleSendMessage] Attachment is text-based. Calling getTextContent for: ${internalPath}, type: ${att.type}`);
+                            const internalPath = att.src;
+                            // console.log(`[Renderer - handleSendMessage] Attachment is text-based. Calling getTextContent for: ${internalPath}, type: ${att.type}`);
                             const textResult = await window.electronAPI.getTextContent(internalPath, att.type);
 
                             if (textResult && textResult.error) {
                                 console.error(`[Renderer - handleSendMessage] Error from getTextContent for ${att.name} (internal: ${internalPath}):`, textResult.error);
                                 return { ...att, error: `Failed to extract text: ${textResult.error}` };
                             } else if (typeof textResult.textContent === 'string') {
-                                console.log(`[Renderer - handleSendMessage] Successfully got text for ${att.name}, length: ${textResult.textContent.length}`);
-                                return { ...att, extractedText: textResult.textContent }; // Add extractedText to the object
+                                // console.log(`[Renderer - handleSendMessage] Successfully got text for ${att.name}, length: ${textResult.textContent.length}`);
+                                return { ...att, extractedText: textResult.textContent };
                             } else {
                                 console.warn(`[Renderer - handleSendMessage] getTextContent returned unexpected data for ${att.name} (internal: ${internalPath}):`, textResult);
                                 return { ...att, error: "Failed to extract text: Unexpected return" };
@@ -820,30 +818,17 @@ async function handleSendMessage() {
                             return { ...att, error: `Failed to extract text: ${error.message}` };
                         }
                     } else {
-                        console.log(`[Renderer - handleSendMessage] Other attachment type ${att.name} (${att.type}), sending metadata only.`);
+                        // console.log(`[Renderer - handleSendMessage] Other attachment type ${att.name} (${att.type}), sending metadata only.`);
                         return { type: att.type, name: att.name, internalPath: att.src };
                     }
                 }));
-                
-                // Temporarily commenting out this log as it might be the source of full Base64 in renderer console.
-                // Main process log for sent data is more critical and already abbreviates.
-                // console.log('[Renderer - handleSendMessage] Constructed vcpAttachments (after base64/text processing):', JSON.stringify(vcpAttachments, (key, value) => {
-                //     if (key === 'data' && typeof value === 'string' && value.length > 200) {
-                //         return `${value.substring(0, 100)}...[Base64, length: ${value.length}]...${value.substring(value.length - 100)}`;
-                //     }
-                //     // if (key === 'text_content' && typeof value === 'string' && value.length > 200) {
-                //     //    return `${value.substring(0,100)}...[Text, length: ${value.length}]`;
-                //     // }
-                //     return value;
-                // }, 2));
-            } // End of: if (msg.attachments && msg.attachments.length > 0)
+            }
             
-            // --- Structure content for VCP ---
             if (msg.role === 'user') {
-                let userPrimaryText = msg.content || ""; // Start with the user's typed text
-                const mediaParts = []; // For image_url, audio_url objects
-                const documentStrings = []; // To collect formatted document text strings
-                let documentIndex = 1;    // To number the documents in the output
+                let userPrimaryText = msg.content || "";
+                const mediaParts = [];
+                const documentStrings = [];
+                let documentIndex = 1;
 
                 if (vcpAttachments.length > 0) {
                     vcpAttachments.forEach(att => {
@@ -855,16 +840,15 @@ async function handleSendMessage() {
                         if (att.type.startsWith('image/') && att.data) {
                             const dataUrl = `data:${att.type};base64,${att.data}`;
                             mediaParts.push({ type: 'image_url', image_url: { url: dataUrl } });
-                            console.log(`[Renderer - handleSendMessage] Prepared image part for VCP: ${att.name}`);
+                            // console.log(`[Renderer - handleSendMessage] Prepared image part for VCP: ${att.name}`);
                         } else if (att.type.startsWith('audio/') && att.data) {
                             const dataUrl = `data:${att.type};base64,${att.data}`;
                             mediaParts.push({ type: 'audio_url', audio_url: { url: dataUrl } });
-                            console.log(`[Renderer - handleSendMessage] Prepared audio part for VCP: ${att.name}`);
+                            // console.log(`[Renderer - handleSendMessage] Prepared audio part for VCP: ${att.name}`);
                         } else if (att.extractedText !== undefined && att.extractedText !== null) {
-                            // Format and collect extracted text
                             documentStrings.push(`[文档${documentIndex}-${att.name}：${att.extractedText}]`);
                             documentIndex++;
-                            console.log(`[Renderer - handleSendMessage] Formatted and collected extracted text of ${att.name}.`);
+                            // console.log(`[Renderer - handleSendMessage] Formatted and collected extracted text of ${att.name}.`);
                         }
                     });
                 }
@@ -960,12 +944,10 @@ async function handleSendMessage() {
                 }
                 // Save history here as the stream didn't start as expected.
                 await window.electronAPI.saveChatHistory(currentAgentId, currentTopicId, currentChatHistory.filter(msg => !msg.isThinking));
-                // Attempt summarization as this path is effectively a non-stream completion (or failure)
                 await attemptTopicSummarizationIfNeeded();
             }
-            // For successful streaming, summarization is handled in onVCPStreamChunk 'end' event
         }
-
+ 
     } catch (error) {
         console.error('发送消息或处理VCP响应时出错:', error);
         activeStreamingMessageId = null;
@@ -982,8 +964,6 @@ async function handleSendMessage() {
         }
     }
 }
- 
-// handleRegenerateResponse has been moved to modules/messageRenderer.js
  
 // --- Sidebar Tab Functionality ---
 function setupSidebarTabs() {
@@ -1023,13 +1003,8 @@ async function loadTopicList() {
         existingTopicListUl.remove();
     }
     
-    // If topicsHeader doesn't exist (first load), create it
     if (!topicsHeader) {
-        // This scenario should ideally not happen after main.html is updated,
-        // but as a fallback or for initial setup, we can re-create the structure.
-        // However, it's better to assume main.html provides the base structure.
-        // For now, we'll rely on the HTML being present.
-        console.error("topics-header not found in tabContentTopics. HTML structure might be missing.");
+        // console.error("topics-header not found in tabContentTopics. HTML structure might be missing.");
         tabContentTopics.innerHTML = `
             <div class="topics-header">
                 <h2>话题</h2>
@@ -1040,119 +1015,141 @@ async function loadTopicList() {
             </div>
             <ul class="topic-list" id="topicList"></ul>
         `;
-        // Re-select elements after re-creating them
-        // topicSearchInput = document.getElementById('topicSearchInput'); // Re-assign if needed
-        // topicSearchBtn = document.getElementById('topicSearchBtn');     // Re-assign if needed
-        // topicListUl = document.getElementById('topicList');            // Re-assign if needed
     }
 
     const topicListUl = document.createElement('ul');
     topicListUl.classList.add('topic-list');
     topicListUl.id = 'topicList'; // Ensure it has the ID for later selection
     tabContentTopics.appendChild(topicListUl); // Append the new ul after the header
+    
+    let topicsToProcess = []; // Declare here to ensure correct scope for SortableJS check
 
     if (currentAgentId) {
         const agentNameForLoading = document.querySelector(`.agent-list li[data-agent-id="${currentAgentId}"] .agent-name`)?.textContent || '当前助手';
-        topicListUl.innerHTML = `<li><p>正在加载 ${agentNameForLoading} 的话题...</p></li>`; // Use li for loading message
+        topicListUl.innerHTML = `<li><p>正在加载 ${agentNameForLoading} 的话题...</p></li>`;
 
         const agentConfig = await window.electronAPI.getAgentConfig(currentAgentId);
         if (!agentConfig || agentConfig.error) {
             topicListUl.innerHTML = `<li><p>无法加载助手 ${agentNameForLoading} 的配置信息: ${agentConfig?.error || '未知错误'}</p></li>`;
-            return;
-        }
+        } else {
+            topicsToProcess = agentConfig.topics || [{ id: "default", name: "主要对话", createdAt: Date.now() }];
 
-        let topics = agentConfig.topics || [{ id: "default", name: "主要对话", createdAt: Date.now() }];
-
-        // Sort topics by createdAt in descending order (newest first)
-        topics.sort((a, b) => {
-            const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-            const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-            return dateB - dateA;
-        });
-
-        if (topics.length === 0) {
-            topicListUl.innerHTML = `<li><p>助手 ${agentNameForLoading} 还没有任何话题。您可以点击上方的“新建上下文”按钮创建一个。</p></li>`;
-            return;
-        }
-
-        topicListUl.innerHTML = ''; // Clear loading message before populating actual topics
-
-        for (const topic of topics) {
-            const li = document.createElement('li');
-            li.classList.add('topic-item');
-            li.dataset.agentId = currentAgentId;
-            li.dataset.topicId = topic.id;
-            const isCurrentActiveTopic = topic.id === currentTopicId;
-            li.classList.toggle('active', isCurrentActiveTopic);
-            li.classList.toggle('active-topic-glowing', isCurrentActiveTopic);
-
-            const avatarImg = document.createElement('img');
-            avatarImg.classList.add('avatar');
-            const agentForAvatar = (await window.electronAPI.getAgents()).find(a => a.id === currentAgentId);
-            avatarImg.src = agentForAvatar?.avatarUrl || 'assets/default_avatar.png';
-            avatarImg.alt = `${agentConfig.name} - ${topic.name}`;
-            avatarImg.onerror = () => { avatarImg.src = 'assets/default_avatar.png'; };
-
-            const topicTitleDisplay = document.createElement('span');
-            topicTitleDisplay.classList.add('topic-title-display');
-            topicTitleDisplay.textContent = topic.name || `话题 ${topic.id}`;
-            
-            const messageCountSpan = document.createElement('span');
-            messageCountSpan.classList.add('message-count');
-            messageCountSpan.textContent = '...';
-
-            li.appendChild(avatarImg);
-            li.appendChild(topicTitleDisplay);
-            li.appendChild(messageCountSpan);
-
-            window.electronAPI.getChatHistory(currentAgentId, topic.id).then(historyResult => {
-                if (historyResult && !historyResult.error) {
-                    messageCountSpan.textContent = `${historyResult.length}`;
-                } else {
-                    messageCountSpan.textContent = 'N/A';
-                    console.error(`Error fetching history for topic ${topic.id} to count messages:`, historyResult?.error);
-                }
-            }).catch(err => {
-                 messageCountSpan.textContent = 'ERR';
-                 console.error(`Exception fetching history for topic ${topic.id}:`, err);
+            // Sort topics by createdAt in descending order (newest first)
+            topicsToProcess.sort((a, b) => {
+                const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                return dateB - dateA;
             });
 
-            li.addEventListener('click', async () => {
-                if (currentTopicId !== topic.id) {
-                    currentTopicId = topic.id;
-                    if (window.messageRenderer) {
-                        window.messageRenderer.setCurrentTopicId(currentTopicId);
-                    }
-                    // Removed setupTopicSearch and filterTopicList definitions from here.
-                    // They should be defined globally or at a higher scope and called from DOMContentLoaded.
+            if (topicsToProcess.length === 0) {
+                topicListUl.innerHTML = `<li><p>助手 ${agentNameForLoading} 还没有任何话题。您可以点击上方的“新建上下文”按钮创建一个。</p></li>`;
+            } else {
+                topicListUl.innerHTML = ''; // Clear loading message
+                for (const topic of topicsToProcess) {
+                    const li = document.createElement('li');
+                    li.classList.add('topic-item');
+                    li.dataset.agentId = currentAgentId;
+                    li.dataset.topicId = topic.id;
+                    const isCurrentActiveTopic = topic.id === currentTopicId;
+                    li.classList.toggle('active', isCurrentActiveTopic);
+                    li.classList.toggle('active-topic-glowing', isCurrentActiveTopic);
+
+                    const avatarImg = document.createElement('img');
+                    avatarImg.classList.add('avatar');
+                    const agentForAvatar = (await window.electronAPI.getAgents()).find(a => a.id === currentAgentId);
+                    avatarImg.src = agentForAvatar?.avatarUrl || 'assets/default_avatar.png';
+                    avatarImg.alt = `${agentConfig.name} - ${topic.name}`;
+                    avatarImg.onerror = () => { avatarImg.src = 'assets/default_avatar.png'; };
+
+                    const topicTitleDisplay = document.createElement('span');
+                    topicTitleDisplay.classList.add('topic-title-display');
+                    topicTitleDisplay.textContent = topic.name || `话题 ${topic.id}`;
                     
-                    document.querySelectorAll('#topicList .topic-item').forEach(item => { // Use #topicList
-                        const isClickedItem = item.dataset.topicId === currentTopicId && item.dataset.agentId === currentAgentId;
-                        item.classList.toggle('active', isClickedItem);
-                        item.classList.toggle('active-topic-glowing', isClickedItem);
-                    });
-                    await loadChatHistory(currentAgentId, currentTopicId); // loadChatHistory will also re-apply active classes
-                    localStorage.setItem(`lastActiveTopic_${currentAgentId}`, currentTopicId);
-                }
-            });
-            
-            li.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
-                showTopicContextMenu(e, li, agentConfig, topic);
-            });
-            topicListUl.appendChild(li);
-        }
+                    const messageCountSpan = document.createElement('span');
+                    messageCountSpan.classList.add('message-count');
+                    messageCountSpan.textContent = '...';
 
+                    li.appendChild(avatarImg);
+                    li.appendChild(topicTitleDisplay);
+                    li.appendChild(messageCountSpan);
+
+                    window.electronAPI.getChatHistory(currentAgentId, topic.id).then(historyResult => {
+                        if (historyResult && !historyResult.error) {
+                            messageCountSpan.textContent = `${historyResult.length}`;
+                        } else {
+                            messageCountSpan.textContent = 'N/A';
+                            console.error(`Error fetching history for topic ${topic.id} to count messages:`, historyResult?.error);
+                        }
+                    }).catch(err => {
+                         messageCountSpan.textContent = 'ERR';
+                         console.error(`Exception fetching history for topic ${topic.id}:`, err);
+                    });
+
+                    li.addEventListener('click', async () => {
+                        if (currentTopicId !== topic.id) {
+                            currentTopicId = topic.id;
+                            if (window.messageRenderer) {
+                                window.messageRenderer.setCurrentTopicId(currentTopicId);
+                            }
+                            document.querySelectorAll('#topicList .topic-item').forEach(item => {
+                                const isClickedItem = item.dataset.topicId === currentTopicId && item.dataset.agentId === currentAgentId;
+                                item.classList.toggle('active', isClickedItem);
+                                item.classList.toggle('active-topic-glowing', isClickedItem);
+                            });
+                            await loadChatHistory(currentAgentId, currentTopicId);
+                            localStorage.setItem(`lastActiveTopic_${currentAgentId}`, currentTopicId);
+                        }
+                    });
+                    
+                    li.addEventListener('contextmenu', (e) => {
+                        e.preventDefault();
+                        showTopicContextMenu(e, li, agentConfig, topic);
+                    });
+                    topicListUl.appendChild(li);
+                }
+            }
+        }
     } else {
         topicListUl.innerHTML = '<li><p>请先在“助手”标签页选择一个Agent，以查看其相关话题。</p></li>';
     }
-}
 
-// Updated context menu function for topics
-function showTopicContextMenu(event, topicItemElement, agentConfig, topic) { // agentConfig and specific topic object
-    console.log(`Right-clicked on topic: ${topic.name} (ID: ${topic.id}) for agent: ${agentConfig.name}`);
-    closeContextMenu(); // Close any existing chat message context menu
-    closeTopicContextMenu(); // Close any existing topic context menu first
+    if (currentAgentId && topicsToProcess && topicsToProcess.length > 0 && typeof Sortable !== 'undefined') {
+        // console.log(`[Sortable Topics DEBUG] Initializing. Agent: ${currentAgentId}, Topics count: ${topicsToProcess.length}, UL children: ${topicListUl.children.length}`);
+        new Sortable(topicListUl, {
+            animation: 150,
+            ghostClass: 'sortable-ghost',
+            chosenClass: 'sortable-chosen',
+            dragClass: 'sortable-drag',
+            onEnd: async function (evt) {
+                const topicItems = Array.from(evt.to.children);
+                const orderedTopicIds = topicItems.map(item => item.dataset.topicId);
+                // console.log(`[Sortable Topics DEBUG] onEnd: New topic order for agent ${currentAgentId}:`, orderedTopicIds);
+                try {
+                    const result = await window.electronAPI.saveTopicOrder(currentAgentId, orderedTopicIds);
+                    if (result && result.success) {
+                        // console.log(`[Sortable Topics DEBUG] Topic order for agent ${currentAgentId} saved successfully.`);
+                        await loadTopicList();
+                    } else {
+                        console.error(`[Sortable Topics DEBUG] Failed to save topic order for agent ${currentAgentId}:`, result?.error);
+                        alert(`保存话题顺序失败: ${result?.error || '未知错误'}`);
+                        loadTopicList();
+                    }
+                } catch (error) {
+                    console.error(`[Sortable Topics DEBUG] Error calling saveTopicOrder for agent ${currentAgentId}:`, error);
+                    alert(`调用保存话题顺序API时出错: ${error.message}`);
+                    loadTopicList();
+                }
+            }
+        });
+    } else {
+        //  console.log(`[Sortable Topics DEBUG] NOT Initializing. Agent: ${currentAgentId}, Topics count: ${topicsToProcess ? topicsToProcess.length : 'N/A'}, Sortable defined: ${typeof Sortable !== 'undefined'}, UL children: ${topicListUl.children.length}`);
+    }
+}
+ 
+function showTopicContextMenu(event, topicItemElement, agentConfig, topic) {
+    // console.log(`Right-clicked on topic: ${topic.name} (ID: ${topic.id}) for agent: ${agentConfig.name}`);
+    closeContextMenu();
+    closeTopicContextMenu();
 
     const menu = document.createElement('div');
     menu.id = 'topicContextMenu';
@@ -1349,12 +1346,9 @@ function setupEventListeners() {
     // The original 'paste' event listener on messageInput is now largely handled by inputEnhancer.js.
     // We can remove or comment out the old one to avoid conflicts if inputEnhancer.js covers all cases.
     // For now, let's comment it out. If specific text-only paste scenarios were uniquely handled here
-    // and NOT by inputEnhancer's logic (e.g., non-long-text, non-file, non-image pastes),
-    // that part might need to be preserved or merged. However, inputEnhancer aims to be comprehensive.
     /*
     messageInput.addEventListener('paste', async (event) => {
         // ... original paste logic from renderer.js ...
-        // This is now superseded by modules/inputEnhancer.js
     });
     */
  
@@ -1367,7 +1361,6 @@ function setupEventListeners() {
             vcpApiKey: document.getElementById('vcpApiKey').value, // Don't trim API key
             vcpLogUrl: document.getElementById('vcpLogUrl').value.trim(),
             vcpLogKey: document.getElementById('vcpLogKey').value.trim(),
-            // userName: '莱恩' // Example, could be a setting
         };
         const result = await window.electronAPI.saveSettings(newSettings);
         if (result.success) {
@@ -1388,26 +1381,23 @@ function setupEventListeners() {
     });
 
     // Create New Agent
-    console.log('Attempting to add click listener to createNewAgentBtn'); // DEBUG
+    // console.log('Attempting to add click listener to createNewAgentBtn');
     createNewAgentBtn.addEventListener('click', async () => {
-        console.log('createNewAgentBtn clicked. Bypassing prompt and alert.'); // DEBUG
-        // const agentName = prompt("请输入新Agent的名称:", "新Agent"); // prompt() is not supported in Electron renderer with contextIsolation
+        // console.log('createNewAgentBtn clicked. Bypassing prompt and alert.');
         const defaultAgentName = `新Agent_${Date.now()}`;
-        // alert(`由于 prompt() 不被支持，将使用默认名称创建Agent: ${defaultAgentName}\n您稍后可以在Agent设置中修改它。`); // Removed alert
         
-        if (defaultAgentName) { // Always true with this temp fix
+        if (defaultAgentName) {
             const result = await window.electronAPI.createAgent(defaultAgentName);
             if (result.success) {
                 await loadAgentList();
-                selectAgent(result.agentId, result.agentName); // Automatically select the new agent
-                openAgentSettingsModal(result.agentId); // Open settings for the new agent
+                selectAgent(result.agentId, result.agentName);
+                openAgentSettingsModal(result.agentId);
             } else {
                 alert(`创建Agent失败: ${result.error}`);
             }
         }
     });
     
-    // "New Context from Current Agent" Button (formerly Agent Settings)
     currentAgentSettingsBtn.addEventListener('click', async () => {
         if (currentAgentId) {
             await createNewContextFromCurrentAgent();
@@ -1447,9 +1437,9 @@ function setupEventListeners() {
             const clearedTopicName = `话题 ${currentTopicId.substring(0,8)}...`; // Or a more descriptive "已清空话题"
             const titleSaveResult = await window.electronAPI.saveAgentTopicTitle(currentAgentId, currentTopicId, clearedTopicName);
             if (titleSaveResult.success) {
-                console.log(`Topic ${currentTopicId} title reset to "${clearedTopicName}" after clearing chat.`);
+                // console.log(`Topic ${currentTopicId} title reset to "${clearedTopicName}" after clearing chat.`);
                 if (document.getElementById('tabContentTopics').classList.contains('active')) {
-                    loadTopicList(); // Refresh topic list to show new title
+                    loadTopicList();
                 }
             }
             alert('当前话题聊天记录已清空，话题标题已重置。');
@@ -1538,27 +1528,27 @@ function initializeResizers() {
 
 
 function updateAttachmentPreview() {
-    console.log('[Renderer] updateAttachmentPreview called. Current attachedFiles:', JSON.stringify(attachedFiles.map(f => ({ name: f.originalName, type: f.file.type, size: f.file.size, localPath: f.localPath }))));
+    // console.log('[Renderer] updateAttachmentPreview called. Current attachedFiles:', JSON.stringify(attachedFiles.map(f => ({ name: f.originalName, type: f.file.type, size: f.file.size, localPath: f.localPath }))));
     if (!attachmentPreviewArea) {
         console.error('[Renderer] updateAttachmentPreview: attachmentPreviewArea is null or undefined!');
         return;
     }
-    console.log('[Renderer] updateAttachmentPreview: attachmentPreviewArea display style before change:', attachmentPreviewArea.style.display);
-
-    attachmentPreviewArea.innerHTML = ''; // Clear previous previews
+    // console.log('[Renderer] updateAttachmentPreview: attachmentPreviewArea display style before change:', attachmentPreviewArea.style.display);
+ 
+    attachmentPreviewArea.innerHTML = '';
     if (attachedFiles.length === 0) {
         attachmentPreviewArea.style.display = 'none';
-        console.log('[Renderer] updateAttachmentPreview: No files, hiding preview area.');
+        // console.log('[Renderer] updateAttachmentPreview: No files, hiding preview area.');
         return;
     }
-    attachmentPreviewArea.style.display = 'flex'; // Ensure it's visible
-    console.log('[Renderer] updateAttachmentPreview: Displaying preview area for', attachedFiles.length, 'files.');
-
+    attachmentPreviewArea.style.display = 'flex';
+    // console.log('[Renderer] updateAttachmentPreview: Displaying preview area for', attachedFiles.length, 'files.');
+ 
     attachedFiles.forEach((af, index) => {
-        console.log(`[Renderer] updateAttachmentPreview: Processing file ${index + 1}: ${af.originalName}`);
+        // console.log(`[Renderer] updateAttachmentPreview: Processing file ${index + 1}: ${af.originalName}`);
         const prevDiv = document.createElement('div');
-        prevDiv.className = 'attachment-preview-item'; // New class for better styling
-        prevDiv.title = af.originalName; // Show full name on hover
+        prevDiv.className = 'attachment-preview-item';
+        prevDiv.title = af.originalName;
 
         const iconSpan = document.createElement('span');
         iconSpan.className = 'file-preview-icon';
@@ -1604,13 +1594,11 @@ function autoResizeTextarea(textarea) {
 function openModal(modalId) {
     document.getElementById(modalId).classList.add('active');
 }
-function closeModal(modalId) { // This function is still used for globalSettingsModal
+function closeModal(modalId) {
     document.getElementById(modalId).classList.remove('active');
-    // Removed agentSettingsModal specific logic from here as it's no longer a modal
-    // Avatar preview and input clearing should be handled by displayAgentSettingsInTab or when an agent is deselected/changed.
 }
-
-// --- Image Preview Modal Functions (Removed as per new strategy) ---
+ 
+// --- Image Preview Modal Functions ---
 // function openImagePreviewModal(src, caption = '') { ... }
 // function closeImagePreviewModal() { ... }
 
@@ -1667,9 +1655,7 @@ async function displayAgentSettingsInTab() {
         if(selectedAgentNameForSettingsSpan) selectedAgentNameForSettingsSpan.textContent = ''; // Clear agent name in title
     }
 }
-
-// Old openAgentSettingsModal function is now removed.
-
+ 
 async function saveCurrentAgentSettings(event) {
     event.preventDefault();
     const agentId = editingAgentIdInput.value;
@@ -1770,18 +1756,9 @@ async function createNewContextFromCurrentAgent() {
     }
 
     const agentName = (document.querySelector(`.agent-list li[data-agent-id="${currentAgentId}"] .agent-name`)?.textContent || "当前助手");
-    // Temporary fix: Use a default name instead of prompt()
     const newTopicName = `新话题 ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
-    console.log(`使用默认话题名称: ${newTopicName}`); // Log the default name
-
-    // Original prompt logic commented out:
-    // const newTopicNameInput = prompt(`为助手 "${agentName}" 输入新话题的名称:`, `新话题 ${new Date().toLocaleDateString()}`);
-    // if (!newTopicNameInput || newTopicNameInput.trim() === "") {
-    //     alert("话题名称不能为空。");
-    //     return;
-    // }
-    // const newTopicName = newTopicNameInput.trim();
-
+    console.log(`使用默认话题名称: ${newTopicName}`); 
+ 
     try {
         const result = await window.electronAPI.createNewTopicForAgent(currentAgentId, newTopicName);
 
@@ -1810,8 +1787,8 @@ async function createNewContextFromCurrentAgent() {
                 item.classList.toggle('active', isNewActiveTopic);
                 item.classList.toggle('active-topic-glowing', isNewActiveTopic);
             });
-            await displayTopicTimestampBubble(currentAgentId, currentTopicId); // Display for new topic
-            console.log(`已为助手 "${agentName}" 创建并切换到新话题: "${result.topicName}" (ID: ${result.topicId})`);
+            await displayTopicTimestampBubble(currentAgentId, currentTopicId);
+            // console.log(`已为助手 "${agentName}" 创建并切换到新话题: "${result.topicName}" (ID: ${result.topicId})`);
             messageInput.focus();
         } else {
             alert(`创建新话题失败: ${result ? result.error : '未知错误'}`);
@@ -1821,19 +1798,10 @@ async function createNewContextFromCurrentAgent() {
         alert(`创建新话题时出错: ${error.message}`);
     }
 }
-
-
-
-// VCPLog Notification Rendering functions (updateVCPLogStatus, renderVCPLogNotification)
-// have been moved to modules/notificationRenderer.js
  
-// --- Markdown Rendering (using a library like 'marked') ---
-// Ensure 'marked.min.js' is available or install 'marked' via npm and require it in main/preload.
-// For this example, let's assume 'marked' is globally available in renderer (e.g. via <script> tag)
-// If using npm: const { marked } = require('marked'); in preload and expose it.
-// For simplicity, I'll assume it's available.
-// In a real Electron app, you'd typically bundle 'marked' or load it.
-
+// VCPLog Notification Rendering functions have been moved to modules/notificationRenderer.js
+ 
+// --- Markdown Rendering ---
 let markedInstance;
 if (window.marked) {
     try {
@@ -1846,50 +1814,37 @@ if (window.marked) {
         // A common, albeit potentially unsafe if not further processed, way is to disable sanitization.
         markedInstance = new window.marked.Marked({
             sanitize: false, // Important: This allows all HTML. Consider DOMPurify for safety.
-            gfm: true, // Enable GitHub Flavored Markdown
-            breaks: true // Enable GFM line breaks
+            gfm: true,
+            breaks: true
         });
-        console.log("Marked library initialized with custom options (sanitize: false).");
-
-        // Wrap the original parse method to add custom quote handling
+        // console.log("Marked library initialized with custom options (sanitize: false).");
+ 
         const originalParse = markedInstance.parse.bind(markedInstance);
         markedInstance.parse = (text) => {
             if (typeof text !== 'string') {
-                return originalParse(text); // Pass non-strings directly
+                return originalParse(text);
             }
-
-            // Step 1: Get the initial HTML from marked
+ 
             const html = originalParse(text);
-
-            // Step 2: Process the HTML string to add spans for quotes
+ 
             const applyQuoteSpansToHtml = (inputHtml) => {
                 let resultHtml = inputHtml;
-
-                // Process Chinese quotes: “content” -> “<span class='quoted-text'>content</span>”
-                // The content [^”<>]* allows empty content and avoids crossing HTML tags or our own spans.
+ 
                 resultHtml = resultHtml.replace(/(“)([^”<>]*?)(”)/g, (_match, openQuote, innerContent, closeQuote) => {
-                    if (innerContent.includes('class="quoted-text"')) { // Avoid double wrapping
+                    if (innerContent.includes('class="quoted-text"')) {
                         return _match;
                     }
                     return `<span class="quoted-text">${openQuote}${innerContent}${closeQuote}</span>`;
                 });
-
-                // Process English quotes: "content" -> "<span class='quoted-text'>content</span>"
-                // This is applied carefully to avoid breaking HTML attributes.
-                // Split the HTML by tags, process text segments, and rejoin.
-                const parts = resultHtml.split(/(<[^>]+>)/); // Split by tags, keeping tags as delimiters
+ 
+                const parts = resultHtml.split(/(<[^>]+>)/);
                 for (let i = 0; i < parts.length; i++) {
-                    if (i % 2 === 0) { // This is a text segment (even indices)
-                        // Apply to English quotes. Content [^"<>]*? is non-greedy.
+                    if (i % 2 === 0) {
                         parts[i] = parts[i].replace(/(")([^"<>]*?)(")/g, (_match, openQuote, innerContent, closeQuote) => {
-                            if (innerContent.includes('class="quoted-text"')) { // Avoid double wrapping
+                            if (innerContent.includes('class="quoted-text"')) {
                                 return _match;
                             }
-                            // Avoid wrapping if it looks like an empty attribute value e.g. alt=""
-                            // This check is heuristic. A more robust solution would require full HTML parsing.
-                            if (innerContent.length === 0 && _match.length === 2) { // e.g. ""
-                                // Check context in parts[i] if this is part of an attribute
-                                // For now, we allow empty quoted spans if they are not attributes.
+                            if (innerContent.length === 0 && _match.length === 2) {
                                 }
                                 return `<span class="quoted-text">${openQuote}${innerContent}${closeQuote}</span>`;
                             });
@@ -1898,34 +1853,26 @@ if (window.marked) {
                 resultHtml = parts.join('');
                 return resultHtml;
             };
-
+ 
             return applyQuoteSpansToHtml(html);
         };
-        console.log("Marked library's parse method wrapped for custom quote handling (after initial parse).");
-
+        // console.log("Marked library's parse method wrapped for custom quote handling (after initial parse).");
+ 
     } catch (err) {
         console.warn("Failed to initialize marked with custom options, using default or basic fallback.", err);
-        // Fallback to default marked if custom init fails, or our basic one if marked itself is missing.
         markedInstance = window.marked || { parse: (text) => `<p>${text.replace(/\n/g, '<br>')}</p>` };
     }
 } else {
     console.warn("Marked library not found, Markdown rendering will be basic.");
-    markedInstance = { parse: (text) => `<p>${text.replace(/\n/g, '<br>')}</p>` }; // Basic fallback
+    markedInstance = { parse: (text) => `<p>${text.replace(/\n/g, '<br>')}</p>` };
 }
-// Use markedInstance.parse(text) instead of marked.parse(text)
-// We need to replace all instances of marked.parse with markedInstance.parse
-
-// Add a context menu (basic example)
+ 
 window.addEventListener('contextmenu', (e) => {
-    // Example: only show for textareas or inputs
     if (e.target.closest('textarea, input[type="text"]')) {
-        // In a real app, you'd use Electron's Menu module via IPC
-        // For simplicity, this is just a placeholder.
-        // window.electronAPI.showContextMenu(); // You'd define this in preload/main
-        console.log("Context menu triggered on input/textarea");
+        // console.log("Context menu triggered on input/textarea");
     }
 }, false);
-
+ 
 // --- Custom Title Bar Controls ---
 function setupTitleBarControls() {
     console.log('[Renderer] setupTitleBarControls called.');

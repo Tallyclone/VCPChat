@@ -252,8 +252,9 @@ body {
     flex-direction: column;
     border-right: 1px solid var(--border-color);
     transition: width 0.2s ease-in-out;
+    overflow-x: hidden; /* 禁止侧边栏本身的横向滚动条 */
 }
-
+ 
 /* Sidebar Tabs */
 .sidebar-tabs {
     display: flex;
@@ -351,9 +352,10 @@ body {
     padding: 0;
     margin: 0;
     overflow-y: auto;
+    overflow-x: hidden; /* 禁止列表本身的横向滚动条 */
     flex-grow: 1;
 }
-
+ 
 .agent-list li, .topic-list .topic-item {
     padding: 10px 12px;
     margin-bottom: 6px;
