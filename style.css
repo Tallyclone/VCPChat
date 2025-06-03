@@ -1460,7 +1460,7 @@ body.light-theme .notification-item {
     cursor: pointer; /* 点击手势 */
     object-fit: cover; /* 保持图片比例并填充 */
     margin: 5px; /* 与其他附件或文本的间距 */
-    border: 1px solid var(--border-color); /* 边框，使用主题颜色 */
+    border: 2px solid var(--button-bg); /* 调整边框宽度和颜色以更突出 */
     transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
 }
 
@@ -1634,3 +1634,78 @@ body.light-theme .topic-item.active-topic-glowing::before {
     ) !important;
 }
 /* --- End Active Topic Glow Effect --- */
+/* Custom File Upload Button Styling */
+
+/* Hide the default "No file chosen" text and style the input area minimally */
+input[type="file"] {
+    font-size: 0; /* Hide the "No file chosen" or filename text */
+    background-color: transparent;
+    border: none;
+    padding: 0;
+    margin: 0; /* Adjust as needed for layout */
+    width: auto; /* Allow the button to determine the width */
+    display: inline-block; /* Or 'block' depending on layout needs */
+}
+
+input[type="file"]::-webkit-file-upload-button,
+input[type="file"]::file-selector-button {
+    background-color: var(--button-bg);
+    color: var(--primary-text); /* Default text color, overridden for light theme */
+    border: 1px solid var(--button-bg); /* Match button background for a solid feel */
+    padding: 10px 15px;
+    border-radius: 8px; /* Consistent with other buttons like .sidebar-button */
+    cursor: pointer;
+    font-size: 0.95em; /* Consistent font size with other buttons */
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+    font-family: inherit; /* Ensure font consistency */
+}
+
+input[type="file"]::-webkit-file-upload-button:hover,
+input[type="file"]::file-selector-button:hover {
+    background-color: var(--button-hover-bg);
+    border-color: var(--button-hover-bg);
+    /* Text color on hover will use the theme-specific color defined below if applicable */
+}
+
+/* Light theme overrides for text color */
+body.light-theme input[type="file"]::-webkit-file-upload-button,
+body.light-theme input[type="file"]::file-selector-button {
+    color: #ffffff; /* White text for light theme buttons, as per other buttons */
+}
+
+/* Ensure hover text color is also white for light theme */
+body.light-theme input[type="file"]::-webkit-file-upload-button:hover,
+body.light-theme input[type="file"]::file-selector-button:hover {
+    color: #ffffff;
+}
+/* Agent Settings Avatar Preview Border */
+/* Attempt to target the avatar preview image within the agent settings form */
+#agentSettingsForm img.avatar-preview, /* If a specific class like 'avatar-preview' is used by JS */
+#agentSettingsContainer img[alt="Avatar Preview"], /* If the image has alt text "Avatar Preview" */
+#agentSettingsForm div > img[src*="blob:"], /* If it's a blob URL preview directly in a div */
+#agentSettingsForm div > img[data-preview-for], /* If it has a data attribute linking it to an input */
+#agentSettingsForm img[id*="AvatarPreview"], /* If its ID contains "AvatarPreview" */
+#agentSettingsForm img[class*="AvatarPreview"] /* If its class contains "AvatarPreview" */ {
+    border: 2px solid var(--button-bg) !important; /* Ensure border is visible and uses theme color */
+    border-radius: 8px; /* Consistent rounded corners */
+    max-width: 100px;   /* Adjust size as needed, e.g., to match screenshot */
+    max-height: 100px;  /* Adjust size as needed */
+    object-fit: cover;  /* Ensures the image covers the area, might crop */
+    display: block;     /* Ensures proper block-level rendering for margins/borders */
+    margin-top: 10px;   /* Adds some space below the file input or above other elements */
+    margin-bottom: 10px; /* Adds some space below the preview */
+}
+
+/* A slightly more general fallback if the above are too specific */
+/* This targets any image that is a direct child of a div within the agentSettingsForm,
+   and is likely to be a preview if it's the only image there. */
+#agentSettingsForm > div > img:only-child {
+    border: 2px solid var(--button-bg) !important;
+    border-radius: 8px;
+    max-width: 100px;
+    max-height: 100px;
+    object-fit: cover;
+    display: block;
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
