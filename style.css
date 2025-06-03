@@ -594,6 +594,7 @@ body.light-theme .message-item.user {
     align-self: flex-start;
     margin-right: auto;
     border-bottom-left-radius: 4px; /* 调整尾巴效果 */
+    max-width: 75%; /* 将AI气泡最大宽度调整为75% */
 }
 body.light-theme .message-item.assistant {
     background-color: var(--assistant-bubble-bg-light);
