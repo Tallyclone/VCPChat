@@ -634,7 +634,9 @@ body.light-theme .message-item.assistant {
     background-color: rgba(0,0,0,0.2);
     padding: 10px;
     border-radius: 6px;
-    overflow-x: auto;
+    white-space: pre-wrap; /* Preserve whitespace and allow wrapping */
+    word-break: break-all;   /* Break long words/strings to prevent overflow */
+    overflow-x: auto; /* Keep horizontal scroll for cases where break-all is not enough or desired */
     font-size: 0.9em;
     margin-top: 8px;
     border: 1px solid var(--border-color);
