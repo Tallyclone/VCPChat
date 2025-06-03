@@ -359,6 +359,7 @@ async function loadAndApplyGlobalSettings() {
     if (settings && !settings.error) {
         globalSettings = settings;
         // Populate global settings form
+        document.getElementById('userName').value = globalSettings.userName || ''; // Add this line
         document.getElementById('vcpServerUrl').value = globalSettings.vcpServerUrl || '';
         document.getElementById('vcpApiKey').value = globalSettings.vcpApiKey || '';
         document.getElementById('vcpLogUrl').value = globalSettings.vcpLogUrl || '';
@@ -1420,6 +1421,7 @@ function setupEventListeners() {
     globalSettingsForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const newSettings = {
+            userName: document.getElementById('userName').value.trim(), // Add this line
             vcpServerUrl: document.getElementById('vcpServerUrl').value.trim(),
             vcpApiKey: document.getElementById('vcpApiKey').value, // Don't trim API key
             vcpLogUrl: document.getElementById('vcpLogUrl').value.trim(),

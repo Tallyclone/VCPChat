@@ -1025,19 +1025,25 @@ function toggleEditMode(messageItem, message) {
         }
         processAllPreBlocksInContentDiv(contentDiv); // Re-prettify
 
+        messageItem.classList.remove('message-item-editing'); // 退出编辑模式时移除类
+        messageItem.style.maxWidth = ''; // 清除内联 maxWidth
+        messageItem.style.width = '';    // 清除内联 width
         existingTextarea.remove();
         if (existingControls) existingControls.remove();
         contentDiv.style.display = '';
-    } else { 
+    } else {
         const originalContentHeight = contentDiv.offsetHeight;
-        const originalContentWidth = contentDiv.offsetWidth;
+        // const originalContentWidth = contentDiv.offsetWidth; // 不再需要基于旧宽度设置textarea宽度
         contentDiv.style.display = 'none';
+        messageItem.classList.add('message-item-editing'); // 进入编辑模式时添加类
+        messageItem.style.width = '480px';  // 设置固定宽度
+        messageItem.style.maxWidth = '95%'; // 仍然限制最大宽度，以防400px过大
 
         const textarea = document.createElement('textarea');
         textarea.classList.add('message-edit-textarea');
         textarea.value = message.content;
         textarea.style.minHeight = `${Math.max(originalContentHeight, 50)}px`;
-        textarea.style.width = `${originalContentWidth > 0 ? originalContentWidth : 100}%`;
+        textarea.style.width = '100%'; // 让textarea宽度填充其父元素（message-item）
 
         const controlsDiv = document.createElement('div');
         controlsDiv.classList.add('message-edit-controls');

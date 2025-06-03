@@ -190,28 +190,93 @@ app.whenReady().then(() => {
     // --- End of Moved IPC Handler Registration ---
 
     // Notes IPC Handlers
-    const NOTES_FILE = path.join(APP_DATA_ROOT_IN_PROJECT, 'Notes', 'notes.json');
-    fs.ensureDirSync(path.dirname(NOTES_FILE)); // Ensure the Notes directory exists
+    const NOTES_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Notes');
+    fs.ensureDirSync(NOTES_DIR); // Ensure the Notes directory exists
 
-    ipcMain.handle('read-notes', async () => {
+    ipcMain.handle('read-txt-notes', async () => {
         try {
-            if (await fs.pathExists(NOTES_FILE)) {
-                const notes = await fs.readJson(NOTES_FILE);
-                return notes;
+            const files = await fs.readdir(NOTES_DIR);
+            const noteFiles = files.filter(file => file.endsWith('.txt'));
+            const notes = [];
+
+            for (const fileName of noteFiles) {
+                const filePath = path.join(NOTES_DIR, fileName);
+                const content = await fs.readFile(filePath, 'utf8');
+                
+                // 期望格式: 标题-用户名-时间戳\n笔记内容
+                const lines = content.split('\n');
+                if (lines.length < 1) continue; // Skip empty files
+
+                const header = lines[0];
+                const noteContent = lines.slice(1).join('\n');
+
+                const parts = header.split('-');
+                if (parts.length >= 3) {
+                    const title = parts[0];
+                    const username = parts[1];
+                    const timestampStr = parts[2];
+                    const timestamp = parseInt(timestampStr, 10); // Convert timestamp string to number
+
+                    // Extract ID from filename (e.g., "标题-时间戳.txt" -> "标题-时间戳")
+                    const id = fileName.replace(/\.txt$/, '');
+
+                    notes.push({
+                        id: id, // Use full filename without .txt as ID
+                        title: title,
+                        username: username,
+                        timestamp: timestamp,
+                        content: noteContent,
+                        fileName: fileName // Store original filename for updates/deletes
+                    });
+                } else {
+                    console.warn(`跳过格式不正确的笔记文件: ${fileName}`);
+                }
             }
-            return []; // Default empty array if file doesn't exist
+            // Sort by most recent timestamp
+            notes.sort((a, b) => b.timestamp - a.timestamp);
+            return notes;
         } catch (error) {
-            console.error('读取笔记失败:', error);
+            console.error('读取TXT笔记失败:', error);
             return { error: error.message };
         }
     });
 
-    ipcMain.handle('write-notes', async (event, notes) => {
+    ipcMain.handle('write-txt-note', async (event, noteData) => {
         try {
-            await fs.writeJson(NOTES_FILE, notes, { spaces: 2 });
-            return { success: true };
+            const { id, title, username, timestamp, content, oldFileName } = noteData;
+            const newFileName = `${title}-${username}-${timestamp}.txt`;
+            const newFilePath = path.join(NOTES_DIR, newFileName);
+
+            // If oldFileName exists and is different from newFileName, delete the old file
+            if (oldFileName && oldFileName !== newFileName) {
+                const oldFilePath = path.join(NOTES_DIR, oldFileName);
+                if (await fs.pathExists(oldFilePath)) {
+                    await fs.remove(oldFilePath);
+                    console.log(`旧笔记文件已删除: ${oldFilePath}`);
+                }
+            }
+
+            const fileContent = `${title}-${username}-${timestamp}\n${content}`;
+            await fs.writeFile(newFilePath, fileContent, 'utf8');
+            console.log(`笔记已保存到: ${newFilePath}`);
+            return { success: true, fileName: newFileName };
         } catch (error) {
-            console.error('保存笔记失败:', error);
+            console.error('保存TXT笔记失败:', error);
+            return { error: error.message };
+        }
+    });
+
+    ipcMain.handle('delete-txt-note', async (event, fileName) => {
+        try {
+            const filePath = path.join(NOTES_DIR, fileName);
+            if (await fs.pathExists(filePath)) {
+                await fs.remove(filePath);
+                console.log(`笔记文件已删除: ${filePath}`);
+                return { success: true };
+            }
+            return { success: false, error: '文件不存在或已被删除。' };
+        } catch (error) {
+            console.error('删除TXT笔记失败:', error);
             return { error: error.message };
         }
     });

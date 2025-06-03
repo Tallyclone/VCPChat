@@ -43,8 +43,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     handleFileDrop: (agentId, topicId, droppedFilesData) => ipcRenderer.invoke('handle-file-drop', agentId, topicId, droppedFilesData),
 
     // Notes
-    readNotes: () => ipcRenderer.invoke('read-notes'),
-    writeNotes: (notes) => ipcRenderer.invoke('write-notes', notes),
+    readTxtNotes: () => ipcRenderer.invoke('read-txt-notes'),
+    writeTxtNote: (noteData) => ipcRenderer.invoke('write-txt-note', noteData),
+    deleteTxtNote: (fileName) => ipcRenderer.invoke('delete-txt-note', fileName),
 
     // Open Notes Window
     openNotesWindow: (theme) => ipcRenderer.invoke('open-notes-window', theme),
@@ -145,16 +146,22 @@ const electronAPIForLogging = {
     saveAgentTopicTitle: "function", deleteTopic: "function", getChatHistory: "function",
     saveChatHistory: "function", handleFilePaste: "function", selectFilesToSend: "function",
     getFileAsBase64: "function", getTextContent: "function", handleTextPasteAsFile: "function",
-    handleFileDrop: "function", sendToVCP: "function", onVCPStreamChunk: "function",
+    handleFileDrop: "function",
+    readTxtNotes: "function", // New
+    writeTxtNote: "function", // New
+    deleteTxtNote: "function", // New
+    openNotesWindow: "function",
+    saveAgentOrder: "function", // New
+    saveTopicOrder: "function", // New
+    sendToVCP: "function", onVCPStreamChunk: "function",
     connectVCPLog: "function", disconnectVCPLog: "function", onVCPLogMessage: "function",
     onVCPLogStatus: "function", readImageFromClipboard: "function", readTextFromClipboard: "function",
     minimizeWindow: "function", maximizeWindow: "function", unmaximizeWindow: "function", closeWindow: "function",
-    openDevTools: "function", // Added for logging
-    openAdminPanel: "function", // 新增
+    openDevTools: "function",
+    openAdminPanel: "function",
     onWindowMaximized: "function", onWindowUnmaximized: "function",
     showImageContextMenu: "function",
     openImageInNewWindow: "function",
-    openNotesWindow: "function" // Added for logging
 };
 console.log('[Preload] electronAPI object that *should* be exposed (structure check):', electronAPIForLogging);
 console.log('preload.js loaded and contextBridge exposure attempted.');
