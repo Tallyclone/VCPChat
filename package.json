@@ -34,9 +34,12 @@
       "main.js",
       "preload.js",
       "renderer.js",
-      "index.html",
+      "main.html",
+      "image-viewer.html",
+      "text-viewer.html",
       "style.css",
       "assets/",
+      "modules/**/*",
       "node_modules/**/*"
     ],
     "directories": {
