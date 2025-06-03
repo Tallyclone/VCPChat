@@ -18,6 +18,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     let activeNoteId = null; // Stores the ID of the currently active note
     let deleteTimer = null; // Timer for two-step delete confirmation
 
+    let autoSaveTimer = null; // Timer for debounced auto-save
+
+    // Debounce function
+    function debounce(func, delay) {
+        let timeout;
+        return function(...args) {
+            const context = this;
+            clearTimeout(timeout);
+            timeout = setTimeout(() => func.apply(context, args), delay);
+        };
+    }
+
     // Helper function to show button feedback
     function showButtonFeedback(button, originalText, feedbackText, isSuccess = true, duration = 2000) {
         const originalBg = button.style.backgroundColor;
@@ -247,50 +259,121 @@ document.addEventListener('DOMContentLoaded', async () => {
     newNoteBtn.addEventListener('click', () => {
         clearNoteEditor();
     });
-
-    // Event listener for saving a note
-    saveNoteBtn.addEventListener('click', async () => {
+ 
+    // Core function to save the current note
+    async function saveCurrentNote(isAutoSave = false) {
         const title = noteTitleInput.value.trim();
-        const content = noteContentInput.value; // Don't trim content, user might want spaces
+        const content = noteContentInput.value;
 
-        if (!title && !content.trim()) { // Check if content is also effectively empty
+        // For new notes, if title and content are empty, don't save, especially for auto-save.
+        if (!activeNoteId && !title && !content.trim()) {
+            if (isAutoSave) {
+                // console.log('自动保存：新笔记内容为空，不保存。');
+                return;
+            }
             showButtonFeedback(saveNoteBtn, '保存', '内容为空', false);
             return;
         }
 
         let noteToSave;
         const currentTimestamp = Date.now();
+
         if (activeNoteId) {
             noteToSave = notes.find(n => n.id === activeNoteId);
             if (noteToSave) {
-                noteToSave.title = title || '无标题笔记';
+                // Check if content actually changed to avoid unnecessary saves
+                const normalizedTitle = title || '无标题笔记';
+                if (noteToSave.title === normalizedTitle && noteToSave.content === content) {
+                    if (isAutoSave) {
+                        // console.log('自动保存：内容未更改。');
+                        // Optionally provide subtle feedback that content is up-to-date
+                        if (saveNoteBtn.textContent !== '已保存' && saveNoteBtn.textContent !== '自动保存成功' && saveNoteBtn.textContent !== '保存失败' && !saveNoteBtn.disabled) {
+                            const originalText = saveNoteBtn.textContent;
+                            saveNoteBtn.textContent = '已是最新';
+                            setTimeout(() => {
+                                if (saveNoteBtn.textContent === '已是最新' && !saveNoteBtn.disabled) saveNoteBtn.textContent = originalText;
+                            }, 1000);
+                        }
+                        return;
+                    }
+                }
+                noteToSave.title = normalizedTitle;
                 noteToSave.content = content;
                 noteToSave.timestamp = currentTimestamp;
-            } else { // Should not happen if activeNoteId is set
-                activeNoteId = null; // Reset if note was somehow lost
+            } else {
+                activeNoteId = null; // Note was lost, treat as new if user continues typing
             }
         }
         
-        if (!activeNoteId) { // Create new note if not updating
+        if (!activeNoteId) { // Create new note if not updating an existing one
+            // This check is slightly redundant due to the one at the beginning, but ensures no fully empty new note is created.
+            if (!title && !content.trim()) {
+                if (isAutoSave) return;
+            }
             noteToSave = {
-                id: currentTimestamp.toString(), // Simple unique ID
+                id: currentTimestamp.toString(),
                 title: title || '无标题笔记',
                 content: content,
                 timestamp: currentTimestamp
             };
             notes.push(noteToSave);
+            // activeNoteId will be set by selectNote after loadNotes
         }
 
+        if (!noteToSave) { // Should not happen if logic is correct
+            console.error('保存逻辑错误：noteToSave 未定义。');
+            if (isAutoSave) return;
+            showButtonFeedback(saveNoteBtn, '保存', '保存出错', false);
+            return;
+        }
 
         try {
             await window.electronAPI.writeNotes(notes);
-            await loadNotes(); 
-            selectNote(noteToSave.id); 
-            showButtonFeedback(saveNoteBtn, '保存', '已保存', true);
+            const currentActiveId = noteToSave.id; // Store before loadNotes might change things
+            await loadNotes(); // Reloads and re-renders the note list
+            selectNote(currentActiveId); // Re-select the current note
+
+            if (isAutoSave) {
+                // console.log('笔记已自动保存:', noteToSave.id);
+                if (saveNoteBtn.textContent !== '已保存' && saveNoteBtn.textContent !== '保存失败' && !saveNoteBtn.disabled) {
+                    const originalText = saveNoteBtn.textContent;
+                    saveNoteBtn.textContent = '自动保存 ✓';
+                    setTimeout(() => {
+                        if (saveNoteBtn.textContent === '自动保存 ✓' && !saveNoteBtn.disabled) saveNoteBtn.textContent = '保存'; // Or originalText
+                    }, 1500);
+                }
+            } else {
+                showButtonFeedback(saveNoteBtn, '保存', '已保存', true);
+            }
         } catch (error) {
             console.error('保存笔记失败:', error);
-            showButtonFeedback(saveNoteBtn, '保存', '保存失败', false);
+            if (isAutoSave) {
+                // console.error('自动保存失败:', error);
+                if (saveNoteBtn.textContent !== '保存失败' && !saveNoteBtn.disabled) {
+                    const originalText = saveNoteBtn.textContent;
+                    saveNoteBtn.textContent = '自动保存失败';
+                    saveNoteBtn.style.backgroundColor = 'var(--error-color, #F44336)';
+                    saveNoteBtn.style.color = 'white';
+                    setTimeout(() => {
+                        if (saveNoteBtn.textContent === '自动保存失败' && !saveNoteBtn.disabled) {
+                            saveNoteBtn.textContent = '保存'; // Or originalText
+                            saveNoteBtn.style.backgroundColor = '';
+                            saveNoteBtn.style.color = '';
+                        }
+                    }, 2000);
+                }
+            } else {
+                showButtonFeedback(saveNoteBtn, '保存', '保存失败', false);
+            }
         }
+    }
+
+    // Debounced version of saveCurrentNote for auto-saving
+    const debouncedSaveNote = debounce(() => saveCurrentNote(true), 1500); // 1.5 seconds delay
+
+    // Event listener for manual saving a note
+    saveNoteBtn.addEventListener('click', async () => {
+        await saveCurrentNote(false); // false indicates manual save
     });
 
     // Event listener for deleting a note
@@ -333,8 +416,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // Live Markdown preview
+    noteTitleInput.addEventListener('input', () => {
+        debouncedSaveNote();
+    });
+
     noteContentInput.addEventListener('input', (e) => {
-        renderMarkdown(e.target.value);
+        renderMarkdown(e.target.value); // Existing live preview
+        debouncedSaveNote(); // Trigger debounced auto-save
     });
 
     // Initial load of notes
