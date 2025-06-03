@@ -1281,7 +1281,6 @@ body.light-theme #agentSettingsForm .form-actions .danger-button:hover {
 
 .notification-item pre { /* For JSON data or preformatted content in notifications */
     background-color: rgba(0,0,0,0.2); /* Consistent with existing pre style */
-    color: #000000; /* 确保代码块文字颜色在亮色主题下为纯黑色 */
     padding: 6px;
     border-radius: 4px;
     font-size: 0.85em;
