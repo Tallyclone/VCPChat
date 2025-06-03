@@ -1530,6 +1530,9 @@ function setupEventListeners() {
     }
 
     // Add event listener for the new Admin Panel button
+    // New element for Notes button
+    const openNotesBtn = document.getElementById('openNotesBtn');
+
     if (openAdminPanelBtn) {
         // Ensure the button is visible by default, as it's no longer controlled by agent selection
         openAdminPanelBtn.style.display = 'inline-block';
@@ -1561,9 +1564,22 @@ function setupEventListeners() {
             }
         });
     }
+
+    // Add event listener for the new Notes button
+    if (openNotesBtn) {
+        openNotesBtn.addEventListener('click', async () => {
+            const currentTheme = document.body.classList.contains('light-theme') ? 'light' : 'dark';
+            if (window.electronAPI && window.electronAPI.openNotesWindow) {
+                await window.electronAPI.openNotesWindow(currentTheme);
+            } else {
+                console.warn('[Renderer] electronAPI.openNotesWindow is not available.');
+                alert('无法打开笔记：所需功能不可用。');
+            }
+        });
+    }
 }
-
-
+ 
+ 
 // --- Resizer Functionality ---
 function initializeResizers() {
     let isResizingLeft = false;

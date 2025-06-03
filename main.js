@@ -189,6 +189,79 @@ app.whenReady().then(() => {
     });
     // --- End of Moved IPC Handler Registration ---
 
+    // Notes IPC Handlers
+    const NOTES_FILE = path.join(APP_DATA_ROOT_IN_PROJECT, 'Notes', 'notes.json');
+    fs.ensureDirSync(path.dirname(NOTES_FILE)); // Ensure the Notes directory exists
+
+    ipcMain.handle('read-notes', async () => {
+        try {
+            if (await fs.pathExists(NOTES_FILE)) {
+                const notes = await fs.readJson(NOTES_FILE);
+                return notes;
+            }
+            return []; // Default empty array if file doesn't exist
+        } catch (error) {
+            console.error('读取笔记失败:', error);
+            return { error: error.message };
+        }
+    });
+
+    ipcMain.handle('write-notes', async (event, notes) => {
+        try {
+            await fs.writeJson(NOTES_FILE, notes, { spaces: 2 });
+            return { success: true };
+        } catch (error) {
+            console.error('保存笔记失败:', error);
+            return { error: error.message };
+        }
+    });
+
+    ipcMain.handle('open-notes-window', async (event, theme) => {
+        console.log(`[Main Process] Received open-notes-window (handle inside whenReady). Theme: ${theme}`);
+        const notesWindow = new BrowserWindow({
+            width: 1000,
+            height: 700,
+            minWidth: 800,
+            minHeight: 600,
+            title: '我的笔记',
+            parent: mainWindow,
+            modal: false,
+            webPreferences: {
+                preload: path.join(__dirname, 'preload.js'),
+                contextIsolation: true,
+                nodeIntegration: false,
+                devTools: true
+            },
+            icon: path.join(__dirname, 'assets', 'icon.png'),
+            show: false
+        });
+
+        const notesUrl = `file://${path.join(__dirname, 'Notes', 'notes.html')}?theme=${encodeURIComponent(theme || 'dark')}`;
+        console.log(`[Main Process] Attempting to load URL in notes window: ${notesUrl.substring(0, 200)}...`);
+        
+        notesWindow.loadURL(notesUrl)
+            .then(() => {
+                console.log(`[Main Process] notesWindow successfully initiated URL loading: ${notesUrl.substring(0, 200)}`);
+            })
+            .catch((err) => {
+                console.error(`[Main Process] notesWindow FAILED to initiate URL loading: ${notesUrl.substring(0, 200)}`, err);
+            });
+
+        openChildWindows.push(notesWindow);
+        notesWindow.setMenu(null);
+
+        notesWindow.once('ready-to-show', () => {
+            console.log(`[Main Process] notesWindow is ready-to-show. Window Title: "${notesWindow.getTitle()}". Calling show().`);
+            notesWindow.show();
+            console.log('[Main Process] notesWindow show() called.');
+        });
+
+        notesWindow.on('closed', () => {
+            console.log('[Main Process] notesWindow has been closed.');
+            openChildWindows = openChildWindows.filter(win => win !== notesWindow);
+        });
+    });
+
     createWindow();
 
     app.on('activate', () => {

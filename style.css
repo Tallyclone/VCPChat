@@ -531,6 +531,41 @@ body.light-theme .sidebar-button:hover {
     color: var(--primary-text); /* 悬停时文字颜色可能需要调整 */
 }
 
+/* 新增：devButton 样式，使其与笔记按钮风格统一 */
+button#devButton.header-button {
+    background-color: var(--button-bg); /* 与笔记按钮背景色统一 */
+    color: var(--secondary-text); /* 与笔记按钮文字颜色统一 */
+    border: 1px solid var(--button-bg); /* 边框颜色与背景色统一 */
+    padding: 0 10px; /* 与笔记按钮内边距统一 */
+    height: 32px; /* 与笔记按钮高度统一 */
+    border-radius: 8px; /* 与笔记按钮圆角统一 */
+    cursor: pointer;
+    font-size: 0.9em; /* 与笔记按钮字体大小统一 */
+    transition: background-color 0.2s, border-color 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    margin-left: 8px; /* 保持与笔记按钮的间距 */
+    width: auto;
+}
+
+button#devButton.header-button:hover {
+    background-color: var(--button-hover-bg);
+    border-color: var(--button-hover-bg);
+    color: var(--primary-text); /* 悬停时文字颜色 */
+}
+
+body.light-theme button#devButton.header-button {
+    color: #ffffff; /* 亮色主题下文字颜色用白色 */
+    border: 1px solid var(--button-bg-light); /* 亮色主题下边框颜色与笔记按钮统一 */
+}
+
+body.light-theme button#devButton.header-button:hover {
+    color: #ffffff; /* 亮色主题下悬停文字颜色与笔记按钮统一 */
+    border-color: var(--button-hover-bg-light); /* 亮色主题下悬停边框颜色与笔记按钮统一 */
+}
+
 body.light-theme .chat-actions .header-button {
     color: var(--button-bg);
 }
@@ -881,7 +916,70 @@ body.light-theme #clearNotificationsBtn:hover, body.light-theme .notifications-h
     text-align: right;
     margin-top: 5px;
 }
+ 
+/* Notes Section in Notifications Sidebar */
+/* Notes Section in Notifications Sidebar */
+.notes-section {
+    padding: 10px 15px;
+    /* border-top: 1px solid var(--border-color); /* Removed as divider is now separate */
+    display: flex;
+    justify-content: flex-end; /* Align button to the right */
+    align-items: center;
+    background-color: var(--secondary-bg); /* Match sidebar background */
+    padding-top: 10px; /* Add padding to separate from divider */
+    padding-bottom: 10px;
+}
 
+/* Divider style (now a direct child of notifications-sidebar) */
+.notifications-sidebar > .section-divider { /* Target directly inside sidebar */
+    border: none;
+    border-top: 1px solid var(--border-color);
+    margin: 0; /* Remove default margin from hr */
+    width: 100%;
+    box-sizing: border-box; /* Ensure border is within width */
+    padding: 0 15px; /* Match sidebar padding for visual alignment */
+}
+
+.notes-section #openNotesBtn {
+    background-color: var(--button-bg);
+    color: var(--secondary-text); /* Use secondary-text for consistency with header-button */
+    border: 1px solid var(--button-bg);
+    padding: 0 10px; /* Adjusted padding to match header-button */
+    height: 32px; /* Set unified height to match header-button */
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9em; /* Adjusted font size to match header-button */
+    transition: background-color 0.2s, border-color 0.2s;
+    display: inline-flex; /* Use flex layout for internal alignment */
+    align-items: center; /* Vertical centering */
+    justify-content: center; /* Horizontal centering */
+    box-sizing: border-box; /* Ensure padding and border are within height */
+    margin-left: 8px; /* Add margin to separate from other buttons */
+    width: auto; /* Allow button to size based on content */
+    /* Removed max-width to allow content to determine width */
+}
+
+.notes-section #openNotesBtn:hover {
+    background-color: var(--button-hover-bg);
+    border-color: var(--button-hover-bg);
+    color: var(--primary-text); /* Keep primary-text for hover state */
+}
+
+.notes-section #openNotesBtn svg {
+    stroke: currentColor;
+    width: 18px;
+    height: 18px;
+}
+
+body.light-theme .notes-section #openNotesBtn {
+    color: #ffffff; /* 亮色主题下按钮文字用白色 */
+    border: 1px solid var(--button-bg-light);
+}
+
+body.light-theme .notes-section #openNotesBtn:hover {
+    color: #ffffff; /* Match header-button light theme hover color */
+    border-color: var(--button-hover-bg-light);
+}
 
 /* --- Modals --- */
 .modal {

@@ -41,6 +41,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getTextContent: (filePath, fileType) => ipcRenderer.invoke('get-text-content', filePath, fileType),
     handleTextPasteAsFile: (agentId, topicId, textContent) => ipcRenderer.invoke('handle-text-paste-as-file', agentId, topicId, textContent),
     handleFileDrop: (agentId, topicId, droppedFilesData) => ipcRenderer.invoke('handle-file-drop', agentId, topicId, droppedFilesData),
+
+    // Notes
+    readNotes: () => ipcRenderer.invoke('read-notes'),
+    writeNotes: (notes) => ipcRenderer.invoke('write-notes', notes),
+
+    // Open Notes Window
+    openNotesWindow: (theme) => ipcRenderer.invoke('open-notes-window', theme),
  
     // Agent and Topic Order
     saveAgentOrder: (orderedAgentIds) => ipcRenderer.invoke('save-agent-order', orderedAgentIds),
@@ -146,7 +153,8 @@ const electronAPIForLogging = {
     openAdminPanel: "function", // 新增
     onWindowMaximized: "function", onWindowUnmaximized: "function",
     showImageContextMenu: "function",
-    openImageInNewWindow: "function"
+    openImageInNewWindow: "function",
+    openNotesWindow: "function" // Added for logging
 };
 console.log('[Preload] electronAPI object that *should* be exposed (structure check):', electronAPIForLogging);
 console.log('preload.js loaded and contextBridge exposure attempted.');
