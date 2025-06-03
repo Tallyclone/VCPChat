@@ -1301,6 +1301,67 @@ function closeTopicContextMenuOnClickOutside(event) {
 
 // --- UI Event Listeners & Helpers ---
 function setupEventListeners() {
+    if (chatMessagesDiv) {
+        chatMessagesDiv.addEventListener('click', (event) => {
+            const target = event.target.closest('a'); // 查找被点击元素或其最近的 <a> 祖先
+
+            if (target && target.href) {
+                const href = target.href;
+
+                // 阻止默认的导航行为 (在Electron窗口内加载)
+                event.preventDefault();
+
+                // 检查链接是否是图片预览的特定链接，如果是，则不通过外部打开
+                // (假设图片预览有特定类名或处理方式，这里简单示例，可能需要根据实际情况调整)
+                // 例如，如果图片链接由 messageRenderer.js 中的其他逻辑处理（如打开内部预览窗口），
+                // 那么这里可能需要更精确的判断来避免干扰。
+                // 另外，需要确保这不会影响到例如 "在新标签页中打开图片" 这种右键菜单功能，
+                // 不过右键菜单通常由主进程直接处理 shell.openExternal，所以应该没问题。
+
+                // 排除内部锚点链接 (例如 #some-id)
+                if (href.startsWith('#')) {
+                    console.log('Internal anchor link clicked, allowing default behavior or custom handling if needed.');
+                    return; // 允许默认行为或由其他逻辑处理
+                }
+                
+                // 排除JavaScript驱动的链接
+                if (href.toLowerCase().startsWith('javascript:')) {
+                    console.log('JavaScript link clicked, ignoring for external open.');
+                    return;
+                }
+
+                // 排除那些明确设计为在应用内部打开的链接 (例如，通过特定类名或数据属性标记)
+                // if (target.classList.contains('internal-link') || target.dataset.internalLink === 'true') {
+                //     console.log('Explicitly internal link clicked, allowing default behavior or custom handling.');
+                //     return;
+                // }
+                
+                // 检查是否是图片右键菜单中的“在新标签页中打开图片”触发的，如果是，则主进程已经处理了
+                // 这个检查比较困难，因为事件可能已经被主进程的菜单项处理。
+                // 但通常 shell.openExternal 是安全的。
+
+                // 只有当链接是 http, https 或 file 协议时，才尝试在外部打开
+                if (href.startsWith('http:') || href.startsWith('https:') || href.startsWith('file:')) {
+                    if (window.electronAPI && window.electronAPI.sendOpenExternalLink) {
+                        // console.log(`[Renderer] Requesting to open external link: ${href}`);
+                        window.electronAPI.sendOpenExternalLink(href);
+                    } else {
+                        console.warn('[Renderer] electronAPI.sendOpenExternalLink is not available. Cannot open link externally.');
+                        // 可以提供一个回退机制，例如复制链接到剪贴板
+                        // navigator.clipboard.writeText(href).then(() => alert('链接已复制到剪贴板，请手动在浏览器中打开。'));
+                    }
+                } else {
+                    console.warn(`[Renderer] Clicked link with unhandled protocol, not opening externally: ${href}`);
+                    // 对于其他协议，可能需要允许默认行为或进行其他处理
+                    // 例如，如果应用内部有自定义协议处理器，这里就不应该阻止默认行为。
+                    // 为了安全，未知协议默认不打开。
+                }
+            }
+        });
+    } else {
+        console.error('[Renderer] chatMessagesDiv not found during setupEventListeners.');
+    }
+
     sendMessageBtn.addEventListener('click', handleSendMessage);
     messageInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {

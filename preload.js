@@ -123,7 +123,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
         } catch (e) {
             console.error('[Preload] Error during ipcRenderer.invoke("display-text-content-in-viewer"):', e);
         }
-    }
+    },
+
+    // Open External Link
+    sendOpenExternalLink: (url) => ipcRenderer.send('open-external-link', url)
 });
 
 // Log the electronAPI object as it's defined in preload.js right after exposing it

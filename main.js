@@ -216,6 +216,28 @@ app.on('will-quit', () => {
 
 // --- IPC Handlers ---
 
+ipcMain.on('open-external-link', (event, url) => {
+  if (url) {
+    // 验证 URL 是否是期望的类型，例如 http, https, file
+    // 为安全起见，可以只允许 http 和 https
+    if (url.startsWith('http:') || url.startsWith('https:')) {
+      shell.openExternal(url).catch(err => {
+        console.error('Failed to open external link:', err);
+        // 可以选择通知用户打开失败
+      });
+    } else if (url.startsWith('file:')) {
+      // 对于文件链接，shell.openExternal 会尝试用系统默认程序打开
+      // 如果希望所有文件链接都在外部浏览器打开（如果可能），则逻辑不变
+      // 如果有特定类型的文件不想用外部浏览器打开，可以在这里添加判断
+      shell.openExternal(url).catch(err => {
+        console.error('Failed to open external file link:', err);
+      });
+    } else {
+      console.warn(`[Main Process] Received request to open non-standard link externally, ignoring: ${url}`);
+    }
+  }
+});
+
 // Settings Management
 ipcMain.handle('load-settings', async () => {
     try {
