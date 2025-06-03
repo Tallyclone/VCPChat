@@ -126,6 +126,39 @@
         .copy-button:active {
             background-color: var(--viewer-button-active-bg);
         }
+        /* Style for the edit button */
+        .edit-button {
+            position: absolute;
+            top: 20px;
+            right: 50px; /* Positioned to the left of the copy button (20px + 26px + 4px) */
+            padding: 5px;
+            background-color: var(--viewer-code-bg);
+            color: var(--viewer-button-text);
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.3s, background-color 0.3s, border-color 0.3s;
+            width: 26px;
+            height: 26px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        .edit-button:hover {
+            background-color: var(--viewer-code-bg-hover);
+        }
+        .edit-button svg {
+            width: 16px;
+            height: 16px;
+        }
+        pre:hover .edit-button {
+            opacity: 1; /* Show on hover */
+        }
+        .edit-button:active {
+            background-color: var(--viewer-button-active-bg);
+        }
     </style>
 </head>
 <body>
@@ -170,30 +203,58 @@
                             const preElement = block.parentElement;
                             preElement.style.position = 'relative'; // Needed for absolute positioning of the button
 
-                            const button = document.createElement('button');
-                            // 使用SVG图标替换文字
-                            button.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>`;
-                            button.className = 'copy-button';
-                            button.setAttribute('title', '复制'); // 添加title提示
+                            // Create Edit Button
+                            const editButton = document.createElement('button');
+                            const editIconSVG = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>`;
+                            const doneIconSVG = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>`;
 
-                            button.addEventListener('click', (e) => {
-                                e.stopPropagation(); // 防止点击事件冒泡到 pre 元素
+                            editButton.innerHTML = editIconSVG;
+                            editButton.className = 'edit-button';
+                            editButton.setAttribute('title', '编辑');
+
+                            editButton.addEventListener('click', (e) => {
+                                e.stopPropagation();
+                                const isEditing = block.isContentEditable;
+                                block.contentEditable = !isEditing; // Toggle contentEditable on the code block itself
+                                if (!isEditing) {
+                                    block.focus(); // Focus the block for editing
+                                    editButton.innerHTML = doneIconSVG;
+                                    editButton.setAttribute('title', '完成编辑');
+                                } else {
+                                    editButton.innerHTML = editIconSVG;
+                                    editButton.setAttribute('title', '编辑');
+                                    // After editing, syntax highlighting might be lost or incorrect.
+                                    // Re-highlight the block if hljs is available.
+                                    if (window.hljs && typeof hljs.highlightElement === 'function') {
+                                        hljs.highlightElement(block);
+                                    }
+                                }
+                            });
+                            preElement.appendChild(editButton);
+
+                            // Create Copy Button (renamed 'button' to 'copyButton')
+                            const copyButton = document.createElement('button');
+                            copyButton.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>`;
+                            copyButton.className = 'copy-button';
+                            copyButton.setAttribute('title', '复制');
+
+                            copyButton.addEventListener('click', (e) => {
+                                e.stopPropagation();
                                 const codeToCopy = block.innerText;
                                 navigator.clipboard.writeText(codeToCopy).then(() => {
-                                    // 可以在这里添加一个短暂的视觉反馈，例如改变图标颜色或边框颜色
-                                    button.style.borderColor = 'var(--success-color, #4CAF50)';
+                                    copyButton.style.borderColor = 'var(--success-color, #4CAF50)'; // Visual feedback
                                     setTimeout(() => {
-                                        button.style.borderColor = 'var(--button-border-color, #4f535c)';
+                                        copyButton.style.borderColor = 'var(--button-border-color, #4f535c)';
                                     }, 1500);
                                 }).catch(err => {
                                     console.error('无法复制到剪贴板:', err);
-                                    button.style.borderColor = 'var(--error-color, #F44336)';
+                                    copyButton.style.borderColor = 'var(--error-color, #F44336)'; // Visual feedback
                                     setTimeout(() => {
-                                        button.style.borderColor = 'var(--button-border-color, #4f535c)';
+                                        copyButton.style.borderColor = 'var(--button-border-color, #4f535c)';
                                     }, 1500);
                                 });
                             });
-                            preElement.appendChild(button);
+                            preElement.appendChild(copyButton);
                         });
                     }
                 } else {
