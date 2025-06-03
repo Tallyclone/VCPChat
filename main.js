@@ -327,6 +327,61 @@ app.whenReady().then(() => {
         });
     });
 
+    ipcMain.handle('open-notes-with-content', async (event, data) => {
+        const { title, content, theme } = data;
+        console.log(`[Main Process] Received open-notes-with-content. Title: ${title}, Theme: ${theme}, Content Length: ${content ? content.length : 0}`);
+        const notesWindow = new BrowserWindow({
+            width: 1000,
+            height: 700,
+            minWidth: 800,
+            minHeight: 600,
+            title: title || '我的笔记 (分享)',
+            parent: mainWindow, // Optional: set parent
+            modal: false,
+            webPreferences: {
+                preload: path.join(__dirname, 'preload.js'), // Crucial: ensure this preload is used
+                contextIsolation: true,
+                nodeIntegration: false,
+                devTools: true // Enable devtools for easier debugging
+            },
+            icon: path.join(__dirname, 'assets', 'icon.png'),
+            show: false
+        });
+
+        const queryParams = new URLSearchParams({
+            action: 'newFromShare',
+            title: encodeURIComponent(title || '来自分享的笔记'),
+            content: encodeURIComponent(content || ''),
+            theme: encodeURIComponent(theme || 'dark')
+        });
+        const notesUrl = `file://${path.join(__dirname, 'Notes', 'notes.html')}?${queryParams.toString()}`;
+        
+        console.log(`[Main Process] Attempting to load URL in new notes window: ${notesUrl.substring(0, 250)}...`);
+        
+        notesWindow.loadURL(notesUrl)
+            .then(() => {
+                console.log(`[Main Process] New notesWindow successfully initiated URL loading: ${notesUrl.substring(0, 200)}`);
+            })
+            .catch((err) => {
+                console.error(`[Main Process] New notesWindow FAILED to initiate URL loading: ${notesUrl.substring(0, 200)}`, err);
+            });
+
+        openChildWindows.push(notesWindow);
+        notesWindow.setMenu(null);
+
+        notesWindow.once('ready-to-show', () => {
+            console.log(`[Main Process] New notesWindow is ready-to-show. Window Title: "${notesWindow.getTitle()}". Calling show().`);
+            notesWindow.show();
+        });
+
+        notesWindow.on('closed', () => {
+            console.log('[Main Process] New notesWindow (from share) has been closed.');
+            openChildWindows = openChildWindows.filter(win => win !== notesWindow);
+        });
+        // No explicit return needed for ipcMain.handle if it's just performing an action
+        // unless the renderer expects a specific response.
+    });
+
     createWindow();
 
     app.on('activate', () => {

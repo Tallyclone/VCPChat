@@ -192,13 +192,20 @@
         .custom-context-menu button:hover {
             background-color: var(--viewer-code-bg-hover);
         }
-        /* Style for the global edit button */
-        .global-edit-button {
+        /* Container for global action buttons */
+        .global-actions-container {
+            display: flex;
+            justify-content: center;
+            gap: 10px; /* Space between buttons */
+            margin: 20px auto; /* Margin for the container */
+        }
+
+        /* Common style for global action buttons */
+        .global-action-button {
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 8px 15px;
-            margin: 15px auto; /* Centered with auto margins */
+            padding: 8px 18px; /* Adjusted padding for better width consistency */
             background-color: var(--viewer-code-bg);
             color: var(--viewer-button-text);
             border: none;
@@ -207,15 +214,16 @@
             transition: background-color 0.3s;
             font-size: 14px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-            max-width: 200px; /* Limit width */
+            min-width: 130px; /* Ensure a minimum width for consistency */
+            text-align: center;
         }
-        .global-edit-button:hover {
+        .global-action-button:hover {
             background-color: var(--viewer-code-bg-hover);
         }
-        .global-edit-button:active {
+        .global-action-button:active {
             background-color: var(--viewer-button-active-bg);
         }
-        .global-edit-button svg {
+        .global-action-button svg {
             width: 16px;
             height: 16px;
             margin-right: 8px;
@@ -238,10 +246,16 @@
         <button id="contextMenuEditAll" style="display: none;">编辑全文</button>
         <button id="contextMenuCopyAll" style="display: none;">复制全文</button>
     </div>
-    <button id="editAllButton" class="global-edit-button" title="编辑全文">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
-        <span>编辑全文</span>
-    </button>
+    <div class="global-actions-container">
+        <button id="editAllButton" class="global-action-button" title="编辑全文">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+            <span>编辑全文</span>
+        </button>
+        <button id="shareToNotesButton" class="global-action-button" title="分享笔记">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92-1.31-2.92-2.92-2.92z"/></svg>
+            <span>分享笔记</span>
+        </button>
+    </div>
     <script>
         // Marked (Markdown rendering) - Ensure marked.min.js is available
         // Assuming it's in the root or accessible path.
@@ -274,6 +288,7 @@
             document.title = decodeURIComponent(windowTitle);
             const contentDiv = document.getElementById('textContent');
             const editAllButton = document.getElementById('editAllButton'); // Get the new button
+            const shareToNotesButton = document.getElementById('shareToNotesButton');
 
             // Apply theme
             if (theme === 'light') {
@@ -315,6 +330,35 @@
                     }
                 });
             }
+
+            if (shareToNotesButton && contentDiv) {
+                shareToNotesButton.addEventListener('click', () => {
+                    const currentText = contentDiv.innerText; // 获取纯文本内容
+                    const noteTitle = document.title || '来自阅读模式的分享'; // 使用页面标题或默认标题
+                    
+                    // 构建传递给 notes.html 的参数
+                    const notesAppUrl = `Notes/notes.html?action=newFromShare&title=${encodeURIComponent(noteTitle)}&content=${encodeURIComponent(currentText)}&theme=${theme}`;
+                    
+                    // 尝试通过 electronAPI 打开新窗口或通知主进程处理
+                    if (window.electronAPI && window.electronAPI.openNotesWithContent) {
+                        console.log('[text-viewer] Attempting to share via electronAPI.openNotesWithContent');
+                        window.electronAPI.openNotesWithContent({
+                            title: noteTitle,
+                            content: currentText,
+                            theme: theme
+                        }).catch(err => {
+                            console.error('[text-viewer] Error calling electronAPI.openNotesWithContent:', err);
+                            // Fallback if the API call itself fails
+                            console.warn('[text-viewer] Fallback to window.open due to API call error.');
+                            window.open(notesAppUrl, '_blank');
+                        });
+                    } else {
+                        console.warn('[text-viewer] electronAPI.openNotesWithContent 未找到，回退到 window.open。');
+                        window.open(notesAppUrl, '_blank');
+                    }
+                });
+            }
+
             if (textContent) {
                 let decodedText = decodeURIComponent(textContent); // Changed const to let
 

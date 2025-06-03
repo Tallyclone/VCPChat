@@ -49,6 +49,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Open Notes Window
     openNotesWindow: (theme) => ipcRenderer.invoke('open-notes-window', theme),
+    // For sharing content to a new notes window
+    openNotesWithContent: (data) => ipcRenderer.invoke('open-notes-with-content', data), // data: { title, content, theme }
  
     // Agent and Topic Order
     saveAgentOrder: (orderedAgentIds) => ipcRenderer.invoke('save-agent-order', orderedAgentIds),
@@ -151,6 +153,7 @@ const electronAPIForLogging = {
     writeTxtNote: "function", // New
     deleteTxtNote: "function", // New
     openNotesWindow: "function",
+    openNotesWithContent: "function", // Added for sharing
     saveAgentOrder: "function", // New
     saveTopicOrder: "function", // New
     sendToVCP: "function", onVCPStreamChunk: "function",
