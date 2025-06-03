@@ -977,6 +977,45 @@ body.light-theme .modal-content .danger-button {
     background: var(--scrollbar-thumb-hover);
 }
 
+/* --- Sidebar Lists Scrollbar: Auto-hide with fade effect --- */
+.sidebar .agent-list::-webkit-scrollbar,
+.sidebar .topic-list::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.sidebar .agent-list::-webkit-scrollbar-thumb,
+.sidebar .topic-list::-webkit-scrollbar-thumb {
+    background-color: transparent; /* Default to transparent */
+    border-radius: 4px;
+    transition: background-color 0.3s ease-in-out;
+}
+
+.sidebar .agent-list::-webkit-scrollbar-track,
+.sidebar .topic-list::-webkit-scrollbar-track {
+    background-color: transparent; /* Default to transparent */
+    border-radius: 4px;
+    transition: background-color 0.3s ease-in-out;
+}
+
+/* Show scrollbar on hover of the agent-list or topic-list itself */
+.sidebar .agent-list:hover::-webkit-scrollbar-thumb,
+.sidebar .topic-list:hover::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb); /* Show with theme color */
+}
+
+.sidebar .agent-list:hover::-webkit-scrollbar-track,
+.sidebar .topic-list:hover::-webkit-scrollbar-track {
+    background-color: var(--scrollbar-track); /* Show with theme color */
+}
+
+/* Keep the hover effect for the thumb itself when visible and hovered */
+.sidebar .agent-list:hover::-webkit-scrollbar-thumb:hover,
+.sidebar .topic-list:hover::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-thumb-hover);
+}
+/* --- End Sidebar Lists Scrollbar --- */
+
 /* Markdown specific styling for chat messages */
 .message-item .md-content p { margin: 0 0 0.5em 0; }
 .message-item .md-content h1, .message-item .md-content h2, .message-item .md-content h3 { margin-top: 0.8em; margin-bottom: 0.4em; color: var(--highlight-text); }
