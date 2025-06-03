@@ -7,10 +7,10 @@
           content="default-src 'self' data:;
                    script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net;
                    style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net;
-                   img-src 'self' file: https://placehold.co data: http://192.168.2.179:5890;
-                   media-src 'self' file: data: http://192.168.2.179:5890;
+                   img-src * data: file:;
+                   media-src * data: file:;
                    font-src 'self' https://cdn.jsdelivr.net;
-                   connect-src 'self' ws: http://192.168.2.179:5890;">
+                   connect-src * ws: wss:;">
     <title>VCPChat</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" crossorigin="anonymous">
