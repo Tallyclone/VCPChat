@@ -106,7 +106,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     maximizeWindow: () => ipcRenderer.send('maximize-window'),
     unmaximizeWindow: () => ipcRenderer.send('unmaximize-window'),
     closeWindow: () => ipcRenderer.send('close-window'),
-    openDevTools: () => ipcRenderer.send('open-dev-tools'), // Add this line
+    openDevTools: () => ipcRenderer.send('open-dev-tools'),
+    openAdminPanel: () => ipcRenderer.invoke('open-admin-panel'), // 新增
     onWindowMaximized: (callback) => ipcRenderer.on('window-maximized', (_event) => callback()),
     onWindowUnmaximized: (callback) => ipcRenderer.on('window-unmaximized', (_event) => callback()),
 
@@ -141,9 +142,11 @@ const electronAPIForLogging = {
     connectVCPLog: "function", disconnectVCPLog: "function", onVCPLogMessage: "function",
     onVCPLogStatus: "function", readImageFromClipboard: "function", readTextFromClipboard: "function",
     minimizeWindow: "function", maximizeWindow: "function", unmaximizeWindow: "function", closeWindow: "function",
+    openDevTools: "function", // Added for logging
+    openAdminPanel: "function", // 新增
     onWindowMaximized: "function", onWindowUnmaximized: "function",
-    showImageContextMenu: "function", // Added for logging
-    openImageInNewWindow: "function" // Added for logging
+    showImageContextMenu: "function",
+    openImageInNewWindow: "function"
 };
 console.log('[Preload] electronAPI object that *should* be exposed (structure check):', electronAPIForLogging);
 console.log('preload.js loaded and contextBridge exposure attempted.');

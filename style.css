@@ -516,6 +516,11 @@ body.light-theme .sidebar-button:hover {
     justify-content: center; /* 水平居中 */
     box-sizing: border-box; /* 确保padding和border在高度内 */
 }
+.chat-actions .header-button svg {
+    stroke: currentColor; /* 确保SVG图标颜色与文本颜色一致，适配主题 */
+    width: 18px; /* 调整SVG大小 */
+    height: 18px;
+}
 /* 为只有图标的按钮调整一下padding，使其看起来更方正 */
 .chat-actions .header-button#themeToggleBtn {
     padding: 0 8px; /* 稍微减少左右padding */
@@ -771,6 +776,11 @@ body.light-theme #sendMessageBtn svg, body.light-theme #attachFileBtn svg {
     border-bottom: 1px solid var(--border-color);
 }
 
+.notification-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px; /* Adjust gap as needed */
+}
 /* Removed .notifications-header h4 style as it's hidden */
 
 .datetime-container {
@@ -779,7 +789,7 @@ body.light-theme #sendMessageBtn svg, body.light-theme #attachFileBtn svg {
     align-items: flex-start; /* Align text to the left */
 }
 
-#clearNotificationsBtn {
+#clearNotificationsBtn, .notifications-header .header-button { /* Apply to both */
     background: transparent;
     border: 1px solid var(--button-bg);
     color: var(--secondary-text);
@@ -787,16 +797,31 @@ body.light-theme #sendMessageBtn svg, body.light-theme #attachFileBtn svg {
     padding: 4px 8px;
     border-radius: 6px; /* 统一圆角 */
     cursor: pointer;
+    display: inline-flex; /* For icon alignment */
+    align-items: center;
+    justify-content: center;
+    height: 30px; /* Match other header buttons roughly */
+    box-sizing: border-box;
 }
-#clearNotificationsBtn:hover {
+#clearNotificationsBtn:hover, .notifications-header .header-button:hover {
     background-color: var(--button-hover-bg);
     color: var(--primary-text);
+    border-color: var(--button-hover-bg);
 }
-body.light-theme #clearNotificationsBtn {
+body.light-theme #clearNotificationsBtn, body.light-theme .notifications-header .header-button {
     color: var(--button-bg);
 }
-body.light-theme #clearNotificationsBtn:hover {
+body.light-theme #clearNotificationsBtn:hover, body.light-theme .notifications-header .header-button:hover {
     color: #ffffff;
+}
+/* Specific for icon-only button in notifications header if needed */
+.notifications-header .header-button#openAdminPanelBtn {
+    padding: 0 8px; /* Adjust padding for icon-only */
+}
+.notifications-header .header-button svg {
+    stroke: currentColor;
+    width: 16px; /* Slightly smaller icon for this header */
+    height: 16px;
 }
 
 .notifications-status {

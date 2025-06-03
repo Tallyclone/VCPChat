@@ -1302,6 +1302,75 @@ ipcMain.on('open-image-in-new-window', (event, imageUrl, imageTitle) => {
     // });
 });
 
+// New IPC Handler for opening the Admin Panel (Now handled by open-external-link)
+// ipcMain.handle('open-admin-panel', async (event) => {
+//     console.log('[Main Process] Received request to open Admin Panel.');
+//     try {
+//         const settings = await fs.readJson(SETTINGS_FILE);
+//         const vcpServerUrl = settings.vcpServerUrl;
+//
+//         if (!vcpServerUrl) {
+//             dialog.showErrorBox('错误', 'VCP 服务器 URL 未设置。请在全局设置中配置。');
+//             return { success: false, error: 'VCP Server URL not set.' };
+//         }
+//
+//         // Extract base URL (protocol + host + port)
+//         const urlObj = new URL(vcpServerUrl);
+//         const baseUrl = `${urlObj.protocol}//${urlObj.host}`;
+//         const adminPanelUrl = `${baseUrl}/AdminPanel/`; // Assuming this is the correct path
+//
+//         console.log(`[Main Process] Opening Admin Panel URL: ${adminPanelUrl}`);
+//
+//         const adminPanelWindow = new BrowserWindow({
+//             width: 1000,
+//             height: 700,
+//             minWidth: 800,
+//             minHeight: 600,
+//             title: 'VCP 服务器管理面板',
+//             parent: mainWindow,
+//             modal: false,
+//             webPreferences: {
+//                 preload: path.join(__dirname, 'preload.js'),
+//                 contextIsolation: true,
+//                 nodeIntegration: false,
+//                 devTools: true,
+//                 webviewTag: false,
+//             },
+//             icon: path.join(__dirname, 'assets', 'icon.png'),
+//             show: false
+//         });
+//
+//         adminPanelWindow.loadURL(adminPanelUrl)
+//             .then(() => {
+//                 console.log(`[Main Process] Admin Panel window successfully loaded URL: ${adminPanelUrl}`);
+//             })
+//             .catch((err) => {
+//                 console.error(`[Main Process] Admin Panel window FAILED to load URL: ${adminPanelUrl}`, err);
+//                 dialog.showErrorBox('加载失败', `无法加载服务器管理面板: ${err.message}`);
+//             });
+//
+//         openChildWindows.push(adminPanelWindow);
+//
+//         adminPanelWindow.setMenu(null);
+//
+//         adminPanelWindow.once('ready-to-show', () => {
+//             adminPanelWindow.show();
+//         });
+//
+//         adminPanelWindow.on('closed', () => {
+//             console.log('[Main Process] Admin Panel window has been closed.');
+//             openChildWindows = openChildWindows.filter(win => win !== adminPanelWindow);
+//         });
+//
+//         return { success: true };
+//
+//     } catch (error) {
+//         console.error('[Main Process] Error opening Admin Panel:', error);
+//         dialog.showErrorBox('错误', `打开服务器管理面板失败: ${error.message}`);
+//         return { success: false, error: error.message };
+//     }
+// });
+
 
 // IPC Handler for showing image context menu
 ipcMain.on('show-image-context-menu', (event, imageUrl) => {

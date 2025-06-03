@@ -142,6 +142,7 @@ const agentMaxOutputTokensInput = document.getElementById('agentMaxOutputTokens'
 const deleteAgentBtn = document.getElementById('deleteAgentBtn');
 const currentAgentSettingsBtn = document.getElementById('currentAgentSettingsBtn');
 const clearCurrentChatBtn = document.getElementById('clearCurrentChatBtn');
+const openAdminPanelBtn = document.getElementById('openAdminPanelBtn'); // 新增
 const themeToggleBtn = document.getElementById('themeToggleBtn');
 
 
@@ -469,6 +470,7 @@ async function selectAgent(agentId, agentName) {
     currentAgentSettingsBtn.title = `为 ${agentName} 新建聊天上下文(话题)`;
     currentAgentSettingsBtn.style.display = 'inline-block';
     clearCurrentChatBtn.style.display = 'inline-block';
+    // openAdminPanelBtn is now in a different header, its visibility is not tied to agent selection.
  
     highlightActiveAgent(agentId);
 
@@ -1523,6 +1525,39 @@ function setupEventListeners() {
             } else {
                 localStorage.setItem('theme', 'dark');
                 themeToggleBtn.textContent = '☀️'; // Sun icon for dark theme
+            }
+        });
+    }
+
+    // Add event listener for the new Admin Panel button
+    if (openAdminPanelBtn) {
+        // Ensure the button is visible by default, as it's no longer controlled by agent selection
+        openAdminPanelBtn.style.display = 'inline-block';
+        openAdminPanelBtn.addEventListener('click', async () => {
+            if (globalSettings.vcpServerUrl) {
+                if (window.electronAPI && window.electronAPI.sendOpenExternalLink) {
+                    try {
+                        const apiUrl = new URL(globalSettings.vcpServerUrl);
+                        // Construct the base URL (protocol, hostname, port)
+                        let adminPanelUrl = `${apiUrl.protocol}//${apiUrl.host}`;
+                        // Ensure it ends with a slash before appending AdminPanel/
+                        if (!adminPanelUrl.endsWith('/')) {
+                            adminPanelUrl += '/';
+                        }
+                        adminPanelUrl += 'AdminPanel/'; // Append the correct path
+
+                        window.electronAPI.sendOpenExternalLink(adminPanelUrl);
+                    } catch (e) {
+                        console.error('构建管理面板URL失败:', e);
+                        alert('无法构建有效的管理面板URL。请检查全局设置中的VCP服务器URL。');
+                    }
+                } else {
+                    console.warn('[Renderer] electronAPI.sendOpenExternalLink is not available.');
+                    alert('无法打开管理面板：所需功能不可用。');
+                }
+            } else {
+                alert('请先在全局设置中配置VCP服务器URL！');
+                openModal('globalSettingsModal');
             }
         });
     }
