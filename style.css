@@ -1709,3 +1709,14 @@ body.light-theme input[type="file"]::file-selector-button:hover {
     margin-top: 10px;
     margin-bottom: 10px;
 }
+/* Agent Settings Save Button Error Feedback */
+#agentSettingsForm .form-actions button.error-feedback {
+    background-color: var(--danger-color) !important; /* Use danger color for background */
+    color: white !important; /* Ensure text is white for contrast */
+    /* Optionally, add a border or other visual cues */
+    /* border: 1px solid var(--danger-hover-bg); */
+}
+
+#agentSettingsForm .form-actions button.error-feedback:hover {
+    background-color: var(--danger-hover-bg) !important; /* Darken on hover */
+}

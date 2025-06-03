@@ -1758,8 +1758,19 @@ async function saveCurrentAgentSettings(event) {
     }
 
     const result = await window.electronAPI.saveAgentConfig(agentId, newConfig);
+    const saveButton = agentSettingsForm.querySelector('button[type="submit"]'); // 获取保存按钮
+
     if (result.success) {
-        alert(result.message || 'Agent设置已保存！');
+        // alert(result.message || 'Agent设置已保存！'); // 移除 alert
+        if (saveButton) {
+            const originalButtonText = saveButton.textContent;
+            saveButton.textContent = '保存成功!';
+            saveButton.disabled = true; // 可选：在显示成功期间禁用按钮
+            setTimeout(() => {
+                saveButton.textContent = originalButtonText;
+                saveButton.disabled = false; // 恢复按钮
+            }, 2000); // 2秒后恢复
+        }
         // No modal to close. Settings are in-tab.
         await loadAgentList(); // Refresh list to show new name/avatar
         // If current agent was edited, update header and settings tab title
@@ -1768,7 +1779,18 @@ async function saveCurrentAgentSettings(event) {
             if(selectedAgentNameForSettingsSpan) selectedAgentNameForSettingsSpan.textContent = newConfig.name;
         }
     } else {
-        alert(`保存Agent设置失败: ${result.error}`);
+        // alert(`保存Agent设置失败: ${result.error}`); // 移除 alert
+        if (saveButton) { // 如果保存失败，也可以给用户反馈
+            const originalButtonText = saveButton.textContent;
+            saveButton.textContent = '保存失败';
+            saveButton.classList.add('error-feedback'); // 添加一个特定的类名用于样式
+            saveButton.disabled = true;
+            setTimeout(() => {
+                saveButton.textContent = originalButtonText;
+                saveButton.classList.remove('error-feedback');
+                saveButton.disabled = false;
+            }, 3000); // 3秒后恢复
+        }
     }
 }
 
