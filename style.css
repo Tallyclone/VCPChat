@@ -290,7 +290,7 @@ body {
 .sidebar-tab-content {
     display: flex;
     flex-direction: column;
-    flex-grow: 1;
+    flex-grow: 0; /* 改为0，仅在 active 时为1 */
     opacity: 0;
     max-height: 0;
     overflow: hidden;
@@ -298,7 +298,17 @@ body {
     pointer-events: none;
     transition: opacity 0.25s ease-out,
                 transform 0.25s ease-out,
-                max-height 0.35s cubic-bezier(0.25, 0.1, 0.25, 1);
+                max-height 0.35s cubic-bezier(0.25, 0.1, 0.25, 1),
+                padding-top 0.35s cubic-bezier(0.25, 0.1, 0.25, 1),
+                padding-bottom 0.35s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+/* 当标签页内容不活跃时，强制移除垂直内边距，以避免占据高度 */
+.sidebar-tab-content:not(.active) {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    border-top-width: 0 !important; /* 同时处理可能的边框问题 */
+    border-bottom-width: 0 !important;
 }
 
 .sidebar-tab-content.active {
@@ -308,6 +318,7 @@ body {
     overflow-y: auto;
     pointer-events: auto;
     overflow-x: hidden;
+    flex-grow: 1; /* 确保 active 状态下 flex-grow 为 1 */
 }
 /* End Sidebar Tabs */
 
