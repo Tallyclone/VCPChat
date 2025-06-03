@@ -44,6 +44,13 @@
             --viewer-top-light-effect-bg: rgba(173, 216, 230, 0.7); /* Light blue for light theme */
         }
 
+        .custom-quote-dark {
+            color: #FFBF75; /* 米橙色 */
+        }
+        .custom-quote-light {
+            color: #3B9EFF; /* 根据用户反馈调整的蓝色 */
+        }
+
         body {
             font-family: var(--font-family-sans-serif, sans-serif);
             background-color: var(--viewer-bg-color);
@@ -96,8 +103,8 @@
         /* Style for the copy button */
         .copy-button {
             position: absolute;
-            top: 20px;
-            right: 20px;
+            top: 5px;
+            right: 5px;
             padding: 5px;
             background-color: var(--viewer-code-bg);
             color: var(--viewer-button-text);
@@ -129,8 +136,8 @@
         /* Style for the edit button */
         .edit-button {
             position: absolute;
-            top: 20px;
-            right: 50px; /* Positioned to the left of the copy button (20px + 26px + 4px) */
+            top: 5px;
+            right: 35px; /* Positioned to the left of the copy button (5px + 26px + 4px) */
             padding: 5px;
             background-color: var(--viewer-code-bg);
             color: var(--viewer-button-text);
@@ -228,6 +235,8 @@
         <button id="contextMenuCopy">复制</button>
         <button id="contextMenuCut">剪切</button>
         <button id="contextMenuDelete">删除</button>
+        <button id="contextMenuEditAll" style="display: none;">编辑全文</button>
+        <button id="contextMenuCopyAll" style="display: none;">复制全文</button>
     </div>
     <button id="editAllButton" class="global-edit-button" title="编辑全文">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
@@ -242,6 +251,21 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            function renderQuotedText(text, currentTheme) {
+                // 正则表达式匹配被英文双引号或中文双引号包裹的内容，包括双引号本身
+                // 使用非贪婪匹配确保正确处理一行内多个引用的情况
+                const regex = /(?:"([^"]*?)"|“([^”]*?)”)/g;
+                const className = currentTheme === 'light' ? 'custom-quote-light' : 'custom-quote-dark';
+
+                return text.replace(regex, (match, englishQuoteContent, chineseQuoteContent) => {
+                    // match 是整个匹配到的字符串，例如 "text" 或 “文本”
+                    // englishQuoteContent 是英文引号内的内容，如果匹配的是中文引号则为 undefined
+                    // chineseQuoteContent 是中文引号内的内容，如果匹配的是英文引号则为 undefined
+                    // 我们希望将整个匹配（包括引号）包裹起来
+                    return `<span class="${className}">${match}</span>`;
+                });
+            }
+
             const params = new URLSearchParams(window.location.search);
             const textContent = params.get('text');
             const windowTitle = params.get('title') || '文本阅读模式';
@@ -292,7 +316,11 @@
                 });
             }
             if (textContent) {
-                const decodedText = decodeURIComponent(textContent);
+                let decodedText = decodeURIComponent(textContent); // Changed const to let
+
+                // 应用自定义引号渲染
+                decodedText = renderQuotedText(decodedText, theme);
+
                 // Render Markdown
                 if (window.marked) {
                     contentDiv.innerHTML = marked.parse(decodedText);
@@ -391,34 +419,50 @@
         const contextMenuCopyButton = document.getElementById('contextMenuCopy');
         const contextMenuCutButton = document.getElementById('contextMenuCut');
         const contextMenuDeleteButton = document.getElementById('contextMenuDelete');
+        const contextMenuEditAllButton = document.getElementById('contextMenuEditAll');
+        const contextMenuCopyAllButton = document.getElementById('contextMenuCopyAll');
         const mainContentDiv = document.getElementById('textContent'); // Renamed for clarity from previous contentDiv
 
-        if (contextMenu && contextMenuCopyButton && contextMenuCutButton && contextMenuDeleteButton && mainContentDiv) {
+        if (contextMenu && contextMenuCopyButton && contextMenuCutButton && contextMenuDeleteButton && contextMenuEditAllButton && contextMenuCopyAllButton && mainContentDiv) {
             document.addEventListener('contextmenu', (event) => {
                 const selection = window.getSelection();
                 const selectedText = selection.toString().trim();
 
-                if (selectedText && event.target.closest('#textContent')) { // Only show if text is selected within the content area
-                    event.preventDefault();
-                    contextMenu.style.top = `${event.clientY}px`;
-                    contextMenu.style.left = `${event.clientX}px`;
-                    contextMenu.style.display = 'block';
+                event.preventDefault(); // Always prevent default to show custom menu
 
-                    // Determine if Cut and Delete should be shown
-                    let isAnyEditableContext = mainContentDiv.isContentEditable; // Check global edit mode
+                contextMenu.style.top = `${event.pageY}px`;
+                contextMenu.style.left = `${event.pageX}px`;
+                contextMenu.style.display = 'block';
 
-                    const targetElement = event.target;
-                    const closestCodeBlock = targetElement.closest('code.hljs');
+                if (selectedText) {
+                    // Show standard copy, cut, delete if text is selected
+                    contextMenuCopyButton.style.display = 'block';
+                    contextMenuCutButton.style.display = 'block';
+                    contextMenuDeleteButton.style.display = 'block';
+                    contextMenuEditAllButton.style.display = 'none';
+                    contextMenuCopyAllButton.style.display = 'none';
+                } else {
+                    // Show "Edit All" and "Copy All" if no text is selected
+                    contextMenuCopyButton.style.display = 'none';
+                    contextMenuCutButton.style.display = 'none';
+                    contextMenuDeleteButton.style.display = 'none';
+                    contextMenuEditAllButton.style.display = 'block';
+                    contextMenuCopyAllButton.style.display = 'block';
+                }
 
-                    if (!isAnyEditableContext && closestCodeBlock && closestCodeBlock.isContentEditable) {
-                        // If global edit is off, but we are inside an editable code block
-                        isAnyEditableContext = true;
-                    }
+                // Determine if Cut and Delete should be shown (based on editability)
+                let isAnyEditableContext = mainContentDiv.isContentEditable; // Check global edit mode
+                const targetElement = event.target;
+                const closestCodeBlock = targetElement.closest('code.hljs');
 
+                if (!isAnyEditableContext && closestCodeBlock && closestCodeBlock.isContentEditable) {
+                    isAnyEditableContext = true;
+                }
+
+                // If text is selected, adjust cut/delete visibility based on editability
+                if (selectedText) {
                     contextMenuCutButton.style.display = isAnyEditableContext ? 'block' : 'none';
                     contextMenuDeleteButton.style.display = isAnyEditableContext ? 'block' : 'none';
-                } else {
-                    contextMenu.style.display = 'none';
                 }
             });
 
@@ -479,6 +523,20 @@
                     document.execCommand('delete', false, null);
                     console.log('选中文本已删除');
                 }
+                contextMenu.style.display = 'none';
+            });
+            contextMenuEditAllButton.addEventListener('click', () => {
+                editAllButton.click(); // Trigger the global edit button's click event
+                contextMenu.style.display = 'none';
+            });
+
+            contextMenuCopyAllButton.addEventListener('click', () => {
+                const fullText = mainContentDiv.innerText;
+                navigator.clipboard.writeText(fullText).then(() => {
+                    console.log('全文已复制到剪贴板');
+                }).catch(err => {
+                    console.error('无法复制全文: ', err);
+                });
                 contextMenu.style.display = 'none';
             });
         }

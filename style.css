@@ -1064,7 +1064,8 @@ body.light-theme .modal-content .danger-button {
 
 /* Styles for Message Editing */
 .message-edit-textarea {
-    width: calc(100% - 10px); /* Full width within the bubble, minus padding */
+    width: 500px; /* 修改：设置一个较大的初始固定宽度 */
+    min-width: 250px; /* 新增：确保一个合理的最小宽度 */
     min-height: 50px;
     padding: 8px;
     margin-top: 5px;
@@ -1076,6 +1077,7 @@ body.light-theme .modal-content .danger-button {
     font-family: inherit;
     font-size: 0.95em;
     resize: both; /* 修改: 允许双向调整大小 */
+    max-width: 100%; /* 保留：限制最大宽度，防止超出父元素 */
     box-sizing: border-box;
 }
 
@@ -1757,4 +1759,20 @@ body.light-theme input[type="file"]::file-selector-button:hover {
 
 #agentSettingsForm .form-actions button.error-feedback:hover {
     background-color: var(--danger-hover-bg) !important; /* Darken on hover */
+}
+/* --- 聊天气泡编辑模式宽度调整 --- */
+/* 当消息项处于编辑模式时 (具有 .message-item-editing 类), 允许其扩展宽度以适应上下文 */
+.message-item.message-item-editing {
+    max-width: 95% !important; /* 覆盖原有的 max-width (如 60% 或 75%)，使其更宽。*/
+                               /* 95% 是一个示例值，可以根据需要调整以适应“上下文窗口的大宽度”。*/
+    width: auto;               /* 允许内容根据需要撑开，直到达到 max-width。 */
+                               /* 这确保了即使内容较少，气泡也不会不必要地变得过宽。*/
+    /* 原有的 align-self: flex-start/flex-end 和 margin-left/right: auto 仍然会尝试定位气泡，*/
+    /* 但由于宽度较大，视觉上它会占据大部分可用空间。*/
+}
+
+/* 确保编辑文本区在 message-item-editing 状态下表现正常 */
+.message-item.message-item-editing .message-edit-textarea {
+    width: 100%; /* 已经在JS中设置，这里再次强调以确保CSS层面的行为一致 */
+    /* 其他 .message-edit-textarea 的样式 (如 min-width, min-height, padding 等) 保持不变 */
 }
