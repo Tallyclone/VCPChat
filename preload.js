@@ -109,7 +109,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Image Context Menu
     showImageContextMenu: (imageUrl) => ipcRenderer.send('show-image-context-menu', imageUrl),
     // Open Image in New Window
-    openImageInNewWindow: (imageUrl, imageTitle) => ipcRenderer.send('open-image-in-new-window', imageUrl, imageTitle)
+    openImageInNewWindow: (imageUrl, imageTitle) => ipcRenderer.send('open-image-in-new-window', imageUrl, imageTitle),
+    // Open Text in New Window (Read Mode)
+    openTextInNewWindow: async (textContent, windowTitle, theme) => { // Added theme parameter
+        console.log('[Preload] openTextInNewWindow called (invoke with new channel). Title:', windowTitle, 'Content length:', textContent.length, 'Theme:', theme);
+        try {
+            await ipcRenderer.invoke('display-text-content-in-viewer', textContent, windowTitle, theme); // Pass theme parameter
+            console.log('[Preload] ipcRenderer.invoke("display-text-content-in-viewer") was CALLED and awaited.');
+        } catch (e) {
+            console.error('[Preload] Error during ipcRenderer.invoke("display-text-content-in-viewer"):', e);
+        }
+    }
 });
 
 // Log the electronAPI object as it's defined in preload.js right after exposing it

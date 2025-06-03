@@ -19,6 +19,7 @@ const SETTINGS_FILE = path.join(APP_DATA_ROOT_IN_PROJECT, 'settings.json');
 let mainWindow;
 let vcpLogWebSocket;
 let vcpLogReconnectInterval;
+let openChildWindows = [];
 
 // --- Main Window Creation ---
 function createWindow() {
@@ -119,6 +120,75 @@ app.whenReady().then(() => {
     fs.ensureDirSync(AGENT_DIR);
     fs.ensureDirSync(USER_DATA_DIR);
     fileManager.initializeFileManager(USER_DATA_DIR, AGENT_DIR); // Initialize FileManager
+
+    // --- Moved IPC Handler Registration ---
+    ipcMain.handle('display-text-content-in-viewer', async (event, textContent, windowTitle, theme) => { // Added theme parameter
+        console.log(`[Main Process] Received display-text-content-in-viewer (handle inside whenReady). Title: ${windowTitle}, Theme: ${theme}`);
+        const textViewerWindow = new BrowserWindow({
+            width: 800,
+            height: 700,
+            minWidth: 500,
+            minHeight: 400,
+            title: decodeURIComponent(windowTitle) || '阅读模式',
+            parent: mainWindow,
+            modal: false,
+            webPreferences: {
+                preload: path.join(__dirname, 'preload.js'), // Can reuse if common functionalities are needed
+                contextIsolation: true,
+                nodeIntegration: false,
+                devTools: true // Enable devtools for easier debugging of the viewer
+            },
+            icon: path.join(__dirname, 'assets', 'icon.png'),
+            show: false
+        });
+
+        const viewerUrl = `file://${path.join(__dirname, 'text-viewer.html')}?text=${encodeURIComponent(textContent)}&title=${encodeURIComponent(windowTitle || '阅读模式')}&theme=${encodeURIComponent(theme || 'dark')}`; // Pass theme parameter
+        console.log(`[Main Process] Attempting to load URL in text viewer window: ${viewerUrl.substring(0, 200)}...`);
+        
+        textViewerWindow.webContents.on('did-start-loading', () => {
+            console.log(`[Main Process] textViewerWindow webContents did-start-loading for URL: ${viewerUrl.substring(0, 200)}`);
+        });
+
+        textViewerWindow.webContents.on('dom-ready', () => {
+            console.log(`[Main Process] textViewerWindow webContents dom-ready for URL: ${textViewerWindow.webContents.getURL()}`);
+        });
+        
+        textViewerWindow.loadURL(viewerUrl)
+            .then(() => {
+                console.log(`[Main Process] textViewerWindow successfully initiated URL loading (loadURL resolved): ${viewerUrl.substring(0, 200)}`);
+            })
+            .catch((err) => {
+                console.error(`[Main Process] textViewerWindow FAILED to initiate URL loading (loadURL rejected): ${viewerUrl.substring(0, 200)}`, err);
+            });
+
+        textViewerWindow.webContents.on('did-finish-load', () => {
+            console.log(`[Main Process] textViewerWindow webContents did-finish-load for URL: ${textViewerWindow.webContents.getURL()}`);
+        });
+
+        textViewerWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+            console.error(`[Main Process] textViewerWindow webContents did-fail-load: Code ${errorCode}, Desc: ${errorDescription}, URL: ${validatedURL}`);
+        });
+        openChildWindows.push(textViewerWindow); // Add to keep track
+        
+        textViewerWindow.setMenu(null); // No menu for the text viewer window
+
+        textViewerWindow.once('ready-to-show', () => {
+            console.log(`[Main Process] textViewerWindow is ready-to-show. Window Title: "${textViewerWindow.getTitle()}". Calling show().`);
+            textViewerWindow.show();
+            console.log('[Main Process] textViewerWindow show() called.');
+        });
+
+        textViewerWindow.on('show', () => {
+            console.log('[Main Process] textViewerWindow show event fired. Window is visible.');
+        });
+
+        textViewerWindow.on('closed', () => {
+            console.log('[Main Process] textViewerWindow has been closed.');
+            openChildWindows = openChildWindows.filter(win => win !== textViewerWindow); // Remove from track
+        });
+    });
+    // --- End of Moved IPC Handler Registration ---
+
     createWindow();
 
     app.on('activate', () => {
@@ -549,7 +619,7 @@ ipcMain.handle('get-agent-topics', async (event, agentId) => {
 });
 
 // New IPC handler to create a new topic for an agent
-ipcMain.handle('create-new-topic-for-agent', async (event, agentId, topicName) => {
+ipcMain.handle('create-new-topic-for-agent', async (event, agentId, topicName, refreshTimestamp = false) => {
     try {
         const configPath = path.join(AGENT_DIR, agentId, 'config.json');
         if (!await fs.pathExists(configPath)) {
@@ -561,7 +631,10 @@ ipcMain.handle('create-new-topic-for-agent', async (event, agentId, topicName) =
         }
 
         const newTopicId = `topic_${Date.now()}`;
-        const newTopic = { id: newTopicId, name: topicName || `新话题 ${config.topics.length + 1}`, createdAt: Date.now() };
+        // Use current time if refreshTimestamp is true, otherwise keep existing logic (which implies new topic gets current time anyway)
+        // The key difference is that for a "branch", we explicitly want a *new* timestamp.
+        const createdAt = refreshTimestamp ? Date.now() : Date.now(); // Effectively always Date.now() for new topics, but explicit for branching.
+        const newTopic = { id: newTopicId, name: topicName || `新话题 ${config.topics.length + 1}`, createdAt: createdAt };
         config.topics.push(newTopic);
         await fs.writeJson(configPath, config, { spaces: 2 });
 
@@ -1087,6 +1160,7 @@ ipcMain.on('open-image-in-new-window', (event, imageUrl, imageTitle) => {
     const viewerUrl = `file://${path.join(__dirname, 'image-viewer.html')}?src=${encodeURIComponent(imageUrl)}&title=${encodeURIComponent(imageTitle || '图片预览')}`;
     console.log(`[Main Process] Loading URL in new window: ${viewerUrl}`);
     imageViewerWindow.loadURL(viewerUrl);
+    openChildWindows.push(imageViewerWindow); // Add to keep track
     
     imageViewerWindow.setMenu(null); // No menu for the image viewer window
 
@@ -1097,6 +1171,7 @@ ipcMain.on('open-image-in-new-window', (event, imageUrl, imageTitle) => {
     // Optional: Handle closure, etc.
     // imageViewerWindow.on('closed', () => {
     //     // Dereference the window object
+// IPC Handler for opening text in a new window (Read Mode)
     // });
 });
 

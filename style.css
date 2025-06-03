@@ -306,6 +306,7 @@ body {
     transform: translateY(0);
     overflow-y: auto;
     pointer-events: auto;
+    overflow-x: hidden;
 }
 /* End Sidebar Tabs */
 

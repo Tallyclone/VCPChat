@@ -287,7 +287,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 summarizeTopicFromMessages: summarizeTopicFromMessages,
                 openModal: openModal, // Generic modal opener
                 // openImagePreviewModal: openImagePreviewModal, // Specific for image preview - REMOVED
-                autoResizeTextarea: autoResizeTextarea
+                autoResizeTextarea: autoResizeTextarea,
+                handleCreateBranch: handleCreateBranch // Add this line
             });
             console.log('[RENDERER_INIT] messageRenderer module initialized.');
         } else {
@@ -442,8 +443,13 @@ async function selectAgent(agentId, agentName) {
  
     console.log(`选择 Agent: ${agentName} (ID: ${agentId})`);
     currentAgentId = agentId;
-    currentTopicId = null;
+    currentTopicId = null; // Reset current topic ID
     currentChatHistory = [];
+
+    // Remove glowing effect from any previously active topic
+    document.querySelectorAll('.topic-list .topic-item.active-topic-glowing').forEach(item => {
+        item.classList.remove('active-topic-glowing');
+    });
 
     if (window.messageRenderer) {
         window.messageRenderer.setCurrentAgentId(currentAgentId);
@@ -475,13 +481,13 @@ async function selectAgent(agentId, agentName) {
                 window.messageRenderer.setCurrentTopicId(currentTopicId);
             }
             console.log(`Agent ${agentId} - 选择话题: ${currentTopicId}`);
-            await loadChatHistory(currentAgentId, currentTopicId);
+            await loadChatHistory(currentAgentId, currentTopicId); // This will handle adding the glow
         } else if (topics.error) {
             console.error(`加载Agent ${agentId} 的话题列表失败:`, topics.error);
             chatMessagesDiv.innerHTML = `<div class="message-item system"><div class="sender-name">系统</div><div>加载话题列表失败: ${topics.error}</div></div>`;
         } else {
             console.warn(`Agent ${agentId} 没有找到话题。将尝试加载一个空的聊天记录。`);
-            await loadChatHistory(currentAgentId, null);
+            await loadChatHistory(currentAgentId, null); // This will handle adding the glow (or not, if no topic)
         }
     } catch (e) {
         console.error(`选择 Agent ${agentId} 时发生错误: `, e);
@@ -498,12 +504,27 @@ function highlightActiveAgent(agentId) {
     document.querySelectorAll('.agent-list li').forEach(item => {
         item.classList.toggle('active', item.dataset.agentId === agentId);
     });
+    // When an agent is selected, if no specific topic is active yet,
+    // remove glowing from all topic items as a precaution.
+    // The actual glowing topic will be set when a topic is loaded.
+    if (!currentTopicId) {
+        document.querySelectorAll('.topic-list .topic-item.active-topic-glowing').forEach(item => {
+            item.classList.remove('active-topic-glowing');
+        });
+    }
 }
 
 // --- Chat Functionality ---
 async function loadChatHistory(agentId, topicId) {
     chatMessagesDiv.innerHTML = '';
     currentChatHistory = [];
+
+    // Highlight the active topic and apply glowing effect
+    document.querySelectorAll('.topic-list .topic-item').forEach(item => {
+        const isCurrent = item.dataset.topicId === topicId && item.dataset.agentId === agentId;
+        item.classList.toggle('active', isCurrent); // Keep standard 'active' class
+        item.classList.toggle('active-topic-glowing', isCurrent); // Add new glowing class
+    });
 
     if (window.messageRenderer) {
         window.messageRenderer.setCurrentTopicId(topicId);
@@ -1061,7 +1082,9 @@ async function loadTopicList() {
             li.classList.add('topic-item');
             li.dataset.agentId = currentAgentId;
             li.dataset.topicId = topic.id;
-            li.classList.toggle('active', topic.id === currentTopicId);
+            const isCurrentActiveTopic = topic.id === currentTopicId;
+            li.classList.toggle('active', isCurrentActiveTopic);
+            li.classList.toggle('active-topic-glowing', isCurrentActiveTopic);
 
             const avatarImg = document.createElement('img');
             avatarImg.classList.add('avatar');
@@ -1104,9 +1127,11 @@ async function loadTopicList() {
                     // They should be defined globally or at a higher scope and called from DOMContentLoaded.
                     
                     document.querySelectorAll('#topicList .topic-item').forEach(item => { // Use #topicList
-                        item.classList.toggle('active', item.dataset.topicId === currentTopicId);
+                        const isClickedItem = item.dataset.topicId === currentTopicId && item.dataset.agentId === currentAgentId;
+                        item.classList.toggle('active', isClickedItem);
+                        item.classList.toggle('active-topic-glowing', isClickedItem);
                     });
-                    await loadChatHistory(currentAgentId, currentTopicId);
+                    await loadChatHistory(currentAgentId, currentTopicId); // loadChatHistory will also re-apply active classes
                     localStorage.setItem(`lastActiveTopic_${currentAgentId}`, currentTopicId);
                 }
             });
@@ -1723,6 +1748,11 @@ async function deleteCurrentAgent() {
                 sendMessageBtn.disabled = true;
                 attachFileBtn.disabled = true;
                 await displayTopicTimestampBubble(null, null); // Hide bubble as no agent/topic selected
+                // Remove glowing effect from any topic item as no agent is selected
+                document.querySelectorAll('.topic-list .topic-item.active-topic-glowing').forEach(item => {
+                    item.classList.remove('active-topic-glowing');
+                    item.classList.remove('active'); // Also remove standard active class
+                });
             }
             
             await loadAgentList(); // Refresh agent list
@@ -1772,8 +1802,14 @@ async function createNewContextFromCurrentAgent() {
             localStorage.setItem(`lastActiveTopic_${currentAgentId}`, currentTopicId);
             
             if (document.getElementById('tabContentTopics').classList.contains('active')) {
-                loadTopicList();
+                await loadTopicList(); // Ensure this re-highlights correctly
             }
+             // After loading history and potentially new topic list, ensure the new topic is glowing
+            document.querySelectorAll('.topic-list .topic-item').forEach(item => {
+                const isNewActiveTopic = item.dataset.topicId === currentTopicId && item.dataset.agentId === currentAgentId;
+                item.classList.toggle('active', isNewActiveTopic);
+                item.classList.toggle('active-topic-glowing', isNewActiveTopic);
+            });
             await displayTopicTimestampBubble(currentAgentId, currentTopicId); // Display for new topic
             console.log(`已为助手 "${agentName}" 创建并切换到新话题: "${result.topicName}" (ID: ${result.topicId})`);
             messageInput.focus();
@@ -1947,5 +1983,88 @@ function setupTitleBarControls() {
             if (maximizeBtn) maximizeBtn.style.display = 'flex';
             if (restoreBtn) restoreBtn.style.display = 'none';
         });
+    }
+}
+
+async function handleCreateBranch(selectedMessage) {
+    if (!currentAgentId || !currentTopicId || !selectedMessage) {
+        alert("无法创建分支：缺少必要信息（助手ID、当前话题ID或选定消息）。");
+        return;
+    }
+
+    const messageId = selectedMessage.id;
+    const messageIndex = currentChatHistory.findIndex(msg => msg.id === messageId);
+
+    if (messageIndex === -1) {
+        alert("无法创建分支：在当前聊天记录中未找到选定消息。");
+        return;
+    }
+
+    // 包含选定消息及其之前的所有消息
+    const historyForNewBranch = currentChatHistory.slice(0, messageIndex + 1);
+
+    if (historyForNewBranch.length === 0) {
+        alert("无法创建分支：没有可用于创建分支的消息。");
+        return;
+    }
+
+    try {
+        // 1. 获取原始话题名称
+        const agentConfig = await window.electronAPI.getAgentConfig(currentAgentId);
+        if (!agentConfig || agentConfig.error) {
+            alert(`创建分支失败：无法获取助手配置。 ${agentConfig?.error || ''}`);
+            return;
+        }
+        const originalTopic = agentConfig.topics.find(t => t.id === currentTopicId);
+        const originalTopicName = originalTopic ? originalTopic.name : "未命名话题";
+        const newBranchTopicName = `${originalTopicName} (分支)`;
+
+        // 2. 创建新话题 (继承原标题，但标记为分支, 更新创建时间)
+        const createResult = await window.electronAPI.createNewTopicForAgent(currentAgentId, newBranchTopicName, true); // true to indicate refresh creation time
+
+        if (!createResult || !createResult.success || !createResult.topicId) {
+            alert(`创建分支话题失败: ${createResult ? createResult.error : '未知错误'}`);
+            return;
+        }
+
+        const newTopicId = createResult.topicId;
+        console.log(`分支话题已创建: ${newTopicId}，名称: ${newBranchTopicName}`);
+
+        // 3. 将截取到的历史记录保存到新话题
+        // 注意：确保保存的 historyForNewBranch 中的消息ID不会与新话题中未来可能产生的消息ID冲突。
+        // 通常，消息ID应该是全局唯一的，或者至少在话题内是唯一的。
+        // 如果消息ID是基于时间戳和随机数生成的，那么直接复制通常是安全的。
+        const saveResult = await window.electronAPI.saveChatHistory(currentAgentId, newTopicId, historyForNewBranch);
+        if (!saveResult || !saveResult.success) {
+            alert(`无法将历史记录保存到新的分支话题: ${saveResult ? saveResult.error : '未知错误'}`);
+            // 可以考虑是否需要删除刚刚创建的新话题，以避免留下空的分支
+            await window.electronAPI.deleteTopic(currentAgentId, newTopicId);
+            console.warn(`已删除空的分支话题 ${newTopicId} 因为历史记录保存失败。`);
+            return;
+        }
+
+        console.log(`聊天记录已成功复制到分支话题 ${newTopicId}。`);
+
+        // 4. 切换到新创建的分支话题
+        currentTopicId = newTopicId;
+        if (window.messageRenderer) {
+            window.messageRenderer.setCurrentTopicId(currentTopicId);
+        }
+        
+        // 刷新话题列表（如果可见）并加载新分支的聊天记录
+        if (document.getElementById('tabContentTopics').classList.contains('active')) {
+            await loadTopicList(); // loadTopicList 会处理高亮
+        }
+        
+        await loadChatHistory(currentAgentId, currentTopicId); // 这会加载并显示分支内容，并高亮新话题
+        
+        localStorage.setItem(`lastActiveTopic_${currentAgentId}`, currentTopicId); // 记住这个新分支是最后活跃的
+
+        alert(`已成功创建分支话题 "${newBranchTopicName}" 并切换。`);
+        messageInput.focus();
+
+    } catch (error) {
+        console.error("创建分支时发生错误:", error);
+        alert(`创建分支时发生内部错误: ${error.message}`);
     }
 }

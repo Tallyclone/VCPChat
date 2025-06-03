@@ -923,12 +923,44 @@ function showContextMenu(event, messageItem, message) {
         };
         menu.appendChild(copyOption);
 
+        // Option: Create Branch (Moved)
+        const createBranchOption = document.createElement('div');
+        createBranchOption.classList.add('context-menu-item');
+        createBranchOption.textContent = '创建分支';
+        createBranchOption.onclick = () => {
+            handleCreateBranch(message); // We'll define this function in renderer.js
+            closeContextMenu();
+        };
+        menu.appendChild(createBranchOption); // Appended after "复制文本"
+
+        // Option: Read Mode
+        const readModeOption = document.createElement('div');
+        readModeOption.classList.add('context-menu-item');
+        readModeOption.textContent = '阅读模式';
+        readModeOption.onclick = () => {
+            // Strip HTML tags, specifically <img> for now.
+            // A more robust solution might use a DOM parser if complex HTML is present.
+            const plainTextContent = message.content.replace(/<img[^>]*>/gi, "").replace(/<audio[^>]*>.*?<\/audio>/gi, "").replace(/<video[^>]*>.*?<\/video>/gi, "");
+            const windowTitle = `阅读模式: ${message.id.substring(0,12)}...`;
+            const currentTheme = localStorage.getItem('theme') || 'dark'; // 获取当前主题
+            console.log('[MessageRenderer] Attempting to open read mode. Title:', windowTitle, 'Content length:', plainTextContent.length, 'Theme:', currentTheme);
+            if (mainRendererReferences.electronAPI && typeof mainRendererReferences.electronAPI.openTextInNewWindow === 'function') {
+                mainRendererReferences.electronAPI.openTextInNewWindow(plainTextContent, windowTitle, currentTheme); // 传递主题参数
+            } else {
+                console.error('[MessageRenderer] electronAPI.openTextInNewWindow is not available or not a function!');
+                alert('错误：无法调用阅读模式功能。');
+            }
+            closeContextMenu();
+        };
+        menu.appendChild(readModeOption);
+
+
         const deleteOption = document.createElement('div');
         deleteOption.classList.add('context-menu-item', 'danger-text');
         deleteOption.textContent = '删除消息';
         deleteOption.onclick = async () => {
             if (confirm(`确定要删除此消息吗？\n"${message.content.substring(0, 50)}${message.content.length > 50 ? '...' : ''}"`)) {
-                const messageIndex = currentChatHistory.findIndex(msg => msg.id === message.id); 
+                const messageIndex = currentChatHistory.findIndex(msg => msg.id === message.id);
                 if (messageIndex > -1) {
                     currentChatHistory.splice(messageIndex, 1);
                     if (currentAgentId && currentTopicId) await electronAPI.saveChatHistory(currentAgentId, currentTopicId, currentChatHistory);
@@ -937,7 +969,7 @@ function showContextMenu(event, messageItem, message) {
             }
             closeContextMenu();
         };
-        menu.appendChild(deleteOption);
+        // menu.appendChild(deleteOption); // Will be appended or inserted before by regenerate
 
         if (message.role === 'assistant') {
             const regenerateOption = document.createElement('div');
@@ -947,8 +979,10 @@ function showContextMenu(event, messageItem, message) {
                 handleRegenerateResponse(message);
                 closeContextMenu();
             };
-            menu.insertBefore(regenerateOption, deleteOption);
+            // Insert "重新回复" before "删除消息"
+            menu.appendChild(regenerateOption);
         }
+        menu.appendChild(deleteOption); // "删除消息" is now after "重新回复" (if present) or "创建分支"
     }
 
     document.body.appendChild(menu);
