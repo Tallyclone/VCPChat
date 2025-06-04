@@ -803,10 +803,10 @@ body.light-theme .message-item.assistant {
     margin-left: 8px;
 }
 #sendMessageBtn svg, #attachFileBtn svg {
-    width: 26px; /* 缩小图标尺寸 */
-    height: 26px; /* 缩小图标尺寸 */
-    stroke: var(--primary-text); /* 图标颜色 */
-    fill: currentColor; /* 确保有填充 */
+    width: 24px; /* 缩小图标尺寸 */
+    height: 24px; /* 缩小图标尺寸 */
+    stroke: var(--secondary-text); /* 图标描边颜色改为中灰 */
+    fill: var(--secondary-text);   /* 图标填充颜色改为中灰 */
 }
 body.light-theme #sendMessageBtn svg, body.light-theme #attachFileBtn svg {
     stroke: #ffffff; /* 亮色主题下图标用白色 */
