@@ -369,7 +369,8 @@ textarea:focus {
 }
 
 .markdown-preview p {
-    margin-bottom: 1em;
+    margin-top: 0; 
+    margin-bottom: 1em; 
 }
 
 .markdown-preview ul, .markdown-preview ol {
@@ -523,3 +524,17 @@ textarea:focus {
 .light-theme #highlight-theme-style {
     href: "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-light.min.css";
 }
+
+/* 针对只包含一个 .katex-display 元素的 p 标签 (KaTeX 显示模式公式的容器) */
+.markdown-preview p:has(> .katex-display:only-child) {
+    margin-block-start: 0; /* 移除上边距 (逻辑属性) */
+    margin-block-end: 0;   /* 可选：同时移除下边距，或设置为一个较小的值 */
+                           /* 如果只想保留原有的 margin-bottom: 1em; 可以只设置 margin-block-start */
+}
+
+/* 如果想保留原有的 margin-bottom: 1em; 可以这样写：*/
+/*
+.markdown-preview p:has(> .katex-display:only-child) {
+    margin-block-start: 0;
+}
+*/
