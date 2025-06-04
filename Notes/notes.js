@@ -335,9 +335,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         try {
             await window.electronAPI.writeTxtNote(noteToSave); // Changed to writeTxtNote and pass single note
-            const currentActiveId = noteToSave.id; // Store before loadNotes might change things
-            await loadNotes(); // Reloads and re-renders the note list
-            selectNote(currentActiveId); // Re-select the current note
+            if (isAutoSave && activeNoteId) { // If it's an auto-save for an existing note
+                // Only update the display of notes, don't reload all or re-select
+                displayNotes(searchInput.value); // Re-display with current filter
+                // Ensure the active note's class is still applied if it was updated
+                const activeListItem = document.querySelector(`#noteList li[data-id="${activeNoteId}"]`);
+                if (activeListItem) {
+                    activeListItem.classList.add('active');
+                }
+            } else { // Manual save or auto-save for a new note
+                const currentActiveId = noteToSave.id; // Store before loadNotes might change things
+                await loadNotes(); // Reloads and re-renders the note list
+                selectNote(currentActiveId); // Re-select the current note
+            }
 
             if (isAutoSave) {
                 // console.log('笔记已自动保存:', noteToSave.id);
