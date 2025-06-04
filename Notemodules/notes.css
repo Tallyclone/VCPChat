@@ -380,8 +380,9 @@ textarea:focus {
 }
 
 .markdown-preview p {
-    margin-top: 0; 
-    margin-bottom: 1em; 
+    margin-top: 0;
+    margin-bottom: 1em;
+    white-space: pre-line; /* 修复换行问题 */
 }
 
 .markdown-preview ul, .markdown-preview ol {
