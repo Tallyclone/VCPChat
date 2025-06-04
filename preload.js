@@ -118,6 +118,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     unmaximizeWindow: () => ipcRenderer.send('unmaximize-window'),
     closeWindow: () => ipcRenderer.send('close-window'),
     openDevTools: () => ipcRenderer.send('open-dev-tools'),
+    sendToggleNotificationsSidebar: () => ipcRenderer.send('toggle-notifications-sidebar'), // 新增：发送切换通知侧边栏的请求
+    onDoToggleNotificationsSidebar: (callback) => ipcRenderer.on('do-toggle-notifications-sidebar', (_event) => callback()), // 新增：监听主进程的切换指令
     openAdminPanel: () => ipcRenderer.invoke('open-admin-panel'), // 新增
     onWindowMaximized: (callback) => ipcRenderer.on('window-maximized', (_event) => callback()),
     onWindowUnmaximized: (callback) => ipcRenderer.on('window-unmaximized', (_event) => callback()),

@@ -144,6 +144,7 @@ const currentAgentSettingsBtn = document.getElementById('currentAgentSettingsBtn
 const clearCurrentChatBtn = document.getElementById('clearCurrentChatBtn');
 const openAdminPanelBtn = document.getElementById('openAdminPanelBtn'); // 新增
 const themeToggleBtn = document.getElementById('themeToggleBtn');
+const toggleNotificationsBtn = document.getElementById('toggleNotificationsBtn'); // 新增通知侧边栏切换按钮
 
 
 const notificationsSidebar = document.getElementById('notificationsSidebar');
@@ -1589,8 +1590,23 @@ function setupEventListeners() {
             }
         });
     }
+
+    if (toggleNotificationsBtn && notificationsSidebar) {
+        toggleNotificationsBtn.addEventListener('click', () => {
+            window.electronAPI.sendToggleNotificationsSidebar();
+        });
+
+        window.electronAPI.onDoToggleNotificationsSidebar(() => {
+            notificationsSidebar.classList.toggle('active'); // 或者你用来控制显示/隐藏的类名
+            // 你可能还需要调整主内容区域的宽度或边距
+            const mainContent = document.querySelector('.main-content');
+            if (mainContent) {
+                mainContent.classList.toggle('notifications-sidebar-active');
+            }
+        });
+    }
 }
- 
+
  
 // --- Resizer Functionality ---
 function initializeResizers() {

@@ -528,6 +528,13 @@ body.light-theme .sidebar-button:hover {
     top: 3.4px; /* 调整后的对齐 */
 }
 
+/* 为新的通知切换按钮应用类似的对齐和内边距 */
+.chat-actions .header-button#toggleNotificationsBtn {
+    padding: 0 10px; /* 与其他图标按钮保持一致的内边距 */
+    position: relative;
+    top: 3.4px; /* 调整对齐 */
+}
+
 .theme-icon {
     width: 26px; /* 用户调整后的图标大小 */
     height: 26px; /* 用户调整后的图标大小 */
@@ -826,7 +833,28 @@ body.light-theme #sendMessageBtn svg, body.light-theme #attachFileBtn svg {
     display: flex;
     flex-direction: column;
     padding: 0; /* Header will have padding */
+    transition: width 0.3s ease-in-out, min-width 0.3s ease-in-out, padding 0.3s ease-in-out; /* Added transition */
+    overflow: hidden; /* Add overflow hidden for smooth transition */
 }
+
+/* Styles for when the notifications sidebar is not active (hidden) */
+.notifications-sidebar:not(.active) {
+    width: 0 !important; /* Force width to 0 */
+    min-width: 0 !important; /* Force min-width to 0 */
+    padding-left: 0 !important; /* Remove padding when hidden */
+    padding-right: 0 !important; /* Remove padding when hidden */
+    border-left-width: 0 !important; /* Hide border when hidden */
+}
+
+/* Styles for the main content when the notifications sidebar is active */
+.main-content.notifications-sidebar-active {
+    /* Adjustments might not be needed if using flex-grow correctly, */
+    /* but can be used for explicit margin or width changes if required. */
+    /* For example: margin-right: 300px; (if sidebar width is fixed) */
+    /* Or, if sidebar width is variable, this class might not be strictly necessary */
+    /* if the flex layout handles it. Let's assume flex handles it for now. */
+}
+
 .notifications-header {
     /* background-color: #e1e5eb; */ /* Removed fixed light color */
     padding: 10px 15px; /* Adjusted padding */

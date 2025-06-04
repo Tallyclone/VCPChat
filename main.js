@@ -1525,6 +1525,13 @@ ipcMain.on('close-window', () => {
     }
 });
 
+// IPC Handler for toggling the notifications sidebar
+ipcMain.on('toggle-notifications-sidebar', () => {
+    if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+        mainWindow.webContents.send('do-toggle-notifications-sidebar');
+    }
+});
+
 ipcMain.on('open-dev-tools', () => {
     console.log('[Main Process] Received open-dev-tools event.'); // DEBUG
     if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {

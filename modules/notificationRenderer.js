@@ -170,7 +170,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
     };
 
     // Apply theme colors to bubble itself
-    if (themeColors.notificationBg) bubble.style.backgroundColor = themeColors.notificationBg;
+    // if (themeColors.notificationBg) bubble.style.backgroundColor = themeColors.notificationBg; // 移除直接设置背景颜色，让CSS变量控制
     // 移除直接设置颜色，让CSS变量控制
     // if (themeColors.primaryText) bubble.style.color = themeColors.primaryText;
     // 移除直接设置边框颜色，让CSS变量控制

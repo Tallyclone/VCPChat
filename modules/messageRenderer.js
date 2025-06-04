@@ -1046,11 +1046,12 @@ function toggleEditMode(messageItem, message) {
         if (existingControls) existingControls.remove();
         contentDiv.style.display = '';
     } else {
+        const currentBubbleWidth = messageItem.offsetWidth; // 获取当前气泡的渲染宽度
         const originalContentHeight = contentDiv.offsetHeight;
         // const originalContentWidth = contentDiv.offsetWidth; // 不再需要基于旧宽度设置textarea宽度
         contentDiv.style.display = 'none';
         messageItem.classList.add('message-item-editing'); // 进入编辑模式时添加类
-        messageItem.style.width = '480px';  // 设置固定宽度
+        messageItem.style.width = `${currentBubbleWidth}px`;  // 应用获取到的宽度
         messageItem.style.maxWidth = '95%'; // 仍然限制最大宽度，以防400px过大
 
         const textarea = document.createElement('textarea');
