@@ -349,8 +349,8 @@ function injectEnhancedStyles() {
  */
 function ensureNewlineAfterCodeBlock(text) {
     if (typeof text !== 'string') return text;
-    // Replace ``` not followed by \n or \r\n with ```\n
-    return text.replace(/```(?![\r\n])/g, '```\n');
+    // Replace ``` (possibly with leading spaces) not followed by \n or \r\n with the same ``` (and spaces) followed by \n
+    return text.replace(/^(\s*```)(?![\r\n])/gm, '$1\n');
 }
 
 /**
@@ -362,6 +362,16 @@ function ensureSpaceAfterTilde(text) {
     if (typeof text !== 'string') return text;
     // Replace ~ not followed by a space with ~ followed by a space
     return text.replace(/~(?![\s~])/g, '~ ');
+}
+
+/**
+ * Removes leading whitespace from lines starting with ``` (code block markers).
+ * @param {string} text The input string.
+ * @returns {string} The processed string.
+ */
+function removeIndentationFromCodeBlockMarkers(text) {
+    if (typeof text !== 'string') return text;
+    return text.replace(/^(\s*)(```.*)/gm, '$2');
 }
 
 /**
@@ -571,6 +581,7 @@ function renderMessage(message, isInitialLoad = false) {
         // Always parse with marked first
         let processedContent = ensureNewlineAfterCodeBlock(message.content);
         processedContent = ensureSpaceAfterTilde(processedContent);
+        processedContent = removeIndentationFromCodeBlockMarkers(processedContent); // Added
         contentDiv.innerHTML = markedInstance.parse(processedContent);
         // Then process for special blocks
         processAllPreBlocksInContentDiv(contentDiv);
@@ -755,6 +766,7 @@ function appendStreamChunk(messageId, chunkData) {
     
     let processedFullCurrentTextForParse = ensureNewlineAfterCodeBlock(fullCurrentText);
     processedFullCurrentTextForParse = ensureSpaceAfterTilde(processedFullCurrentTextForParse);
+    processedFullCurrentTextForParse = removeIndentationFromCodeBlockMarkers(processedFullCurrentTextForParse); // Added
     contentDiv.innerHTML = markedInstance.parse(processedFullCurrentTextForParse);
     
     if (messageItem) {
@@ -778,6 +790,7 @@ function appendStreamChunk(messageId, chunkData) {
                     // Re-parse the full content to ensure structure is correct before prettifying
                     let processedFullCurrentTextForDebounceParse = ensureNewlineAfterCodeBlock(fullCurrentText);
                     processedFullCurrentTextForDebounceParse = ensureSpaceAfterTilde(processedFullCurrentTextForDebounceParse);
+                    processedFullCurrentTextForDebounceParse = removeIndentationFromCodeBlockMarkers(processedFullCurrentTextForDebounceParse); // Added
                     targetContentDiv.innerHTML = markedInstance.parse(processedFullCurrentTextForDebounceParse);
 
                     if (window.renderMathInElement) {
@@ -849,6 +862,7 @@ function finalizeStreamedMessage(messageId, finishReason) {
     if (contentDiv) {
         let processedFinalFullText = ensureNewlineAfterCodeBlock(finalFullText);
         processedFinalFullText = ensureSpaceAfterTilde(processedFinalFullText);
+        processedFinalFullText = removeIndentationFromCodeBlockMarkers(processedFinalFullText); // Added
         contentDiv.innerHTML = markedInstance.parse(processedFinalFullText); // Final parse
 
         if (window.renderMathInElement) {
