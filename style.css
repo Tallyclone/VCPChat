@@ -144,7 +144,7 @@ body {
     justify-content: space-between;
     align-items: center;
     padding: 0 5px 0 10px; /* Reduced right padding slightly */
-    border-bottom: 1px solid var(--border-color);
+    /* border-bottom: 1px solid var(--border-color); */
     -webkit-app-region: drag;
     flex-shrink: 0;
     position: fixed;
@@ -226,12 +226,12 @@ body {
 
 /* --- Resizers --- */
 .resizer {
-    background-color: var(--border-color);
+    background-color: var(--secondary-bg); /* Reverted to match surrounding background */
     width: 5px;
     cursor: col-resize;
     flex-shrink: 0;
     z-index: 100; /* 提高 z-index */
-    opacity: 0.5;
+    /* opacity: 0.5; */ /* Removed to make it same color as surroundings */
     transition: opacity 0.2s ease, background-color 0.2s ease;
     pointer-events: auto; /* 确保能捕获鼠标事件 */
 }
@@ -250,7 +250,7 @@ body {
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    border-right: 1px solid var(--border-color);
+    /* border-right: 1px solid var(--border-color); */
     transition: width 0.2s ease-in-out;
     overflow-x: hidden; /* 禁止侧边栏本身的横向滚动条 */
 }
@@ -956,7 +956,7 @@ body.light-theme #clearNotificationsBtn:hover, body.light-theme .notifications-h
 /* Divider style (now a direct child of notifications-sidebar) */
 .notifications-sidebar > .section-divider { /* Target directly inside sidebar */
     border: none;
-    border-top: 1px solid var(--border-color);
+    /* border-top: 1px solid var(--border-color); */
     margin: 0; /* Remove default margin from hr */
     width: 100%;
     box-sizing: border-box; /* Ensure border is within width */
