@@ -153,7 +153,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Function to load notes from the file system
     async function loadNotes() {
         try {
-            notes = await window.electronAPI.readNotes();
+            notes = await window.electronAPI.readTxtNotes();
             displayNotes();
             if (notes.length > 0) {
                 const lastActiveNoteId = localStorage.getItem('lastActiveNoteId');
@@ -297,9 +297,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                         return;
                     }
                 }
+                noteToSave.oldFileName = noteToSave.fileName; // Add oldFileName from existing fileName
                 noteToSave.title = normalizedTitle;
                 noteToSave.content = content;
                 noteToSave.timestamp = currentTimestamp;
+                if (!noteToSave.username) { // Ensure username exists, e.g., if loaded from older format
+                    noteToSave.username = 'defaultUser';
+                }
             } else {
                 activeNoteId = null; // Note was lost, treat as new if user continues typing
             }
@@ -314,7 +318,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 id: currentTimestamp.toString(),
                 title: title || '无标题笔记',
                 content: content,
-                timestamp: currentTimestamp
+                timestamp: currentTimestamp,
+                username: 'defaultUser', // Added username for new notes
+                oldFileName: null // No old file for new notes, explicitly pass null
             };
             notes.push(noteToSave);
             // activeNoteId will be set by selectNote after loadNotes
@@ -328,7 +334,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         try {
-            await window.electronAPI.writeNotes(notes);
+            await window.electronAPI.writeTxtNote(noteToSave); // Changed to writeTxtNote and pass single note
             const currentActiveId = noteToSave.id; // Store before loadNotes might change things
             await loadNotes(); // Reloads and re-renders the note list
             selectNote(currentActiveId); // Re-select the current note
@@ -346,13 +352,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 showButtonFeedback(saveNoteBtn, '保存', '已保存', true);
             }
         } catch (error) {
-            console.error('保存笔记失败:', error);
+console.error('保存笔记失败:', error, '笔记数据:', noteToSave); // Added noteToSave to log
             if (isAutoSave) {
-                // console.error('自动保存失败:', error);
+                console.error('自动保存失败:', error, '笔记数据:', noteToSave); // Added noteToSave to log
                 if (saveNoteBtn.textContent !== '保存失败' && !saveNoteBtn.disabled) {
                     const originalText = saveNoteBtn.textContent;
                     saveNoteBtn.textContent = '自动保存失败';
                     saveNoteBtn.style.backgroundColor = 'var(--error-color, #F44336)';
+                    saveNoteBtn.style.borderColor = 'var(--error-color, #F44336)';
                     saveNoteBtn.style.color = 'white';
                     setTimeout(() => {
                         if (saveNoteBtn.textContent === '自动保存失败' && !saveNoteBtn.disabled) {
