@@ -822,7 +822,7 @@ body.light-theme #sendMessageBtn svg, body.light-theme #attachFileBtn svg {
     width: 300px;
     min-width: 250px;
     background-color: var(--secondary-bg);
-    /* border-left: 1px solid var(--border-color); */ /* Removed this line */
+    border-left: 1px solid var(--border-color);
     display: flex;
     flex-direction: column;
     padding: 0; /* Header will have padding */
@@ -881,8 +881,8 @@ body.light-theme #clearNotificationsBtn:hover, body.light-theme .notifications-h
 }
 .notifications-header .header-button svg {
     stroke: currentColor;
-    width: 16px; /* Slightly smaller icon for this header */
-    height: 16px;
+    width: 18px; /* Increased icon size */
+    height: 18px; /* Increased icon size */
 }
 
 .notifications-status {
