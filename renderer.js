@@ -197,6 +197,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 secondaryText: computedStyle.getPropertyValue('--secondary-text').trim()
             };
             window.notificationRenderer.renderVCPLogNotification(logData, originalRawMessage, notificationsListUl, themeColors);
+
+            // 新增逻辑：如果通知栏隐藏，则显示它
+            const notificationsSidebarElement = document.getElementById('notificationsSidebar');
+            if (notificationsSidebarElement && !notificationsSidebarElement.classList.contains('active')) {
+                // console.log('[Renderer] New notification received, notifications sidebar is hidden. Showing sidebar.');
+                window.electronAPI.sendToggleNotificationsSidebar();
+            }
         }
     });
     // console.log('[RENDERER_INIT] VCPLog listeners registered.');
