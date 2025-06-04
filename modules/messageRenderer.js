@@ -1103,9 +1103,13 @@ function toggleEditMode(messageItem, message) {
         textarea.focus();
         textarea.addEventListener('input', () => autoResizeTextarea(textarea));
         textarea.addEventListener('keydown', (event) => {
-            if (event.key === 'Escape') {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault(); // 阻止默认的回车换行
+                saveButton.click();
+            } else if (event.key === 'Escape') {
                 cancelButton.click();
             }
+            // Shift + Enter 会执行默认的换行行为
         });
     }
 }
