@@ -81,7 +81,41 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Function to render Markdown with syntax highlighting
     function renderMarkdown(markdown) {
         if (window.marked && window.hljs) {
+            const renderer = new marked.Renderer();
+            const originalImageRenderer = renderer.image.bind(renderer);
+
+            renderer.image = (href, title, text) => {
+                console.log(`[Marked Renderer - All Images] Raw href type: ${typeof href}, value:`, href, `title: ${title}, text: ${text}`);
+
+                let actualHref = href;
+                if (typeof href === 'object' && href !== null && href.href) {
+                    actualHref = href.href; // Attempt to get string URL from object
+                    console.log(`[Marked Renderer] Extracted href from object: ${actualHref}`);
+                } else if (typeof href !== 'string') {
+                    console.error('[Marked Renderer] href is not a string and has no .href property. Cannot render image. Href was:', href);
+                     // Return alt text or a placeholder if href is unusable
+                    return text || '[Image URL Error]';
+                }
+
+                // Ensure actualHref is a string before proceeding with startsWith
+                if (typeof actualHref === 'string') {
+                    if (actualHref.startsWith('file:///')) {
+                        console.log(`[Marked Renderer] Rendering local image with alt: "${text}" and title: "${title}" using actualHref: ${actualHref}`);
+                        const escapedHref = actualHref.replace(/"/g, '"');
+                        return `<img src="${escapedHref}" alt="${text || 'Pasted Image'}" ${title ? `title="${title}"` : ''} style="max-width: 100%; display: block;">`;
+                    } else if (actualHref.startsWith('http://') || actualHref.startsWith('https://')) {
+                        console.log(`[Marked Renderer] Rendering remote image: ${actualHref}`);
+                        const escapedHref = actualHref.replace(/"/g, '"');
+                        return `<img src="${escapedHref}" alt="${text || 'Pasted Image'}" ${title ? `title="${title}"` : ''} style="max-width: 100%;">`;
+                    }
+                }
+                
+                console.log('[Marked Renderer] Passing to originalImageRenderer for href:', actualHref);
+                return originalImageRenderer(actualHref, title, text);
+            };
+
             marked.setOptions({
+                renderer: renderer,
                 highlight: function(code, lang) {
                     const language = hljs.getLanguage(lang) ? lang : 'plaintext';
                     return hljs.highlight(code, { language }).value;
@@ -444,8 +478,90 @@ console.error('保存笔记失败:', error, '笔记数据:', noteToSave); // Add
     });
 
     noteContentInput.addEventListener('input', (e) => {
+        console.log('[Input Event] noteContentInput.value before renderMarkdown:', JSON.stringify(e.target.value)); // Log the value
         renderMarkdown(e.target.value); // Existing live preview
         debouncedSaveNote(); // Trigger debounced auto-save
+    });
+
+    // Event listener for pasting content into noteContentInput
+    noteContentInput.addEventListener('paste', async (event) => {
+        const items = event.clipboardData.items;
+        let imageFound = false;
+
+        for (const item of items) {
+            if (item.type.startsWith('image/')) {
+                event.preventDefault(); // Prevent default paste behavior for images
+                imageFound = true;
+
+                if (!activeNoteId) {
+                    // If no active note, create a new one first before saving image
+                    // This is a simplified approach; ideally, user would explicitly create a new note
+                    // or we'd auto-create a "temp" note for the image.
+                    alert('请先选择或创建一篇笔记，再粘贴图片。');
+                    console.warn('Attempted to paste image without an active note.');
+                    return;
+                }
+
+                const file = item.getAsFile();
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = async (e) => {
+                        const base64Data = e.target.result.split(',')[1]; // Get base64 part
+                        const extension = file.type.split('/')[1] || 'png'; // e.g., 'png', 'jpeg'
+
+                        try {
+                            const result = await window.electronAPI.savePastedImageToFile({
+                                data: base64Data,
+                                extension: extension
+                            }, activeNoteId); // Pass activeNoteId for organization
+
+                            if (result.success && result.attachment) {
+                                let imagePath = result.attachment.internalPath; // Expected format: file://C:\path\to\image.png or file:///path/image.png
+
+                                if (imagePath.startsWith('file://')) {
+                                    imagePath = imagePath.substring(7); // Remove file:// -> C:\path\to\image.png or /path/image.png
+                                }
+                                
+                                // Replace all backslashes with forward slashes
+                                imagePath = imagePath.replace(/\\/g, '/'); // -> C:/path/to/image.png or /path/image.png
+                                
+                                // Construct the final URL with file:///
+                                // This ensures correct format like file:///C:/path/image.png or file:///path/image.png
+                                const imageUrl = `file:///${imagePath}`;
+                                const markdownLink = `![pasted_image](${imageUrl})`;
+
+                                // Insert markdownLink at current cursor position
+                                const start = noteContentInput.selectionStart;
+                                const end = noteContentInput.selectionEnd;
+                                const currentValue = noteContentInput.value;
+
+                                noteContentInput.value = currentValue.substring(0, start) + markdownLink + currentValue.substring(end);
+                                
+                                // Move cursor after the inserted link
+                                noteContentInput.selectionStart = noteContentInput.selectionEnd = start + markdownLink.length;
+
+                                // Trigger input event manually to update preview and auto-save
+                                noteContentInput.dispatchEvent(new Event('input', { bubbles: true }));
+                                console.log('Pasted image saved and Markdown link inserted:', markdownLink);
+                            } else {
+                                console.error('Failed to save pasted image:', result.error);
+                                alert('保存粘贴图片失败: ' + (result.error || '未知错误'));
+                            }
+                        } catch (error) {
+                            console.error('Error during image paste process:', error);
+                            alert('处理粘贴图片时发生错误: ' + error.message);
+                        }
+                    };
+                    reader.readAsDataURL(file);
+                }
+                break; // Only process the first image found
+            }
+        }
+
+        if (!imageFound) {
+            // If no image found, allow default paste behavior for text
+            // No need to do anything, default behavior will proceed
+        }
     });
 
     // Initial load of notes
