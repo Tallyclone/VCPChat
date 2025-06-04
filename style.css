@@ -523,8 +523,27 @@ body.light-theme .sidebar-button:hover {
 }
 /* 为只有图标的按钮调整一下padding，使其看起来更方正 */
 .chat-actions .header-button#themeToggleBtn {
-    padding: 0 8px; /* 稍微减少左右padding */
+    padding: 0 10px; /* 与其他按钮保持一致的内边距 */
+    position: relative;
+    top: 3.4px; /* 调整后的对齐 */
 }
+
+.theme-icon {
+    width: 26px; /* 用户调整后的图标大小 */
+    height: 26px; /* 用户调整后的图标大小 */
+    /* fill: currentColor; */ /* 由具体图标控制填充 */
+}
+
+#sun-icon {
+    stroke: #FFD700; /* 柔和的黄色 */
+    fill: #FFD700;   /* 确保太阳中心也填充黄色 */
+}
+
+#moon-icon {
+    stroke: #6495ED; /* 柔和的蓝色 */
+    fill: #6495ED;   /* 确保月亮也填充蓝色 */
+}
+
 .chat-actions .header-button:hover {
     background-color: var(--button-hover-bg); /* 使用按钮悬停背景色 */
     border-color: var(--button-hover-bg);
@@ -784,9 +803,13 @@ body.light-theme .message-item.assistant {
     margin-left: 8px;
 }
 #sendMessageBtn svg, #attachFileBtn svg {
-    fill: var(--primary-text); /* 图标颜色 */
+    width: 26px; /* 缩小图标尺寸 */
+    height: 26px; /* 缩小图标尺寸 */
+    stroke: var(--primary-text); /* 图标颜色 */
+    fill: currentColor; /* 确保有填充 */
 }
 body.light-theme #sendMessageBtn svg, body.light-theme #attachFileBtn svg {
+    stroke: #ffffff; /* 亮色主题下图标用白色 */
     fill: #ffffff; /* 亮色主题下图标用白色 */
 }
 
