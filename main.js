@@ -193,7 +193,7 @@ app.whenReady().then(() => {
     // --- End of Moved IPC Handler Registration ---
 
     // Notes IPC Handlers
-    const NOTES_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Notes');
+    const NOTES_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Notemodules');
     fs.ensureDirSync(NOTES_DIR); // Ensure the Notes directory exists
 
     ipcMain.handle('read-txt-notes', async () => {
@@ -244,27 +244,51 @@ app.whenReady().then(() => {
         }
     });
 
+function formatTimestampForFilename(timestamp) {
+    const date = new Date(timestamp);
+    const year = date.getFullYear();
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    const seconds = date.getSeconds().toString().padStart(2, '0');
+    const milliseconds = date.getMilliseconds().toString().padStart(3, '0');
+    return `${year}${month}${day}_${hours}${minutes}${seconds}_${milliseconds}`;
+}
+
     ipcMain.handle('write-txt-note', async (event, noteData) => {
         try {
             const { id, title, username, timestamp, content, oldFileName } = noteData;
-            const newFileName = `${title}-${username}-${timestamp}.txt`;
+            // 使用格式化时间戳和原始毫秒时间戳来构建文件名，确保唯一性
+            const formattedTimestamp = formatTimestampForFilename(timestamp);
+            // 新文件名格式: 标题-用户名-YYYYMMDD_HHmmss_ms.txt
+            const newFileName = `${title}-${username}-${formattedTimestamp}.txt`;
             const newFilePath = path.join(NOTES_DIR, newFileName);
 
             // If oldFileName exists and is different from newFileName, delete the old file
+            console.log(`[Main Process - write-txt-note] oldFileName: ${oldFileName}, newFileName: ${newFileName}`);
             if (oldFileName && oldFileName !== newFileName) {
                 const oldFilePath = path.join(NOTES_DIR, oldFileName);
                 if (await fs.pathExists(oldFilePath)) {
-                    await fs.remove(oldFilePath);
-                    console.log(`旧笔记文件已删除: ${oldFilePath}`);
+                    try {
+                        await fs.remove(oldFilePath);
+                        console.log(`[Main Process - write-txt-note] 旧笔记文件已成功删除: ${oldFilePath}`);
+                    } catch (removeError) {
+                        console.error(`[Main Process - write-txt-note] 删除旧笔记文件失败: ${oldFilePath}`, removeError);
+                        // Continue saving the new file even if old one fails to delete
+                    }
+                } else {
+                    console.log(`[Main Process - write-txt-note] 旧笔记文件不存在，无需删除: ${oldFilePath}`);
                 }
             }
 
+            // 文件内容头部仍然使用原始毫秒时间戳，因为这是read-txt-notes解析的依据
             const fileContent = `${title}-${username}-${timestamp}\n${content}`;
             await fs.writeFile(newFilePath, fileContent, 'utf8');
-            console.log(`笔记已保存到: ${newFilePath}`);
+            console.log(`[Main Process - write-txt-note] 笔记已保存到: ${newFilePath}`);
             return { success: true, fileName: newFileName };
         } catch (error) {
-            console.error('保存TXT笔记失败:', error);
+            console.error('[Main Process - write-txt-note] 保存TXT笔记失败:', error);
             return { error: error.message };
         }
     });
@@ -304,7 +328,7 @@ app.whenReady().then(() => {
             show: false
         });
 
-        const notesUrl = `file://${path.join(__dirname, 'Notes', 'notes.html')}?theme=${encodeURIComponent(theme || 'dark')}`;
+        const notesUrl = `file://${path.join(__dirname, 'Notemodules', 'notes.html')}?theme=${encodeURIComponent(theme || 'dark')}`;
         console.log(`[Main Process] Attempting to load URL in notes window: ${notesUrl.substring(0, 200)}...`);
         
         notesWindow.loadURL(notesUrl)
@@ -357,7 +381,7 @@ app.whenReady().then(() => {
             content: encodeURIComponent(content || ''),
             theme: encodeURIComponent(theme || 'dark')
         });
-        const notesUrl = `file://${path.join(__dirname, 'Notes', 'notes.html')}?${queryParams.toString()}`;
+        const notesUrl = `file://${path.join(__dirname, 'Notemodules', 'notes.html')}?${queryParams.toString()}`;
         
         console.log(`[Main Process] Attempting to load URL in new notes window: ${notesUrl.substring(0, 250)}...`);
         
