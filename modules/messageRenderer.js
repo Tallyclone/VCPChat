@@ -1099,9 +1099,14 @@ function toggleEditMode(messageItem, message) {
         contentDiv.parentNode.insertBefore(textarea, contentDiv.nextSibling);
         textarea.parentNode.insertBefore(controlsDiv, textarea.nextSibling);
         
-        if (autoResizeTextarea) autoResizeTextarea(textarea); 
+        if (autoResizeTextarea) autoResizeTextarea(textarea);
         textarea.focus();
         textarea.addEventListener('input', () => autoResizeTextarea(textarea));
+        textarea.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                cancelButton.click();
+            }
+        });
     }
 }
 
