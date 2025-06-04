@@ -198,12 +198,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             };
             window.notificationRenderer.renderVCPLogNotification(logData, originalRawMessage, notificationsListUl, themeColors);
 
-            // 新增逻辑：如果通知栏隐藏，则显示它
-            const notificationsSidebarElement = document.getElementById('notificationsSidebar');
-            if (notificationsSidebarElement && !notificationsSidebarElement.classList.contains('active')) {
-                // console.log('[Renderer] New notification received, notifications sidebar is hidden. Showing sidebar.');
-                window.electronAPI.sendToggleNotificationsSidebar();
-            }
+            // 旧的自动展开通知栏逻辑已移除，后续将由新的悬浮通知机制处理
+            // const notificationsSidebarElement = document.getElementById('notificationsSidebar');
+            // if (notificationsSidebarElement && !notificationsSidebarElement.classList.contains('active')) {
+            //     window.electronAPI.sendToggleNotificationsSidebar();
+            // }
         }
     });
     // console.log('[RENDERER_INIT] VCPLog listeners registered.');

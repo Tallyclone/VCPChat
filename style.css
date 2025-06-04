@@ -1926,3 +1926,103 @@ body.light-theme input[type="file"]::file-selector-button:hover {
     width: 100%; /* 已经在JS中设置，这里再次强调以确保CSS层面的行为一致 */
     /* 其他 .message-edit-textarea 的样式 (如 min-width, min-height, padding 等) 保持不变 */
 }
+
+/* --- Floating Toast Notifications --- */
+#floating-toast-notifications-container {
+    position: fixed;
+    top: 40px; /* Adjust based on title bar height + desired spacing */
+    right: 20px;
+    width: 320px; /* Adjust as needed */
+    z-index: 2000; /* High z-index to be on top */
+    display: flex;
+    flex-direction: column;
+    gap: 10px; /* Spacing between toasts */
+}
+
+.floating-toast-notification {
+    /* background-color: var(--notification-bg); */ /* Replaced for磨砂效果 */
+    background-color: rgba(var(--rgb-secondary-bg-dark, 40, 40, 44), 0.85); /* Fallback for dark, see below for theme specific */
+    color: var(--primary-text);
+    padding: 12px 15px; /* padding-right will be adjusted as close button is removed */
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25); /* Slightly stronger shadow */
+    /* border: 1px solid var(--notification-border); */ /* Removed border */
+    font-size: 0.9em;
+    position: relative;
+    opacity: 0;
+    transform: translateX(100%);
+    transition: opacity 0.4s ease-out, transform 0.4s ease-out, background-color 0.3s ease;
+    cursor: pointer;
+    overflow: hidden;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+
+    /* 流光动画 (copied from .notification-item) */
+    background-image: linear-gradient(
+        110deg,
+        transparent 0%, /* Start with transparent for better blend with blur */
+        transparent 35%, /* Hold transparency longer */
+        var(--accent-bg) 50%,    /* Shimmer highlight using accent color */
+        transparent 65%,
+        transparent 100%
+    );
+    background-size: 300% 100%; /* Make gradient wider than element for sweep effect */
+    animation: vcp-shimmer-bg 5s linear infinite; /* Adjusted speed */
+}
+
+body.dark-theme .floating-toast-notification { /* Explicit for dark theme */
+    background-color: rgba(40, 40, 44, 0.85); /* Darker磨砂 */
+}
+
+body.light-theme .floating-toast-notification {
+    background-color: rgba(240, 244, 248, 0.85); /* Lighter磨砂 for light theme */
+    color: var(--primary-text-light);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1); /* Lighter shadow for light theme */
+}
+
+
+.floating-toast-notification.visible {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.floating-toast-notification.exiting {
+    opacity: 0;
+    transform: translateX(110%); /* Slide out further */
+}
+
+
+.floating-toast-notification strong {
+    color: var(--highlight-text);
+    display: block;
+    margin-bottom: 5px;
+    font-size: 1.05em;
+}
+
+.floating-toast-notification .notification-content p {
+    margin: 0;
+    line-height: 1.4;
+}
+.floating-toast-notification .notification-content pre {
+    background-color: rgba(0,0,0,0.1); /* Slightly darker for pre in toast */
+    padding: 6px 8px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    margin-top: 6px;
+    max-height: 80px; /* Limit height for toasts */
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+
+/* .floating-toast-notification .toast-close-btn styles removed as button is removed */
+
+.floating-toast-notification .notification-timestamp {
+    font-size: 0.75em;
+    color: var(--secondary-text);
+    opacity: 0.8;
+    display: block;
+    text-align: right;
+    margin-top: 8px;
+}

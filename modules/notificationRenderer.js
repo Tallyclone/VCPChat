@@ -28,14 +28,11 @@ function updateVCPLogStatus(statusUpdate, vcpLogConnectionStatusDiv) {
  * Renders a VCPLog notification in the notifications list.
  * @param {VCPLogData|string} logData - The parsed JSON log data or a raw string message.
  * @param {string|null} originalRawMessage - The original raw string message from WebSocket, if available.
- * @param {HTMLElement} notificationsListUl - The UL element for notifications.
- * @param {Object} themeColors - An object containing theme colors like --notification-bg, --accent-bg, --highlight-text, --border-color, --primary-text, --secondary-text
+ * @param {HTMLElement} notificationsListUl - The UL element for the persistent notifications sidebar.
+ * @param {Object} themeColors - An object containing theme colors (largely unused now with CSS variables).
  */
 function renderVCPLogNotification(logData, originalRawMessage = null, notificationsListUl, themeColors = {}) {
-    if (!notificationsListUl) return;
-
-    const bubble = document.createElement('li');
-    bubble.classList.add('notification-item');
+    const toastContainer = document.getElementById('floating-toast-notifications-container');
 
     const textToCopy = originalRawMessage !== null ? originalRawMessage :
                        (typeof logData === 'object' && logData !== null ? JSON.stringify(logData, null, 2) : String(logData));
@@ -105,80 +102,120 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
     }
     // --- End Content Parsing ---
 
-    const strongTitle = document.createElement('strong');
-    strongTitle.textContent = titleText;
-    // 移除直接设置颜色，让CSS变量控制
-    // if (themeColors.highlightText) strongTitle.style.color = themeColors.highlightText;
-    bubble.appendChild(strongTitle);
+    // Function to populate a notification element (either toast or list item)
+    const populateNotificationElement = (element, isToast) => {
+        const strongTitle = document.createElement('strong');
+        strongTitle.textContent = titleText;
+        element.appendChild(strongTitle);
 
-    const notificationContentDiv = document.createElement('div');
-    notificationContentDiv.classList.add('notification-content');
-
-    if (mainContent) {
-        if (contentIsPreformatted) {
-            const pre = document.createElement('pre');
-            pre.textContent = mainContent.substring(0, 300) + (mainContent.length > 300 ? '...' : '');
-            notificationContentDiv.appendChild(pre);
-        } else {
-            const p = document.createElement('p');
-            p.textContent = mainContent.substring(0, 300) + (mainContent.length > 300 ? '...' : '');
-            notificationContentDiv.appendChild(p);
-        }
-    }
-    bubble.appendChild(notificationContentDiv);
-
-    const copyButton = document.createElement('button');
-    copyButton.className = 'notification-copy-btn';
-    copyButton.textContent = '📋';
-    copyButton.title = '复制消息到剪贴板';
-    copyButton.onclick = (e) => {
-        e.stopPropagation();
-        navigator.clipboard.writeText(textToCopy).then(() => {
-            const originalText = copyButton.textContent;
-            copyButton.textContent = '已复制!';
-            copyButton.disabled = true;
-            setTimeout(() => {
-                copyButton.textContent = originalText;
-                copyButton.disabled = false;
-            }, 1500);
-        }).catch(err => {
-            console.error('通知复制失败: ', err);
-            const originalText = copyButton.textContent;
-            copyButton.textContent = '错误!';
-            setTimeout(() => {
-                copyButton.textContent = originalText;
-            }, 1500);
-        });
-    };
-    bubble.appendChild(copyButton);
-
-    const timestampSpan = document.createElement('span');
-    timestampSpan.classList.add('notification-timestamp');
-    timestampSpan.textContent = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-    // 移除直接设置颜色，让CSS变量控制
-    // if (themeColors.secondaryText) timestampSpan.style.color = themeColors.secondaryText;
-    bubble.appendChild(timestampSpan);
-
-    bubble.onclick = () => {
-        bubble.style.opacity = '0';
-        bubble.style.transform = 'translateX(100%)';
-        setTimeout(() => {
-            if (bubble.parentNode) {
-                bubble.parentNode.removeChild(bubble);
+        const contentDiv = document.createElement('div');
+        contentDiv.classList.add('notification-content');
+        if (mainContent) {
+            if (contentIsPreformatted) {
+                const pre = document.createElement('pre');
+                pre.textContent = mainContent.substring(0, 300) + (mainContent.length > 300 ? '...' : '');
+                contentDiv.appendChild(pre);
+            } else {
+                const p = document.createElement('p');
+                p.textContent = mainContent.substring(0, 300) + (mainContent.length > 300 ? '...' : '');
+                contentDiv.appendChild(p);
             }
-        }, 500); // Match CSS transition
+        }
+        element.appendChild(contentDiv);
+
+        const timestampSpan = document.createElement('span');
+        timestampSpan.classList.add('notification-timestamp');
+        timestampSpan.textContent = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+        element.appendChild(timestampSpan);
+
+        if (isToast) {
+            // const closeButton = document.createElement('button'); // Removed close button
+            // closeButton.classList.add('toast-close-btn');
+            // closeButton.innerHTML = '&times;';
+            // closeButton.title = '关闭通知';
+            // closeButton.onclick = (e) => {
+            //     e.stopPropagation();
+            //     closeToastNotification(element);
+            // };
+            // element.appendChild(closeButton);
+            element.onclick = () => closeToastNotification(element); // Click on bubble itself still closes it
+        } else { // For persistent list item
+            const copyButton = document.createElement('button');
+            copyButton.className = 'notification-copy-btn';
+            copyButton.textContent = '📋';
+            copyButton.title = '复制消息到剪贴板';
+            copyButton.onclick = (e) => {
+                e.stopPropagation();
+                navigator.clipboard.writeText(textToCopy).then(() => {
+                    const originalText = copyButton.textContent;
+                    copyButton.textContent = '已复制!';
+                    copyButton.disabled = true;
+                    setTimeout(() => {
+                        copyButton.textContent = originalText;
+                        copyButton.disabled = false;
+                    }, 1500);
+                }).catch(err => {
+                    console.error('通知复制失败: ', err);
+                    const originalText = copyButton.textContent;
+                    copyButton.textContent = '错误!';
+                    setTimeout(() => {
+                        copyButton.textContent = originalText;
+                    }, 1500);
+                });
+            };
+            element.appendChild(copyButton);
+            // Click to dismiss for list items
+            element.onclick = () => {
+                element.style.opacity = '0';
+                element.style.transform = 'translateX(100%)'; // Assuming this is the desired animation for list items
+                setTimeout(() => {
+                    if (element.parentNode) {
+                        element.parentNode.removeChild(element);
+                    }
+                }, 500); // Match CSS transition for .notification-item
+            };
+        }
     };
 
-    // Apply theme colors to bubble itself
-    // if (themeColors.notificationBg) bubble.style.backgroundColor = themeColors.notificationBg; // 移除直接设置背景颜色，让CSS变量控制
-    // 移除直接设置颜色，让CSS变量控制
-    // if (themeColors.primaryText) bubble.style.color = themeColors.primaryText;
-    // 移除直接设置边框颜色，让CSS变量控制
-    // if (themeColors.borderColor) bubble.style.borderBottomColor = themeColors.borderColor;
+    const closeToastNotification = (toastElement) => {
+        toastElement.classList.add('exiting');
+        toastElement.addEventListener('transitionend', () => {
+            if (toastElement.parentNode) {
+                toastElement.parentNode.removeChild(toastElement);
+            }
+        }, { once: true });
+    };
 
+    // Render Floating Toast only if the sidebar is not already active
+    const notificationsSidebarElement = document.getElementById('notificationsSidebar');
+    if (toastContainer && (!notificationsSidebarElement || !notificationsSidebarElement.classList.contains('active'))) {
+        const toastBubble = document.createElement('div');
+        toastBubble.classList.add('floating-toast-notification');
+        populateNotificationElement(toastBubble, true);
+        toastContainer.prepend(toastBubble);
+        setTimeout(() => toastBubble.classList.add('visible'), 50);
+        setTimeout(() => {
+            if (toastBubble.parentNode && toastBubble.classList.contains('visible') && !toastBubble.classList.contains('exiting')) {
+                closeToastNotification(toastBubble);
+            }
+        }, 7000); // Auto-dismiss after 7 seconds
+    } else if (toastContainer && notificationsSidebarElement && notificationsSidebarElement.classList.contains('active')) {
+        // console.log('Notification sidebar is active, suppressing floating toast.');
+    } else if (!toastContainer) {
+        console.warn('Floating toast container not found. Toast not displayed.');
+    }
 
-    notificationsListUl.prepend(bubble);
-    setTimeout(() => bubble.classList.add('visible'), 50);
+    // Render to Persistent Notification Sidebar List
+    if (notificationsListUl) {
+        const listItemBubble = document.createElement('li'); // Use 'li' for the list
+        listItemBubble.classList.add('notification-item'); // Existing class for list items
+        populateNotificationElement(listItemBubble, false);
+        notificationsListUl.prepend(listItemBubble);
+        // Apply 'visible' class for potential animations on list items if defined in CSS
+        setTimeout(() => listItemBubble.classList.add('visible'), 50);
+    } else {
+        console.warn('Notifications sidebar UL not found. Persistent notification not added.');
+    }
 }
 
 // Expose functions to be used by renderer.js
