@@ -26,7 +26,7 @@
     --tool-bubble-bg-dark: #3a3a3e;   /* VCP工具调用气泡背景 */
     --tool-bubble-border-dark: #58585e;
     --notification-bg-dark: #2f2f33;
-    --notification-header-bg-dark: #3a3a3e;
+    --notification-header-bg-dark: #303034; /* 比 secondary-bg-dark (#28282c) 略深 */
     --notification-border-dark: #48484c;
     --scrollbar-track-dark: rgba(40, 40, 40, 0.5);
     --scrollbar-thumb-dark: rgba(100, 100, 100, 0.6);
@@ -52,7 +52,7 @@
     --tool-bubble-bg-light: #e0e6eb;   /* VCP工具调用气泡背景 - 浅灰 */
     --tool-bubble-border-light: #b8c0c8;
     --notification-bg-light: #e8f4f8;
-    --notification-header-bg-light: #d0d8e0;
+    --notification-header-bg-light: #f0f0f0; /* 比 secondary-bg-light (#ffffff) 略深 */
     --notification-border-light: #3498db;
     --scrollbar-track-light: rgba(200, 200, 200, 0.5);
     --scrollbar-thumb-light: rgba(150, 150, 150, 0.6);
@@ -822,18 +822,19 @@ body.light-theme #sendMessageBtn svg, body.light-theme #attachFileBtn svg {
     width: 300px;
     min-width: 250px;
     background-color: var(--secondary-bg);
-    border-left: 1px solid var(--border-color);
+    /* border-left: 1px solid var(--border-color); */ /* Removed this line */
     display: flex;
     flex-direction: column;
     padding: 0; /* Header will have padding */
 }
 .notifications-header {
+    /* background-color: #e1e5eb; */ /* Removed fixed light color */
     padding: 10px 15px; /* Adjusted padding */
-    background-color: var(--accent-bg);
+    background-color: var(--notification-header-bg); /* 使用新定义的、略深的颜色 */
     display: flex;
     justify-content: space-between; /* Puts datetime-container to left, button to right */
     align-items: center;
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: none; /* 确认底部分隔线已移除 */
 }
 
 .notification-header-actions {
