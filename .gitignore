@@ -1,0 +1,18 @@
+gitignore
+# 忽略当前目录及其所有子目录下的所有文件和文件夹
+*
+
+# 但不忽略 .gitignore 文件本身（这是Git的常见实践）
+!.gitignore
+
+# 不忽略 Notemodules 文件夹
+!Notemodules/
+
+# 不忽略 Notemodules 文件夹内的所有内容（如果 Notemodules/ 内部还有子文件夹，需要更具体的规则）
+!Notemodules/*
+
+# 明确不忽略 notes.css, notes.html, notes.js
+# 即使它们在 Notemodules 内部，这条规则也会确保它们被跟踪
+!Notemodules/notes.css
+!Notemodules/notes.html
+!Notemodules/notes.js
