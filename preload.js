@@ -87,28 +87,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     readTextFromClipboard: async () => {
         console.log('[Preload - readTextFromClipboard] Function called.');
-        // 继续使用 topLevelClipboard 读取文本，如果这个之前是好的话。
-        // 如果 readText 也存在类似问题，也可以改成 IPC 调用主进程。
-        // 为保持一致性和健壮性，我们也可以将 readText 也移到主进程：
-        // 1. 在 main.js 添加 ipcMain.handle('read-text-from-clipboard-main', async () => clipboard.readText());
-        // 2. 此处修改为: return ipcRenderer.invoke('read-text-from-clipboard-main');
-        // 这里暂时保留原来的方式，如果图片读取通过主进程解决了，可以再考虑是否统一。
-
-        if (typeof topLevelClipboard === 'undefined' || topLevelClipboard === null) {
-            console.error('[Preload - readTextFromClipboard] topLevelClipboard (from preload top scope) is undefined or null INSIDE function.');
-            // 可以添加紧急备用方案，或者也改成IPC
-            return "";
-        }
-
-        if (typeof topLevelClipboard.readText !== 'function') {
-            console.error('[Preload - readTextFromClipboard]: topLevelClipboard.readText method is not available! topLevelClipboard keys:', Object.keys(topLevelClipboard));
-            return "";
-        }
+        console.log('[Preload - readTextFromClipboard] Function called. Invoking main process handler.');
         try {
-            return topLevelClipboard.readText();
-        } catch(e) {
-            console.error('[Preload - readTextFromClipboard] Error using topLevelClipboard for text:', e);
-            return "";
+            const result = await ipcRenderer.invoke('read-text-from-clipboard-main');
+            if (result && result.success) {
+                console.log('[Preload - readTextFromClipboard] Received text from main process.');
+                return result.text;
+            } else {
+                console.error('[Preload - readTextFromClipboard] Main process failed to read text:', result ? result.error : 'Unknown error from main');
+                return ""; // Return empty string on failure
+            }
+        } catch (error) {
+            console.error('[Preload - readTextFromClipboard] Error invoking "read-text-from-clipboard-main":', error);
+            return ""; // Return empty string on error
         }
     },
 

@@ -910,6 +910,18 @@ ipcMain.handle('read-image-from-clipboard-main', async () => {
     }
 });
 
+// IPC handler for reading text from clipboard
+ipcMain.handle('read-text-from-clipboard-main', async () => {
+    console.log('[Main Process] Received request to read text from clipboard.');
+    try {
+        const text = clipboard.readText();
+        return { success: true, text: text };
+    } catch (error) {
+        console.error('[Main Process] Error reading text from clipboard:', error);
+        return { success: false, error: error.message };
+    }
+});
+
 // New IPC handler for saving pasted images from notes
 ipcMain.handle('save-pasted-image-to-file', async (event, imageData, noteId) => {
     console.log(`[Main Process] Received save-pasted-image-to-file for noteId: ${noteId}, image type: ${imageData.extension}`);

@@ -915,14 +915,19 @@ function showContextMenu(event, messageItem, message) {
         };
         menu.appendChild(cancelOption);
     } else {
-        const editOption = document.createElement('div');
-        editOption.classList.add('context-menu-item');
-        editOption.textContent = '编辑消息';
-        editOption.onclick = () => {
-            toggleEditMode(messageItem, message);
-            closeContextMenu();
-        };
-        menu.appendChild(editOption);
+        const isEditing = messageItem.classList.contains('message-item-editing');
+        const textarea = isEditing ? messageItem.querySelector('.message-edit-textarea') : null;
+
+        if (!isEditing) {
+            const editOption = document.createElement('div');
+            editOption.classList.add('context-menu-item');
+            editOption.textContent = '编辑消息';
+            editOption.onclick = () => {
+                toggleEditMode(messageItem, message);
+                closeContextMenu();
+            };
+            menu.appendChild(editOption);
+        }
 
         const copyOption = document.createElement('div');
         copyOption.classList.add('context-menu-item');
@@ -936,6 +941,41 @@ function showContextMenu(event, messageItem, message) {
             closeContextMenu();
         };
         menu.appendChild(copyOption);
+
+        if (isEditing && textarea) {
+            const cutOption = document.createElement('div');
+            cutOption.classList.add('context-menu-item');
+            cutOption.textContent = '剪切文本';
+            cutOption.onclick = () => {
+                textarea.focus();
+                document.execCommand('cut');
+                closeContextMenu();
+            };
+            menu.appendChild(cutOption);
+
+            const pasteOption = document.createElement('div');
+            pasteOption.classList.add('context-menu-item');
+            pasteOption.textContent = '粘贴文本';
+            pasteOption.onclick = async () => {
+                textarea.focus();
+                try {
+                    const text = await window.electronAPI.readTextFromClipboard();
+                    if (text) {
+                        // Insert text at cursor position or replace selection
+                        const start = textarea.selectionStart;
+                        const end = textarea.selectionEnd;
+                        textarea.value = textarea.value.substring(0, start) + text + textarea.value.substring(end);
+                        textarea.selectionStart = textarea.selectionEnd = start + text.length;
+                        // Trigger input event for any listeners (e.g., autoResizeTextarea)
+                        textarea.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+                    }
+                } catch (err) {
+                    console.error('Failed to paste text from clipboard:', err);
+                }
+                closeContextMenu();
+            };
+            menu.appendChild(pasteOption);
+        }
 
         // Option: Create Branch (Moved)
         const createBranchOption = document.createElement('div');
@@ -1111,6 +1151,7 @@ function toggleEditMode(messageItem, message) {
             }
             // Shift + Enter 会执行默认的换行行为
         });
+        // Removed contextmenu listener for textarea, as we will modify the existing showContextMenu
     }
 }
 
