@@ -242,6 +242,17 @@ textarea:focus {
     color: var(--primary-text-color); /* Or white if the active bg is dark enough */
 }
 
+/* Styles for drag and drop */
+.note-list-panel li.dragging {
+    opacity: 0.5; /* Make the dragged item semi-transparent */
+    background-color: var(--accent-color); /* Optional: change background while dragging */
+}
+
+.note-list-panel li.drag-over-target {
+    border-top: 2px dashed var(--accent-color); /* Highlight potential drop target */
+    /* Or use background-color: var(--button-hover-bg-color); */
+}
+
 
 /* Main content area styling */
 .main-content {

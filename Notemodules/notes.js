@@ -14,12 +14,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     const contextMenuCut = document.getElementById('contextMenuCut');
     const contextMenuPaste = document.getElementById('contextMenuPaste');
 
-    let notes = [];
+
+    let notes = []; // Stores all notes
     let activeNoteId = null; // Stores the ID of the currently active note
     let deleteTimer = null; // Timer for two-step delete confirmation
-
     let autoSaveTimer = null; // Timer for debounced auto-save
     let currentUsername = 'defaultUser'; // Initialize with a fallback default
+    let draggedElement = null; // Used to store the element being dragged
 
     // Debounce function
     function debounce(func, delay) {
@@ -245,14 +246,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Function to display notes in the sidebar
     function displayNotes(filter = '') {
         noteList.innerHTML = '';
-        const filteredNotes = notes.filter(note =>
+        // Filter notes based on the search input
+        const notesToDisplay = notes.filter(note =>
             (note.title && note.title.toLowerCase().includes(filter.toLowerCase())) ||
             (note.content && note.content.toLowerCase().includes(filter.toLowerCase()))
-        ).sort((a, b) => b.timestamp - a.timestamp); // Sort by most recent
+        );
+        // The order of notesToDisplay will reflect the order in the `notes` array,
+        // which will be modified by drag and drop.
 
-        filteredNotes.forEach(note => {
+        notesToDisplay.forEach(note => {
             const listItem = document.createElement('li');
             listItem.dataset.id = note.id;
+            listItem.setAttribute('draggable', true); // Make the list item draggable
 
             const titleSpan = document.createElement('span');
             titleSpan.className = 'note-title-display';
@@ -276,8 +281,157 @@ document.addEventListener('DOMContentLoaded', async () => {
                 listItem.classList.add('active');
             }
             listItem.addEventListener('click', () => selectNote(note.id));
+
+            // Add drag and drop event listeners
+            listItem.addEventListener('dragstart', handleDragStart);
+            listItem.addEventListener('dragover', handleDragOver);
+            listItem.addEventListener('dragleave', handleDragLeave);
+            listItem.addEventListener('drop', handleDrop);
+            listItem.addEventListener('dragend', handleDragEnd);
+
             noteList.appendChild(listItem);
         });
+    }
+
+    // Drag and Drop Handlers
+    function handleDragStart(e) {
+        draggedElement = this; // 'this' is the source li element
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', this.dataset.id); // Store the id of the note being dragged
+        this.classList.add('dragging'); // Add a class to style the dragged item
+    }
+
+    function handleDragOver(e) {
+        e.preventDefault(); // Necessary to allow dropping
+        e.dataTransfer.dropEffect = 'move';
+        if (this !== draggedElement) {
+            this.classList.add('drag-over-target'); // Add class to highlight potential drop target
+        }
+        return false;
+    }
+
+    function handleDragLeave(e) {
+        this.classList.remove('drag-over-target'); // Remove highlight when dragging away
+    }
+
+    function handleDrop(e) {
+        e.stopPropagation();
+        e.preventDefault();
+        this.classList.remove('drag-over-target');
+
+        if (draggedElement && draggedElement !== this) {
+            const sourceNoteId = e.dataTransfer.getData('text/plain');
+            const targetNoteId = this.dataset.id;
+
+            let sourceIndex = notes.findIndex(note => note && note.id === sourceNoteId);
+            let originalTargetIndex = notes.findIndex(note => note && note.id === targetNoteId);
+
+            if (sourceIndex === -1 || originalTargetIndex === -1) {
+                console.error('Source or target note not found in notes array during drop.', { sourceNoteId, targetNoteId, sourceIndex, originalTargetIndex });
+                if (draggedElement) draggedElement.classList.remove('dragging');
+                draggedElement = null;
+                return false;
+            }
+            
+            // Ensure draggedNote is valid before splicing
+            if (!notes[sourceIndex]) {
+                console.error('Invalid draggedNote at sourceIndex:', sourceIndex, 'notes:', notes);
+                if (draggedElement) draggedElement.classList.remove('dragging');
+                draggedElement = null;
+                return false;
+            }
+
+            const [draggedNoteObject] = notes.splice(sourceIndex, 1);
+            
+            if (!draggedNoteObject) {
+                 console.error('draggedNoteObject is undefined after splice. SourceIndex:', sourceIndex);
+                 // Attempt to re-fetch notes to recover state, or simply log and prevent further error
+                 if (draggedElement) draggedElement.classList.remove('dragging');
+                 draggedElement = null;
+                 // Potentially call loadNotes() here if state is critical, or just display error
+                 return false;
+            }
+
+
+            // After removing the source, the target's index might have shifted if source was before it.
+            let currentTargetIndexAfterSplice = notes.findIndex(note => note && note.id === targetNoteId);
+
+            const rect = this.getBoundingClientRect();
+            const verticalMidpoint = rect.top + rect.height / 2;
+
+            if (currentTargetIndexAfterSplice !== -1) {
+                if (e.clientY < verticalMidpoint) {
+                    notes.splice(currentTargetIndexAfterSplice, 0, draggedNoteObject);
+                } else {
+                    notes.splice(currentTargetIndexAfterSplice + 1, 0, draggedNoteObject);
+                }
+            } else {
+                // This case means the target element was the one just before the source,
+                // and after source was removed, the original target is now at the end of the list
+                // or the list became empty.
+                // A simpler logic: if the original target was at an index `k`, and source was at `j`.
+                // If j < k, new target index is k-1. If j > k, new target index is k.
+                // We are inserting relative to the DOM element `this`.
+                // If the target element is `this`, and it's still in the DOM,
+                // we can find its new position in the `notes` array (which should match DOM order after filtering).
+                // The most robust way if `currentTargetIndexAfterSplice` is -1 (which means targetNoteId is no longer in notes array after splice,
+                // which should only happen if targetNoteId was the same as sourceNoteId, but this is prevented by `draggedElement !== this`)
+                // is to determine insertion based on the DOM position of `this` relative to other elements.
+                // However, since `displayNotes` re-renders from `notes` array, we must ensure `notes` array is correct.
+
+                // If targetIndex was -1, it means the targetNoteId is no longer in the `notes` array.
+                // This should not happen if `draggedElement !== this`.
+                // As a fallback, if `sourceIndex < originalTargetIndex` (meaning source was before target),
+                // we insert at `originalTargetIndex - 1`. Otherwise, at `originalTargetIndex`.
+                // This logic needs to be careful if `originalTargetIndex` was 0.
+                
+                let insertionPoint = -1;
+                if (sourceIndex < originalTargetIndex) { // Source was before target
+                    insertionPoint = originalTargetIndex -1;
+                } else { // Source was after target
+                    insertionPoint = originalTargetIndex;
+                }
+
+                // Adjust insertion point if it's out of bounds after splice
+                if (insertionPoint < 0) insertionPoint = 0;
+                if (insertionPoint > notes.length) insertionPoint = notes.length;
+
+
+                if (e.clientY < verticalMidpoint) {
+                     notes.splice(insertionPoint, 0, draggedNoteObject);
+                } else {
+                    // If inserting "after" the target, and target was the last element,
+                    // the insertion point might need to be notes.length
+                    if (insertionPoint === notes.length -1 && e.clientY >= verticalMidpoint) {
+                         notes.push(draggedNoteObject);
+                    } else {
+                         notes.splice(insertionPoint + 1, 0, draggedNoteObject);
+                    }
+                }
+            }
+
+            // Persist the new order (e.g., to localStorage or backend)
+            // For now, we just update the in-memory `notes` array.
+            // If you have a backend or persistent storage for note order, call it here.
+            // Example: await saveNoteOrderToBackend(notes.map(note => note.id));
+
+            const currentFilter = searchInput.value;
+            displayNotes(currentFilter); // Re-render the list
+        }
+        if (draggedElement) { // Ensure draggedElement is cleared even if no drop happened on a valid target
+             draggedElement.classList.remove('dragging');
+        }
+        draggedElement = null; // Clear in all cases after drop attempt
+        return false;
+    }
+    
+    function handleDragEnd(e) {
+        this.classList.remove('dragging');
+        // Clean up any drag-over-target classes that might be lingering
+        document.querySelectorAll('#noteList li.drag-over-target').forEach(item => {
+            item.classList.remove('drag-over-target');
+        });
+        draggedElement = null;
     }
 
     // Function to select and display a note
@@ -334,7 +488,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         function sanitizeForFileName(name, defaultName = 'untitled') {
             if (typeof name !== 'string' || name.trim() === '') return defaultName;
             // 替换文件名中的非法字符为下划线
-            let sanitized = name.replace(/[\\/:*?"<>|#%&{}\n\r\t]/g, '_');
+            let sanitized = name.replace(/[\\/:*?"<>|]/g, '_');
             // 将多个连续的下划线替换为单个下划线
             sanitized = sanitized.replace(/__+/g, '_');
             // 移除可能导致问题的首尾下划线或点
