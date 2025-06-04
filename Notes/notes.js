@@ -404,11 +404,17 @@ console.error('保存笔记失败:', error, '笔记数据:', noteToSave); // Add
             clearTimeout(deleteTimer);
             deleteTimer = null;
             
-            notes = notes.filter(n => n.id !== activeNoteId);
+            const noteToDelete = notes.find(n => n.id === activeNoteId);
+            if (!noteToDelete) {
+                showButtonFeedback(deleteNoteBtn, '删除', '笔记未找到', false);
+                return;
+            }
+
             try {
-                await window.electronAPI.writeNotes(notes);
-                await loadNotes(); 
-                clearNoteEditor(); 
+                await window.electronAPI.deleteTxtNote(noteToDelete.fileName);
+                notes = notes.filter(n => n.id !== activeNoteId);
+                await loadNotes();
+                clearNoteEditor();
                 showButtonFeedback(deleteNoteBtn, '删除', '已删除', true);
             } catch (error) {
                 console.error('删除笔记失败:', error);
