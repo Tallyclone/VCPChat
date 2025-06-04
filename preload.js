@@ -46,6 +46,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     readTxtNotes: () => ipcRenderer.invoke('read-txt-notes'),
     writeTxtNote: (noteData) => ipcRenderer.invoke('write-txt-note', noteData),
     deleteTxtNote: (fileName) => ipcRenderer.invoke('delete-txt-note', fileName),
+    savePastedImageToFile: (imageData, noteId) => ipcRenderer.invoke('save-pasted-image-to-file', imageData, noteId),
 
     // Open Notes Window
     openNotesWindow: (theme) => ipcRenderer.invoke('open-notes-window', theme),

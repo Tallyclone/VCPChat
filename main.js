@@ -1,6 +1,6 @@
 // main.js - Electron 主进程
 
-const { app, BrowserWindow, ipcMain, dialog, nativeTheme, Menu, shell, clipboard, net, nativeImage } = require('electron'); // Added net and nativeImage
+const { app, BrowserWindow, ipcMain, dialog, nativeTheme, Menu, shell, clipboard, net, nativeImage, globalShortcut } = require('electron'); // Added net, nativeImage, and globalShortcut
 const path = require('path');
 const fs = require('fs-extra'); // Using fs-extra for convenience
 const os = require('os');
@@ -15,6 +15,9 @@ const APP_DATA_ROOT_IN_PROJECT = path.join(PROJECT_ROOT, 'AppData');
 const AGENT_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Agents');
 const USER_DATA_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'UserData'); // For chat histories and attachments
 const SETTINGS_FILE = path.join(APP_DATA_ROOT_IN_PROJECT, 'settings.json');
+
+// Define a specific agent ID for notes attachments
+const NOTES_AGENT_ID = 'notes_attachments_agent';
 
 let mainWindow;
 let vcpLogWebSocket;
@@ -389,6 +392,14 @@ app.whenReady().then(() => {
             createWindow();
         }
     });
+
+    // Register global shortcut for DevTools
+    globalShortcut.register('Control+Shift+I', () => {
+        const focusedWindow = BrowserWindow.getFocusedWindow();
+        if (focusedWindow && focusedWindow.webContents && !focusedWindow.webContents.isDestroyed()) {
+            focusedWindow.webContents.toggleDevTools();
+        }
+    });
 });
 
 app.on('window-all-closed', () => {
@@ -398,6 +409,8 @@ app.on('window-all-closed', () => {
 });
 
 app.on('will-quit', () => {
+    // Unregister all shortcuts.
+    globalShortcut.unregisterAll();
     // Disconnect WebSocket on quit
     if (vcpLogWebSocket && vcpLogWebSocket.readyState === WebSocket.OPEN) {
         vcpLogWebSocket.close();
@@ -870,6 +883,42 @@ ipcMain.handle('read-image-from-clipboard-main', async () => {
     }
 });
 
+// New IPC handler for saving pasted images from notes
+ipcMain.handle('save-pasted-image-to-file', async (event, imageData, noteId) => {
+    console.log(`[Main Process] Received save-pasted-image-to-file for noteId: ${noteId}, image type: ${imageData.extension}`);
+    if (!imageData || !imageData.data || !imageData.extension) {
+        return { success: false, error: 'Invalid image data provided.' };
+    }
+    if (!noteId) {
+        return { success: false, error: 'Note ID is required to save image.' };
+    }
+
+    try {
+        // Ensure the notes agent directory exists for fileManager
+        const notesAgentDir = path.join(USER_DATA_DIR, NOTES_AGENT_ID);
+        await fs.ensureDir(notesAgentDir);
+
+        // Use the noteId as the topicId for fileManager to organize images per note
+        // This creates a structure like AppData/UserData/notes_attachments_agent/topics/NOTE_ID/attachments/
+        const originalFileName = `pasted_image_${Date.now()}.${imageData.extension}`;
+        const buffer = Buffer.from(imageData.data, 'base64');
+        const fileTypeHint = `image/${imageData.extension}`; // e.g., image/png
+
+        const storedFileObject = await fileManager.storeFile(
+            buffer,
+            originalFileName,
+            NOTES_AGENT_ID, // Use the dedicated agent ID for notes
+            noteId,         // Use the noteId as the topicId for organization
+            fileTypeHint
+        );
+        console.log('[Main Process] Image saved successfully:', storedFileObject.internalPath);
+        return { success: true, attachment: storedFileObject };
+    } catch (error) {
+        console.error('[Main Process] Error saving pasted image for note:', error);
+        return { success: false, error: error.message };
+    }
+});
+
 // Chat History Management
 ipcMain.handle('get-chat-history', async (event, agentId, topicId) => {
     if (!topicId) {
@@ -878,6 +927,12 @@ ipcMain.handle('get-chat-history', async (event, agentId, topicId) => {
         return { error: errorMessage };
     }
     try {
+        // Special handling for notes agent to ensure its directory structure is created if needed
+        if (agentId === NOTES_AGENT_ID) {
+            const notesAgentTopicDir = path.join(USER_DATA_DIR, NOTES_AGENT_ID, 'topics', topicId);
+            await fs.ensureDir(notesAgentTopicDir); // Ensure the specific note's attachment directory exists
+        }
+
         const historyFile = path.join(USER_DATA_DIR, agentId, 'topics', topicId, 'history.json');
         await fs.ensureDir(path.dirname(historyFile)); // Ensure topic directory exists
 
