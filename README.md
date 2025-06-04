@@ -71,6 +71,7 @@
 ![示例图1](assets/E1.jpg)
 ![示例图2](assets/E2.jpg)
 ![示例图3](assets/E3.jpg)
+![示例图4](assets/E4.jpg)
 
 ## 客户端职责
 
