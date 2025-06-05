@@ -627,8 +627,10 @@ body.light-theme .chat-actions .header-button:hover {
     border-radius: 50%;
     object-fit: cover;
     flex-shrink: 0; 
-    border: 1px solid var(--border-color);
-    margin-top: 0px; 
+    /* border: 1px solid var(--border-color); */ /* Original static border */
+    border: 2px solid transparent; /* Default transparent border, thickness can be adjusted */
+    transition: border-color 0.3s ease; /* Smooth transition if color changes */
+    margin-top: 0px;
 }
 
 .name-time-block {

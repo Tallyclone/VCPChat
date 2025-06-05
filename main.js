@@ -439,6 +439,34 @@ ipcMain.handle('save-settings', async (event, settings) => {
     }
 });
 
+// New IPC Handler to save calculated avatar color
+ipcMain.handle('save-avatar-color', async (event, { type, id, color }) => {
+    try {
+        if (type === 'user') {
+            const settings = await fs.pathExists(SETTINGS_FILE) ? await fs.readJson(SETTINGS_FILE) : {};
+            settings.userAvatarCalculatedColor = color;
+            await fs.writeJson(SETTINGS_FILE, settings, { spaces: 2 });
+            console.log(`[Main] User avatar color saved: ${color}`);
+            return { success: true };
+        } else if (type === 'agent' && id) {
+            const configPath = path.join(AGENT_DIR, id, 'config.json');
+            if (await fs.pathExists(configPath)) {
+                const agentConfig = await fs.readJson(configPath);
+                agentConfig.avatarCalculatedColor = color;
+                await fs.writeJson(configPath, agentConfig, { spaces: 2 });
+                console.log(`[Main] Agent ${id} avatar color saved: ${color}`);
+                return { success: true };
+            } else {
+                return { success: false, error: `Agent config for ${id} not found.` };
+            }
+        }
+        return { success: false, error: 'Invalid type or missing ID for saving avatar color.' };
+    } catch (error) {
+        console.error('Error saving avatar color:', error);
+        return { success: false, error: error.message };
+    }
+});
+
 // User Avatar Management
 ipcMain.handle('save-user-avatar', async (event, avatarData) => {
     try {
@@ -449,7 +477,7 @@ ipcMain.handle('save-user-avatar', async (event, avatarData) => {
         const nodeBuffer = Buffer.from(avatarData.buffer);
         await fs.writeFile(USER_AVATAR_FILE, nodeBuffer);
         console.log(`用户头像已保存到: ${USER_AVATAR_FILE}`);
-        return { success: true, avatarUrl: `file://${USER_AVATAR_FILE}?t=${Date.now()}` };
+        return { success: true, avatarUrl: `file://${USER_AVATAR_FILE}?t=${Date.now()}`, needsColorExtraction: true };
     } catch (error) {
         console.error(`保存用户头像失败:`, error);
         return { error: `保存用户头像失败: ${error.message}` };
@@ -477,6 +505,7 @@ ipcMain.handle('get-agents', async () => {
                 if (await fs.pathExists(configPath)) {
                     const config = await fs.readJson(configPath);
                     agentData.name = config.name || folderName;
+                    agentData.config.avatarCalculatedColor = config.avatarCalculatedColor || null; // Load persisted color
                     let topicsArray = config.topics && Array.isArray(config.topics) && config.topics.length > 0
                                        ? config.topics
                                        : [{ id: "default", name: "主要对话", createdAt: Date.now() }];
@@ -500,6 +529,7 @@ ipcMain.handle('get-agents', async () => {
                         systemPrompt: `你是 ${agentData.name}。`,
                         model: '',
                         temperature: 0.7,
+                        avatarCalculatedColor: null, // Add placeholder
                         contextTokenLimit: 4000,
                         maxOutputTokens: 1000
                     };
@@ -516,7 +546,7 @@ ipcMain.handle('get-agents', async () => {
                     agentData.avatarUrl = `file://${avatarPathPng}`;
                 } else if (await fs.pathExists(avatarPathJpg)) {
                     agentData.avatarUrl = `file://${avatarPathJpg}`;
-                } else if (await fs.pathExists(avatarPathJpeg)) { 
+                } else if (await fs.pathExists(avatarPathJpeg)) {
                     agentData.avatarUrl = `file://${avatarPathJpeg}`;
                 } else if (await fs.pathExists(avatarPathGif)) {
                     agentData.avatarUrl = `file://${avatarPathGif}`;
@@ -757,8 +787,8 @@ ipcMain.handle('save-avatar', async (event, agentId, avatarData) => {
 
         await fs.writeFile(newAvatarPath, nodeBuffer);
         console.log(`Agent ${agentId} 的头像已保存到: ${newAvatarPath}`);
-        // Add a timestamp to bust cache for the avatar URL
-        return { success: true, avatarUrl: `file://${newAvatarPath}?t=${Date.now()}` };
+        // Return success and URL, color will be calculated and saved by renderer via 'save-avatar-color'
+        return { success: true, avatarUrl: `file://${newAvatarPath}?t=${Date.Now()}`, needsColorExtraction: true };
     } catch (error) {
         console.error(`保存Agent ${agentId} 头像失败:`, error);
         return { error: `保存头像失败: ${error.message}` };

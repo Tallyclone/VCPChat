@@ -360,6 +360,12 @@ async function loadAndApplyGlobalSettings() {
         if (globalSettings.userAvatarUrl && userAvatarPreview) {
             userAvatarPreview.src = globalSettings.userAvatarUrl;
             userAvatarPreview.style.display = 'block';
+            // Always set the user avatar color from settings, even if it's null (to reset)
+            if (window.messageRenderer) {
+                window.messageRenderer.setUserAvatarColor(globalSettings.userAvatarCalculatedColor);
+            }
+        } else if (window.messageRenderer) { // If no avatar URL, ensure color state is also null
+            window.messageRenderer.setUserAvatarColor(null);
         } else if (userAvatarPreview) {
             userAvatarPreview.src = '#';
             userAvatarPreview.style.display = 'none';
@@ -458,28 +464,36 @@ async function loadAgentList() {
     }
 }
  
-async function selectAgent(agentId, agentName) {
+async function selectAgent(agentId, agentName) { // agentName is already a parameter
     if (currentAgentId === agentId && currentTopicId) {
         return;
     }
  
     currentAgentId = agentId;
-    currentTopicId = null; 
+    // currentAgentName = agentName; // Update local state if you use it elsewhere in renderer.js
+    currentTopicId = null;
     currentChatHistory = [];
-
+ 
     document.querySelectorAll('.topic-list .topic-item.active-topic-glowing').forEach(item => {
         item.classList.remove('active-topic-glowing');
     });
-
+ 
     if (window.messageRenderer) {
         window.messageRenderer.setCurrentAgentId(currentAgentId);
+        window.messageRenderer.setCurrentAgentName(agentName); // <--- ADD THIS CALL
         window.messageRenderer.setCurrentTopicId(null);
         // Fetch agent details to get avatar
         const agentData = (await window.electronAPI.getAgents()).find(a => a.id === agentId);
         if (agentData) {
             window.messageRenderer.setCurrentAgentAvatar(agentData.avatarUrl);
+            if (agentData.config && agentData.config.avatarCalculatedColor) { // Load persisted color for the agent
+                window.messageRenderer.setCurrentAgentAvatarColor(agentData.config.avatarCalculatedColor);
+            } else {
+                window.messageRenderer.setCurrentAgentAvatarColor(null); // Explicitly set to null if not in config
+            }
         } else {
             window.messageRenderer.setCurrentAgentAvatar(null); // Fallback to default
+            window.messageRenderer.setCurrentAgentAvatarColor(null);
         }
     }
     currentChatAgentNameH3.textContent = `与 ${agentName} 聊天中`;
@@ -1352,6 +1366,16 @@ function setupEventListeners() {
                     if (window.messageRenderer) {
                         window.messageRenderer.setUserAvatar(avatarSaveResult.avatarUrl);
                     }
+                    // Trigger color extraction and saving for the new user avatar
+                    if (avatarSaveResult.needsColorExtraction && window.messageRenderer && window.messageRenderer.electronAPI.saveAvatarColor) {
+                        getAverageColorFromAvatar(avatarSaveResult.avatarUrl, (avgColor) => { // Assuming getAverageColorFromAvatar is accessible here or via messageRenderer
+                            if (avgColor) {
+                                window.messageRenderer.electronAPI.saveAvatarColor({ type: 'user', id: 'user_global', color: avgColor })
+                                    .then(() => window.messageRenderer.setUserAvatarColor(avgColor));
+                            }
+                        });
+                    }
+
                     croppedUserAvatarFile = null; // Clear after save
                     userAvatarInput.value = '';
                 } else {
@@ -1973,6 +1997,15 @@ async function saveCurrentAgentSettings(event) {
             if (avatarResult.error) {
                 alert(`保存头像失败: ${avatarResult.error}`);
             } else {
+                // Trigger color extraction and saving for the new agent avatar
+                if (avatarResult.needsColorExtraction && window.messageRenderer && window.messageRenderer.electronAPI.saveAvatarColor) {
+                     getAverageColorFromAvatar(avatarResult.avatarUrl, (avgColor) => { // Assuming getAverageColorFromAvatar is accessible
+                        if (avgColor) {
+                            window.messageRenderer.electronAPI.saveAvatarColor({ type: 'agent', id: agentId, color: avgColor })
+                                .then(() => { if(currentAgentId === agentId) window.messageRenderer.setCurrentAgentAvatarColor(avgColor); });
+                        }
+                    });
+                }
                 // Update preview immediately with the version from backend (with timestamp)
                 agentAvatarPreview.src = avatarResult.avatarUrl;
                 croppedAvatarFile = null; // Clear after successful save
@@ -2002,8 +2035,14 @@ async function saveCurrentAgentSettings(event) {
             currentChatAgentNameH3.textContent = `与 ${newConfig.name} 聊天中`;
             // Update agent avatar in message renderer if current agent's avatar changed
             const updatedAgent = (await window.electronAPI.getAgents()).find(a => a.id === currentAgentId);
-            if (updatedAgent && window.messageRenderer) window.messageRenderer.setCurrentAgentAvatar(updatedAgent.avatarUrl);
-
+            if (updatedAgent && window.messageRenderer) {
+                window.messageRenderer.setCurrentAgentAvatar(updatedAgent.avatarUrl);
+                // Ensure config object exists before accessing avatarCalculatedColor
+                const newAgentColor = updatedAgent.config ? updatedAgent.config.avatarCalculatedColor : null;
+                window.messageRenderer.setCurrentAgentAvatarColor(newAgentColor || null);
+ 
+            }
+ 
             if(selectedAgentNameForSettingsSpan) selectedAgentNameForSettingsSpan.textContent = newConfig.name;
         }
     } else {
@@ -2040,15 +2079,20 @@ async function deleteCurrentAgent() {
                 messageInput.disabled = true;
                 sendMessageBtn.disabled = true;
                 attachFileBtn.disabled = true;
-                await displayTopicTimestampBubble(null, null); 
+                if (window.messageRenderer) { // Clear current agent color in renderer
+                    window.messageRenderer.setCurrentAgentAvatar(null);
+                    window.messageRenderer.setCurrentAgentAvatarColor(null);
+                    window.messageRenderer.setCurrentAgentName('AI'); // Reset agent name in renderer
+                }
+                await displayTopicTimestampBubble(null, null);
                 document.querySelectorAll('.topic-list .topic-item.active-topic-glowing').forEach(item => {
                     item.classList.remove('active-topic-glowing');
-                    item.classList.remove('active'); 
+                    item.classList.remove('active');
                 });
             }
             
-            await loadAgentList(); 
-            displayAgentSettingsInTab(); 
+            await loadAgentList();
+            displayAgentSettingsInTab();
         } else {
             alert(`删除Agent失败: ${result.error}`);
         }

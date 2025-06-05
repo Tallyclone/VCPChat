@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     loadSettings: () => ipcRenderer.invoke('load-settings'),
     saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
     saveUserAvatar: (avatarData) => ipcRenderer.invoke('save-user-avatar', avatarData), // New for user avatar
+    saveAvatarColor: (data) => ipcRenderer.invoke('save-avatar-color', data), // {type, id, color}
 
     // Agents
     getAgents: () => ipcRenderer.invoke('get-agents'),
@@ -159,7 +160,7 @@ const electronAPIForLogging = {
     openAdminPanel: "function",
     onWindowMaximized: "function", onWindowUnmaximized: "function",
     showImageContextMenu: "function",
-    openImageInNewWindow: "function",
+    openImageInNewWindow: "function", saveAvatarColor: "function",
     saveUserAvatar: "function" // Added
 };
 console.log('[Preload] electronAPI object that *should* be exposed (structure check):', electronAPIForLogging);

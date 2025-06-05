@@ -397,13 +397,15 @@ function getAverageColorFromAvatar(imageUrl, callback) {
         callback(null);
         return;
     }
-    if (avatarColorCache.has(imageUrl)) {
-        callback(avatarColorCache.get(imageUrl));
+    const cacheKey = imageUrl.split('?')[0]; // Use URL without timestamp for cache
+    if (avatarColorCache.has(cacheKey)) {
+        callback(avatarColorCache.get(cacheKey));
         return;
     }
 
     const img = new Image();
     img.crossOrigin = "Anonymous";
+    const uniqueImageUrlForErrorLog = imageUrl; // Capture for error logging
     img.src = imageUrl;
 
     img.onload = () => {
@@ -473,11 +475,12 @@ function getAverageColorFromAvatar(imageUrl, callback) {
                 finalColorString = null; // No suitable pixels at all
             }
 
-            avatarColorCache.set(imageUrl, finalColorString);
+            avatarColorCache.set(cacheKey, finalColorString);
+            // console.log(`[AvatarColor] Processed and cached ${finalColorString} for: ${imageUrl ? imageUrl.split('?')[0] : 'null_url'}`);
             callback(finalColorString);
 
         } catch (e) {
-            console.error("Error processing image data for color extraction:", e, "URL:", imageUrl);
+            console.error(`[AvatarColor] Error in getImageData/processing for: ${uniqueImageUrlForErrorLog.split('?')[0]}`, e);
             avatarColorCache.set(imageUrl, null);
             callback(null);
         }
@@ -485,7 +488,7 @@ function getAverageColorFromAvatar(imageUrl, callback) {
 
     img.onerror = () => {
         console.warn(`Failed to load image for color extraction: ${imageUrl}`);
-        avatarColorCache.set(imageUrl, null);
+        avatarColorCache.set(cacheKey, null); // Cache null on error to prevent retries for same broken URL
         callback(null);
     };
 }
@@ -662,11 +665,14 @@ let mainRendererReferences = {
     globalSettings: {},
     chatMessagesDiv: null,
     electronAPI: null,
+    currentUserCalculatedColor: null, // For persisted user color
+    currentAgentCalculatedColor: null, // For persisted agent color
+    currentAgentName: 'AI', // Add this with a default
     markedInstance: null,
     scrollToBottom: () => {},
     summarizeTopicFromMessages: async () => "",
     openModal: () => {},
-    openImagePreviewModal: () => {}, 
+    openImagePreviewModal: () => {},
     autoResizeTextarea: () => {},
     handleCreateBranch: () => {},
     activeStreamingMessageId: null,
@@ -692,36 +698,65 @@ function initializeMessageRenderer(refs) {
     if (refs.globalSettings && refs.globalSettings.userAvatarUrl) { // Initialize user avatar from global settings
         mainRendererReferences.currentUserAvatarUrl = refs.globalSettings.userAvatarUrl;
     }
+    if (refs.globalSettings && refs.globalSettings.userAvatarCalculatedColor) {
+        mainRendererReferences.currentUserCalculatedColor = refs.globalSettings.userAvatarCalculatedColor;
+    } else {
+        mainRendererReferences.currentUserCalculatedColor = null;
+    }
+
     injectEnhancedStyles();
 }
 
 function setCurrentAgentId(agentId) {
+    // When agent ID changes, reset the agent-specific calculated color.
+    // It will be re-loaded when the new agent's config is processed.
+    // mainRendererReferences.currentAgentCalculatedColor = null; // This might be too aggressive. Let selectAgent handle setting it.
     mainRendererReferences.currentAgentId = agentId;
 }
 
-function setCurrentTopicId(topicId) { 
+function setCurrentTopicId(topicId) {
+    // Topic changes don't affect avatar colors directly.
     mainRendererReferences.currentTopicId = topicId;
 }
 
 function setCurrentAgentAvatar(avatarUrl) {
     const oldUrl = mainRendererReferences.currentAgentAvatarUrl;
-    if (oldUrl && oldUrl !== avatarUrl) {
-        avatarColorCache.delete(oldUrl); // Clear cache for the old URL
+    // Only clear cache if the URL is actually different AND the old URL was valid
+    if (oldUrl && oldUrl !== (avatarUrl || 'assets/default_avatar.png')) {
+        avatarColorCache.delete(oldUrl);
+        console.log(`[AvatarColor] Cleared cache for old agent avatar: ${oldUrl}`);
     }
     mainRendererReferences.currentAgentAvatarUrl = avatarUrl || 'assets/default_avatar.png';
+    // When agent avatar changes, its persisted color might be from an old avatar, so clear it
+    // The new color will be extracted and saved if needed.
+    // mainRendererReferences.currentAgentCalculatedColor = null; // Let's rely on loading from config
 }
 
-function setUserAvatar(avatarUrl) { // New function to update user avatar
+function setUserAvatar(avatarUrl) {
     const oldUrl = mainRendererReferences.currentUserAvatarUrl;
-    if (oldUrl && oldUrl !== avatarUrl) {
-        avatarColorCache.delete(oldUrl); // Clear cache for the old URL
+    // Only clear cache if the URL is actually different AND the old URL was valid
+    if (oldUrl && oldUrl !== (avatarUrl || 'assets/default_user_avatar.png')) {
+        avatarColorCache.delete(oldUrl);
+        console.log(`[AvatarColor] Cleared cache for old user avatar: ${oldUrl}`);
     }
     mainRendererReferences.currentUserAvatarUrl = avatarUrl || 'assets/default_user_avatar.png';
+    // Similar to agent, if user avatar URL changes, clear the old persisted color assumption.
+    // mainRendererReferences.currentUserCalculatedColor = null;
+}
+
+// New functions to set persisted colors
+function setCurrentAgentAvatarColor(color) {
+    // console.log(`[AvatarColorState] Setting Agent Calculated Color: ${color} for agent ${mainRendererReferences.currentAgentId}`);
+    mainRendererReferences.currentAgentCalculatedColor = color;
+}
+function setUserAvatarColor(color) {
+    // console.log(`[AvatarColorState] Setting User Calculated Color: ${color}`);
+    mainRendererReferences.currentUserCalculatedColor = color;
 }
 
 
 function renderMessage(message, isInitialLoad = false) {
-    const { chatMessagesDiv, globalSettings, currentAgentId, currentTopicId, currentAgentAvatarUrl, currentUserAvatarUrl, electronAPI, markedInstance, scrollToBottom } = mainRendererReferences;
+    const { chatMessagesDiv, globalSettings, currentAgentId, currentTopicId, currentAgentAvatarUrl, currentUserAvatarUrl, electronAPI, markedInstance, scrollToBottom, currentUserCalculatedColor, currentAgentCalculatedColor, currentAgentName } = mainRendererReferences; // Added currentAgentName
     if (!chatMessagesDiv || !electronAPI || !markedInstance) {
         console.error("MessageRenderer: Missing critical references.");
         return null;
@@ -743,9 +778,58 @@ function renderMessage(message, isInitialLoad = false) {
         });
     }
     
-    const contentDiv = document.createElement('div');
+    const contentDiv = document.createElement('div'); // This is the bubble content
     contentDiv.classList.add('md-content');
 
+    // --- Build message structure (avatar, name/time, bubble) ---
+    let avatarImg, nameTimeDiv, senderNameDiv, detailsAndBubbleWrapper;
+
+    if (message.role === 'user' || message.role === 'assistant') {
+        avatarImg = document.createElement('img');
+        avatarImg.classList.add('chat-avatar');
+
+        nameTimeDiv = document.createElement('div');
+        nameTimeDiv.classList.add('name-time-block');
+        
+        senderNameDiv = document.createElement('div');
+        senderNameDiv.classList.add('sender-name');
+
+        if (message.role === 'user') {
+            avatarImg.src = currentUserAvatarUrl;
+            avatarImg.alt = (globalSettings.userName || 'User') + ' Avatar';
+            avatarImg.onerror = () => { avatarImg.src = 'assets/default_user_avatar.png'; };
+            senderNameDiv.textContent = globalSettings.userName || '你';
+        } else { // assistant
+            avatarImg.src = currentAgentAvatarUrl;
+            senderNameDiv.textContent = currentAgentName || 'AI'; // Use mainRendererReferences.currentAgentName
+            avatarImg.alt = (currentAgentName || 'AI') + ' Avatar';
+            avatarImg.onerror = () => { avatarImg.src = 'assets/default_avatar.png'; };
+        }
+        nameTimeDiv.appendChild(senderNameDiv);
+
+        if (message.timestamp && !message.isThinking) {
+            const timestampDiv = document.createElement('div');
+            timestampDiv.classList.add('message-timestamp');
+            timestampDiv.textContent = new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            nameTimeDiv.appendChild(timestampDiv);
+        }
+        
+        detailsAndBubbleWrapper = document.createElement('div');
+        detailsAndBubbleWrapper.classList.add('details-and-bubble-wrapper');
+        detailsAndBubbleWrapper.appendChild(nameTimeDiv);
+        detailsAndBubbleWrapper.appendChild(contentDiv); // Bubble content goes here
+
+        messageItem.appendChild(avatarImg);
+        messageItem.appendChild(detailsAndBubbleWrapper);
+    } else { // system messages
+        messageItem.appendChild(contentDiv); // Just content for system
+        messageItem.classList.add('system-message-layout');
+    }
+
+    // *** CRITICAL FIX: Append to DOM *before* synchronous color application ***
+    chatMessagesDiv.appendChild(messageItem);
+
+    // --- Content processing (Markdown, thinking indicator) ---
     if (message.isThinking) {
         contentDiv.innerHTML = `<span class="thinking-indicator">${message.content || '思考中'}<span class="thinking-indicator-dots">...</span></span>`;
         messageItem.classList.add('thinking');
@@ -754,7 +838,9 @@ function renderMessage(message, isInitialLoad = false) {
         processedContent = ensureSpaceAfterTilde(processedContent);
         processedContent = removeIndentationFromCodeBlockMarkers(processedContent);
         contentDiv.innerHTML = markedInstance.parse(processedContent);
-        processAllPreBlocksInContentDiv(contentDiv);
+        processAllPreBlocksInContentDiv(contentDiv); // For VCP Tool / Maid Diary
+
+        // Image click/context menu (ensure this happens after marked parsing)
 
         const imagesInContent = contentDiv.querySelectorAll('img');
         imagesInContent.forEach(img => {
@@ -774,65 +860,58 @@ function renderMessage(message, isInitialLoad = false) {
         });
     }
     
-    // --- New structure for QQ-like appearance ---
+    // --- Avatar Color Application Logic (now after messageItem is in DOM) ---
     if (message.role === 'user' || message.role === 'assistant') {
-        const avatarImg = document.createElement('img');
-        avatarImg.classList.add('chat-avatar');
-        if (message.role === 'user') {
-            avatarImg.src = currentUserAvatarUrl;
-            avatarImg.alt = (globalSettings.userName || 'User') + ' Avatar';
-            avatarImg.onerror = () => { avatarImg.src = 'assets/default_user_avatar.png'; }; // Fallback
-        } else { // assistant
-            avatarImg.src = currentAgentAvatarUrl;
-            const agentNameElem = document.querySelector(`.agent-list li[data-agent-id="${currentAgentId}"] .agent-name`);
-            avatarImg.alt = (agentNameElem?.textContent || 'AI') + ' Avatar';
-            avatarImg.onerror = () => { avatarImg.src = 'assets/default_avatar.png'; };
-        }
-
-        const nameTimeDiv = document.createElement('div');
-        nameTimeDiv.classList.add('name-time-block');
-        const senderNameDiv = document.createElement('div');
-        senderNameDiv.classList.add('sender-name');
-        if (message.role === 'user') {
-            senderNameDiv.textContent = globalSettings.userName || '你';
-        } else { // assistant
-            const agentNameElem = document.querySelector(`.agent-list li[data-agent-id="${currentAgentId}"] .agent-name`);
-            senderNameDiv.textContent = agentNameElem?.textContent || 'AI';
-        }
-        nameTimeDiv.appendChild(senderNameDiv);
-
-        if (message.timestamp && !message.isThinking) {
-            const timestampDiv = document.createElement('div');
-            timestampDiv.classList.add('message-timestamp');
-            timestampDiv.textContent = new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            nameTimeDiv.appendChild(timestampDiv);
-        }
-        
-        // Color the sender's name based on avatar's average color
-        const avatarUrlForColor = message.role === 'user' ? currentUserAvatarUrl : currentAgentAvatarUrl;
-        getAverageColorFromAvatar(avatarUrlForColor, (avgColor) => {
-            // Ensure messageItem is still in the DOM when the async callback fires
-            if (avgColor && messageItem.isConnected) {
-                const nameDivToColor = messageItem.querySelector('.sender-name');
-                if (nameDivToColor) {
-                    nameDivToColor.style.color = avgColor;
-                }
+        const isUserMessage = message.role === 'user';
+        const avatarUrlForColor = isUserMessage ? currentUserAvatarUrl : currentAgentAvatarUrl;
+        const persistedColor = isUserMessage ? currentUserCalculatedColor : currentAgentCalculatedColor;
+ 
+        const applyColorToElements = (colorStr) => {
+            // messageItem.isConnected should be true now
+            if (colorStr && messageItem.isConnected) {
+                const nameDivToColor = messageItem.querySelector('.sender-name'); // Query within messageItem
+                if (nameDivToColor) nameDivToColor.style.color = colorStr;
+                const avatarImgToBorder = messageItem.querySelector('.chat-avatar'); // Query within messageItem
+                if (avatarImgToBorder) avatarImgToBorder.style.borderColor = colorStr;
             }
-        });
-
-        const detailsAndBubbleWrapper = document.createElement('div');
-        detailsAndBubbleWrapper.classList.add('details-and-bubble-wrapper');
-        detailsAndBubbleWrapper.appendChild(nameTimeDiv);
-        detailsAndBubbleWrapper.appendChild(contentDiv);
-
-        messageItem.appendChild(avatarImg);
-        messageItem.appendChild(detailsAndBubbleWrapper);
-
-    } else { // system messages (keep simpler layout or specific styling)
-        messageItem.appendChild(contentDiv); // Just content for system
-        messageItem.classList.add('system-message-layout');
+        };
+ 
+        if (persistedColor) {
+            applyColorToElements(persistedColor);
+        } else if (avatarUrlForColor && !avatarUrlForColor.endsWith('default_avatar.png') && !avatarUrlForColor.endsWith('default_user_avatar.png')) {
+            getAverageColorFromAvatar(avatarUrlForColor, (avgColor) => {
+                applyColorToElements(avgColor); // Callback applies color
+                if (avgColor && messageItem.isConnected) { // Save if extracted and still connected
+                    const type = isUserMessage ? 'user' : 'agent';
+                    const idToSaveFor = isUserMessage ? 'user_global' : currentAgentId;
+ 
+                    if (idToSaveFor) {
+                        electronAPI.saveAvatarColor({ type, id: idToSaveFor, color: avgColor })
+                            .then(result => {
+                                if (result.success) {
+                                    if (type === 'user') setUserAvatarColor(avgColor);
+                                    // Only update currentAgentCalculatedColor if the agent hasn't changed during async op
+                                    if (type === 'agent' && idToSaveFor === mainRendererReferences.currentAgentId) {
+                                        setCurrentAgentAvatarColor(avgColor);
+                                    }
+                                }
+                            });
+                    }
+                }
+            });
+        } else { // Default avatar or no URL, reset to theme defaults
+            const nameDivDefault = messageItem.querySelector('.sender-name');
+            const avatarBorderDefault = messageItem.querySelector('.chat-avatar');
+            if (nameDivDefault) {
+                nameDivDefault.style.color = isUserMessage ? 'var(--secondary-text)' : 'var(--highlight-text)';
+            }
+            if (avatarBorderDefault) {
+                avatarBorderDefault.style.borderColor = 'transparent'; // Or var(--border-color) as per your design
+            }
+        }
     }
 
+    // --- Attachments (ensure contentDiv is the bubble's content div) ---
     if (message.attachments && message.attachments.length > 0) {
         const attachmentsContainer = document.createElement('div');
         attachmentsContainer.classList.add('message-attachments');
@@ -840,7 +919,7 @@ function renderMessage(message, isInitialLoad = false) {
             let attachmentElement;
             if (att.type.startsWith('image/')) {
                 attachmentElement = document.createElement('img');
-                attachmentElement.src = att.src; 
+                attachmentElement.src = att.src;
                 attachmentElement.alt = `附件图片: ${att.name}`;
                 attachmentElement.title = `点击在新窗口预览: ${att.name}`;
                 attachmentElement.classList.add('message-attachment-image-thumbnail');
@@ -848,6 +927,10 @@ function renderMessage(message, isInitialLoad = false) {
                     e.stopPropagation();
                     mainRendererReferences.electronAPI.openImageInNewWindow(att.src, att.name);
                 };
+                img.addEventListener('contextmenu', (e) => {
+                    e.preventDefault(); e.stopPropagation();
+                    mainRendererReferences.electronAPI.showImageContextMenu(img.src);
+                });
             } else if (att.type.startsWith('audio/')) {
                 attachmentElement = document.createElement('audio');
                 attachmentElement.src = att.src;
@@ -856,21 +939,31 @@ function renderMessage(message, isInitialLoad = false) {
                 attachmentElement = document.createElement('video');
                 attachmentElement.src = att.src;
                 attachmentElement.controls = true;
-                attachmentElement.style.maxWidth = '300px';
-            } else {
+                attachmentElement.style.maxWidth = '300px'; // Example style
+            } else { // Generic file
                 attachmentElement = document.createElement('a');
-                attachmentElement.href = att.src;
+                attachmentElement.href = att.src; // This would be the file:// internalPath
                 attachmentElement.textContent = `📄 ${att.name}`;
-                attachmentElement.target = '_blank';
+                attachmentElement.target = '_blank'; // Usually for web links, for file:// it might try to open in browser
                 attachmentElement.title = `点击打开文件: ${att.name}`;
-                attachmentElement.onclick = (e) => { e.preventDefault(); electronAPI.openPath(att.src.replace('file://', '')); };
+                // For local files, you might want to use shell.openPath via IPC
+                attachmentElement.onclick = (e) => {
+                    e.preventDefault();
+                    // Assuming electronAPI.openPath or similar exists and handles file:// paths
+                    // For simplicity, using openExternalLink which should handle file:// URIs by opening with default app
+                    if (electronAPI.sendOpenExternalLink && att.src.startsWith('file://')) {
+                         electronAPI.sendOpenExternalLink(att.src);
+                    } else {
+                        console.warn("Cannot open local file attachment, API missing or path not a file URI:", att.src);
+                    }
+                };
             }
             if (attachmentElement) attachmentsContainer.appendChild(attachmentElement);
         });
-        contentDiv.appendChild(attachmentsContainer);
+        contentDiv.appendChild(attachmentsContainer); // Append to the actual bubble content
     }
     
-    chatMessagesDiv.appendChild(messageItem);
+    // chatMessagesDiv.appendChild(messageItem); // MOVED EARLIER
 
     if (!message.isThinking && window.renderMathInElement) {
         window.renderMathInElement(contentDiv, {
@@ -1612,8 +1705,15 @@ window.messageRenderer = {
     setCurrentTopicId,
     setCurrentAgentAvatar,
     setUserAvatar, // Expose new function
+    setCurrentAgentAvatarColor, // New
+    setUserAvatarColor,         // New
+    setCurrentAgentName, // Add this
     renderMessage,
     startStreamingMessage,
     appendStreamChunk,
     finalizeStreamedMessage
 };
+
+function setCurrentAgentName(name) {
+    mainRendererReferences.currentAgentName = name || 'AI';
+}
