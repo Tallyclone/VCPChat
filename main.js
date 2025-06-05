@@ -15,6 +15,7 @@ const APP_DATA_ROOT_IN_PROJECT = path.join(PROJECT_ROOT, 'AppData');
 const AGENT_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Agents');
 const USER_DATA_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'UserData'); // For chat histories and attachments
 const SETTINGS_FILE = path.join(APP_DATA_ROOT_IN_PROJECT, 'settings.json');
+const USER_AVATAR_FILE = path.join(USER_DATA_DIR, 'user_avatar.png'); // Standardized user avatar file
 
 // Define a specific agent ID for notes attachments
 const NOTES_AGENT_ID = 'notes_attachments_agent';
@@ -51,54 +52,6 @@ function createWindow() {
         mainWindow.show();
     });
 
-    // Set application menu (basic example)
-    const menuTemplate = [
-        {
-            label: '文件',
-            submenu: [
-                { role: 'quit', label: '退出' }
-            ]
-        },
-        {
-            label: '编辑',
-            submenu: [
-                { role: 'undo', label: '撤销' },
-                { role: 'redo', label: '重做' },
-                { type: 'separator' },
-                { role: 'cut', label: '剪切' },
-                { role: 'copy', label: '复制' },
-                { role: 'paste', label: '粘贴' },
-                { role: 'selectAll', label: '全选' }
-            ]
-        },
-        {
-            label: '视图',
-            submenu: [
-                { role: 'reload', label: '重新加载' },
-                { role: 'forceReload', label: '强制重新加载' },
-                { role: 'toggleDevTools', label: '切换开发者工具' },
-                { type: 'separator' },
-                { role: 'resetZoom', label: '重置缩放' },
-                { role: 'zoomIn', label: '放大' },
-                { role: 'zoomOut', label: '缩小' },
-                { type: 'separator' },
-                { role: 'togglefullscreen', label: '切换全屏' }
-            ]
-        },
-        {
-            label: '帮助',
-            submenu: [
-                {
-                    label: '了解更多关于Electron',
-                    click: async () => {
-                        await shell.openExternal('https://electronjs.org');
-                    }
-                }
-            ]
-        }
-    ];
-    // const menu = Menu.buildFromTemplate(menuTemplate); // 注释掉原有菜单创建
-    // Menu.setApplicationMenu(menu); // 注释掉原有菜单设置
     mainWindow.setMenu(null); // 移除应用程序菜单栏
 
     // Set dark mode based on system preference, or allow user to toggle
@@ -206,9 +159,8 @@ app.whenReady().then(() => {
                 const filePath = path.join(NOTES_DIR, fileName);
                 const content = await fs.readFile(filePath, 'utf8');
                 
-                // 期望格式: 标题-用户名-时间戳\n笔记内容
                 const lines = content.split('\n');
-                if (lines.length < 1) continue; // Skip empty files
+                if (lines.length < 1) continue; 
 
                 const header = lines[0];
                 const noteContent = lines.slice(1).join('\n');
@@ -218,24 +170,22 @@ app.whenReady().then(() => {
                     const title = parts[0];
                     const username = parts[1];
                     const timestampStr = parts[2];
-                    const timestamp = parseInt(timestampStr, 10); // Convert timestamp string to number
+                    const timestamp = parseInt(timestampStr, 10); 
 
-                    // Extract ID from filename (e.g., "标题-时间戳.txt" -> "标题-时间戳")
                     const id = fileName.replace(/\.txt$/, '');
 
                     notes.push({
-                        id: id, // Use full filename without .txt as ID
+                        id: id, 
                         title: title,
                         username: username,
                         timestamp: timestamp,
                         content: noteContent,
-                        fileName: fileName // Store original filename for updates/deletes
+                        fileName: fileName 
                     });
                 } else {
                     console.warn(`跳过格式不正确的笔记文件: ${fileName}`);
                 }
             }
-            // Sort by most recent timestamp
             notes.sort((a, b) => b.timestamp - a.timestamp);
             return notes;
         } catch (error) {
@@ -259,13 +209,10 @@ function formatTimestampForFilename(timestamp) {
     ipcMain.handle('write-txt-note', async (event, noteData) => {
         try {
             const { id, title, username, timestamp, content, oldFileName } = noteData;
-            // 使用格式化时间戳和原始毫秒时间戳来构建文件名，确保唯一性
             const formattedTimestamp = formatTimestampForFilename(timestamp);
-            // 新文件名格式: 标题-用户名-YYYYMMDD_HHmmss_ms.txt
             const newFileName = `${title}-${username}-${formattedTimestamp}.txt`;
             const newFilePath = path.join(NOTES_DIR, newFileName);
 
-            // If oldFileName exists and is different from newFileName, delete the old file
             console.log(`[Main Process - write-txt-note] oldFileName: ${oldFileName}, newFileName: ${newFileName}`);
             if (oldFileName && oldFileName !== newFileName) {
                 const oldFilePath = path.join(NOTES_DIR, oldFileName);
@@ -275,14 +222,12 @@ function formatTimestampForFilename(timestamp) {
                         console.log(`[Main Process - write-txt-note] 旧笔记文件已成功删除: ${oldFilePath}`);
                     } catch (removeError) {
                         console.error(`[Main Process - write-txt-note] 删除旧笔记文件失败: ${oldFilePath}`, removeError);
-                        // Continue saving the new file even if old one fails to delete
                     }
                 } else {
                     console.log(`[Main Process - write-txt-note] 旧笔记文件不存在，无需删除: ${oldFilePath}`);
                 }
             }
 
-            // 文件内容头部仍然使用原始毫秒时间戳，因为这是read-txt-notes解析的依据
             const fileContent = `${title}-${username}-${timestamp}\n${content}`;
             await fs.writeFile(newFilePath, fileContent, 'utf8');
             console.log(`[Main Process - write-txt-note] 笔记已保存到: ${newFilePath}`);
@@ -363,13 +308,13 @@ function formatTimestampForFilename(timestamp) {
             minWidth: 800,
             minHeight: 600,
             title: title || '我的笔记 (分享)',
-            parent: mainWindow, // Optional: set parent
+            parent: mainWindow, 
             modal: false,
             webPreferences: {
-                preload: path.join(__dirname, 'preload.js'), // Crucial: ensure this preload is used
+                preload: path.join(__dirname, 'preload.js'), 
                 contextIsolation: true,
                 nodeIntegration: false,
-                devTools: true // Enable devtools for easier debugging
+                devTools: true 
             },
             icon: path.join(__dirname, 'assets', 'icon.png'),
             show: false
@@ -405,8 +350,6 @@ function formatTimestampForFilename(timestamp) {
             console.log('[Main Process] New notesWindow (from share) has been closed.');
             openChildWindows = openChildWindows.filter(win => win !== notesWindow);
         });
-        // No explicit return needed for ipcMain.handle if it's just performing an action
-        // unless the renderer expects a specific response.
     });
 
     createWindow();
@@ -417,7 +360,6 @@ function formatTimestampForFilename(timestamp) {
         }
     });
 
-    // Register global shortcut for DevTools
     globalShortcut.register('Control+Shift+I', () => {
         const focusedWindow = BrowserWindow.getFocusedWindow();
         if (focusedWindow && focusedWindow.webContents && !focusedWindow.webContents.isDestroyed()) {
@@ -433,9 +375,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('will-quit', () => {
-    // Unregister all shortcuts.
     globalShortcut.unregisterAll();
-    // Disconnect WebSocket on quit
     if (vcpLogWebSocket && vcpLogWebSocket.readyState === WebSocket.OPEN) {
         vcpLogWebSocket.close();
     }
@@ -448,17 +388,11 @@ app.on('will-quit', () => {
 
 ipcMain.on('open-external-link', (event, url) => {
   if (url) {
-    // 验证 URL 是否是期望的类型，例如 http, https, file
-    // 为安全起见，可以只允许 http 和 https
     if (url.startsWith('http:') || url.startsWith('https:')) {
       shell.openExternal(url).catch(err => {
         console.error('Failed to open external link:', err);
-        // 可以选择通知用户打开失败
       });
     } else if (url.startsWith('file:')) {
-      // 对于文件链接，shell.openExternal 会尝试用系统默认程序打开
-      // 如果希望所有文件链接都在外部浏览器打开（如果可能），则逻辑不变
-      // 如果有特定类型的文件不想用外部浏览器打开，可以在这里添加判断
       shell.openExternal(url).catch(err => {
         console.error('Failed to open external file link:', err);
       });
@@ -471,26 +405,85 @@ ipcMain.on('open-external-link', (event, url) => {
 // Settings Management
 ipcMain.handle('load-settings', async () => {
     try {
+        let settings = {};
         if (await fs.pathExists(SETTINGS_FILE)) {
-            const settings = await fs.readJson(SETTINGS_FILE);
-            return settings;
+            settings = await fs.readJson(SETTINGS_FILE);
         }
-        return {}; // Default empty settings
+        // Check for user avatar
+        if (await fs.pathExists(USER_AVATAR_FILE)) {
+            settings.userAvatarUrl = `file://${USER_AVATAR_FILE}?t=${Date.now()}`;
+        } else {
+            settings.userAvatarUrl = null; // Or a default path
+        }
+        return settings;
     } catch (error) {
         console.error('加载设置失败:', error);
-        return { error: error.message };
+        return { 
+            error: error.message,
+            sidebarWidth: 260,
+            notificationsSidebarWidth: 300,
+            userAvatarUrl: null
+        };
     }
 });
 
 ipcMain.handle('save-settings', async (event, settings) => {
     try {
-        await fs.writeJson(SETTINGS_FILE, settings, { spaces: 2 });
+        // User avatar URL is handled by 'save-user-avatar', remove it from general settings to avoid saving a file path
+        const { userAvatarUrl, ...settingsToSave } = settings;
+        await fs.writeJson(SETTINGS_FILE, settingsToSave, { spaces: 2 });
         return { success: true };
     } catch (error) {
         console.error('保存设置失败:', error);
         return { error: error.message };
     }
 });
+
+// New IPC Handler to save calculated avatar color
+ipcMain.handle('save-avatar-color', async (event, { type, id, color }) => {
+    try {
+        if (type === 'user') {
+            const settings = await fs.pathExists(SETTINGS_FILE) ? await fs.readJson(SETTINGS_FILE) : {};
+            settings.userAvatarCalculatedColor = color;
+            await fs.writeJson(SETTINGS_FILE, settings, { spaces: 2 });
+            console.log(`[Main] User avatar color saved: ${color}`);
+            return { success: true };
+        } else if (type === 'agent' && id) {
+            const configPath = path.join(AGENT_DIR, id, 'config.json');
+            if (await fs.pathExists(configPath)) {
+                const agentConfig = await fs.readJson(configPath);
+                agentConfig.avatarCalculatedColor = color;
+                await fs.writeJson(configPath, agentConfig, { spaces: 2 });
+                console.log(`[Main] Agent ${id} avatar color saved: ${color}`);
+                return { success: true };
+            } else {
+                return { success: false, error: `Agent config for ${id} not found.` };
+            }
+        }
+        return { success: false, error: 'Invalid type or missing ID for saving avatar color.' };
+    } catch (error) {
+        console.error('Error saving avatar color:', error);
+        return { success: false, error: error.message };
+    }
+});
+
+// User Avatar Management
+ipcMain.handle('save-user-avatar', async (event, avatarData) => {
+    try {
+        if (!avatarData || !avatarData.buffer) {
+            return { error: '保存用户头像失败：未提供有效的头像数据。' };
+        }
+        await fs.ensureDir(USER_DATA_DIR);
+        const nodeBuffer = Buffer.from(avatarData.buffer);
+        await fs.writeFile(USER_AVATAR_FILE, nodeBuffer);
+        console.log(`用户头像已保存到: ${USER_AVATAR_FILE}`);
+        return { success: true, avatarUrl: `file://${USER_AVATAR_FILE}?t=${Date.now()}`, needsColorExtraction: true };
+    } catch (error) {
+        console.error(`保存用户头像失败:`, error);
+        return { error: `保存用户头像失败: ${error.message}` };
+    }
+});
+
 
 // Agent Management
 ipcMain.handle('get-agents', async () => {
@@ -504,7 +497,7 @@ ipcMain.handle('get-agents', async () => {
                 const configPath = path.join(agentPath, 'config.json');
                 const avatarPathPng = path.join(agentPath, 'avatar.png');
                 const avatarPathJpg = path.join(agentPath, 'avatar.jpg');
-                const avatarPathJpeg = path.join(agentPath, 'avatar.jpeg'); // Add this line
+                const avatarPathJpeg = path.join(agentPath, 'avatar.jpeg'); 
                 const avatarPathGif = path.join(agentPath, 'avatar.gif');
                 
                 let agentData = { id: folderName, name: folderName, avatarUrl: null, config: {} };
@@ -512,6 +505,7 @@ ipcMain.handle('get-agents', async () => {
                 if (await fs.pathExists(configPath)) {
                     const config = await fs.readJson(configPath);
                     agentData.name = config.name || folderName;
+                    agentData.config.avatarCalculatedColor = config.avatarCalculatedColor || null; // Load persisted color
                     let topicsArray = config.topics && Array.isArray(config.topics) && config.topics.length > 0
                                        ? config.topics
                                        : [{ id: "default", name: "主要对话", createdAt: Date.now() }];
@@ -535,6 +529,7 @@ ipcMain.handle('get-agents', async () => {
                         systemPrompt: `你是 ${agentData.name}。`,
                         model: '',
                         temperature: 0.7,
+                        avatarCalculatedColor: null, // Add placeholder
                         contextTokenLimit: 4000,
                         maxOutputTokens: 1000
                     };
@@ -551,7 +546,7 @@ ipcMain.handle('get-agents', async () => {
                     agentData.avatarUrl = `file://${avatarPathPng}`;
                 } else if (await fs.pathExists(avatarPathJpg)) {
                     agentData.avatarUrl = `file://${avatarPathJpg}`;
-                } else if (await fs.pathExists(avatarPathJpeg)) { // Add this line
+                } else if (await fs.pathExists(avatarPathJpeg)) {
                     agentData.avatarUrl = `file://${avatarPathJpeg}`;
                 } else if (await fs.pathExists(avatarPathGif)) {
                     agentData.avatarUrl = `file://${avatarPathGif}`;
@@ -560,7 +555,6 @@ ipcMain.handle('get-agents', async () => {
             }
         }
 
-        // Apply saved order if it exists
         let settings = {};
         try {
             if (await fs.pathExists(SETTINGS_FILE)) {
@@ -576,14 +570,12 @@ ipcMain.handle('get-agents', async () => {
             settings.agentOrder.forEach(id => {
                 if (agentMap.has(id)) {
                     orderedAgents.push(agentMap.get(id));
-                    agentMap.delete(id); // Remove from map to handle agents not in order array
+                    agentMap.delete(id); 
                 }
             });
-            // Add any agents not in the order array to the end
             orderedAgents.push(...agentMap.values());
             agents = orderedAgents;
         } else {
-            // Default sort by name if no order is saved
             agents.sort((a, b) => a.name.localeCompare(b.name));
         }
         return agents;
@@ -610,7 +602,7 @@ ipcMain.handle('save-agent-order', async (event, orderedAgentIds) => {
             console.log('Settings file not found, will create a new one for agent order.');
         }
 
-        settings.agentOrder = orderedAgentIds; // Store the order of agent IDs
+        settings.agentOrder = orderedAgentIds; 
 
         await fs.writeFile(SETTINGS_FILE, JSON.stringify(settings, null, 2));
         console.log('Agent order saved successfully to:', SETTINGS_FILE);
@@ -652,13 +644,12 @@ ipcMain.handle('save-topic-order', async (event, agentId, orderedTopicIds) => {
         orderedTopicIds.forEach(id => {
             if (topicMap.has(id)) {
                 newTopicsArray.push(topicMap.get(id));
-                topicMap.delete(id); // Remove from map to handle topics not in ordered list
+                topicMap.delete(id); 
             } else {
                 console.warn(`Topic ID ${id} from ordered list not found in agent ${agentId}'s config.topics.`);
             }
         });
         
-        // Add any topics not in the ordered list to the end
         newTopicsArray.push(...topicMap.values());
         
         agentConfig.topics = newTopicsArray;
@@ -678,7 +669,7 @@ ipcMain.handle('get-agent-config', async (event, agentId) => {
         if (await fs.pathExists(configPath)) {
             return await fs.readJson(configPath);
         }
-        return {}; // Default empty config
+        return {}; 
     } catch (error) {
         console.error(`获取Agent ${agentId} 配置失败:`, error);
         return { error: error.message };
@@ -691,13 +682,12 @@ ipcMain.handle('save-agent-config', async (event, agentId, config) => {
         await fs.ensureDir(agentDir);
         const configPath = path.join(agentDir, 'config.json');
         
-        // Ensure existing config is loaded if we are partially updating
         let existingConfig = {};
         if (await fs.pathExists(configPath)) {
             existingConfig = await fs.readJson(configPath);
         }
         
-        const newConfigData = { ...existingConfig, ...config }; // Merge, new config values overwrite old
+        const newConfigData = { ...existingConfig, ...config }; 
         
         await fs.writeJson(configPath, newConfigData, { spaces: 2 });
         return { success: true, message: `Agent ${agentId} 配置已保存。` };
@@ -731,7 +721,7 @@ ipcMain.handle('save-agent-topic-title', async (event, agentId, topicId, newTitl
 
         config.topics[topicIndex].name = newTitle;
         await fs.writeJson(configPath, config, { spaces: 2 });
-        return { success: true, topics: config.topics }; // Return updated topics array
+        return { success: true, topics: config.topics }; 
     } catch (error) {
         console.error(`保存Agent ${agentId} 话题 ${topicId} 标题为 "${newTitle}" 失败:`, error);
         return { error: error.message };
@@ -752,7 +742,7 @@ ipcMain.handle('select-avatar', async () => {
     return null;
 });
 
-ipcMain.handle('save-avatar', async (event, agentId, avatarData) => { // avatarData is { name, type, buffer (ArrayBuffer) }
+ipcMain.handle('save-avatar', async (event, agentId, avatarData) => { 
     try {
         if (!avatarData || !avatarData.name || !avatarData.type || !avatarData.buffer) {
             console.error(`保存Agent ${agentId} 头像失败: avatarData 无效 (值为: ${JSON.stringify(avatarData)})`);
@@ -762,41 +752,43 @@ ipcMain.handle('save-avatar', async (event, agentId, avatarData) => { // avatarD
         const agentDir = path.join(AGENT_DIR, agentId);
         await fs.ensureDir(agentDir);
 
-        // Determine extension from MIME type or filename
         let ext = path.extname(avatarData.name).toLowerCase();
-        if (!ext) { // If no extension in name, try to infer from MIME type
+        if (!ext) { 
             if (avatarData.type === 'image/png') ext = '.png';
             else if (avatarData.type === 'image/jpeg') ext = '.jpg';
             else if (avatarData.type === 'image/gif') ext = '.gif';
             else if (avatarData.type === 'image/webp') ext = '.webp';
             else {
-                console.warn(`无法从类型 ${avatarData.type} 和名称 ${avatarData.name} 推断头像扩展名。`);
-                return { error: '保存头像失败：无法确定文件扩展名。' };
+                console.warn(`无法从类型 ${avatarData.type} 和名称 ${avatarData.name} 推断头像扩展名。默认为 .png`);
+                ext = '.png'; // Default to png if cropper always outputs png
             }
         }
-        
-        // Validate extension
+
         const allowedExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
         if (!allowedExtensions.includes(ext)) {
             return { error: `保存头像失败：不支持的文件类型/扩展名 "${ext}"。` };
         }
 
-        // Remove old avatars first
         const oldAvatarPng = path.join(agentDir, 'avatar.png');
         const oldAvatarJpg = path.join(agentDir, 'avatar.jpg');
         const oldAvatarGif = path.join(agentDir, 'avatar.gif');
         const oldAvatarWebp = path.join(agentDir, 'avatar.webp');
-        if (await fs.pathExists(oldAvatarPng)) await fs.remove(oldAvatarPng);
-        if (await fs.pathExists(oldAvatarJpg)) await fs.remove(oldAvatarJpg);
-        if (await fs.pathExists(oldAvatarGif)) await fs.remove(oldAvatarGif);
-        if (await fs.pathExists(oldAvatarWebp)) await fs.remove(oldAvatarWebp);
+        const oldAvatars = [oldAvatarPng, oldAvatarJpg, oldAvatarGif, oldAvatarWebp];
+
+        // Delete old avatars regardless of new extension, to ensure only one exists.
+        for (const oldAvatarPath of oldAvatars) {
+            if (await fs.pathExists(oldAvatarPath)) {
+                await fs.remove(oldAvatarPath);
+            }
+        }
 
         const newAvatarPath = path.join(agentDir, `avatar${ext}`);
-        const nodeBuffer = Buffer.from(avatarData.buffer); // Convert ArrayBuffer to Node.js Buffer
+        const nodeBuffer = Buffer.from(avatarData.buffer); 
 
         await fs.writeFile(newAvatarPath, nodeBuffer);
         console.log(`Agent ${agentId} 的头像已保存到: ${newAvatarPath}`);
-        return { success: true, avatarUrl: `file://${newAvatarPath}` };
+        // Return success and URL, color will be calculated and saved by renderer via 'save-avatar-color'
+        return { success: true, avatarUrl: `file://${newAvatarPath}?t=${Date.Now()}`, needsColorExtraction: true };
     } catch (error) {
         console.error(`保存Agent ${agentId} 头像失败:`, error);
         return { error: `保存头像失败: ${error.message}` };
@@ -805,44 +797,39 @@ ipcMain.handle('save-avatar', async (event, agentId, avatarData) => { // avatarD
 
 ipcMain.handle('create-agent', async (event, agentName, initialConfig = null) => {
     try {
-        // Generate a safe folder name
         const baseName = agentName.replace(/[^a-zA-Z0-9_-]/g, '_');
         const agentId = `${baseName}_${Date.now()}`;
         const agentDir = path.join(AGENT_DIR, agentId);
 
         if (await fs.pathExists(agentDir)) {
-            // Should be rare with timestamp, but good to check
             return { error: 'Agent文件夹已存在（ID冲突）。' };
         }
         await fs.ensureDir(agentDir);
 
         let configToSave;
         if (initialConfig) {
-            configToSave = { ...initialConfig, name: agentName }; // Ensure new name is set
+            configToSave = { ...initialConfig, name: agentName }; 
         } else {
             configToSave = {
                 name: agentName,
                 systemPrompt: `你是 ${agentName}。`,
-                model: 'gemini-2.5-flash-preview-05-20', // Default model pre-filled
+                model: 'gemini-2.5-flash-preview-05-20', 
                 temperature: 0.7,
-                contextTokenLimit: 1000000, // Default context token limit increased
-                maxOutputTokens: 60000, // Default max output tokens increased
-                topics: [{ id: "default", name: "主要对话", createdAt: Date.now() }] // Default topic
-                // topicTitle: "" // Replaced by topics array
+                contextTokenLimit: 1000000, 
+                maxOutputTokens: 60000, 
+                topics: [{ id: "default", name: "主要对话", createdAt: Date.now() }] 
             };
         }
-        // Ensure 'topics' array exists and has at least one item if using initialConfig
         if (initialConfig) {
             if (!initialConfig.topics || !Array.isArray(initialConfig.topics) || initialConfig.topics.length === 0) {
                 configToSave.topics = [{ id: "default", name: "主要对话", createdAt: Date.now() }];
             } else {
-                configToSave.topics = initialConfig.topics; // Use provided topics
+                configToSave.topics = initialConfig.topics; 
             }
         }
 
         await fs.writeJson(path.join(agentDir, 'config.json'), configToSave, { spaces: 2 });
         
-        // Create history file for the first (or default) topic
         if (configToSave.topics && configToSave.topics.length > 0) {
             const firstTopicId = configToSave.topics[0].id || "default";
             const topicHistoryDir = path.join(USER_DATA_DIR, agentId, 'topics', firstTopicId);
@@ -853,11 +840,6 @@ ipcMain.handle('create-agent', async (event, agentName, initialConfig = null) =>
             }
         }
         
-        // If initialConfig provided an avatar path (e.g. from a source agent), copy it.
-        // This needs careful handling: initialConfig.avatarPath (original file path) vs avatarUrl (file://)
-        // For simplicity, we'll skip copying avatar during context creation for now. User can set it.
-        // If initialConfig contained an avatarUrl, it won't be directly usable unless we copy the file.
-
         return { success: true, agentId: agentId, agentName: agentName, config: configToSave, avatarUrl: null };
     } catch (error) {
         console.error('创建Agent失败:', error);
@@ -882,11 +864,10 @@ ipcMain.handle('delete-agent', async (event, agentId) => {
     }
 });
 
-// 新增：处理从 preload 过来的读取剪贴板图片请求
 ipcMain.handle('read-image-from-clipboard-main', async () => {
     console.log('[Main Process] Received request to read image from clipboard.');
     try {
-        const nativeImage = clipboard.readImage(); // 在主进程中使用 clipboard
+        const nativeImage = clipboard.readImage(); 
         if (nativeImage && !nativeImage.isEmpty()) {
             console.log('[Main Process] NativeImage is not empty.');
             const buffer = nativeImage.toPNG();
@@ -910,7 +891,6 @@ ipcMain.handle('read-image-from-clipboard-main', async () => {
     }
 });
 
-// IPC handler for reading text from clipboard
 ipcMain.handle('read-text-from-clipboard-main', async () => {
     console.log('[Main Process] Received request to read text from clipboard.');
     try {
@@ -922,7 +902,6 @@ ipcMain.handle('read-text-from-clipboard-main', async () => {
     }
 });
 
-// New IPC handler for saving pasted images from notes
 ipcMain.handle('save-pasted-image-to-file', async (event, imageData, noteId) => {
     console.log(`[Main Process] Received save-pasted-image-to-file for noteId: ${noteId}, image type: ${imageData.extension}`);
     if (!imageData || !imageData.data || !imageData.extension) {
@@ -933,21 +912,18 @@ ipcMain.handle('save-pasted-image-to-file', async (event, imageData, noteId) => 
     }
 
     try {
-        // Ensure the notes agent directory exists for fileManager
         const notesAgentDir = path.join(USER_DATA_DIR, NOTES_AGENT_ID);
         await fs.ensureDir(notesAgentDir);
 
-        // Use the noteId as the topicId for fileManager to organize images per note
-        // This creates a structure like AppData/UserData/notes_attachments_agent/topics/NOTE_ID/attachments/
         const originalFileName = `pasted_image_${Date.now()}.${imageData.extension}`;
         const buffer = Buffer.from(imageData.data, 'base64');
-        const fileTypeHint = `image/${imageData.extension}`; // e.g., image/png
+        const fileTypeHint = `image/${imageData.extension}`; 
 
         const storedFileObject = await fileManager.storeFile(
             buffer,
             originalFileName,
-            NOTES_AGENT_ID, // Use the dedicated agent ID for notes
-            noteId,         // Use the noteId as the topicId for organization
+            NOTES_AGENT_ID, 
+            noteId,         
             fileTypeHint
         );
         console.log('[Main Process] Image saved successfully:', storedFileObject.internalPath);
@@ -966,20 +942,19 @@ ipcMain.handle('get-chat-history', async (event, agentId, topicId) => {
         return { error: errorMessage };
     }
     try {
-        // Special handling for notes agent to ensure its directory structure is created if needed
         if (agentId === NOTES_AGENT_ID) {
             const notesAgentTopicDir = path.join(USER_DATA_DIR, NOTES_AGENT_ID, 'topics', topicId);
-            await fs.ensureDir(notesAgentTopicDir); // Ensure the specific note's attachment directory exists
+            await fs.ensureDir(notesAgentTopicDir); 
         }
 
         const historyFile = path.join(USER_DATA_DIR, agentId, 'topics', topicId, 'history.json');
-        await fs.ensureDir(path.dirname(historyFile)); // Ensure topic directory exists
+        await fs.ensureDir(path.dirname(historyFile)); 
 
         if (await fs.pathExists(historyFile)) {
             const history = await fs.readJson(historyFile);
             return history;
         }
-        return []; // Default empty history if file doesn't exist
+        return []; 
     } catch (error) {
         console.error(`获取Agent ${agentId} 话题 ${topicId} 聊天历史失败:`, error);
         return { error: error.message };
@@ -1004,35 +979,29 @@ ipcMain.handle('save-chat-history', async (event, agentId, topicId, history) => 
     }
 });
 
-// New IPC handler to get topics for an agent
 ipcMain.handle('get-agent-topics', async (event, agentId) => {
     try {
         const configPath = path.join(AGENT_DIR, agentId, 'config.json');
         if (await fs.pathExists(configPath)) {
             const config = await fs.readJson(configPath);
-            // Ensure topics array exists and is not empty
             if (config.topics && Array.isArray(config.topics) && config.topics.length > 0) {
                 return config.topics;
-            } else { // Config exists but topics array is missing or empty, create/fix default and save
+            } else { 
                 const defaultTopics = [{ id: "default", name: "主要对话", createdAt: Date.now() }];
                 config.topics = defaultTopics;
                 await fs.writeJson(configPath, config, { spaces: 2 });
                 return defaultTopics;
             }
-        } else { // Config file doesn't exist, this case should ideally be handled by get-agents creating a default config
+        } else { 
             console.warn(`Config file not found for agent ${agentId} in get-agent-topics. Attempting to use default.`);
-            // This implies an issue if get-agents didn't create a config.
-            // For robustness, return a default, but this indicates a potential prior setup issue.
             return [{ id: "default", name: "主要对话", createdAt: Date.now() }];
         }
     } catch (error) {
         console.error(`获取Agent ${agentId} 话题列表失败:`, error);
-        // Return a default topic array in case of error to prevent renderer issues
         return [{ id: "default", name: "主要对话", createdAt: Date.now(), error: error.message }];
     }
 });
 
-// New IPC handler to create a new topic for an agent
 ipcMain.handle('create-new-topic-for-agent', async (event, agentId, topicName, refreshTimestamp = false) => {
     try {
         const configPath = path.join(AGENT_DIR, agentId, 'config.json');
@@ -1041,18 +1010,15 @@ ipcMain.handle('create-new-topic-for-agent', async (event, agentId, topicName, r
         }
         const config = await fs.readJson(configPath);
         if (!config.topics || !Array.isArray(config.topics)) {
-            config.topics = []; // Initialize if not present or not an array
+            config.topics = []; 
         }
 
         const newTopicId = `topic_${Date.now()}`;
-        // Use current time if refreshTimestamp is true, otherwise keep existing logic (which implies new topic gets current time anyway)
-        // The key difference is that for a "branch", we explicitly want a *new* timestamp.
-        const createdAt = refreshTimestamp ? Date.now() : Date.now(); // Effectively always Date.now() for new topics, but explicit for branching.
+        const createdAt = refreshTimestamp ? Date.now() : Date.now(); 
         const newTopic = { id: newTopicId, name: topicName || `新话题 ${config.topics.length + 1}`, createdAt: createdAt };
         config.topics.push(newTopic);
         await fs.writeJson(configPath, config, { spaces: 2 });
 
-        // Create directory and empty history file for the new topic
         const topicHistoryDir = path.join(USER_DATA_DIR, agentId, 'topics', newTopicId);
         await fs.ensureDir(topicHistoryDir);
         await fs.writeJson(path.join(topicHistoryDir, 'history.json'), [], { spaces: 2 });
@@ -1079,20 +1045,13 @@ ipcMain.handle('delete-topic', async (event, agentId, topicIdToDelete) => {
         config.topics = config.topics.filter(topic => topic.id !== topicIdToDelete);
 
         if (config.topics.length === initialTopicCount) {
-            // This means the topicIdToDelete was not found
             console.warn(`Attempted to delete non-existent topic ${topicIdToDelete} from agent ${agentId}`);
-            // It's not strictly an error if the goal is "ensure this topic doesn't exist",
-            // but good to be aware. We can return success as the state is achieved.
-            // However, to inform the renderer that no actual change to list happened, an error might be better.
-            // For now, let's treat it as "topic not found to delete".
             return { error: `未找到要删除的话题 ID: ${topicIdToDelete}` };
         }
 
-        // Ensure agent always has at least one topic. If all are deleted, add a new default.
         if (config.topics.length === 0) {
             const defaultTopic = { id: "default", name: "主要对话", createdAt: Date.now() };
             config.topics.push(defaultTopic);
-            // Also create history for this new default topic
             const defaultTopicHistoryDir = path.join(USER_DATA_DIR, agentId, 'topics', defaultTopic.id);
             await fs.ensureDir(defaultTopicHistoryDir);
             await fs.writeJson(path.join(defaultTopicHistoryDir, 'history.json'), [], { spaces: 2 });
@@ -1100,7 +1059,6 @@ ipcMain.handle('delete-topic', async (event, agentId, topicIdToDelete) => {
 
         await fs.writeJson(configPath, config, { spaces: 2 });
 
-        // Delete the topic's data directory
         const topicDataDir = path.join(USER_DATA_DIR, agentId, 'topics', topicIdToDelete);
         if (await fs.pathExists(topicDataDir)) {
             await fs.remove(topicDataDir);
@@ -1118,12 +1076,10 @@ ipcMain.handle('handle-file-paste', async (event, agentId, topicId, fileData) =>
     if (!topicId) {
         return { error: "处理文件粘贴失败: topicId 未提供。" };
     }
-    // fileData could be { type: 'path', path: '...' } or { type: 'base64', data: '...', extension: 'png' }
     try {
         let storedFileObject;
         if (fileData.type === 'path') {
             const originalFileName = path.basename(fileData.path);
-            // Infer type from extension for better storage, though fileManager might refine this
             const ext = path.extname(fileData.path).toLowerCase();
             let fileTypeHint = 'application/octet-stream';
             if (['.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(ext)) fileTypeHint = `image/${ext.substring(1)}`;
@@ -1138,7 +1094,6 @@ ipcMain.handle('handle-file-paste', async (event, agentId, topicId, fileData) =>
         } else {
             throw new Error('不支持的文件粘贴类型');
         }
-        // Return the full attachment object from fileManager
         return { success: true, attachment: storedFileObject };
     } catch (error) {
         console.error('处理粘贴文件失败:', error);
@@ -1146,7 +1101,7 @@ ipcMain.handle('handle-file-paste', async (event, agentId, topicId, fileData) =>
     }
 });
 
-ipcMain.handle('select-files-to-send', async (event, agentId, topicId) => { // Added agentId and topicId
+ipcMain.handle('select-files-to-send', async (event, agentId, topicId) => { 
     if (!agentId || !topicId) {
         console.error('[Main - select-files-to-send] Agent ID or Topic ID not provided.');
         return { error: "Agent ID and Topic ID are required to select files." };
@@ -1161,27 +1116,23 @@ ipcMain.handle('select-files-to-send', async (event, agentId, topicId) => { // A
         for (const filePath of result.filePaths) {
             try {
                 const originalName = path.basename(filePath);
-                // Infer type from extension
                 const ext = path.extname(filePath).toLowerCase();
                 let fileTypeHint = 'application/octet-stream';
                 if (['.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(ext)) fileTypeHint = `image/${ext.substring(1)}`;
                 else if (['.mp3', '.wav', '.ogg'].includes(ext)) fileTypeHint = `audio/${ext.substring(1)}`;
-                // Add more types as needed (pdf, txt, docx etc.)
 
                 const storedFile = await fileManager.storeFile(filePath, originalName, agentId, topicId, fileTypeHint);
                 storedFilesInfo.push(storedFile);
             } catch (error) {
                 console.error(`[Main - select-files-to-send] Error storing file ${filePath}:`, error);
-                // Optionally, inform renderer about partial failure
                 storedFilesInfo.push({ name: path.basename(filePath), error: error.message });
             }
         }
         return { success: true, attachments: storedFilesInfo };
     }
-    return { success: false, attachments: [] }; // Indicate no files selected or dialog cancelled
+    return { success: false, attachments: [] }; 
 });
 
-// IPC handler to get file content as Base64
 ipcMain.handle('get-file-as-base64', async (event, filePath) => {
     try {
         console.log(`[Main - get-file-as-base64] Received request for filePath: "${filePath}"`);
@@ -1209,17 +1160,14 @@ ipcMain.handle('get-file-as-base64', async (event, filePath) => {
     }
 });
 
-// IPC handler to get text content from a file
 ipcMain.handle('get-text-content', async (event, filePath, fileType) => {
     try {
         console.log(`[Main - get-text-content] Received request for filePath: "${filePath}", type: "${fileType}"`);
-        // filePath here is expected to be an internal file:// URL
         if (!filePath || !filePath.startsWith('file://')) {
             throw new Error('Invalid internal file path provided for text content extraction.');
         }
         const textContent = await fileManager.getTextContent(filePath, fileType);
         if (textContent === null) {
-            // This case means fileManager determined it's not a supported text type or failed silently
             return { error: `不支持的文件类型 (${fileType}) 或无法提取文本内容。` };
         }
         return { success: true, textContent: textContent };
@@ -1229,7 +1177,6 @@ ipcMain.handle('get-text-content', async (event, filePath, fileType) => {
     }
 });
 
-// IPC Handler for long text paste to be saved as a file
 ipcMain.handle('handle-text-paste-as-file', async (event, agentId, topicId, textContent) => {
     if (!agentId || !topicId) {
         return { error: "处理长文本粘贴失败: agentId 或 topicId 未提供。" };
@@ -1253,7 +1200,6 @@ ipcMain.handle('handle-text-paste-as-file', async (event, agentId, topicId, text
     }
 });
 
-// IPC Handler for dropped files
 ipcMain.handle('handle-file-drop', async (event, agentId, topicId, droppedFilesData) => {
     if (!agentId || !topicId) {
         return { error: "处理文件拖放失败: agentId 或 topicId 未提供。" };
@@ -1265,16 +1211,15 @@ ipcMain.handle('handle-file-drop', async (event, agentId, topicId, droppedFilesD
     const storedFilesInfo = [];
     for (const fileData of droppedFilesData) {
         try {
-            if (!fileData.data || !fileData.name || !fileData.type) { // Now expect 'data' (Buffer) instead of 'path'
+            if (!fileData.data || !fileData.name || !fileData.type) { 
                 console.warn('[Main - handle-file-drop] Skipping a dropped file due to missing data, name, or type. fileData:', JSON.stringify(fileData));
                 storedFilesInfo.push({ name: fileData.name || '未知文件（数据缺失）', error: '文件内容、名称或类型缺失' });
                 continue;
             }
             
-            const fileTypeHint = fileData.type; // Use the type provided by FileReader
+            const fileTypeHint = fileData.type; 
             
             console.log(`[Main - handle-file-drop] Attempting to store dropped file: ${fileData.name} (Type: ${fileData.type}, Size: ${fileData.size}) for Agent: ${agentId}, Topic: ${topicId}`);
-            // Ensure fileData.data is a Buffer before passing to fileManager.storeFile
             const fileBuffer = Buffer.isBuffer(fileData.data) ? fileData.data : Buffer.from(fileData.data);
             
             console.log(`[Main - handle-file-drop] Calling fileManager.storeFile with buffer for ${fileData.name}, size: ${fileBuffer.length}`);
@@ -1286,27 +1231,26 @@ ipcMain.handle('handle-file-drop', async (event, agentId, topicId, droppedFilesD
             storedFilesInfo.push({ name: fileData.name || '未知文件', error: error.message });
         }
     }
-    return storedFilesInfo; // Return array of results
+    return storedFilesInfo; 
 });
  
  
 // VCP Server Communication
-ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelConfig, messageId) => { // Added messageId
-    console.log(`[Main - sendToVCP] ***** sendToVCP HANDLER EXECUTED for messageId: ${messageId} *****`); // UNIQUE ENTRY LOG
+ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelConfig, messageId) => { 
+    console.log(`[Main - sendToVCP] ***** sendToVCP HANDLER EXECUTED for messageId: ${messageId} *****`); 
     try {
-        console.log(`发送到VCP服务器: ${vcpUrl} for messageId: ${messageId}`); // Log messageId
+        console.log(`发送到VCP服务器: ${vcpUrl} for messageId: ${messageId}`); 
         console.log('VCP API Key:', vcpApiKey ? '已设置' : '未设置');
-        // Log messages, abbreviating base64 data if present
         console.log('发送到VCP的消息 (messagesForVCP):', JSON.stringify(messages, (key, value) => {
             if (key === 'url' && typeof value === 'string' && value.startsWith('data:') && value.includes(';base64,')) {
                 const parts = value.split(';base64,');
                 const base64Part = parts[1];
-                if (base64Part.length > 200) { // Increased threshold for Data URLs
+                if (base64Part.length > 200) { 
                     return `${parts[0]};base64,${base64Part.substring(0, 50)}...[Base64, length: ${base64Part.length}]...${base64Part.substring(base64Part.length - 50)}`;
                 }
-            } else if (key === 'data' && typeof value === 'string' && value.length > 100) { // Existing check for direct 'data' field
+            } else if (key === 'data' && typeof value === 'string' && value.length > 100) { 
                 return `${value.substring(0, 50)}...[Base64 Data, length: ${value.length}]...${value.substring(value.length - 50)}`;
-            } else if (key === 'text_content' && typeof value === 'string' && value.length > 200) { // For potentially long extracted text
+            } else if (key === 'text_content' && typeof value === 'string' && value.length > 200) { 
                 return `${value.substring(0, 100)}...[Text, length: ${value.length}]`;
             }
             return value;
@@ -1323,24 +1267,22 @@ ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelCo
                 messages: messages,
                 model: modelConfig.model,
                 temperature: modelConfig.temperature,
-                stream: modelConfig.stream === true // Explicitly pass stream preference
+                stream: modelConfig.stream === true 
             })
         });
 
         if (!response.ok) {
             const errorText = await response.text();
             console.error(`[Main - sendToVCP] VCP请求失败. Status: ${response.status}, Response Text:`, errorText);
-            let errorData = { message: `服务器返回状态 ${response.status}`, details: errorText }; // Default error data
+            let errorData = { message: `服务器返回状态 ${response.status}`, details: errorText }; 
             try {
                 const parsedError = JSON.parse(errorText);
-                // If parsedError is an object and has more specific fields, use them
                 if (typeof parsedError === 'object' && parsedError !== null) {
-                    errorData = parsedError; // Use the parsed JSON object as the error data
+                    errorData = parsedError; 
                      console.error('[Main - sendToVCP] Parsed VCP Error Object:', errorData);
                 }
             } catch (e) {
                 console.warn('[Main - sendToVCP] VCP错误响应体不是有效的JSON:', e);
-                // errorData remains as { message: ..., details: errorText }
             }
             
             const errorMessageToPropagate = `VCP请求失败: ${response.status} - ${errorData.message || errorData.error || (typeof errorData === 'string' ? errorData : '未知服务端错误')}`;
@@ -1350,9 +1292,8 @@ ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelCo
                 event.sender.send('vcp-stream-chunk', { type: 'error', error: errorMessageToPropagate, details: errorData, messageId: messageId });
                 return { streamError: true, errorDetail: errorData };
             }
-            // For non-streaming, we will throw, but let's make sure the error object is rich
             const err = new Error(errorMessageToPropagate);
-            err.details = errorData; // Attach the full error object
+            err.details = errorData; 
             err.status = response.status;
             throw err;
         }
@@ -1372,10 +1313,6 @@ ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelCo
                             break;
                         }
                         const chunkString = decoder.decode(value, { stream: true });
-                        // console.log('VCP流数据块:', chunkString); // Can be very verbose
-                        // VCP通常以 Server-Sent Events (SSE) 格式发送流数据
-                        // 例如: data: {"id":"chatcmpl-xxxx","object":"chat.completion.chunk","created":1677652288,"model":"gpt-3.5-turbo-0613","choices":[{"delta":{"content":"Hello"},"index":0,"finish_reason":null}]}
-                        // 我们需要解析这些行
                         const lines = chunkString.split('\n').filter(line => line.trim() !== '');
                         for (const line of lines) {
                             if (line.startsWith('data: ')) {
@@ -1383,14 +1320,13 @@ ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelCo
                                 if (jsonData === '[DONE]') {
                                     console.log(`VCP流明确[DONE] for messageId: ${messageId}`);
                                     event.sender.send('vcp-stream-chunk', { type: 'end', messageId: messageId });
-                                    return; // Stream finished
+                                    return; 
                                 }
                                 try {
                                     const parsedChunk = JSON.parse(jsonData);
                                     event.sender.send('vcp-stream-chunk', { type: 'data', chunk: parsedChunk, messageId: messageId });
                                 } catch (e) {
                                     console.error(`解析VCP流数据块JSON失败 for messageId: ${messageId}:`, e, '原始数据:', jsonData);
-                                    // Send raw chunk if parsing fails but it's not [DONE]
                                     event.sender.send('vcp-stream-chunk', { type: 'data', chunk: { raw: jsonData, error: 'json_parse_error' }, messageId: messageId });
                                 }
                             }
@@ -1403,8 +1339,8 @@ ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelCo
                     reader.releaseLock();
                 }
             }
-            processStream(); // Don't await this, let it run in background
-            return { streamingStarted: true }; // Indicate to renderer that streaming has begun
+            processStream(); 
+            return { streamingStarted: true }; 
         } else {
             console.log('VCP响应: 非流式处理');
             const vcpResponse = await response.json();
@@ -1413,9 +1349,8 @@ ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelCo
 
     } catch (error) {
         console.error('VCP请求错误 (catch block):', error);
-        // If it's a streaming request and error occurs before stream starts (e.g., network error)
         if (modelConfig.stream === true && event && event.sender && !event.sender.isDestroyed()) {
-             event.sender.send('vcp-stream-chunk', { type: 'error', error: `VCP请求错误: ${error.message}`, messageId: messageId }); // Pass messageId here too
+             event.sender.send('vcp-stream-chunk', { type: 'error', error: `VCP请求错误: ${error.message}`, messageId: messageId }); 
              return { streamError: true };
         }
         return { error: `VCP请求错误: ${error.message}` };
@@ -1430,7 +1365,7 @@ function connectVcpLog(wsUrl, wsKey) {
         return;
     }
 
-    const fullWsUrl = `${wsUrl}/VCPlog/VCP_Key=${wsKey}`; // As per Test.Html
+    const fullWsUrl = `${wsUrl}/VCPlog/VCP_Key=${wsKey}`; 
     
     if (vcpLogWebSocket && (vcpLogWebSocket.readyState === WebSocket.OPEN || vcpLogWebSocket.readyState === WebSocket.CONNECTING)) {
         console.log('VCPLog WebSocket 已连接或正在连接。');
@@ -1443,14 +1378,14 @@ function connectVcpLog(wsUrl, wsKey) {
     vcpLogWebSocket = new WebSocket(fullWsUrl);
 
     vcpLogWebSocket.onopen = () => {
-        console.log('[MAIN_VCP_LOG] WebSocket onopen event triggered.'); // DEBUG
+        console.log('[MAIN_VCP_LOG] WebSocket onopen event triggered.'); 
         if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
-            console.log('[MAIN_VCP_LOG] Attempting to send vcp-log-status "open" to renderer.'); // DEBUG
+            console.log('[MAIN_VCP_LOG] Attempting to send vcp-log-status "open" to renderer.'); 
             mainWindow.webContents.send('vcp-log-status', { status: 'open', message: '已连接' });
-            console.log('[MAIN_VCP_LOG] vcp-log-status "open" sent.'); // DEBUG
+            console.log('[MAIN_VCP_LOG] vcp-log-status "open" sent.'); 
             mainWindow.webContents.send('vcp-log-message', { type: 'connection_ack', message: 'VCPLog 连接成功！' });
         } else {
-            console.error('[MAIN_VCP_LOG] mainWindow or webContents not available in onopen. Cannot send status.'); // DEBUG
+            console.error('[MAIN_VCP_LOG] mainWindow or webContents not available in onopen. Cannot send status.'); 
         }
         if (vcpLogReconnectInterval) {
             clearInterval(vcpLogReconnectInterval);
@@ -1461,7 +1396,7 @@ function connectVcpLog(wsUrl, wsKey) {
     vcpLogWebSocket.onmessage = (event) => {
         console.log('VCPLog 收到消息:', event.data);
         try {
-            const data = JSON.parse(event.data.toString()); // Ensure buffer is converted to string
+            const data = JSON.parse(event.data.toString()); 
             if (mainWindow) mainWindow.webContents.send('vcp-log-message', data);
         } catch (e) {
             console.error('VCPLog 解析消息失败:', e);
@@ -1472,26 +1407,25 @@ function connectVcpLog(wsUrl, wsKey) {
     vcpLogWebSocket.onclose = (event) => {
         console.log('VCPLog WebSocket 连接已关闭:', event.code, event.reason);
         if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('vcp-log-status', { status: 'closed', message: `连接已断开 (${event.code})` });
-        if (!vcpLogReconnectInterval && wsUrl && wsKey) { // Only try to reconnect if not already trying and config exists
+        if (!vcpLogReconnectInterval && wsUrl && wsKey) { 
             console.log('将在5秒后尝试重连 VCPLog...');
             vcpLogReconnectInterval = setTimeout(() => connectVcpLog(wsUrl, wsKey), 5000);
         }
     };
 
     vcpLogWebSocket.onerror = (error) => {
-        console.error('[MAIN_VCP_LOG] WebSocket onerror event:', error.message); // DEBUG
+        console.error('[MAIN_VCP_LOG] WebSocket onerror event:', error.message); 
         if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
             mainWindow.webContents.send('vcp-log-status', { status: 'error', message: `连接错误: ${error.message}` });
         } else {
-            console.error('[MAIN_VCP_LOG] mainWindow or webContents not available in onerror.'); // DEBUG
+            console.error('[MAIN_VCP_LOG] mainWindow or webContents not available in onerror.'); 
         }
-        // onclose will likely be called next, which will handle reconnection
     };
 }
 
 ipcMain.on('connect-vcplog', (event, { url, key }) => {
     if (vcpLogWebSocket && vcpLogWebSocket.readyState === WebSocket.OPEN) {
-        vcpLogWebSocket.close(); // Close existing before opening new
+        vcpLogWebSocket.close(); 
     }
     if (vcpLogReconnectInterval) {
         clearInterval(vcpLogReconnectInterval);
@@ -1537,7 +1471,6 @@ ipcMain.on('close-window', () => {
     }
 });
 
-// IPC Handler for toggling the notifications sidebar
 ipcMain.on('toggle-notifications-sidebar', () => {
     if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
         mainWindow.webContents.send('do-toggle-notifications-sidebar');
@@ -1545,19 +1478,18 @@ ipcMain.on('toggle-notifications-sidebar', () => {
 });
 
 ipcMain.on('open-dev-tools', () => {
-    console.log('[Main Process] Received open-dev-tools event.'); // DEBUG
+    console.log('[Main Process] Received open-dev-tools event.'); 
     if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
         mainWindow.webContents.openDevTools({ mode: 'detach' });
-        console.log('[Main Process] Attempting to open detached dev tools.'); // DEBUG
+        console.log('[Main Process] Attempting to open detached dev tools.'); 
     } else {
-        console.error('[Main Process] Cannot open dev tools: mainWindow or webContents is not available or destroyed.'); // DEBUG
+        console.error('[Main Process] Cannot open dev tools: mainWindow or webContents is not available or destroyed.'); 
         if (!mainWindow) console.error('[Main Process] mainWindow is null or undefined.');
         else if (!mainWindow.webContents) console.error('[Main Process] mainWindow.webContents is null or undefined.');
         else if (mainWindow.webContents.isDestroyed()) console.error('[Main Process] mainWindow.webContents is destroyed.');
     }
 });
 
-// IPC Handler for opening image in a new window
 ipcMain.on('open-image-in-new-window', (event, imageUrl, imageTitle) => {
     console.log(`[Main Process] Received open-image-in-new-window for URL: ${imageUrl}, Title: ${imageTitle}`);
     const imageViewerWindow = new BrowserWindow({
@@ -1566,33 +1498,30 @@ ipcMain.on('open-image-in-new-window', (event, imageUrl, imageTitle) => {
         minWidth: 400,
         minHeight: 300,
         title: imageTitle || '图片预览',
-        parent: mainWindow, // Optional: make it a child of the main window
-        modal: false, // Non-modal
+        parent: mainWindow, 
+        modal: false, 
         webPreferences: {
-            preload: path.join(__dirname, 'preload.js'), // Re-use preload for consistency if needed, or omit if not needed for viewer
+            preload: path.join(__dirname, 'preload.js'), 
             contextIsolation: true,
             nodeIntegration: false,
-            devTools: true // Enable devtools for the viewer window for debugging
+            devTools: true 
         },
-        icon: path.join(__dirname, 'assets', 'icon.png'), // Use the same app icon
-        show: false // Don't show until ready
+        icon: path.join(__dirname, 'assets', 'icon.png'), 
+        show: false 
     });
 
     const viewerUrl = `file://${path.join(__dirname, 'image-viewer.html')}?src=${encodeURIComponent(imageUrl)}&title=${encodeURIComponent(imageTitle || '图片预览')}`;
     console.log(`[Main Process] Loading URL in new window: ${viewerUrl}`);
     imageViewerWindow.loadURL(viewerUrl);
-    openChildWindows.push(imageViewerWindow); // Add to keep track
+    openChildWindows.push(imageViewerWindow); 
     
-    imageViewerWindow.setMenu(null); // No menu for the image viewer window
+    imageViewerWindow.setMenu(null); 
 
     imageViewerWindow.once('ready-to-show', () => {
         imageViewerWindow.show();
     });
-
-
 });
 
-// IPC Handler for showing image context menu
 ipcMain.on('show-image-context-menu', (event, imageUrl) => {
     console.log(`[Main Process] Received show-image-context-menu for URL: ${imageUrl}`);
     const template = [
@@ -1600,46 +1529,57 @@ ipcMain.on('show-image-context-menu', (event, imageUrl) => {
             label: '复制图片',
             click: async () => {
                 console.log(`[Main Process] Context menu: "复制图片" clicked for ${imageUrl}`);
-                if (!imageUrl || (!imageUrl.startsWith('http:') && !imageUrl.startsWith('https:'))) {
+                if (!imageUrl || (!imageUrl.startsWith('http:') && !imageUrl.startsWith('https:') && !imageUrl.startsWith('file:'))) { // Allow file URLs
                     console.error('[Main Process] Invalid image URL for copying:', imageUrl);
                     dialog.showErrorBox('复制错误', '无效的图片URL。');
                     return;
                 }
 
                 try {
-                    const request = net.request(imageUrl);
-                    let chunks = [];
-                    request.on('response', (response) => {
-                        response.on('data', (chunk) => {
-                            chunks.push(chunk);
-                        });
-                        response.on('end', () => {
-                            if (response.statusCode === 200) {
-                                const buffer = Buffer.concat(chunks);
-                                const image = nativeImage.createFromBuffer(buffer);
-                                if (!image.isEmpty()) {
-                                    clipboard.writeImage(image);
-                                    console.log('[Main Process] Image copied to clipboard successfully.');
-                                    // Optionally notify renderer of success, though clipboard is usually silent
+                    if (imageUrl.startsWith('file:')) {
+                        const filePath = decodeURIComponent(imageUrl.substring(7)); // Remove file:// and decode
+                        const image = nativeImage.createFromPath(filePath);
+                        if (!image.isEmpty()) {
+                            clipboard.writeImage(image);
+                            console.log('[Main Process] Local image copied to clipboard successfully.');
+                        } else {
+                             console.error('[Main Process] Failed to create native image from local file path or image is empty.');
+                             dialog.showErrorBox('复制失败', '无法从本地文件创建图片对象。');
+                        }
+                    } else { // http or https
+                        const request = net.request(imageUrl);
+                        let chunks = [];
+                        request.on('response', (response) => {
+                            response.on('data', (chunk) => {
+                                chunks.push(chunk);
+                            });
+                            response.on('end', () => {
+                                if (response.statusCode === 200) {
+                                    const buffer = Buffer.concat(chunks);
+                                    const image = nativeImage.createFromBuffer(buffer);
+                                    if (!image.isEmpty()) {
+                                        clipboard.writeImage(image);
+                                        console.log('[Main Process] Image copied to clipboard successfully.');
+                                    } else {
+                                        console.error('[Main Process] Failed to create native image from buffer or image is empty.');
+                                        dialog.showErrorBox('复制失败', '无法从URL创建图片对象。');
+                                    }
                                 } else {
-                                    console.error('[Main Process] Failed to create native image from buffer or image is empty.');
-                                    dialog.showErrorBox('复制失败', '无法从URL创建图片对象。');
+                                    console.error(`[Main Process] Failed to download image. Status: ${response.statusCode}`);
+                                    dialog.showErrorBox('复制失败', `下载图片失败，服务器状态: ${response.statusCode}`);
                                 }
-                            } else {
-                                console.error(`[Main Process] Failed to download image. Status: ${response.statusCode}`);
-                                dialog.showErrorBox('复制失败', `下载图片失败，服务器状态: ${response.statusCode}`);
-                            }
+                            });
+                            response.on('error', (error) => {
+                                console.error('[Main Process] Error in image download response:', error);
+                                dialog.showErrorBox('复制失败', `下载图片响应错误: ${error.message}`);
+                            });
                         });
-                        response.on('error', (error) => {
-                            console.error('[Main Process] Error in image download response:', error);
-                            dialog.showErrorBox('复制失败', `下载图片响应错误: ${error.message}`);
+                        request.on('error', (error) => {
+                            console.error('[Main Process] Error making net request for image:', error);
+                            dialog.showErrorBox('复制失败', `请求图片失败: ${error.message}`);
                         });
-                    });
-                    request.on('error', (error) => {
-                        console.error('[Main Process] Error making net request for image:', error);
-                        dialog.showErrorBox('复制失败', `请求图片失败: ${error.message}`);
-                    });
-                    request.end();
+                        request.end();
+                    }
                 } catch (e) {
                     console.error('[Main Process] Exception during image copy process:', e);
                     dialog.showErrorBox('复制失败', `复制过程中发生意外错误: ${e.message}`);

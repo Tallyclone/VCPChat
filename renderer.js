@@ -1,14 +1,17 @@
 // --- Globals ---
-let globalSettings = {};
+let globalSettings = {
+    sidebarWidth: 260, // Default left sidebar width
+    notificationsSidebarWidth: 300 // Default right notifications sidebar width
+};
 let currentAgentId = null;
-let currentTopicId = null; // Added to track the current active topic ID
-let currentChatHistory = []; // Array of message objects { role: 'user'/'assistant', content: '...', timestamp: ... }
-let attachedFiles = []; // Array of { file: File, localPath: 'file://...', originalName: '...' } for current message
-let activeStreamingMessageId = null; // To track the ID of the message being streamed
+let currentTopicId = null; 
+let currentChatHistory = []; 
+let attachedFiles = []; 
+let activeStreamingMessageId = null; 
 
 // --- Topic Search Functionality ---
 async function filterTopicList() {
-    const topicSearchInputElement = document.getElementById('topicSearchInput'); // Get it fresh
+    const topicSearchInputElement = document.getElementById('topicSearchInput'); 
     if (!topicSearchInputElement) {
         console.error("[filterTopicList] topicSearchInput element not found.");
         return;
@@ -17,10 +20,7 @@ async function filterTopicList() {
     const topicListUl = document.getElementById('topicList'); 
     const topicItems = topicListUl ? topicListUl.querySelectorAll('.topic-item') : [];
 
-    // console.log(`[filterTopicList] Searching for: "${searchTerm}"`);
-
     if (!currentAgentId) {
-        // console.log("[filterTopicList] No agent selected. Showing all topics if search term is empty, else hiding all.");
         topicItems.forEach(item => item.style.display = searchTerm.length === 0 ? '' : 'none');
         return;
     }
@@ -46,7 +46,6 @@ async function filterTopicList() {
 
 
         if (searchTerm.length > 0) {
-            // Date matching
             if (topic.createdAt) {
                 const date = new Date(topic.createdAt);
                 const year = date.getFullYear().toString();
@@ -72,7 +71,6 @@ async function filterTopicList() {
                 dateMatches = dateStringsToSearch.some(ds => ds.toLowerCase().includes(searchTerm));
             }
 
-            // Content matching (only if not already matched by date or title for performance)
             if (!topicTitle.includes(searchTerm) && !dateMatches) {
                 const history = await window.electronAPI.getChatHistory(currentAgentId, topicId);
                 if (history && !history.error) {
@@ -88,9 +86,9 @@ async function filterTopicList() {
         }
 
         if (topicTitle.includes(searchTerm) || contentMatches || dateMatches) {
-            item.style.display = ''; // Show
+            item.style.display = ''; 
         } else {
-            item.style.display = 'none'; // Hide
+            item.style.display = 'none'; 
         }
     }
 }
@@ -98,14 +96,13 @@ async function filterTopicList() {
 function setupTopicSearch() {
     const topicSearchInputElement = document.getElementById('topicSearchInput');
     if (topicSearchInputElement) {
-        topicSearchInputElement.addEventListener('input', filterTopicList); // Keep for live filtering
+        topicSearchInputElement.addEventListener('input', filterTopicList); 
         topicSearchInputElement.addEventListener('keydown', (event) => {
             if (event.key === 'Enter') {
                 event.preventDefault();
                 filterTopicList();
             }
         });
-        // console.log('[Renderer] Global Topic search event listeners (input and Enter key) set up.');
     } else {
         console.error('[Renderer] Global Topic search input element (topicSearchInput) not found during setup.');
     }
@@ -122,12 +119,14 @@ const attachmentPreviewArea = document.getElementById('attachmentPreviewArea');
 const globalSettingsBtn = document.getElementById('globalSettingsBtn');
 const globalSettingsModal = document.getElementById('globalSettingsModal');
 const globalSettingsForm = document.getElementById('globalSettingsForm');
+const userAvatarInput = document.getElementById('userAvatarInput'); // New
+const userAvatarPreview = document.getElementById('userAvatarPreview'); // New
 
 const createNewAgentBtn = document.getElementById('createNewAgentBtn');
 
-const agentSettingsContainerTitle = document.getElementById('agentSettingsContainerTitle'); // New title element in tab
+const agentSettingsContainerTitle = document.getElementById('agentSettingsContainerTitle'); 
 const selectedAgentNameForSettingsSpan = document.getElementById('selectedAgentNameForSettings');
-const agentSettingsForm = document.getElementById('agentSettingsForm'); // Form is now directly in tabContentSettings
+const agentSettingsForm = document.getElementById('agentSettingsForm'); 
 const agentSettingsContainer = document.getElementById('agentSettingsContainer');
 const selectAgentPromptForSettings = document.getElementById('selectAgentPromptForSettings');
 const editingAgentIdInput = document.getElementById('editingAgentId');
@@ -142,9 +141,9 @@ const agentMaxOutputTokensInput = document.getElementById('agentMaxOutputTokens'
 const deleteAgentBtn = document.getElementById('deleteAgentBtn');
 const currentAgentSettingsBtn = document.getElementById('currentAgentSettingsBtn');
 const clearCurrentChatBtn = document.getElementById('clearCurrentChatBtn');
-const openAdminPanelBtn = document.getElementById('openAdminPanelBtn'); // 新增
+const openAdminPanelBtn = document.getElementById('openAdminPanelBtn'); 
 const themeToggleBtn = document.getElementById('themeToggleBtn');
-const toggleNotificationsBtn = document.getElementById('toggleNotificationsBtn'); // 新增通知侧边栏切换按钮
+const toggleNotificationsBtn = document.getElementById('toggleNotificationsBtn'); 
 
 
 const notificationsSidebar = document.getElementById('notificationsSidebar');
@@ -152,34 +151,33 @@ const vcpLogConnectionStatusDiv = document.getElementById('vcpLogConnectionStatu
 const notificationsListUl = document.getElementById('notificationsList');
 const clearNotificationsBtn = document.getElementById('clearNotificationsBtn');
 
-// Sidebar Tabs Elements
 const sidebarTabButtons = document.querySelectorAll('.sidebar-tab-button');
 const sidebarTabContents = document.querySelectorAll('.sidebar-tab-content');
 const tabContentTopics = document.getElementById('tabContentTopics');
 
-// New elements for topic search
 const topicSearchInput = document.getElementById('topicSearchInput');
 const topicSearchBtn = document.getElementById('topicSearchBtn');
 
-// Resizer Elements
 const leftSidebar = document.querySelector('.sidebar');
 const rightNotificationsSidebar = document.getElementById('notificationsSidebar');
 const resizerLeft = document.getElementById('resizerLeft');
 const resizerRight = document.getElementById('resizerRight');
 
-// Title Bar Controls
 const minimizeBtn = document.getElementById('minimize-btn');
 const maximizeBtn = document.getElementById('maximize-btn');
 const restoreBtn = document.getElementById('restore-btn');
 const closeBtn = document.getElementById('close-btn');
 const settingsBtn = document.getElementById('settings-btn');
+
+let croppedAvatarFile = null; // To store the result from the avatar cropper
+let croppedUserAvatarFile = null; // For user avatar
+
 const notificationTitleElement = document.getElementById('notificationTitle');
 const digitalClockElement = document.getElementById('digitalClock');
 const dateDisplayElement = document.getElementById('dateDisplay');
 
 // --- Initialization ---
 document.addEventListener('DOMContentLoaded', async () => {
-    // Register VCPLog listeners
     window.electronAPI.onVCPLogStatus((statusUpdate) => {
         if (window.notificationRenderer) {
             window.notificationRenderer.updateVCPLogStatus(statusUpdate, vcpLogConnectionStatusDiv);
@@ -197,29 +195,19 @@ document.addEventListener('DOMContentLoaded', async () => {
                 secondaryText: computedStyle.getPropertyValue('--secondary-text').trim()
             };
             window.notificationRenderer.renderVCPLogNotification(logData, originalRawMessage, notificationsListUl, themeColors);
-
-            // 旧的自动展开通知栏逻辑已移除，后续将由新的悬浮通知机制处理
-            // const notificationsSidebarElement = document.getElementById('notificationsSidebar');
-            // if (notificationsSidebarElement && !notificationsSidebarElement.classList.contains('active')) {
-            //     window.electronAPI.sendToggleNotificationsSidebar();
-            // }
         }
     });
-    // console.log('[RENDERER_INIT] VCPLog listeners registered.');
  
-    // Listener for VCP stream chunks
     window.electronAPI.onVCPStreamChunk(async (eventData) => {
         if (!window.messageRenderer) {
             console.error("VCPStreamChunk: messageRenderer not available.");
             return;
         }
-        // console.log('Received VCP stream chunk:', eventData);
  
         const streamMessageId = eventData.messageId;
  
         if (!streamMessageId) {
             console.error("VCPStreamChunk: Received chunk/event without a messageId. Cannot process.", eventData);
-            // If there's an active stream, we might want to terminate it with an error.
             if (activeStreamingMessageId) {
                 window.messageRenderer.finalizeStreamedMessage(activeStreamingMessageId, 'error_missing_id');
                 const errorMsgItem = document.querySelector(`.message-item[data-message-id="${activeStreamingMessageId}"] .md-content`);
@@ -230,14 +218,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
  
         if (eventData.type === 'data') {
-            // We use streamMessageId from the event, not the global activeStreamingMessageId directly for append/finalize
             window.messageRenderer.appendStreamChunk(streamMessageId, eventData.chunk);
         } else if (eventData.type === 'end') {
             window.messageRenderer.finalizeStreamedMessage(streamMessageId, eventData.finish_reason || 'completed');
-            // Attempt summarization after stream ends
             await attemptTopicSummarizationIfNeeded();
             if (activeStreamingMessageId === streamMessageId) {
-                activeStreamingMessageId = null; // Clear global active stream ID only if it matches
+                activeStreamingMessageId = null; 
             } else {
                 console.warn(`VCPStreamChunk: Finalized stream ${streamMessageId}, but global activeStreamingMessageId was ${activeStreamingMessageId}.`);
             }
@@ -252,7 +238,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     role: 'system',
                     content: `流处理错误 (ID: ${streamMessageId}): ${eventData.error}`,
                     timestamp: Date.now(),
-                    id: `err_${streamMessageId}` // Give error message a related ID
+                    id: `err_${streamMessageId}` 
                 });
             }
             if (activeStreamingMessageId === streamMessageId) {
@@ -260,7 +246,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
     });
-    // console.log('[RENDERER_INIT] VCP stream chunk listener registered (now expects messageId in eventData).');
   
     try {
         await loadAndApplyGlobalSettings();
@@ -270,7 +255,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             window.messageRenderer.initializeMessageRenderer({
                 currentChatHistory: currentChatHistory,
                 currentAgentId: currentAgentId,
-                currentTopicId: currentTopicId, // Pass currentTopicId
+                currentTopicId: currentTopicId, 
                 globalSettings: globalSettings,
                 chatMessagesDiv: chatMessagesDiv,
                 electronAPI: window.electronAPI,
@@ -281,7 +266,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 autoResizeTextarea: autoResizeTextarea,
                 handleCreateBranch: handleCreateBranch
             });
-            // console.log('[RENDERER_INIT] messageRenderer module initialized.');
         } else {
             console.error('[RENDERER_INIT] messageRenderer module not found!');
         }
@@ -295,7 +279,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 getCurrentAgentId: () => currentAgentId,
                 getCurrentTopicId: () => currentTopicId
             });
-            // console.log('[RENDERER_INIT] inputEnhancer module initialized.');
         } else {
             console.error('[RENDERER_INIT] inputEnhancer module not found! Drag/drop and enhanced paste might not work.');
         }
@@ -316,9 +299,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 function initializeDigitalClock() {
     if (digitalClockElement && notificationTitleElement && dateDisplayElement) {
-        notificationTitleElement.style.display = 'none'; // Hide the original title
-        updateDateTimeDisplay(); // Initial call to display time and date immediately
-        setInterval(updateDateTimeDisplay, 1000); // Update every second
+        notificationTitleElement.style.display = 'none'; 
+        updateDateTimeDisplay(); 
+        setInterval(updateDateTimeDisplay, 1000); 
     } else {
         console.error('Digital clock, notification title, or date display element not found.');
     }
@@ -330,12 +313,9 @@ function updateDateTimeDisplay() {
         const hours = String(now.getHours()).padStart(2, '0');
         const minutes = String(now.getMinutes()).padStart(2, '0');
         
-        // Check if the structure is already set up
         if (!digitalClockElement.querySelector('.colon')) {
-            // First time setup, or if structure was cleared
             digitalClockElement.innerHTML = `<span class="hours">${hours}</span><span class="colon">:</span><span class="minutes">${minutes}</span>`;
         } else {
-            // Only update text content of existing spans
             const hoursSpan = digitalClockElement.querySelector('.hours');
             const minutesSpan = digitalClockElement.querySelector('.minutes');
             if (hoursSpan) hoursSpan.textContent = hours;
@@ -343,7 +323,7 @@ function updateDateTimeDisplay() {
         }
     }
     if (dateDisplayElement) {
-        const month = String(now.getMonth() + 1).padStart(2, '0'); // Months are 0-indexed
+        const month = String(now.getMonth() + 1).padStart(2, '0'); 
         const day = String(now.getDate()).padStart(2, '0');
         const dayOfWeek = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][now.getDay()];
         dateDisplayElement.textContent = `${month}-${day} ${dayOfWeek}`;
@@ -358,10 +338,10 @@ function loadAndApplyThemePreference() {
     if (currentTheme === 'light') {
         document.body.classList.add('light-theme');
         if (sunIcon) sunIcon.style.display = 'none';
-        if (moonIcon) moonIcon.style.display = 'inline-block'; // Show moon for light theme
+        if (moonIcon) moonIcon.style.display = 'inline-block'; 
     } else {
-        document.body.classList.remove('light-theme'); // Default to dark
-        if (sunIcon) sunIcon.style.display = 'inline-block'; // Show sun for dark theme
+        document.body.classList.remove('light-theme'); 
+        if (sunIcon) sunIcon.style.display = 'inline-block'; 
         if (moonIcon) moonIcon.style.display = 'none';
     }
 }
@@ -369,15 +349,44 @@ function loadAndApplyThemePreference() {
 async function loadAndApplyGlobalSettings() {
     const settings = await window.electronAPI.loadSettings();
     if (settings && !settings.error) {
-        globalSettings = settings;
-        // Populate global settings form
-        document.getElementById('userName').value = globalSettings.userName || ''; // Add this line
+        globalSettings = { ...globalSettings, ...settings }; // Merge with defaults, saved settings take precedence
+
+        document.getElementById('userName').value = globalSettings.userName || '';
         document.getElementById('vcpServerUrl').value = globalSettings.vcpServerUrl || '';
         document.getElementById('vcpApiKey').value = globalSettings.vcpApiKey || '';
         document.getElementById('vcpLogUrl').value = globalSettings.vcpLogUrl || '';
         document.getElementById('vcpLogKey').value = globalSettings.vcpLogKey || '';
 
-        // Attempt to connect VCPLog if configured
+        if (globalSettings.userAvatarUrl && userAvatarPreview) {
+            userAvatarPreview.src = globalSettings.userAvatarUrl;
+            userAvatarPreview.style.display = 'block';
+            // Always set the user avatar color from settings, even if it's null (to reset)
+            if (window.messageRenderer) {
+                window.messageRenderer.setUserAvatarColor(globalSettings.userAvatarCalculatedColor);
+            }
+        } else if (window.messageRenderer) { // If no avatar URL, ensure color state is also null
+            window.messageRenderer.setUserAvatarColor(null);
+        } else if (userAvatarPreview) {
+            userAvatarPreview.src = '#';
+            userAvatarPreview.style.display = 'none';
+        }
+        if (window.messageRenderer) { // Update message renderer with user avatar
+            window.messageRenderer.setUserAvatar(globalSettings.userAvatarUrl);
+        }
+
+
+        // Apply saved sidebar widths
+        if (globalSettings.sidebarWidth && leftSidebar) {
+            leftSidebar.style.width = `${globalSettings.sidebarWidth}px`;
+        }
+        if (globalSettings.notificationsSidebarWidth && rightNotificationsSidebar) {
+             // Only apply if the sidebar is currently active or intended to be shown with a saved width
+            if (rightNotificationsSidebar.classList.contains('active')) {
+                rightNotificationsSidebar.style.width = `${globalSettings.notificationsSidebarWidth}px`;
+            }
+        }
+
+
         if (globalSettings.vcpLogUrl && globalSettings.vcpLogKey) {
             if (window.notificationRenderer) window.notificationRenderer.updateVCPLogStatus({ status: 'connecting', message: '连接中...' }, vcpLogConnectionStatusDiv);
             window.electronAPI.connectVCPLog(globalSettings.vcpLogUrl, globalSettings.vcpLogKey);
@@ -394,7 +403,7 @@ async function loadAndApplyGlobalSettings() {
 async function loadAgentList() {
     agentListUl.innerHTML = '<li>加载中...</li>';
     const result = await window.electronAPI.getAgents();
-    agentListUl.innerHTML = ''; // Clear loading/previous
+    agentListUl.innerHTML = ''; 
     if (result.error) {
         agentListUl.innerHTML = `<li>加载Agent失败: ${result.error}</li>`;
         return;
@@ -408,9 +417,9 @@ async function loadAgentList() {
             
             const avatarImg = document.createElement('img');
             avatarImg.classList.add('avatar');
-            avatarImg.src = agent.avatarUrl || 'assets/default_avatar.png'; // Provide a default avatar
+            avatarImg.src = agent.avatarUrl ? `${agent.avatarUrl}?t=${Date.now()}` : 'assets/default_avatar.png';
             avatarImg.alt = `${agent.name} 头像`;
-            avatarImg.onerror = () => { avatarImg.src = 'assets/default_avatar.png'; }; // Fallback for broken links
+            avatarImg.onerror = () => { avatarImg.src = 'assets/default_avatar.png'; }; 
 
             const nameSpan = document.createElement('span');
             nameSpan.classList.add('agent-name');
@@ -425,21 +434,18 @@ async function loadAgentList() {
             highlightActiveAgent(currentAgentId);
         }
 
-        // Initialize SortableJS for agent list
         if (typeof Sortable !== 'undefined') {
             new Sortable(agentListUl, {
                 animation: 150,
-                ghostClass: 'sortable-ghost', // Class name for the drop placeholder
-                chosenClass: 'sortable-chosen', // Class name for the chosen item
-                dragClass: 'sortable-drag', // Class name for the dragging item
+                ghostClass: 'sortable-ghost', 
+                chosenClass: 'sortable-chosen', 
+                dragClass: 'sortable-drag', 
                 onEnd: async function (evt) {
                     const agentItems = Array.from(evt.to.children);
                     const orderedAgentIds = agentItems.map(item => item.dataset.agentId);
-                    // console.log('New agent order:', orderedAgentIds);
                     try {
                         const result = await window.electronAPI.saveAgentOrder(orderedAgentIds);
                         if (result && result.success) {
-                            // console.log('Agent order saved successfully.');
                         } else {
                             console.error('Failed to save agent order:', result?.error);
                             alert('保存助手顺序失败: ' + (result?.error || '未知错误'));
@@ -458,24 +464,37 @@ async function loadAgentList() {
     }
 }
  
-async function selectAgent(agentId, agentName) {
+async function selectAgent(agentId, agentName) { // agentName is already a parameter
     if (currentAgentId === agentId && currentTopicId) {
         return;
     }
  
-    // console.log(`选择 Agent: ${agentName} (ID: ${agentId})`);
     currentAgentId = agentId;
-    currentTopicId = null; // Reset current topic ID
+    // currentAgentName = agentName; // Update local state if you use it elsewhere in renderer.js
+    currentTopicId = null;
     currentChatHistory = [];
-
-    // Remove glowing effect from any previously active topic
+ 
     document.querySelectorAll('.topic-list .topic-item.active-topic-glowing').forEach(item => {
         item.classList.remove('active-topic-glowing');
     });
-
+ 
     if (window.messageRenderer) {
         window.messageRenderer.setCurrentAgentId(currentAgentId);
-        window.messageRenderer.setCurrentTopicId(null); // Reset topic in messageRenderer
+        window.messageRenderer.setCurrentAgentName(agentName); // <--- ADD THIS CALL
+        window.messageRenderer.setCurrentTopicId(null);
+        // Fetch agent details to get avatar
+        const agentData = (await window.electronAPI.getAgents()).find(a => a.id === agentId);
+        if (agentData) {
+            window.messageRenderer.setCurrentAgentAvatar(agentData.avatarUrl);
+            if (agentData.config && agentData.config.avatarCalculatedColor) { // Load persisted color for the agent
+                window.messageRenderer.setCurrentAgentAvatarColor(agentData.config.avatarCalculatedColor);
+            } else {
+                window.messageRenderer.setCurrentAgentAvatarColor(null); // Explicitly set to null if not in config
+            }
+        } else {
+            window.messageRenderer.setCurrentAgentAvatar(null); // Fallback to default
+            window.messageRenderer.setCurrentAgentAvatarColor(null);
+        }
     }
     currentChatAgentNameH3.textContent = `与 ${agentName} 聊天中`;
     
@@ -483,14 +502,13 @@ async function selectAgent(agentId, agentName) {
     currentAgentSettingsBtn.title = `为 ${agentName} 新建聊天上下文(话题)`;
     currentAgentSettingsBtn.style.display = 'inline-block';
     clearCurrentChatBtn.style.display = 'inline-block';
-    // openAdminPanelBtn is now in a different header, its visibility is not tied to agent selection.
  
     highlightActiveAgent(agentId);
 
     try {
         const topics = await window.electronAPI.getAgentTopics(agentId);
         if (topics && !topics.error && topics.length > 0) {
-            let topicToLoadId = topics[0].id; // Default to the first topic
+            let topicToLoadId = topics[0].id; 
             try {
                 const rememberedTopicId = localStorage.getItem(`lastActiveTopic_${agentId}`);
                 if (rememberedTopicId && topics.some(t => t.id === rememberedTopicId)) {
@@ -503,14 +521,12 @@ async function selectAgent(agentId, agentName) {
             if (window.messageRenderer) {
                 window.messageRenderer.setCurrentTopicId(currentTopicId);
             }
-            // console.log(`Agent ${agentId} - 选择话题: ${currentTopicId}`);
             await loadChatHistory(currentAgentId, currentTopicId);
         } else if (topics.error) {
             console.error(`加载Agent ${agentId} 的话题列表失败:`, topics.error);
             chatMessagesDiv.innerHTML = `<div class="message-item system"><div class="sender-name">系统</div><div>加载话题列表失败: ${topics.error}</div></div>`;
         } else {
-            // console.warn(`Agent ${agentId} 没有找到话题。将尝试加载一个空的聊天记录。`);
-            await loadChatHistory(currentAgentId, null);
+            await loadChatHistory(currentAgentId, null); // This will show "no topic" message
         }
     } catch (e) {
         console.error(`选择 Agent ${agentId} 时发生错误: `, e);
@@ -527,9 +543,6 @@ function highlightActiveAgent(agentId) {
     document.querySelectorAll('.agent-list li').forEach(item => {
         item.classList.toggle('active', item.dataset.agentId === agentId);
     });
-    // When an agent is selected, if no specific topic is active yet,
-    // remove glowing from all topic items as a precaution.
-    // The actual glowing topic will be set when a topic is loaded.
     if (!currentTopicId) {
         document.querySelectorAll('.topic-list .topic-item.active-topic-glowing').forEach(item => {
             item.classList.remove('active-topic-glowing');
@@ -542,11 +555,10 @@ async function loadChatHistory(agentId, topicId) {
     chatMessagesDiv.innerHTML = '';
     currentChatHistory = [];
 
-    // Highlight the active topic and apply glowing effect
     document.querySelectorAll('.topic-list .topic-item').forEach(item => {
         const isCurrent = item.dataset.topicId === topicId && item.dataset.agentId === agentId;
-        item.classList.toggle('active', isCurrent); // Keep standard 'active' class
-        item.classList.toggle('active-topic-glowing', isCurrent); // Add new glowing class
+        item.classList.toggle('active', isCurrent); 
+        item.classList.toggle('active-topic-glowing', isCurrent); 
     });
 
     if (window.messageRenderer) {
@@ -557,7 +569,7 @@ async function loadChatHistory(agentId, topicId) {
         const errorMsg = `错误：无法加载聊天记录，助手ID (${agentId}) 或话题ID (${topicId}) 缺失。`;
         console.error(errorMsg);
         if (window.messageRenderer) {
-             window.messageRenderer.initializeMessageRenderer({ currentChatHistory, currentAgentId, currentTopicId: topicId, globalSettings, chatMessagesDiv, electronAPI, markedInstance, scrollToBottom, summarizeTopicFromMessages, openModal, autoResizeTextarea });
+             window.messageRenderer.initializeMessageRenderer({ currentChatHistory, currentAgentId, currentTopicId: topicId, globalSettings, chatMessagesDiv, electronAPI, markedInstance, scrollToBottom, summarizeTopicFromMessages, openModal, autoResizeTextarea, handleCreateBranch });
             window.messageRenderer.renderMessage({ role: 'system', content: errorMsg, timestamp: Date.now() });
         } else {
             chatMessagesDiv.innerHTML = `<div class="message-item system"><div class="sender-name">系统</div><div>${errorMsg}</div></div>`;
@@ -573,18 +585,17 @@ async function loadChatHistory(agentId, topicId) {
     const result = await window.electronAPI.getChatHistory(agentId, topicId);
     loadingMessageDiv.remove();
 
-    // Display topic creation timestamp
     await displayTopicTimestampBubble(agentId, topicId);
 
     if (result.error) {
         if (window.messageRenderer) {
-            window.messageRenderer.initializeMessageRenderer({ currentChatHistory, currentAgentId, currentTopicId: topicId, globalSettings, chatMessagesDiv, electronAPI, markedInstance, scrollToBottom, summarizeTopicFromMessages, openModal, autoResizeTextarea });
+            window.messageRenderer.initializeMessageRenderer({ currentChatHistory, currentAgentId, currentTopicId: topicId, globalSettings, chatMessagesDiv, electronAPI, markedInstance, scrollToBottom, summarizeTopicFromMessages, openModal, autoResizeTextarea, handleCreateBranch });
             window.messageRenderer.renderMessage({ role: 'system', content: `加载话题 "${topicId}" 的聊天记录失败: ${result.error}`, timestamp: Date.now() });
         }
     } else {
         currentChatHistory = result;
         if (window.messageRenderer) {
-             window.messageRenderer.initializeMessageRenderer({ currentChatHistory, currentAgentId, currentTopicId: topicId, globalSettings, chatMessagesDiv, electronAPI, markedInstance, scrollToBottom, summarizeTopicFromMessages, openModal, autoResizeTextarea });
+             window.messageRenderer.initializeMessageRenderer({ currentChatHistory, currentAgentId, currentTopicId: topicId, globalSettings, chatMessagesDiv, electronAPI, markedInstance, scrollToBottom, summarizeTopicFromMessages, openModal, autoResizeTextarea, handleCreateBranch });
             currentChatHistory.forEach(msg => window.messageRenderer.renderMessage(msg, true));
         }
     }
@@ -603,8 +614,8 @@ function scrollToBottom() {
 }
 
 async function displayTopicTimestampBubble(agentId, topicId) {
-    const chatMessagesContainer = document.querySelector('.chat-messages-container'); // Parent of chatMessagesDiv
-    const chatMessagesDivElement = document.getElementById('chatMessages'); // The direct container for messages and this bubble
+    const chatMessagesContainer = document.querySelector('.chat-messages-container'); 
+    const chatMessagesDivElement = document.getElementById('chatMessages'); 
 
     if (!chatMessagesDivElement || !chatMessagesContainer) {
         console.warn('[displayTopicTimestampBubble] Missing chatMessagesDivElement or chatMessagesContainer.');
@@ -618,15 +629,12 @@ async function displayTopicTimestampBubble(agentId, topicId) {
         timestampBubble = document.createElement('div');
         timestampBubble.id = 'topicTimestampBubble';
         timestampBubble.className = 'topic-timestamp-bubble';
-        // Insert as the first child of chatMessagesDiv, so it scrolls with messages
-        // and appears at the "top" due to column-reverse on parent
         if (chatMessagesDivElement.firstChild) {
             chatMessagesDivElement.insertBefore(timestampBubble, chatMessagesDivElement.firstChild);
         } else {
             chatMessagesDivElement.appendChild(timestampBubble);
         }
     } else {
-        // Ensure it's the first child if it already exists
         if (chatMessagesDivElement.firstChild !== timestampBubble) {
             chatMessagesDivElement.insertBefore(timestampBubble, chatMessagesDivElement.firstChild);
         }
@@ -634,7 +642,6 @@ async function displayTopicTimestampBubble(agentId, topicId) {
 
 
     if (!agentId || !topicId) {
-        // If no agent or topic, hide the bubble
         timestampBubble.style.display = 'none';
         return;
     }
@@ -647,7 +654,7 @@ async function displayTopicTimestampBubble(agentId, topicId) {
                 const date = new Date(currentTopic.createdAt);
                 const formattedDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
                 timestampBubble.textContent = `话题创建于: ${formattedDate}`;
-                timestampBubble.style.display = 'block'; // Or 'flex' based on CSS, 'block' is fine for center alignment with margin auto
+                timestampBubble.style.display = 'block'; 
             } else {
                 console.warn(`[displayTopicTimestampBubble] Topic ${topicId} not found or has no createdAt timestamp for agent ${agentId}.`);
                 timestampBubble.style.display = 'none';
@@ -663,7 +670,6 @@ async function displayTopicTimestampBubble(agentId, topicId) {
 }
 
 
-// Helper function to attempt topic summarization
 async function attemptTopicSummarizationIfNeeded() {
     if (currentChatHistory.length >= 4 && currentTopicId) {
         try {
@@ -678,13 +684,11 @@ async function attemptTopicSummarizationIfNeeded() {
             const currentAgentName = agentConfigForSummary.name || 'AI';
 
             if (existingTopicTitle === "主要对话" || existingTopicTitle.startsWith("新话题")) {
-                // Ensure summarizeTopicFromMessages is available
                 if (typeof summarizeTopicFromMessages === 'function') {
                     const summarizedTitle = await summarizeTopicFromMessages(currentChatHistory.filter(m => !m.isThinking), currentAgentName);
                     if (summarizedTitle) {
                         const saveResult = await window.electronAPI.saveAgentTopicTitle(currentAgentId, currentTopicId, summarizedTitle);
                         if (saveResult.success) {
-                            // console.log(`AI 自动总结并保存话题 "${currentTopicId}" 标题: "${summarizedTitle}" for agent ${currentAgentId}`);
                             if (document.getElementById('tabContentTopics').classList.contains('active')) {
                                 loadTopicList();
                             }
@@ -692,7 +696,6 @@ async function attemptTopicSummarizationIfNeeded() {
                             console.error(`[TopicSummary] Failed to save new topic title "${summarizedTitle}":`, saveResult.error);
                         }
                     } else {
-                        // console.log('[TopicSummary] summarizeTopicFromMessages returned null, no title generated.');
                     }
                 } else {
                     console.error('[TopicSummary] summarizeTopicFromMessages function is not defined or not accessible.');
@@ -707,7 +710,7 @@ async function attemptTopicSummarizationIfNeeded() {
 async function handleSendMessage() {
     const content = messageInput.value.trim();
     if (!content && attachedFiles.length === 0) return;
-    if (!currentAgentId || !currentTopicId) { // Also check for currentTopicId
+    if (!currentAgentId || !currentTopicId) { 
         alert('请先选择一个Agent和话题！');
         return;
     }
@@ -721,32 +724,25 @@ async function handleSendMessage() {
         role: 'user',
         content: content,
         timestamp: Date.now(),
-        id: `msg_${Date.now()}_user_${Math.random().toString(36).substring(2, 9)}`, // Ensure user message also has an ID
+        id: `msg_${Date.now()}_user_${Math.random().toString(36).substring(2, 9)}`, 
         attachments: []
     };
     
     if (attachedFiles.length > 0) {
-        // Now attachedFiles contains objects with internalPath
-        // and potentially other data from fileManager.
-        // The structure for userMessage.attachments should align with what
-        // messageRenderer and the VCP preparation logic expect.
         userMessage.attachments = attachedFiles.map(af => ({
-            type: af.file.type, // MIME type
-            src: af.localPath,   // This is now the internal file:// URL to AppData
+            type: af.file.type, 
+            src: af.localPath,   
             name: af.originalName,
             size: af.file.size,
-            // Potentially include other fields from af._fileManagerData if needed by VCP prep
-            // For example, if base64 was pre-generated by fileManager and stored in _fileManagerData:
-            // base64Data: af._fileManagerData.base64Data
         }));
     }
  
     if (window.messageRenderer) {
-        window.messageRenderer.renderMessage(userMessage); // This adds to history and saves
+        window.messageRenderer.renderMessage(userMessage); 
     }
 
     messageInput.value = '';
-    attachedFiles.length = 0; // Clear the array without reassigning
+    attachedFiles.length = 0; 
     updateAttachmentPreview();
     autoResizeTextarea(messageInput);
     messageInput.focus();
@@ -761,36 +757,26 @@ async function handleSendMessage() {
     };
 
     if (window.messageRenderer) {
-        window.messageRenderer.renderMessage(thinkingMessage); // Render thinking message (won't save to history yet)
+        window.messageRenderer.renderMessage(thinkingMessage); 
     }
  
     try {
         const agentConfig = await window.electronAPI.getAgentConfig(currentAgentId);
-        // Prepare messages for VCP: take a snapshot of history *before* the thinking message
-        // The thinking message itself is not sent to VCP.
         const historySnapshotForVCP = currentChatHistory.filter(msg => msg.id !== thinkingMessage.id && !msg.isThinking);
         
         const messagesForVCP = await Promise.all(historySnapshotForVCP.map(async msg => {
             let vcpAttachments = [];
             if (msg.attachments && msg.attachments.length > 0) {
                 vcpAttachments = await Promise.all(msg.attachments.map(async att => {
-                    // console.log('[Renderer - handleSendMessage] Processing attachment for VCP:', JSON.stringify(att, (key, value) => {
-                    //     if (key === 'data' && typeof value === 'string' && value.length > 200) {
-                    //         return `${value.substring(0, 50)}...[Base64, length: ${value.length}]...${value.substring(value.length - 50)}`;
-                    //     }
-                    //     return value;
-                    // }, 2));
                     if (att.type.startsWith('image/')) {
                         try {
                             const internalPath = att.src;
-                            // console.log(`[Renderer - handleSendMessage] Attachment is image/audio. Calling getFileAsBase64 for internal path: ${internalPath}`);
                             const base64Result = await window.electronAPI.getFileAsBase64(internalPath);
                             
                             if (base64Result && base64Result.error) {
                                 console.error(`[Renderer - handleSendMessage] Error from getFileAsBase64 for ${att.name} (internal: ${internalPath}):`, base64Result.error);
                                 return { type: att.type, name: att.name, error: `Failed to load image/audio data: ${base64Result.error}` };
                             } else if (typeof base64Result === 'string' && base64Result.length > 0) {
-                                // console.log(`[Renderer - handleSendMessage] Successfully got Base64 for ${att.name} (internal: ${internalPath}), length: ${base64Result.length}`);
                                 return { type: att.type, name: att.name, data: base64Result, internalPath: internalPath };
                             } else {
                                 console.warn(`[Renderer - handleSendMessage] getFileAsBase64 returned unexpected data for ${att.name} (internal: ${internalPath}):`,
@@ -815,14 +801,12 @@ async function handleSendMessage() {
                                 ) {
                         try {
                             const internalPath = att.src;
-                            // console.log(`[Renderer - handleSendMessage] Attachment is text-based. Calling getTextContent for: ${internalPath}, type: ${att.type}`);
                             const textResult = await window.electronAPI.getTextContent(internalPath, att.type);
 
                             if (textResult && textResult.error) {
                                 console.error(`[Renderer - handleSendMessage] Error from getTextContent for ${att.name} (internal: ${internalPath}):`, textResult.error);
                                 return { ...att, error: `Failed to extract text: ${textResult.error}` };
                             } else if (typeof textResult.textContent === 'string') {
-                                // console.log(`[Renderer - handleSendMessage] Successfully got text for ${att.name}, length: ${textResult.textContent.length}`);
                                 return { ...att, extractedText: textResult.textContent };
                             } else {
                                 console.warn(`[Renderer - handleSendMessage] getTextContent returned unexpected data for ${att.name} (internal: ${internalPath}):`, textResult);
@@ -833,7 +817,6 @@ async function handleSendMessage() {
                             return { ...att, error: `Failed to extract text: ${error.message}` };
                         }
                     } else {
-                        // console.log(`[Renderer - handleSendMessage] Other attachment type ${att.name} (${att.type}), sending metadata only.`);
                         return { type: att.type, name: att.name, internalPath: att.src };
                     }
                 }));
@@ -855,37 +838,32 @@ async function handleSendMessage() {
                         if (att.type.startsWith('image/') && att.data) {
                             const dataUrl = `data:${att.type};base64,${att.data}`;
                             mediaParts.push({ type: 'image_url', image_url: { url: dataUrl } });
-                            // console.log(`[Renderer - handleSendMessage] Prepared image part for VCP: ${att.name}`);
                         } else if (att.type.startsWith('audio/') && att.data) {
                             const dataUrl = `data:${att.type};base64,${att.data}`;
                             mediaParts.push({ type: 'audio_url', audio_url: { url: dataUrl } });
-                            // console.log(`[Renderer - handleSendMessage] Prepared audio part for VCP: ${att.name}`);
                         } else if (att.extractedText !== undefined && att.extractedText !== null) {
                             documentStrings.push(`[文档${documentIndex}-${att.name}：${att.extractedText}]`);
                             documentIndex++;
-                            // console.log(`[Renderer - handleSendMessage] Formatted and collected extracted text of ${att.name}.`);
                         }
                     });
                 }
                 
-                // Combine user's primary text with the collected document strings
                 let combinedTextContent = userPrimaryText;
                 if (documentStrings.length > 0) {
-                    if (combinedTextContent.length > 0) { // Add separation if there's primary text
+                    if (combinedTextContent.length > 0) { 
                         combinedTextContent += "\n\n";
                     }
-                    combinedTextContent += documentStrings.join("\n"); // Join multiple documents with a newline
+                    combinedTextContent += documentStrings.join("\n"); 
                 }
 
                 const finalContentForVCP = [{ type: 'text', text: combinedTextContent }];
                 finalContentForVCP.push(...mediaParts);
 
                 return { role: msg.role, content: finalContentForVCP };
-            } else { // For system or assistant messages
+            } else { 
                 return {
                     role: msg.role,
                     content: msg.content
-                    // If assistant messages could have attachments to *send back* to VCP (unlikely), handle here.
                 };
             }
         }));
@@ -905,7 +883,7 @@ async function handleSendMessage() {
         };
         
         if (useStreaming) {
-            activeStreamingMessageId = thinkingMessage.id; // Set active stream ID
+            activeStreamingMessageId = thinkingMessage.id; 
             if (window.messageRenderer) {
                 window.messageRenderer.startStreamingMessage({ ...thinkingMessage, content: "" });
             }
@@ -916,7 +894,7 @@ async function handleSendMessage() {
             globalSettings.vcpApiKey,
             messagesForVCP,
             modelConfigForVCP,
-            thinkingMessage.id // Pass the thinkingMessage.id here
+            thinkingMessage.id 
         );
 
         if (!useStreaming) {
@@ -940,12 +918,10 @@ async function handleSendMessage() {
                 }
             }
             await window.electronAPI.saveChatHistory(currentAgentId, currentTopicId, currentChatHistory.filter(msg => !msg.isThinking));
-            // Attempt summarization after non-streamed response is processed
             await attemptTopicSummarizationIfNeeded();
-        } else { // Handling for streaming responses (vcpResponse.streamError or !vcpResponse.streamingStarted)
+        } else { 
             if (vcpResponse && vcpResponse.streamError) {
                 console.error("Streaming setup failed in main process:", vcpResponse.errorDetail || vcpResponse.error);
-                // Note: attemptTopicSummarizationIfNeeded will be called by onVCPStreamChunk 'end' or 'error' event for streams
             } else if (vcpResponse && !vcpResponse.streamingStarted && !vcpResponse.streamError) {
                 console.warn("Expected streaming to start, but main process returned non-streaming or error:", vcpResponse);
                 activeStreamingMessageId = null;
@@ -957,7 +933,6 @@ async function handleSendMessage() {
                 if (window.messageRenderer) {
                     window.messageRenderer.renderMessage({ role: 'system', content: '请求流式回复失败，收到非流式响应或错误。', timestamp: Date.now() });
                 }
-                // Save history here as the stream didn't start as expected.
                 await window.electronAPI.saveChatHistory(currentAgentId, currentTopicId, currentChatHistory.filter(msg => !msg.isThinking));
                 await attemptTopicSummarizationIfNeeded();
             }
@@ -980,26 +955,23 @@ async function handleSendMessage() {
     }
 }
  
-// --- Sidebar Tab Functionality ---
 function setupSidebarTabs() {
     sidebarTabButtons.forEach(button => {
         button.addEventListener('click', () => {
             const targetTab = button.dataset.tab;
 
-            // Update button active states
             sidebarTabButtons.forEach(btn => {
                 btn.classList.toggle('active', btn.dataset.tab === targetTab);
             });
 
-            // Update content active states
             sidebarTabContents.forEach(content => {
                 const isActive = content.id === `tabContent${targetTab.charAt(0).toUpperCase() + targetTab.slice(1)}`;
                 content.classList.toggle('active', isActive);
                 if (isActive) {
                     if (targetTab === 'topics') {
-                        loadTopicList(); // Load topics when this tab becomes active
+                        loadTopicList(); 
                     } else if (targetTab === 'settings') {
-                        displayAgentSettingsInTab(); // New function to handle display in tab
+                        displayAgentSettingsInTab(); 
                     }
                 }
             });
@@ -1007,19 +979,15 @@ function setupSidebarTabs() {
     });
 }
 
-// --- Topic/Chat History Summary Functionality ---
 async function loadTopicList() {
-    // Preserve the topics-header content (which includes the search bar)
     const topicsHeader = tabContentTopics.querySelector('.topics-header');
     const existingTopicListUl = tabContentTopics.querySelector('.topic-list');
 
-    // Clear only the dynamic topic list, not the entire tabContentTopics
     if (existingTopicListUl) {
         existingTopicListUl.remove();
     }
     
     if (!topicsHeader) {
-        // console.error("topics-header not found in tabContentTopics. HTML structure might be missing.");
         tabContentTopics.innerHTML = `
             <div class="topics-header">
                 <h2>话题</h2>
@@ -1034,10 +1002,10 @@ async function loadTopicList() {
 
     const topicListUl = document.createElement('ul');
     topicListUl.classList.add('topic-list');
-    topicListUl.id = 'topicList'; // Ensure it has the ID for later selection
-    tabContentTopics.appendChild(topicListUl); // Append the new ul after the header
+    topicListUl.id = 'topicList'; 
+    tabContentTopics.appendChild(topicListUl); 
     
-    let topicsToProcess = []; // Declare here to ensure correct scope for SortableJS check
+    let topicsToProcess = []; 
 
     if (currentAgentId) {
         const agentNameForLoading = document.querySelector(`.agent-list li[data-agent-id="${currentAgentId}"] .agent-name`)?.textContent || '当前助手';
@@ -1049,7 +1017,6 @@ async function loadTopicList() {
         } else {
             topicsToProcess = agentConfig.topics || [{ id: "default", name: "主要对话", createdAt: Date.now() }];
 
-            // Sort topics by createdAt in descending order (newest first)
             topicsToProcess.sort((a, b) => {
                 const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
                 const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
@@ -1059,7 +1026,7 @@ async function loadTopicList() {
             if (topicsToProcess.length === 0) {
                 topicListUl.innerHTML = `<li><p>助手 ${agentNameForLoading} 还没有任何话题。您可以点击上方的“新建上下文”按钮创建一个。</p></li>`;
             } else {
-                topicListUl.innerHTML = ''; // Clear loading message
+                topicListUl.innerHTML = ''; 
                 for (const topic of topicsToProcess) {
                     const li = document.createElement('li');
                     li.classList.add('topic-item');
@@ -1072,7 +1039,7 @@ async function loadTopicList() {
                     const avatarImg = document.createElement('img');
                     avatarImg.classList.add('avatar');
                     const agentForAvatar = (await window.electronAPI.getAgents()).find(a => a.id === currentAgentId);
-                    avatarImg.src = agentForAvatar?.avatarUrl || 'assets/default_avatar.png';
+                    avatarImg.src = agentForAvatar?.avatarUrl ? `${agentForAvatar.avatarUrl}?t=${Date.now()}` : 'assets/default_avatar.png';
                     avatarImg.alt = `${agentConfig.name} - ${topic.name}`;
                     avatarImg.onerror = () => { avatarImg.src = 'assets/default_avatar.png'; };
 
@@ -1129,7 +1096,6 @@ async function loadTopicList() {
     }
 
     if (currentAgentId && topicsToProcess && topicsToProcess.length > 0 && typeof Sortable !== 'undefined') {
-        // console.log(`[Sortable Topics DEBUG] Initializing. Agent: ${currentAgentId}, Topics count: ${topicsToProcess.length}, UL children: ${topicListUl.children.length}`);
         new Sortable(topicListUl, {
             animation: 150,
             ghostClass: 'sortable-ghost',
@@ -1138,11 +1104,9 @@ async function loadTopicList() {
             onEnd: async function (evt) {
                 const topicItems = Array.from(evt.to.children);
                 const orderedTopicIds = topicItems.map(item => item.dataset.topicId);
-                // console.log(`[Sortable Topics DEBUG] onEnd: New topic order for agent ${currentAgentId}:`, orderedTopicIds);
                 try {
                     const result = await window.electronAPI.saveTopicOrder(currentAgentId, orderedTopicIds);
                     if (result && result.success) {
-                        // console.log(`[Sortable Topics DEBUG] Topic order for agent ${currentAgentId} saved successfully.`);
                         await loadTopicList();
                     } else {
                         console.error(`[Sortable Topics DEBUG] Failed to save topic order for agent ${currentAgentId}:`, result?.error);
@@ -1157,12 +1121,10 @@ async function loadTopicList() {
             }
         });
     } else {
-        //  console.log(`[Sortable Topics DEBUG] NOT Initializing. Agent: ${currentAgentId}, Topics count: ${topicsToProcess ? topicsToProcess.length : 'N/A'}, Sortable defined: ${typeof Sortable !== 'undefined'}, UL children: ${topicListUl.children.length}`);
     }
 }
  
 function showTopicContextMenu(event, topicItemElement, agentConfig, topic) {
-    // console.log(`Right-clicked on topic: ${topic.name} (ID: ${topic.id}) for agent: ${agentConfig.name}`);
     closeContextMenu();
     closeTopicContextMenu();
 
@@ -1172,7 +1134,6 @@ function showTopicContextMenu(event, topicItemElement, agentConfig, topic) {
     menu.style.top = `${event.clientY}px`;
     menu.style.left = `${event.clientX}px`;
 
-    // Option 1: Edit Topic Title
     const editTitleOption = document.createElement('div');
     editTitleOption.classList.add('context-menu-item');
     editTitleOption.textContent = '编辑话题标题';
@@ -1208,12 +1169,10 @@ function showTopicContextMenu(event, topicItemElement, agentConfig, topic) {
         saveButton.onclick = async () => {
             const newTitle = titleInput.value.trim();
             if (newTitle && newTitle !== originalTitle) {
-                // Call updated saveAgentTopicTitle with agentId, topicId, newTitle
                 const result = await window.electronAPI.saveAgentTopicTitle(agentConfig.id || currentAgentId, topic.id, newTitle);
                 if (result && result.success) {
                     titleDisplayElement.textContent = newTitle;
-                    topic.name = newTitle; // Update local topic object name
-                    // If this was the current topic, maybe update chat header if it shows topic name
+                    topic.name = newTitle; 
                 } else {
                     alert(`更新话题标题失败: ${result ? result.error : '未知错误'}`);
                 }
@@ -1228,62 +1187,53 @@ function showTopicContextMenu(event, topicItemElement, agentConfig, topic) {
         inputWrapper.appendChild(titleInput);
         inputWrapper.appendChild(saveButton);
         inputWrapper.appendChild(cancelButton);
-        topicItemElement.appendChild(inputWrapper); // Append to the li itself
+        topicItemElement.appendChild(inputWrapper); 
         titleInput.focus();
         titleInput.select();
     };
     menu.appendChild(editTitleOption);
 
-    // Option 2: Delete Topic (Clear chat history for this specific topic)
-    // We need a new IPC for "delete-topic" which would remove the topic from config.topics and delete its history folder.
-    // For now, let's just clear its history and rename it.
     const clearTopicHistoryOption = document.createElement('div');
     clearTopicHistoryOption.classList.add('context-menu-item', 'danger-text');
     clearTopicHistoryOption.textContent = '清空此话题聊天记录';
     clearTopicHistoryOption.onclick = async () => {
         closeTopicContextMenu();
         if (confirm(`确定要清空话题 "${topic.name}" 的所有聊天记录吗？此操作不可撤销。`)) {
-            await window.electronAPI.saveChatHistory(currentAgentId, topic.id, []); // Save empty history
-            if (currentTopicId === topic.id) { // If it's the currently active topic
+            await window.electronAPI.saveChatHistory(currentAgentId, topic.id, []); 
+            if (currentTopicId === topic.id) { 
                 currentChatHistory = [];
                 chatMessagesDiv.innerHTML = '';
                 if (window.messageRenderer) {
-                    window.messageRenderer.initializeMessageRenderer({ currentChatHistory, currentAgentId, currentTopicId, globalSettings, chatMessagesDiv, electronAPI, markedInstance, scrollToBottom, summarizeTopicFromMessages, openModal, autoResizeTextarea });
+                    window.messageRenderer.initializeMessageRenderer({ currentChatHistory, currentAgentId, currentTopicId, globalSettings, chatMessagesDiv, electronAPI, markedInstance, scrollToBottom, summarizeTopicFromMessages, openModal, autoResizeTextarea, handleCreateBranch });
                     window.messageRenderer.renderMessage({ role: 'system', content: `话题 "${topic.name}" 的聊天记录已清空。`, timestamp: Date.now() });
                 }
-                // Ensure timestamp bubble is still displayed correctly as topic itself hasn't changed
                 await displayTopicTimestampBubble(currentAgentId, topic.id);
             }
-            // Optionally, rename the topic to indicate it's cleared, or just leave as is.
-            // For example: await window.electronAPI.saveAgentTopicTitle(currentAgentId, topic.id, `${topic.name} (已清空)`);
             alert(`话题 "${topic.name}" 的聊天记录已清空。`);
-            loadTopicList(); // Refresh topic list (e.g., if message counts were displayed)
+            loadTopicList(); 
         }
     };
     menu.appendChild(clearTopicHistoryOption);
 
-    // Option 3: Delete Topic Permanently
     const deleteTopicPermanentlyOption = document.createElement('div');
-    deleteTopicPermanentlyOption.classList.add('context-menu-item', 'danger-text'); // Style as danger
+    deleteTopicPermanentlyOption.classList.add('context-menu-item', 'danger-text'); 
     deleteTopicPermanentlyOption.textContent = '永久删除此话题';
     deleteTopicPermanentlyOption.onclick = async () => {
         closeTopicContextMenu();
         if (confirm(`您确定要永久删除话题 "${topic.name}" 吗？\n此操作将删除话题本身及其所有聊天记录，且不可撤销！`)) {
             const result = await window.electronAPI.deleteTopic(currentAgentId, topic.id);
             if (result && result.success) {
-                // alert(`话题 "${topic.name}" 已被永久删除。`);
-                loadTopicList(); // Refresh the topic list in the UI
+                loadTopicList(); 
 
-                // If the deleted topic was the current active one, select the new first topic (usually "default")
                 if (currentTopicId === topic.id) {
                     const updatedTopics = result.remainingTopics || await window.electronAPI.getAgentTopics(currentAgentId);
                     if (updatedTopics && updatedTopics.length > 0) {
                         currentTopicId = updatedTopics[0].id;
                         await loadChatHistory(currentAgentId, currentTopicId);
-                    } else { // Should not happen if main.js ensures a default topic
+                    } else { 
                         currentTopicId = null;
                         chatMessagesDiv.innerHTML = '<div class="message-item system"><div class="sender-name">系统</div><div>所有话题均已删除。</div></div>';
-                        await displayTopicTimestampBubble(currentAgentId, null); // Hide bubble if all topics gone
+                        await displayTopicTimestampBubble(currentAgentId, null); 
                     }
                 }
             } else {
@@ -1318,58 +1268,30 @@ function closeTopicContextMenuOnClickOutside(event) {
 function setupEventListeners() {
     if (chatMessagesDiv) {
         chatMessagesDiv.addEventListener('click', (event) => {
-            const target = event.target.closest('a'); // 查找被点击元素或其最近的 <a> 祖先
+            const target = event.target.closest('a'); 
 
             if (target && target.href) {
                 const href = target.href;
-
-                // 阻止默认的导航行为 (在Electron窗口内加载)
                 event.preventDefault();
 
-                // 检查链接是否是图片预览的特定链接，如果是，则不通过外部打开
-                // (假设图片预览有特定类名或处理方式，这里简单示例，可能需要根据实际情况调整)
-                // 例如，如果图片链接由 messageRenderer.js 中的其他逻辑处理（如打开内部预览窗口），
-                // 那么这里可能需要更精确的判断来避免干扰。
-                // 另外，需要确保这不会影响到例如 "在新标签页中打开图片" 这种右键菜单功能，
-                // 不过右键菜单通常由主进程直接处理 shell.openExternal，所以应该没问题。
-
-                // 排除内部锚点链接 (例如 #some-id)
                 if (href.startsWith('#')) {
                     console.log('Internal anchor link clicked, allowing default behavior or custom handling if needed.');
-                    return; // 允许默认行为或由其他逻辑处理
+                    return; 
                 }
                 
-                // 排除JavaScript驱动的链接
                 if (href.toLowerCase().startsWith('javascript:')) {
                     console.log('JavaScript link clicked, ignoring for external open.');
                     return;
                 }
-
-                // 排除那些明确设计为在应用内部打开的链接 (例如，通过特定类名或数据属性标记)
-                // if (target.classList.contains('internal-link') || target.dataset.internalLink === 'true') {
-                //     console.log('Explicitly internal link clicked, allowing default behavior or custom handling.');
-                //     return;
-                // }
                 
-                // 检查是否是图片右键菜单中的“在新标签页中打开图片”触发的，如果是，则主进程已经处理了
-                // 这个检查比较困难，因为事件可能已经被主进程的菜单项处理。
-                // 但通常 shell.openExternal 是安全的。
-
-                // 只有当链接是 http, https 或 file 协议时，才尝试在外部打开
                 if (href.startsWith('http:') || href.startsWith('https:') || href.startsWith('file:')) {
                     if (window.electronAPI && window.electronAPI.sendOpenExternalLink) {
-                        // console.log(`[Renderer] Requesting to open external link: ${href}`);
                         window.electronAPI.sendOpenExternalLink(href);
                     } else {
                         console.warn('[Renderer] electronAPI.sendOpenExternalLink is not available. Cannot open link externally.');
-                        // 可以提供一个回退机制，例如复制链接到剪贴板
-                        // navigator.clipboard.writeText(href).then(() => alert('链接已复制到剪贴板，请手动在浏览器中打开。'));
                     }
                 } else {
                     console.warn(`[Renderer] Clicked link with unhandled protocol, not opening externally: ${href}`);
-                    // 对于其他协议，可能需要允许默认行为或进行其他处理
-                    // 例如，如果应用内部有自定义协议处理器，这里就不应该阻止默认行为。
-                    // 为了安全，未知协议默认不打开。
                 }
             }
         });
@@ -1386,13 +1308,11 @@ function setupEventListeners() {
     });
     messageInput.addEventListener('input', () => autoResizeTextarea(messageInput));
 
-    // File attachment
     attachFileBtn.addEventListener('click', async () => {
         if (!currentAgentId || !currentTopicId) {
             alert("请先选择一个Agent和话题以上传附件。");
             return;
         }
-        // Pass currentAgentId and currentTopicId to the IPC call
         const result = await window.electronAPI.selectFilesToSend(currentAgentId, currentTopicId);
 
         if (result && result.success && result.attachments && result.attachments.length > 0) {
@@ -1401,10 +1321,9 @@ function setupEventListeners() {
                     console.error(`Error processing selected file ${att.name || 'unknown'}: ${att.error}`);
                     alert(`处理文件 ${att.name || '未知文件'} 失败: ${att.error}`);
                 } else {
-                    // att is the full attachment object from fileManager.storeFile
                     attachedFiles.push({
                         file: { name: att.name, type: att.type, size: att.size },
-                        localPath: att.internalPath, // This is now the internal AppData path
+                        localPath: att.internalPath, 
                         originalName: att.name,
                         _fileManagerData: att
                     });
@@ -1412,44 +1331,71 @@ function setupEventListeners() {
             });
             updateAttachmentPreview();
         } else if (result && !result.success && result.attachments && result.attachments.length === 0) {
-            // Dialog was cancelled or no files selected, do nothing.
             console.log('[Renderer] File selection cancelled or no files selected.');
         } else if (result && result.error) {
             alert(`选择文件时出错: ${result.error}`);
         }
     });
     
-    // The original 'paste' event listener on messageInput is now largely handled by inputEnhancer.js.
-    // We can remove or comment out the old one to avoid conflicts if inputEnhancer.js covers all cases.
-    // For now, let's comment it out. If specific text-only paste scenarios were uniquely handled here
-    /*
-    messageInput.addEventListener('paste', async (event) => {
-        // ... original paste logic from renderer.js ...
-    });
-    */
  
-    // Global Settings Modal
     globalSettingsBtn.addEventListener('click', () => openModal('globalSettingsModal'));
     globalSettingsForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const newSettings = {
-            userName: document.getElementById('userName').value.trim(), // Add this line
+            userName: document.getElementById('userName').value.trim(), 
             vcpServerUrl: document.getElementById('vcpServerUrl').value.trim(),
-            vcpApiKey: document.getElementById('vcpApiKey').value, // Don't trim API key
+            vcpApiKey: document.getElementById('vcpApiKey').value, 
             vcpLogUrl: document.getElementById('vcpLogUrl').value.trim(),
             vcpLogKey: document.getElementById('vcpLogKey').value.trim(),
+            sidebarWidth: globalSettings.sidebarWidth,
+            notificationsSidebarWidth: globalSettings.notificationsSidebarWidth
         };
-        const result = await window.electronAPI.saveSettings(newSettings);
+
+        if (croppedUserAvatarFile) { // Check if a new user avatar was cropped
+            try {
+                const arrayBuffer = await croppedUserAvatarFile.arrayBuffer();
+                const avatarSaveResult = await window.electronAPI.saveUserAvatar({
+                    name: croppedUserAvatarFile.name, // "avatar.png"
+                    type: croppedUserAvatarFile.type, // "image/png"
+                    buffer: arrayBuffer
+                });
+                if (avatarSaveResult.success) {
+                    globalSettings.userAvatarUrl = avatarSaveResult.avatarUrl; // Update globalSettings for immediate use
+                    userAvatarPreview.src = avatarSaveResult.avatarUrl;
+                    userAvatarPreview.style.display = 'block';
+                    if (window.messageRenderer) {
+                        window.messageRenderer.setUserAvatar(avatarSaveResult.avatarUrl);
+                    }
+                    // Trigger color extraction and saving for the new user avatar
+                    if (avatarSaveResult.needsColorExtraction && window.messageRenderer && window.messageRenderer.electronAPI.saveAvatarColor) {
+                        getAverageColorFromAvatar(avatarSaveResult.avatarUrl, (avgColor) => { // Assuming getAverageColorFromAvatar is accessible here or via messageRenderer
+                            if (avgColor) {
+                                window.messageRenderer.electronAPI.saveAvatarColor({ type: 'user', id: 'user_global', color: avgColor })
+                                    .then(() => window.messageRenderer.setUserAvatarColor(avgColor));
+                            }
+                        });
+                    }
+
+                    croppedUserAvatarFile = null; // Clear after save
+                    userAvatarInput.value = '';
+                } else {
+                    alert(`保存用户头像失败: ${avatarSaveResult.error}`);
+                }
+            } catch (readError) {
+                alert(`读取用户头像文件失败: ${readError.message}`);
+            }
+        }
+
+        const result = await window.electronAPI.saveSettings(newSettings); // Save other settings
         if (result.success) {
-            globalSettings = newSettings; // Update in-memory settings
+            // newSettings now only contains non-avatar settings, merge with existing avatar if not changed
+            globalSettings = {...globalSettings, ...newSettings }; 
             alert('全局设置已保存！部分设置（如通知URL/Key）可能需要重新连接生效。');
             closeModal('globalSettingsModal');
-            // Re-connect VCPLog if settings changed
             if (globalSettings.vcpLogUrl && globalSettings.vcpLogKey) {
                  window.electronAPI.connectVCPLog(globalSettings.vcpLogUrl, globalSettings.vcpLogKey);
             } else {
                  window.electronAPI.disconnectVCPLog();
-                 // 调用模块中的函数
                  if (window.notificationRenderer) window.notificationRenderer.updateVCPLogStatus({ status: 'error', message: 'VCPLog未配置' }, vcpLogConnectionStatusDiv);
             }
        } else {
@@ -1457,10 +1403,27 @@ function setupEventListeners() {
         }
     });
 
-    // Create New Agent
-    // console.log('Attempting to add click listener to createNewAgentBtn');
+    // Event listener for User Avatar Input in Global Settings
+    if (userAvatarInput) {
+        userAvatarInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                openAvatarCropper(file, (croppedFile) => { // Pass a callback to handle cropped file
+                    croppedUserAvatarFile = croppedFile; // Store it for saving with global settings
+                    if (userAvatarPreview) {
+                        userAvatarPreview.src = URL.createObjectURL(croppedUserAvatarFile);
+                        userAvatarPreview.style.display = 'block';
+                    }
+                });
+            } else {
+                if (userAvatarPreview) userAvatarPreview.style.display = 'none';
+                croppedUserAvatarFile = null;
+            }
+        });
+    }
+
+
     createNewAgentBtn.addEventListener('click', async () => {
-        // console.log('createNewAgentBtn clicked. Bypassing prompt and alert.');
         const defaultAgentName = `新Agent_${Date.now()}`;
         
         if (defaultAgentName) {
@@ -1485,36 +1448,36 @@ function setupEventListeners() {
 
     agentSettingsForm.addEventListener('submit', saveCurrentAgentSettings);
     deleteAgentBtn.addEventListener('click', deleteCurrentAgent);
+
     agentAvatarInput.addEventListener('change', (event) => {
         const file = event.target.files[0];
         if (file) {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                agentAvatarPreview.src = e.target.result;
-                agentAvatarPreview.style.display = 'block';
-            }
-            reader.readAsDataURL(file);
+            openAvatarCropper(file, (croppedFileResult) => { // Callback for agent avatar
+                croppedAvatarFile = croppedFileResult; // Store for agent settings save
+                if (agentAvatarPreview) {
+                    agentAvatarPreview.src = URL.createObjectURL(croppedAvatarFile);
+                    agentAvatarPreview.style.display = 'block';
+                }
+            });
         } else {
             agentAvatarPreview.style.display = 'none';
+            croppedAvatarFile = null; 
         }
     });
 
-    // Clear Current Chat (now clears current topic for the current agent)
     clearCurrentChatBtn.addEventListener('click', async () => {
         if (currentAgentId && currentTopicId && confirm(`确定要清空当前话题的聊天记录吗（助手: ${currentChatAgentNameH3.textContent.replace('与 ','').replace(' 聊天中','')}）？此操作不可撤销。`)) {
             currentChatHistory = [];
-            await window.electronAPI.saveChatHistory(currentAgentId, currentTopicId, []); // Save empty history for current topic
+            await window.electronAPI.saveChatHistory(currentAgentId, currentTopicId, []); 
             chatMessagesDiv.innerHTML = '';
             if (window.messageRenderer) {
-                 window.messageRenderer.initializeMessageRenderer({ currentChatHistory, currentAgentId, currentTopicId, globalSettings, chatMessagesDiv, electronAPI, markedInstance, scrollToBottom, summarizeTopicFromMessages, openModal, autoResizeTextarea });
+                 window.messageRenderer.initializeMessageRenderer({ currentChatHistory, currentAgentId, currentTopicId, globalSettings, chatMessagesDiv, electronAPI, markedInstance, scrollToBottom, summarizeTopicFromMessages, openModal, autoResizeTextarea, handleCreateBranch });
                  window.messageRenderer.renderMessage({ role: 'system', content: '当前话题聊天记录已清空。', timestamp: Date.now() });
             }
             
-            // Also reset the topic title for this specific topic to a generic name
-            const clearedTopicName = `话题 ${currentTopicId.substring(0,8)}...`; // Or a more descriptive "已清空话题"
+            const clearedTopicName = `话题 ${currentTopicId.substring(0,8)}...`; 
             const titleSaveResult = await window.electronAPI.saveAgentTopicTitle(currentAgentId, currentTopicId, clearedTopicName);
             if (titleSaveResult.success) {
-                // console.log(`Topic ${currentTopicId} title reset to "${clearedTopicName}" after clearing chat.`);
                 if (document.getElementById('tabContentTopics').classList.contains('active')) {
                     loadTopicList();
                 }
@@ -1525,7 +1488,6 @@ function setupEventListeners() {
         }
     });
 
-    // VCPLog Notification Handlers (clearNotificationsBtn listener is still here)
     clearNotificationsBtn.addEventListener('click', () => {
         notificationsListUl.innerHTML = '';
     });
@@ -1539,34 +1501,29 @@ function setupEventListeners() {
             if (document.body.classList.contains('light-theme')) {
                 localStorage.setItem('theme', 'light');
                 if (sunIcon) sunIcon.style.display = 'none';
-                if (moonIcon) moonIcon.style.display = 'inline-block'; // Show moon for light theme
+                if (moonIcon) moonIcon.style.display = 'inline-block'; 
             } else {
                 localStorage.setItem('theme', 'dark');
-                if (sunIcon) sunIcon.style.display = 'inline-block'; // Show sun for dark theme
+                if (sunIcon) sunIcon.style.display = 'inline-block'; 
                 if (moonIcon) moonIcon.style.display = 'none';
             }
         });
     }
 
-    // Add event listener for the new Admin Panel button
-    // New element for Notes button
     const openNotesBtn = document.getElementById('openNotesBtn');
 
     if (openAdminPanelBtn) {
-        // Ensure the button is visible by default, as it's no longer controlled by agent selection
         openAdminPanelBtn.style.display = 'inline-block';
         openAdminPanelBtn.addEventListener('click', async () => {
             if (globalSettings.vcpServerUrl) {
                 if (window.electronAPI && window.electronAPI.sendOpenExternalLink) {
                     try {
                         const apiUrl = new URL(globalSettings.vcpServerUrl);
-                        // Construct the base URL (protocol, hostname, port)
                         let adminPanelUrl = `${apiUrl.protocol}//${apiUrl.host}`;
-                        // Ensure it ends with a slash before appending AdminPanel/
                         if (!adminPanelUrl.endsWith('/')) {
                             adminPanelUrl += '/';
                         }
-                        adminPanelUrl += 'AdminPanel/'; // Append the correct path
+                        adminPanelUrl += 'AdminPanel/'; 
 
                         window.electronAPI.sendOpenExternalLink(adminPanelUrl);
                     } catch (e) {
@@ -1584,7 +1541,6 @@ function setupEventListeners() {
         });
     }
 
-    // Add event listener for the new Notes button
     if (openNotesBtn) {
         openNotesBtn.addEventListener('click', async () => {
             const currentTheme = document.body.classList.contains('light-theme') ? 'light' : 'dark';
@@ -1603,11 +1559,17 @@ function setupEventListeners() {
         });
 
         window.electronAPI.onDoToggleNotificationsSidebar(() => {
-            notificationsSidebar.classList.toggle('active'); // 或者你用来控制显示/隐藏的类名
-            // 你可能还需要调整主内容区域的宽度或边距
+            const isActive = notificationsSidebar.classList.toggle('active'); 
             const mainContent = document.querySelector('.main-content');
             if (mainContent) {
-                mainContent.classList.toggle('notifications-sidebar-active');
+                mainContent.classList.toggle('notifications-sidebar-active', isActive);
+            }
+            // If activating and a saved width exists, apply it
+            if (isActive && globalSettings.notificationsSidebarWidth) {
+                 notificationsSidebar.style.width = `${globalSettings.notificationsSidebarWidth}px`;
+            } else if (!isActive) {
+                // Optional: if you want to reset to a "hidden" width or remove inline style
+                // notificationsSidebar.style.width = ''; // Or '0px' depending on CSS
             }
         });
     }
@@ -1618,97 +1580,129 @@ function setupEventListeners() {
 function initializeResizers() {
     let isResizingLeft = false;
     let isResizingRight = false;
-    let initialLeftWidth = 0;
-    let initialRightWidth = 0;
     let startX = 0;
+    // We don't need initial widths here anymore as we'll read offsetWidth directly
 
     if (resizerLeft && leftSidebar) {
         resizerLeft.addEventListener('mousedown', (e) => {
             isResizingLeft = true;
             startX = e.clientX;
-            initialLeftWidth = leftSidebar.offsetWidth;
             document.body.style.cursor = 'col-resize';
             document.body.style.userSelect = 'none';
-            leftSidebar.style.transition = 'none'; // 拖动开始时移除过渡
+            leftSidebar.style.transition = 'none'; // Disable transition during drag
         });
     }
 
     if (resizerRight && rightNotificationsSidebar) {
         resizerRight.addEventListener('mousedown', (e) => {
-            isResizingRight = true;
-            startX = e.clientX;
-            initialRightWidth = rightNotificationsSidebar.offsetWidth;
-            document.body.style.cursor = 'col-resize';
-            document.body.style.userSelect = 'none';
+            // If notifications sidebar is not active, activate it first
+            if (!rightNotificationsSidebar.classList.contains('active')) {
+                window.electronAPI.sendToggleNotificationsSidebar(); // This will trigger onDoToggle... which applies saved width
+                 // Wait a tick for the sidebar to potentially become active and apply its width
+                requestAnimationFrame(() => {
+                    isResizingRight = true;
+                    startX = e.clientX;
+                    document.body.style.cursor = 'col-resize';
+                    document.body.style.userSelect = 'none';
+                    rightNotificationsSidebar.style.transition = 'none';
+                });
+            } else {
+                isResizingRight = true;
+                startX = e.clientX;
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+                rightNotificationsSidebar.style.transition = 'none';
+            }
         });
     }
 
     document.addEventListener('mousemove', (e) => {
         if (isResizingLeft && leftSidebar) {
             const deltaX = e.clientX - startX;
-            let newWidth = initialLeftWidth + deltaX;
-            // Add min/max width constraints if necessary
-            newWidth = Math.max(100, Math.min(newWidth, 700)); // 调整最小/最大宽度
+            const currentWidth = leftSidebar.offsetWidth;
+            let newWidth = currentWidth + deltaX;
+            newWidth = Math.max(parseInt(getComputedStyle(leftSidebar).minWidth, 10) || 180, Math.min(newWidth, parseInt(getComputedStyle(leftSidebar).maxWidth, 10) || 600)); 
             leftSidebar.style.width = `${newWidth}px`;
+            startX = e.clientX; // Update startX for continuous dragging
         }
-        if (isResizingRight && rightNotificationsSidebar) {
+        if (isResizingRight && rightNotificationsSidebar && rightNotificationsSidebar.classList.contains('active')) {
             const deltaX = e.clientX - startX;
-            let newWidth = initialRightWidth - deltaX; // Subtract because dragging right should decrease right sidebar width
-            newWidth = Math.max(100, Math.min(newWidth, 700)); // 调整最小/最大宽度
+            const currentWidth = rightNotificationsSidebar.offsetWidth;
+            let newWidth = currentWidth - deltaX; // Dragging right decreases width
+            newWidth = Math.max(parseInt(getComputedStyle(rightNotificationsSidebar).minWidth, 10) || 220, Math.min(newWidth, parseInt(getComputedStyle(rightNotificationsSidebar).maxWidth, 10) || 600));
             rightNotificationsSidebar.style.width = `${newWidth}px`;
+            startX = e.clientX; // Update startX
         }
     });
 
-    document.addEventListener('mouseup', () => {
+    document.addEventListener('mouseup', async () => {
         if (isResizingLeft || isResizingRight) {
-            if (isResizingLeft) {
-                leftSidebar.style.transition = ''; // 拖动结束时恢复过渡
+            let settingsChanged = false;
+            if (isResizingLeft && leftSidebar) {
+                leftSidebar.style.transition = ''; 
+                const newSidebarWidth = leftSidebar.offsetWidth;
+                if (globalSettings.sidebarWidth !== newSidebarWidth) {
+                    globalSettings.sidebarWidth = newSidebarWidth;
+                    settingsChanged = true;
+                }
             }
+            if (isResizingRight && rightNotificationsSidebar && rightNotificationsSidebar.classList.contains('active')) {
+                rightNotificationsSidebar.style.transition = '';
+                const newNotificationsWidth = rightNotificationsSidebar.offsetWidth;
+                 if (globalSettings.notificationsSidebarWidth !== newNotificationsWidth) {
+                    globalSettings.notificationsSidebarWidth = newNotificationsWidth;
+                    settingsChanged = true;
+                }
+            }
+
             isResizingLeft = false;
             isResizingRight = false;
             document.body.style.cursor = '';
             document.body.style.userSelect = '';
+
+            if (settingsChanged) {
+                try {
+                    await window.electronAPI.saveSettings(globalSettings);
+                    console.log('Sidebar widths saved to settings.');
+                } catch (error) {
+                    console.error('Failed to save sidebar widths:', error);
+                }
+            }
         }
     });
 }
 
 
 function updateAttachmentPreview() {
-    // console.log('[Renderer] updateAttachmentPreview called. Current attachedFiles:', JSON.stringify(attachedFiles.map(f => ({ name: f.originalName, type: f.file.type, size: f.file.size, localPath: f.localPath }))));
     if (!attachmentPreviewArea) {
         console.error('[Renderer] updateAttachmentPreview: attachmentPreviewArea is null or undefined!');
         return;
     }
-    // console.log('[Renderer] updateAttachmentPreview: attachmentPreviewArea display style before change:', attachmentPreviewArea.style.display);
  
     attachmentPreviewArea.innerHTML = '';
     if (attachedFiles.length === 0) {
         attachmentPreviewArea.style.display = 'none';
-        // console.log('[Renderer] updateAttachmentPreview: No files, hiding preview area.');
         return;
     }
     attachmentPreviewArea.style.display = 'flex';
-    // console.log('[Renderer] updateAttachmentPreview: Displaying preview area for', attachedFiles.length, 'files.');
  
     attachedFiles.forEach((af, index) => {
-        // console.log(`[Renderer] updateAttachmentPreview: Processing file ${index + 1}: ${af.originalName}`);
         const prevDiv = document.createElement('div');
         prevDiv.className = 'attachment-preview-item';
         prevDiv.title = af.originalName;
 
         const iconSpan = document.createElement('span');
         iconSpan.className = 'file-preview-icon';
-        // Basic icon based on type - can be enhanced with SVGs or more specific icons
         if (af.file.type.startsWith('image/')) {
-            iconSpan.textContent = '🖼️'; // Image icon
+            iconSpan.textContent = '🖼️'; 
         } else if (af.file.type.startsWith('audio/')) {
-            iconSpan.textContent = '🎵'; // Audio icon
+            iconSpan.textContent = '🎵'; 
         } else if (af.file.type.startsWith('video/')) {
-            iconSpan.textContent = '🎞️'; // Video icon
+            iconSpan.textContent = '🎞️'; 
         } else if (af.file.type.includes('pdf')) {
-            iconSpan.textContent = '📄'; // PDF icon (generic file)
+            iconSpan.textContent = '📄'; 
         } else {
-            iconSpan.textContent = '📎'; // Generic attachment icon
+            iconSpan.textContent = '📎'; 
         }
 
         const nameSpan = document.createElement('span');
@@ -1717,7 +1711,7 @@ function updateAttachmentPreview() {
         
         const removeBtn = document.createElement('button');
         removeBtn.className = 'file-preview-remove-btn';
-        removeBtn.innerHTML = '&times;'; // Keep the times symbol, but styled as a button
+        removeBtn.innerHTML = '&times;'; 
         removeBtn.title = '移除此附件';
         removeBtn.onclick = () => {
             attachedFiles.splice(index, 1);
@@ -1733,7 +1727,7 @@ function updateAttachmentPreview() {
 
 
 function autoResizeTextarea(textarea) {
-    textarea.style.height = 'auto'; // Reset height
+    textarea.style.height = 'auto'; 
     textarea.style.height = textarea.scrollHeight + 'px';
 }
 
@@ -1744,9 +1738,180 @@ function closeModal(modalId) {
     document.getElementById(modalId).classList.remove('active');
 }
  
-// --- Image Preview Modal Functions ---
-// function openImagePreviewModal(src, caption = '') { ... }
-// function closeImagePreviewModal() { ... }
+async function openAvatarCropper(file, onCropConfirmedCallback) { // Added callback
+    const modal = document.getElementById('avatarCropperModal');
+    const cropperContainer = document.getElementById('avatarCropperContainer');
+    const canvas = document.getElementById('avatarCanvas');
+    const ctx = canvas.getContext('2d');
+    const cropCircleSVG = document.getElementById('cropCircle');
+    const cropCircleBorderSVG = document.getElementById('cropCircleBorder');
+    const confirmCropBtn = document.getElementById('confirmCropBtn');
+    const cancelCropBtn = document.getElementById('cancelCropBtn');
+
+    openModal('avatarCropperModal');
+    // Ensure canvas is clean and visible
+    canvas.style.display = 'block';
+    cropperContainer.style.cursor = 'grab'; // Initial cursor
+
+    let img = new Image();
+    img.onload = () => {
+        // Step 1: Automatic 360x360 processing
+        canvas.width = 360; // Ensure canvas dimensions are set
+        canvas.height = 360;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        console.log("[AvatarCropper] Image loaded:", img.width, "x", img.height);
+        console.log("[AvatarCropper] Canvas size:", canvas.width, "x", canvas.height);
+
+        let newWidth, newHeight, offsetX, offsetY;
+        if (img.width > img.height) {
+            newWidth = canvas.width;
+            newHeight = (img.height / img.width) * canvas.width;
+        } else {
+            newHeight = canvas.height;
+            newWidth = (img.width / img.height) * canvas.height;
+        }
+        offsetX = (canvas.width - newWidth) / 2;
+        offsetY = (canvas.height - newHeight) / 2;
+        ctx.drawImage(img, offsetX, offsetY, newWidth, newHeight);
+        console.log("[AvatarCropper] Image drawn on canvas at", offsetX, offsetY, "with size", newWidth, newHeight);
+
+        // Initialize cropper state (circle)
+        let circle = { x: 180, y: 180, r: Math.min(180, Math.min(newWidth, newHeight) / 2, 150) }; // Initial radius
+        updateCircleSVG();
+
+        let isDragging = false;
+        let dragStartX, dragStartY, circleStartX, circleStartY;
+
+        function updateCircleSVG() {
+            cropCircleSVG.setAttribute('cx', circle.x);
+            cropCircleSVG.setAttribute('cy', circle.y);
+            cropCircleSVG.setAttribute('r', circle.r);
+            cropCircleBorderSVG.setAttribute('cx', circle.x);
+            cropCircleBorderSVG.setAttribute('cy', circle.y);
+            cropCircleBorderSVG.setAttribute('r', circle.r);
+        }
+
+        const onMouseDown = (e) => {
+            const rect = cropperContainer.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            // Check if click is within the circle (optional, could allow dragging from anywhere)
+            // if (Math.sqrt((mouseX - circle.x)**2 + (mouseY - circle.y)**2) < circle.r) {
+                isDragging = true;
+                dragStartX = mouseX;
+                dragStartY = mouseY;
+                circleStartX = circle.x;
+                circleStartY = circle.y;
+                cropperContainer.style.cursor = 'grabbing';
+            // }
+        };
+
+        const onMouseMove = (e) => {
+            if (!isDragging) return;
+            const rect = cropperContainer.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            circle.x = circleStartX + (mouseX - dragStartX);
+            circle.y = circleStartY + (mouseY - dragStartY);
+            // Clamp circle to stay within canvas
+            circle.x = Math.max(circle.r, Math.min(canvas.width - circle.r, circle.x));
+            circle.y = Math.max(circle.r, Math.min(canvas.height - circle.r, circle.y));
+            updateCircleSVG();
+        };
+
+        const onMouseUpOrLeave = () => {
+            isDragging = false;
+            cropperContainer.style.cursor = 'grab';
+        };
+
+        const onWheel = (e) => {
+            e.preventDefault();
+            const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+            const newRadius = Math.max(30, Math.min(180, circle.r * zoomFactor)); // Min/max radius
+            if (newRadius === circle.r) return; // No change
+            circle.r = newRadius;
+            // Recalculate clamping after zoom
+            circle.x = Math.max(circle.r, Math.min(canvas.width - circle.r, circle.x));
+            circle.y = Math.max(circle.r, Math.min(canvas.height - circle.r, circle.y));
+            updateCircleSVG();
+        };
+
+        const onConfirmCrop = () => {
+            console.log("[AvatarCropper] Confirm crop clicked. Circle:", circle);
+            const finalCanvas = document.createElement('canvas');
+            const finalSize = circle.r * 2;
+            finalCanvas.width = finalSize;
+            finalCanvas.height = finalSize;
+            const finalCtx = finalCanvas.getContext('2d');
+
+            finalCtx.drawImage(canvas, // source canvas (original 360x360)
+                circle.x - circle.r, circle.y - circle.r, // source x, y (top-left of crop rect)
+                finalSize, finalSize, // source width, height
+                0, 0, // destination x, y
+                finalSize, finalSize // destination width, height
+            );
+
+            // Make it circular with transparency
+            finalCtx.globalCompositeOperation = 'destination-in';
+            finalCtx.beginPath();
+            finalCtx.arc(circle.r, circle.r, circle.r, 0, Math.PI * 2);
+            finalCtx.fill();
+            finalCtx.globalCompositeOperation = 'source-over'; // Reset
+
+            finalCanvas.toBlob((blob) => {
+                if (!blob) {
+                    console.error("[AvatarCropper] Failed to create blob from final canvas.");
+                    alert("裁剪失败，无法生成图片数据。");
+                    return;
+                }
+                console.log("[AvatarCropper] Cropped blob created, size:", blob.size);
+                const croppedFile = new File([blob], "avatar.png", { type: "image/png" });
+                
+                if (typeof onCropConfirmedCallback === 'function') {
+                    onCropConfirmedCallback(croppedFile); // Pass the file to the callback
+                }
+                cleanupCropperEvents();
+                closeModal('avatarCropperModal');
+            }, 'image/png');
+        };
+
+        const onCancelCrop = () => {
+            console.log("[AvatarCropper] Cancel crop clicked.");
+            cleanupCropperEvents();
+            closeModal('avatarCropperModal');
+            document.getElementById('agentAvatarInput').value = ''; // Clear file input if it's for agent
+            if (userAvatarInput) userAvatarInput.value = ''; // Clear user avatar input too
+        };
+
+        // Add event listeners
+        cropperContainer.addEventListener('mousedown', onMouseDown);
+        document.addEventListener('mousemove', onMouseMove); // Listen on document for dragging outside
+        document.addEventListener('mouseup', onMouseUpOrLeave); // Listen on document
+        cropperContainer.addEventListener('mouseleave', onMouseUpOrLeave);
+        cropperContainer.addEventListener('wheel', onWheel);
+        confirmCropBtn.addEventListener('click', onConfirmCrop);
+        cancelCropBtn.addEventListener('click', onCancelCrop);
+
+        // Function to remove event listeners
+        function cleanupCropperEvents() {
+            cropperContainer.removeEventListener('mousedown', onMouseDown);
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUpOrLeave);
+            cropperContainer.removeEventListener('mouseleave', onMouseUpOrLeave);
+            cropperContainer.removeEventListener('wheel', onWheel);
+            confirmCropBtn.removeEventListener('click', onConfirmCrop);
+            cancelCropBtn.removeEventListener('click', onCancelCrop);
+        }
+    };
+    img.onerror = () => {
+        console.error("[AvatarCropper] Image failed to load from blob URL.");
+        alert("无法加载选择的图片，请尝试其他图片。");
+        closeModal('avatarCropperModal');
+    }
+    img.src = URL.createObjectURL(file);
+}
 
 async function displayAgentSettingsInTab() {
     if (currentAgentId) {
@@ -1781,24 +1946,23 @@ async function displayAgentSettingsInTab() {
         agentContextTokenLimitInput.value = config.contextTokenLimit !== undefined ? config.contextTokenLimit : 4000;
         agentMaxOutputTokensInput.value = config.maxOutputTokens !== undefined ? config.maxOutputTokens : 1000;
 
-        // Set stream output radio buttons
-        const streamOutput = config.streamOutput !== undefined ? config.streamOutput : true; // Default to true (streaming)
+        const streamOutput = config.streamOutput !== undefined ? config.streamOutput : true; 
         document.getElementById('agentStreamOutputTrue').checked = streamOutput === true || streamOutput === 'true';
         document.getElementById('agentStreamOutputFalse').checked = streamOutput === false || streamOutput === 'false';
         
         if (agent.avatarUrl) {
-            agentAvatarPreview.src = agent.avatarUrl + `?t=${Date.now()}`; // Cache buster
+            agentAvatarPreview.src = agent.avatarUrl + `?t=${Date.now()}`; 
             agentAvatarPreview.style.display = 'block';
         } else {
             agentAvatarPreview.src = '#';
             agentAvatarPreview.style.display = 'none';
         }
-        agentAvatarInput.value = ''; // Clear file input each time settings are displayed for an agent
+        agentAvatarInput.value = ''; 
     } else {
         agentSettingsContainer.style.display = 'none';
         selectAgentPromptForSettings.textContent = '请先在“助手”标签页选择一个Agent以查看或修改其设置。';
         selectAgentPromptForSettings.style.display = 'block';
-        if(selectedAgentNameForSettingsSpan) selectedAgentNameForSettingsSpan.textContent = ''; // Clear agent name in title
+        if(selectedAgentNameForSettingsSpan) selectedAgentNameForSettingsSpan.textContent = ''; 
     }
 }
  
@@ -1808,91 +1972,105 @@ async function saveCurrentAgentSettings(event) {
     const newConfig = {
         name: agentNameInput.value.trim(),
         systemPrompt: agentSystemPromptTextarea.value.trim(),
-        model: agentModelInput.value.trim(),
+        model: agentModelInput.value.trim() || 'gemini-pro', // Default if empty
         temperature: parseFloat(agentTemperatureInput.value),
         contextTokenLimit: parseInt(agentContextTokenLimitInput.value),
         maxOutputTokens: parseInt(agentMaxOutputTokensInput.value),
-        streamOutput: document.getElementById('agentStreamOutputTrue').checked // true for streaming, false for non-streaming
+        streamOutput: document.getElementById('agentStreamOutputTrue').checked 
     };
-
+ 
     if (!newConfig.name) {
         alert("Agent名称不能为空！");
         return;
     }
-
-    // Save avatar if a new one was selected
-    const avatarFile = agentAvatarInput.files[0];
-    if (avatarFile) {
+ 
+    // Use croppedAvatarFile if it exists (set by the cropper)
+    if (croppedAvatarFile) {
         try {
-            const arrayBuffer = await avatarFile.arrayBuffer(); // Read file as ArrayBuffer
+            const arrayBuffer = await croppedAvatarFile.arrayBuffer();
             const avatarResult = await window.electronAPI.saveAvatar(agentId, {
-                name: avatarFile.name,
-                type: avatarFile.type,
-                buffer: arrayBuffer // Send ArrayBuffer
+                name: croppedAvatarFile.name, // Should be "avatar.png"
+                type: croppedAvatarFile.type, // Should be "image/png"
+                buffer: arrayBuffer
             });
-
+ 
             if (avatarResult.error) {
                 alert(`保存头像失败: ${avatarResult.error}`);
+            } else {
+                // Trigger color extraction and saving for the new agent avatar
+                if (avatarResult.needsColorExtraction && window.messageRenderer && window.messageRenderer.electronAPI.saveAvatarColor) {
+                     getAverageColorFromAvatar(avatarResult.avatarUrl, (avgColor) => { // Assuming getAverageColorFromAvatar is accessible
+                        if (avgColor) {
+                            window.messageRenderer.electronAPI.saveAvatarColor({ type: 'agent', id: agentId, color: avgColor })
+                                .then(() => { if(currentAgentId === agentId) window.messageRenderer.setCurrentAgentAvatarColor(avgColor); });
+                        }
+                    });
+                }
+                // Update preview immediately with the version from backend (with timestamp)
+                agentAvatarPreview.src = avatarResult.avatarUrl;
+                croppedAvatarFile = null; // Clear after successful save
+                agentAvatarInput.value = ''; // Clear the file input field
             }
-            // Avatar URL should be updated by main process if successful,
-            // and loadAgentList will refresh it.
         } catch (readError) {
             console.error("读取头像文件失败:", readError);
             alert(`读取头像文件失败: ${readError.message}`);
         }
     }
-
+ 
     const result = await window.electronAPI.saveAgentConfig(agentId, newConfig);
-    const saveButton = agentSettingsForm.querySelector('button[type="submit"]'); // 获取保存按钮
-
+    const saveButton = agentSettingsForm.querySelector('button[type="submit"]'); 
+ 
     if (result.success) {
-        // alert(result.message || 'Agent设置已保存！'); // 移除 alert
         if (saveButton) {
             const originalButtonText = saveButton.textContent;
-            saveButton.textContent = '保存成功!';
-            saveButton.disabled = true; // 可选：在显示成功期间禁用按钮
+            saveButton.textContent = '已保存!';
+            saveButton.disabled = true; 
             setTimeout(() => {
                 saveButton.textContent = originalButtonText;
-                saveButton.disabled = false; // 恢复按钮
-            }, 2000); // 2秒后恢复
+                saveButton.disabled = false; 
+            }, 2000); 
         }
-        // No modal to close. Settings are in-tab.
-        await loadAgentList(); // Refresh list to show new name/avatar
-        // If current agent was edited, update header and settings tab title
+        await loadAgentList(); 
         if (currentAgentId === agentId) {
             currentChatAgentNameH3.textContent = `与 ${newConfig.name} 聊天中`;
+            // Update agent avatar in message renderer if current agent's avatar changed
+            const updatedAgent = (await window.electronAPI.getAgents()).find(a => a.id === currentAgentId);
+            if (updatedAgent && window.messageRenderer) {
+                window.messageRenderer.setCurrentAgentAvatar(updatedAgent.avatarUrl);
+                // Ensure config object exists before accessing avatarCalculatedColor
+                const newAgentColor = updatedAgent.config ? updatedAgent.config.avatarCalculatedColor : null;
+                window.messageRenderer.setCurrentAgentAvatarColor(newAgentColor || null);
+ 
+            }
+ 
             if(selectedAgentNameForSettingsSpan) selectedAgentNameForSettingsSpan.textContent = newConfig.name;
         }
     } else {
-        // alert(`保存Agent设置失败: ${result.error}`); // 移除 alert
-        if (saveButton) { // 如果保存失败，也可以给用户反馈
+        if (saveButton) { 
             const originalButtonText = saveButton.textContent;
             saveButton.textContent = '保存失败';
-            saveButton.classList.add('error-feedback'); // 添加一个特定的类名用于样式
+            saveButton.classList.add('error-feedback'); 
             saveButton.disabled = true;
             setTimeout(() => {
-                saveButton.textContent = originalButtonText;
+                saveButton.textContent = originalButtonText; // Restore original text
                 saveButton.classList.remove('error-feedback');
                 saveButton.disabled = false;
-            }, 3000); // 3秒后恢复
+            }, 3000); 
         }
     }
 }
 
 async function deleteCurrentAgent() {
-    const agentId = editingAgentIdInput.value; // This ID should still be correct from the form
-    // It's better to get the name from the input field in case it was changed but not saved
+    const agentId = editingAgentIdInput.value; 
     const agentNameToConfirm = agentNameInput.value || '当前选中的Agent';
 
     if (confirm(`您确定要删除 Agent "${agentNameToConfirm}" 吗？其聊天记录也将被删除，此操作不可撤销！`)) {
         const result = await window.electronAPI.deleteAgent(agentId);
         if (result.success) {
             alert(result.message || `Agent ${agentNameToConfirm} 已删除。`);
-            // No modal to close. Clear the settings view.
-            const deletedAgentId = currentAgentId; // Store it before resetting
+            const deletedAgentId = currentAgentId; 
             currentAgentId = null;
             
-            // If the deleted agent was the currently active one, update UI
             if (deletedAgentId === agentId) {
                 currentChatAgentNameH3.textContent = '选择一个Agent开始聊天';
                 chatMessagesDiv.innerHTML = '';
@@ -1901,16 +2079,20 @@ async function deleteCurrentAgent() {
                 messageInput.disabled = true;
                 sendMessageBtn.disabled = true;
                 attachFileBtn.disabled = true;
-                await displayTopicTimestampBubble(null, null); // Hide bubble as no agent/topic selected
-                // Remove glowing effect from any topic item as no agent is selected
+                if (window.messageRenderer) { // Clear current agent color in renderer
+                    window.messageRenderer.setCurrentAgentAvatar(null);
+                    window.messageRenderer.setCurrentAgentAvatarColor(null);
+                    window.messageRenderer.setCurrentAgentName('AI'); // Reset agent name in renderer
+                }
+                await displayTopicTimestampBubble(null, null);
                 document.querySelectorAll('.topic-list .topic-item.active-topic-glowing').forEach(item => {
                     item.classList.remove('active-topic-glowing');
-                    item.classList.remove('active'); // Also remove standard active class
+                    item.classList.remove('active');
                 });
             }
             
-            await loadAgentList(); // Refresh agent list
-            displayAgentSettingsInTab(); // Update settings tab to show prompt or another agent's settings if one gets auto-selected
+            await loadAgentList();
+            displayAgentSettingsInTab();
         } else {
             alert(`删除Agent失败: ${result.error}`);
         }
@@ -1940,23 +2122,21 @@ async function createNewContextFromCurrentAgent() {
                 window.messageRenderer.initializeMessageRenderer({
                     currentChatHistory, currentAgentId, currentTopicId,
                     globalSettings, chatMessagesDiv, electronAPI, markedInstance,
-                    scrollToBottom, summarizeTopicFromMessages, openModal, autoResizeTextarea
+                    scrollToBottom, summarizeTopicFromMessages, openModal, autoResizeTextarea, handleCreateBranch
                 });
                 window.messageRenderer.renderMessage({ role: 'system', content: `新话题 "${result.topicName}" 已开始。`, timestamp: Date.now() });
             }
             localStorage.setItem(`lastActiveTopic_${currentAgentId}`, currentTopicId);
             
             if (document.getElementById('tabContentTopics').classList.contains('active')) {
-                await loadTopicList(); // Ensure this re-highlights correctly
+                await loadTopicList(); 
             }
-             // After loading history and potentially new topic list, ensure the new topic is glowing
             document.querySelectorAll('.topic-list .topic-item').forEach(item => {
                 const isNewActiveTopic = item.dataset.topicId === currentTopicId && item.dataset.agentId === currentAgentId;
                 item.classList.toggle('active', isNewActiveTopic);
                 item.classList.toggle('active-topic-glowing', isNewActiveTopic);
             });
             await displayTopicTimestampBubble(currentAgentId, currentTopicId);
-            // console.log(`已为助手 "${agentName}" 创建并切换到新话题: "${result.topicName}" (ID: ${result.topicId})`);
             messageInput.focus();
         } else {
             alert(`创建新话题失败: ${result ? result.error : '未知错误'}`);
@@ -1967,25 +2147,14 @@ async function createNewContextFromCurrentAgent() {
     }
 }
  
-// VCPLog Notification Rendering functions have been moved to modules/notificationRenderer.js
- 
-// --- Markdown Rendering ---
 let markedInstance;
 if (window.marked) {
     try {
-        // Attempt to configure marked to allow HTML.
-        // The exact option might vary based on the version of marked.js.
-        // For older versions, 'sanitize: false' or 'sanitize: true' with a custom sanitizer might be used.
-        // For newer versions (like from v4.x.x onwards), HTML is rendered by default unless a sanitizer is explicitly set.
-        // If using a version that sanitizes by default, you might need to override the sanitizer or use a specific option.
-        // Let's assume for now that if `marked` is present, we want to ensure HTML isn't overly sanitized.
-        // A common, albeit potentially unsafe if not further processed, way is to disable sanitization.
         markedInstance = new window.marked.Marked({
-            sanitize: false, // Important: This allows all HTML. Consider DOMPurify for safety.
+            sanitize: false, 
             gfm: true,
             breaks: true
         });
-        // console.log("Marked library initialized with custom options (sanitize: false).");
  
         const originalParse = markedInstance.parse.bind(markedInstance);
         markedInstance.parse = (text) => {
@@ -2024,7 +2193,6 @@ if (window.marked) {
  
             return applyQuoteSpansToHtml(html);
         };
-        // console.log("Marked library's parse method wrapped for custom quote handling (after initial parse).");
  
     } catch (err) {
         console.warn("Failed to initialize marked with custom options, using default or basic fallback.", err);
@@ -2037,11 +2205,9 @@ if (window.marked) {
  
 window.addEventListener('contextmenu', (e) => {
     if (e.target.closest('textarea, input[type="text"]')) {
-        // console.log("Context menu triggered on input/textarea");
     }
 }, false);
  
-// --- Custom Title Bar Controls ---
 function setupTitleBarControls() {
     console.log('[Renderer] setupTitleBarControls called.');
     console.log('[Renderer] minimizeBtn:', minimizeBtn);
@@ -2078,18 +2244,17 @@ function setupTitleBarControls() {
             window.electronAPI.closeWindow();
         });
     }
-    if (settingsBtn) { // Add this block
+    if (settingsBtn) { 
         settingsBtn.addEventListener('click', () => {
-            console.log('Settings button clicked, attempting to open dev tools.'); // DEBUG
+            console.log('Settings button clicked, attempting to open dev tools.'); 
             window.electronAPI.openDevTools();
         });
     }
 
-    // Listen for maximize/unmaximize events to toggle buttons
     if (window.electronAPI && typeof window.electronAPI.onWindowMaximized === 'function') {
         window.electronAPI.onWindowMaximized(() => {
             if (maximizeBtn) maximizeBtn.style.display = 'none';
-            if (restoreBtn) restoreBtn.style.display = 'flex'; // Use flex as buttons are display:flex
+            if (restoreBtn) restoreBtn.style.display = 'flex'; 
         });
     }
 
@@ -2115,7 +2280,6 @@ async function handleCreateBranch(selectedMessage) {
         return;
     }
 
-    // 包含选定消息及其之前的所有消息
     const historyForNewBranch = currentChatHistory.slice(0, messageIndex + 1);
 
     if (historyForNewBranch.length === 0) {
@@ -2124,7 +2288,6 @@ async function handleCreateBranch(selectedMessage) {
     }
 
     try {
-        // 1. 获取原始话题名称
         const agentConfig = await window.electronAPI.getAgentConfig(currentAgentId);
         if (!agentConfig || agentConfig.error) {
             alert(`创建分支失败：无法获取助手配置。 ${agentConfig?.error || ''}`);
@@ -2134,8 +2297,7 @@ async function handleCreateBranch(selectedMessage) {
         const originalTopicName = originalTopic ? originalTopic.name : "未命名话题";
         const newBranchTopicName = `${originalTopicName} (分支)`;
 
-        // 2. 创建新话题 (继承原标题，但标记为分支, 更新创建时间)
-        const createResult = await window.electronAPI.createNewTopicForAgent(currentAgentId, newBranchTopicName, true); // true to indicate refresh creation time
+        const createResult = await window.electronAPI.createNewTopicForAgent(currentAgentId, newBranchTopicName, true); 
 
         if (!createResult || !createResult.success || !createResult.topicId) {
             alert(`创建分支话题失败: ${createResult ? createResult.error : '未知错误'}`);
@@ -2145,14 +2307,9 @@ async function handleCreateBranch(selectedMessage) {
         const newTopicId = createResult.topicId;
         console.log(`分支话题已创建: ${newTopicId}，名称: ${newBranchTopicName}`);
 
-        // 3. 将截取到的历史记录保存到新话题
-        // 注意：确保保存的 historyForNewBranch 中的消息ID不会与新话题中未来可能产生的消息ID冲突。
-        // 通常，消息ID应该是全局唯一的，或者至少在话题内是唯一的。
-        // 如果消息ID是基于时间戳和随机数生成的，那么直接复制通常是安全的。
         const saveResult = await window.electronAPI.saveChatHistory(currentAgentId, newTopicId, historyForNewBranch);
         if (!saveResult || !saveResult.success) {
             alert(`无法将历史记录保存到新的分支话题: ${saveResult ? saveResult.error : '未知错误'}`);
-            // 可以考虑是否需要删除刚刚创建的新话题，以避免留下空的分支
             await window.electronAPI.deleteTopic(currentAgentId, newTopicId);
             console.warn(`已删除空的分支话题 ${newTopicId} 因为历史记录保存失败。`);
             return;
@@ -2160,20 +2317,18 @@ async function handleCreateBranch(selectedMessage) {
 
         console.log(`聊天记录已成功复制到分支话题 ${newTopicId}。`);
 
-        // 4. 切换到新创建的分支话题
         currentTopicId = newTopicId;
         if (window.messageRenderer) {
             window.messageRenderer.setCurrentTopicId(currentTopicId);
         }
         
-        // 刷新话题列表（如果可见）并加载新分支的聊天记录
         if (document.getElementById('tabContentTopics').classList.contains('active')) {
-            await loadTopicList(); // loadTopicList 会处理高亮
+            await loadTopicList(); 
         }
         
-        await loadChatHistory(currentAgentId, currentTopicId); // 这会加载并显示分支内容，并高亮新话题
+        await loadChatHistory(currentAgentId, currentTopicId); 
         
-        localStorage.setItem(`lastActiveTopic_${currentAgentId}`, currentTopicId); // 记住这个新分支是最后活跃的
+        localStorage.setItem(`lastActiveTopic_${currentAgentId}`, currentTopicId); 
 
         alert(`已成功创建分支话题 "${newBranchTopicName}" 并切换。`);
         messageInput.focus();

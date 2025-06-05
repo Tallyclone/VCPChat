@@ -85,6 +85,10 @@
     --scrollbar-thumb: var(--scrollbar-thumb-dark);
     --scrollbar-thumb-hover: var(--scrollbar-thumb-hover-dark);
     --quoted-text: var(--quoted-text-dark); /* 新增：引用文本颜色 */
+
+    /* RGB versions for semi-transparent backgrounds */
+    --rgb-secondary-bg-dark: 40, 40, 44;
+    --rgb-secondary-bg-light: 255, 255, 255;
 }
 
 /* --- 亮色主题应用 --- */
@@ -218,7 +222,6 @@ body {
 .container {
     display: flex;
     width: 100%;
-    /* height: 100%; */ /* Original */
     height: calc(100vh - 30px); /* Adjust based on title-bar height */
     margin-top: 30px; /* Offset for the fixed title bar */
     overflow: hidden; /* Prevent scrollbars on body due to resizers */
@@ -226,33 +229,32 @@ body {
 
 /* --- Resizers --- */
 .resizer {
-    background-color: var(--secondary-bg); /* Reverted to match surrounding background */
+    background-color: var(--secondary-bg); 
     width: 5px;
     cursor: col-resize;
     flex-shrink: 0;
-    z-index: 100; /* 提高 z-index */
-    /* opacity: 0.5; */ /* Removed to make it same color as surroundings */
-    transition: opacity 0.2s ease, background-color 0.2s ease;
-    pointer-events: auto; /* 确保能捕获鼠标事件 */
+    z-index: 100; 
+    transition: background-color 0.2s ease; 
+    pointer-events: auto; 
 }
 .resizer:hover {
     background-color: var(--user-bubble-bg);
-    opacity: 1;
 }
 
 
 /* --- Sidebar (Agent List) --- */
 .sidebar {
-    width: 260px;
-    min-width: 220px;
+    width: 260px; /* Default width */
+    min-width: 180px; 
+    max-width: 600px; 
     background-color: var(--secondary-bg);
-    padding: 15px 15px 15px 17px; /* 左边加宽2像素，内容整体右移2像素 */
+    padding: 15px 15px 15px 17px; 
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    /* border-right: 1px solid var(--border-color); */
-    transition: width 0.2s ease-in-out;
-    overflow-x: hidden; /* 禁止侧边栏本身的横向滚动条 */
+    transition: width 0.3s cubic-bezier(0.25, 0.1, 0.25, 1); 
+    overflow-x: hidden; 
+    flex-shrink: 0; 
 }
  
 /* Sidebar Tabs */
@@ -290,7 +292,7 @@ body {
 .sidebar-tab-content {
     display: flex;
     flex-direction: column;
-    flex-grow: 0; /* 改为0，仅在 active 时为1 */
+    flex-grow: 0; 
     opacity: 0;
     max-height: 0;
     overflow: hidden;
@@ -303,22 +305,21 @@ body {
                 padding-bottom 0.35s cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
-/* 当标签页内容不活跃时，强制移除垂直内边距，以避免占据高度 */
 .sidebar-tab-content:not(.active) {
     padding-top: 0 !important;
     padding-bottom: 0 !important;
-    border-top-width: 0 !important; /* 同时处理可能的边框问题 */
+    border-top-width: 0 !important; 
     border-bottom-width: 0 !important;
 }
 
 .sidebar-tab-content.active {
     opacity: 1;
-    max-height: 100vh; /* Adjust if sidebar has a more constrained max height. */
+    max-height: 100vh; 
     transform: translateY(0);
     overflow-y: auto;
     pointer-events: auto;
     overflow-x: hidden;
-    flex-grow: 1; /* 确保 active 状态下 flex-grow 为 1 */
+    flex-grow: 1; 
 }
 /* End Sidebar Tabs */
 
@@ -326,51 +327,48 @@ body {
     color: var(--secondary-text);
     margin-top: 5px;
     margin-bottom: 15px;
-    /* text-align: center; */ /* 将由新的 settings-header-bar 控制 */
     font-size: 1.4em;
     border-bottom: 1px solid var(--border-color);
     padding-bottom: 10px;
 }
 
-/* 新增：设置标签页内的标题栏 */
 .settings-header-bar {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 15px; /* 与原 h2 margin-bottom 一致 */
-    padding-bottom: 10px; /* 与原 h2 padding-bottom 一致 */
-    border-bottom: 1px solid var(--border-color); /* 与原 h2 border-bottom 一致 */
+    margin-bottom: 15px; 
+    padding-bottom: 10px; 
+    border-bottom: 1px solid var(--border-color); 
 }
 
 .settings-header-bar h2 {
-    margin: 0; /* 移除 h2 自带的 margin */
-    padding: 0; /* 移除 h2 自带的 padding */
-    border-bottom: none; /* 边框移到父元素 */
-    text-align: left; /* 标题居左 */
-    flex-grow: 1; /* 让标题占据多余空间，将按钮推到右边 */
+    margin: 0; 
+    padding: 0; 
+    border-bottom: none; 
+    text-align: left; 
+    flex-grow: 1; 
 }
 
 .settings-header-bar .global-settings-btn {
-    width: auto; /* 不再是全宽 */
-    padding: 8px 15px; /* 调整按钮内边距使其不那么大 */
-    font-size: 0.9em; /* 调整字体大小 */
-    margin-left: 15px; /* 与标题保持一些间距 */
+    width: auto; 
+    padding: 8px 15px; 
+    font-size: 0.9em; 
+    margin-left: 15px; 
 }
 
-/* Styling for both Agent List and Topic List items */
 .agent-list, .topic-list {
     list-style-type: none;
     padding: 0;
     margin: 0;
     overflow-y: auto;
-    overflow-x: hidden; /* 禁止列表本身的横向滚动条 */
+    overflow-x: hidden; 
     flex-grow: 1;
 }
  
 .agent-list li, .topic-list .topic-item {
     padding: 10px 12px;
     margin-bottom: 6px;
-    border-radius: 8px; /* 统一圆角 */
+    border-radius: 8px; 
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -381,7 +379,7 @@ body {
     background-color: var(--accent-bg);
     transform: translateX(2px);
 }
-.agent-list li.active { /* Specific to agent list active state */
+.agent-list li.active { 
     background-color: var(--user-bubble-bg);
     color: white;
     font-weight: 500;
@@ -393,7 +391,6 @@ body {
     border-color: var(--highlight-text);
 }
 
-/* Shared styles for avatar and name in both lists */
 .agent-list img.avatar, .topic-list .topic-item img.avatar {
     width: 36px;
     height: 36px;
@@ -410,28 +407,23 @@ body {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    flex-grow: 1; /* Allow name to take available space */
-}
-
-/* Specific to Topic List */
-.topic-list .topic-item {
-    /* Inherits most styles from .agent-list li */
+    flex-grow: 1; 
 }
 
 .topic-list .topic-item .message-count {
-    margin-left: auto; /* Pushes count to the right */
+    margin-left: auto; 
     padding: 3px 8px;
     background-color: var(--accent-bg);
     color: var(--highlight-text);
     border-radius: 10px;
-    font-size: 0.85em; /* 略微增大字体 */
-    min-width: 20px; /* Ensure some width even for single digit */
+    font-size: 0.85em; 
+    min-width: 20px; 
     text-align: center;
-    font-weight: bold; /* 加粗 */
-    font-family: "Arial Rounded MT Bold", "Helvetica Rounded", Arial, sans-serif; /* 尝试圆润字体 */
+    font-weight: bold; 
+    font-family: "Arial Rounded MT Bold", "Helvetica Rounded", Arial, sans-serif; 
 }
 
-#tabContentTopics p { /* Style for loading/empty messages in topics tab */
+#tabContentTopics p { 
     padding: 15px;
     text-align: center;
     color: var(--secondary-text);
@@ -449,10 +441,10 @@ body {
 .sidebar-button {
     background-color: var(--button-bg);
     color: var(--primary-text);
-    border: 1px solid transparent; /* 添加边框以便亮色模式下更清晰 */
+    border: 1px solid transparent; 
     padding: 10px;
     width: 100%;
-    border-radius: 8px; /* 统一圆角 */
+    border-radius: 8px; 
     cursor: pointer;
     font-size: 0.95em;
     transition: background-color 0.2s ease;
@@ -464,7 +456,7 @@ body {
 }
 
 body.light-theme .sidebar-button {
-    color: #ffffff; /* 亮色主题下按钮文字用白色 */
+    color: #ffffff; 
     border: 1px solid var(--button-bg);
 }
 
@@ -478,11 +470,12 @@ body.light-theme .sidebar-button:hover {
     flex-grow: 1;
     display: flex;
     flex-direction: column;
-    background-color: var(--tertiary-bg); /* Fallback color */
+    background-color: var(--tertiary-bg); 
     background-image: url('assets/dark.jpg');
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
+    overflow: hidden; 
 }
 
 .chat-header {
@@ -492,7 +485,8 @@ body.light-theme .sidebar-button:hover {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    min-height: 36px; /* Consistent height */
+    min-height: 36px; 
+    flex-shrink: 0; 
 }
 .chat-header h3 {
     margin: 0;
@@ -504,92 +498,88 @@ body.light-theme .sidebar-button:hover {
     background: transparent;
     border: 1px solid var(--button-bg);
     color: var(--secondary-text);
-    padding: 0 10px; /* 调整内边距，左右10px，上下由高度决定 */
-    height: 32px; /* 设置统一高度 */
-    border-radius: 8px; /* 统一圆角 */
+    padding: 0 10px; 
+    height: 32px; 
+    border-radius: 8px; 
     cursor: pointer;
-    margin-left: 8px; /* 调整间距 */
+    margin-left: 8px; 
     font-size: 0.9em;
     transition: background-color 0.2s, border-color 0.2s;
-    display: inline-flex; /* 使用flex布局进行内部对齐 */
-    align-items: center; /* 垂直居中 */
-    justify-content: center; /* 水平居中 */
-    box-sizing: border-box; /* 确保padding和border在高度内 */
+    display: inline-flex; 
+    align-items: center; 
+    justify-content: center; 
+    box-sizing: border-box; 
 }
 .chat-actions .header-button svg {
-    stroke: currentColor; /* 确保SVG图标颜色与文本颜色一致，适配主题 */
-    width: 18px; /* 调整SVG大小 */
+    stroke: currentColor; 
+    width: 18px; 
     height: 18px;
 }
-/* 为只有图标的按钮调整一下padding，使其看起来更方正 */
 .chat-actions .header-button#themeToggleBtn {
-    padding: 0 10px; /* 与其他按钮保持一致的内边距 */
+    padding: 0 10px; 
     position: relative;
-    top: 3.4px; /* 调整后的对齐 */
+    top: 3.4px; 
 }
 
-/* 为新的通知切换按钮应用类似的对齐和内边距 */
 .chat-actions .header-button#toggleNotificationsBtn {
-    padding: 0 10px; /* 与其他图标按钮保持一致的内边距 */
+    padding: 0 10px; 
     position: relative;
-    top: 3.4px; /* 调整对齐 */
+    top: 3.4px; 
 }
 
 .theme-icon {
-    width: 26px; /* 用户调整后的图标大小 */
-    height: 26px; /* 用户调整后的图标大小 */
-    /* fill: currentColor; */ /* 由具体图标控制填充 */
+    width: 26px; 
+    height: 26px; 
 }
 
 #sun-icon {
-    stroke: #FFD700; /* 柔和的黄色 */
-    fill: #FFD700;   /* 确保太阳中心也填充黄色 */
+    stroke: #FFD700; 
+    fill: #FFD700;   
 }
 
 #moon-icon {
-    stroke: #6495ED; /* 柔和的蓝色 */
-    fill: #6495ED;   /* 确保月亮也填充蓝色 */
+    stroke: #6495ED; 
+    fill: #6495ED;   
 }
 
 .chat-actions .header-button:hover {
-    background-color: var(--button-hover-bg); /* 使用按钮悬停背景色 */
+    background-color: var(--button-hover-bg); 
     border-color: var(--button-hover-bg);
-    color: var(--primary-text); /* 悬停时文字颜色可能需要调整 */
+    color: var(--primary-text); 
 }
 
-/* 新增：devButton 样式，使其与笔记按钮风格统一 */
 button#devButton.header-button {
-    background-color: var(--button-bg); /* 与笔记按钮背景色统一 */
-    color: var(--secondary-text); /* 与笔记按钮文字颜色统一 */
-    border: 1px solid var(--button-bg); /* 边框颜色与背景色统一 */
-    padding: 0 10px; /* 与笔记按钮内边距统一 */
-    height: 32px; /* 与笔记按钮高度统一 */
-    border-radius: 8px; /* 与笔记按钮圆角统一 */
+    background-color: var(--button-bg); 
+    color: var(--secondary-text); 
+    border: 1px solid var(--button-bg); 
+    padding: 0 10px; 
+    height: 32px; 
+    border-radius: 8px; 
     cursor: pointer;
-    font-size: 0.9em; /* 与笔记按钮字体大小统一 */
+    font-size: 0.9em; 
     transition: background-color 0.2s, border-color 0.2s;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     box-sizing: border-box;
-    margin-left: 8px; /* 保持与笔记按钮的间距 */
+    margin-left: 8px; 
     width: auto;
 }
 
 button#devButton.header-button:hover {
     background-color: var(--button-hover-bg);
     border-color: var(--button-hover-bg);
-    color: var(--primary-text); /* 悬停时文字颜色 */
+    color: var(--primary-text); 
 }
 
 body.light-theme button#devButton.header-button {
-    color: #ffffff; /* 亮色主题下文字颜色用白色 */
-    border: 1px solid var(--button-bg-light); /* 亮色主题下边框颜色与笔记按钮统一 */
+    color: #ffffff; 
+    border: 1px solid var(--button-bg-light); 
 }
 
 body.light-theme button#devButton.header-button:hover {
-    color: #ffffff; /* 亮色主题下悬停文字颜色与笔记按钮统一 */
-    border-color: var(--button-hover-bg-light); /* 亮色主题下悬停边框颜色与笔记按钮统一 */
+    color: #ffffff; 
+    border-color: var(--button-hover-bg-light); 
 }
 
 body.light-theme .chat-actions .header-button {
@@ -602,49 +592,193 @@ body.light-theme .chat-actions .header-button:hover {
 
 .chat-messages-container {
     flex-grow: 1;
-    overflow-y: auto; /* Important for scrolling messages */
-    display: flex; /* Allows messages to stack from bottom if needed */
-    flex-direction: column-reverse; /* New messages appear at bottom and scroll up */
+    overflow-y: auto; 
+    display: flex; 
+    flex-direction: column-reverse; 
 }
 
 .chat-messages {
     padding: 15px 20px;
     display: flex;
-    flex-direction: column; /* Messages stack vertically */
+    flex-direction: column; 
 }
 
+/* --- Message Item QQ Style --- */
 .message-item {
-    margin-bottom: 10px;
+    margin-bottom: 18px; /* Increased margin for QQ style */
+    max-width: 100%; 
+    display: flex;
+    align-items: flex-start; 
+    gap: 10px; 
+    position: relative; 
+}
+
+.message-item.user {
+    flex-direction: row-reverse; 
+}
+
+.message-item.assistant {
+    flex-direction: row; 
+}
+
+.chat-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0; 
+    /* border: 1px solid var(--border-color); */ /* Original static border */
+    border: 2px solid transparent; /* Default transparent border, thickness can be adjusted */
+    transition: border-color 0.3s ease; /* Smooth transition if color changes */
+    margin-top: 0px;
+}
+
+.name-time-block {
+    display: flex;
+    flex-direction: column;
+    margin-top: 0; 
+    line-height: 1.3;
+}
+
+.message-item.user .name-time-block {
+    align-items: flex-end;
+    /* margin-right: 5px; */ /* Removed as bubble is now below */
+}
+
+.message-item.assistant .name-time-block {
+    align-items: flex-start;
+    /* No specific margin needed here by default */
+}
+
+/* New wrapper for name/time and bubble column */
+.details-and-bubble-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 4px; /* Small gap between name/time block and the bubble */
+    flex-grow: 1; /* Allow this wrapper to take available horizontal space */
+    min-width: 0; /* Fixes potential overflow issues with flex children */
+}
+
+/* Align content within the wrapper based on user/assistant */
+.message-item.user .details-and-bubble-wrapper {
+    align-items: flex-end; /* Aligns name/time and bubble to the right */
+}
+
+.message-item.assistant .details-and-bubble-wrapper {
+    align-items: flex-start; /* Aligns name/time and bubble to the left */
+}
+
+.message-item .sender-name {
+    /* font-weight: 500; */ /* Replaced by more specific bold below */
+    font-weight: bold; /* Make all sender names bold */
+    margin-bottom: 2px;
+    font-size: 0.85em;
+}
+
+.message-item.assistant .sender-name {
+    color: var(--highlight-text); 
+}
+.message-item.user .sender-name {
+    color: var(--secondary-text); 
+    /* opacity: 0.9; */ /* Remove opacity to make it more solid and highlighted */
+}
+
+.message-item .message-timestamp {
+    font-size: 0.7em; 
+    color: var(--secondary-text);
+    opacity: 0.8;
+}
+
+/* .md-content is the actual bubble */
+.message-item .md-content {
+    padding: 10px 15px;
+    border-radius: 10px; 
+    max-width: 70%; 
+    word-wrap: break-word; 
+    line-height: 1.5; 
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24); 
+    position: relative; 
+    backdrop-filter: blur(8px); /* Keep if desired */
+    -webkit-backdrop-filter: blur(8px); /* Keep if desired */
+}
+
+.message-item.user .md-content {
+    background-color: var(--user-bubble-bg);
+    color: var(--primary-text); 
+    border-bottom-right-radius: 4px; 
+}
+body.light-theme .message-item.user .md-content {
+    background-color: var(--user-bubble-bg-light);
+    color: #ffffff; 
+}
+
+.message-item.assistant .md-content {
+    background-color: var(--assistant-bubble-bg);
+    color: var(--primary-text); 
+    border-bottom-left-radius: 4px; 
+}
+body.light-theme .message-item.assistant .md-content {
+    background-color: var(--assistant-bubble-bg-light);
+    color: var(--primary-text-light); 
+    border: 1px solid #d0d8e0; 
+}
+
+/* System messages special layout */
+.message-item.system.system-message-layout {
+    justify-content: center; 
     padding: 8px 12px;
-    border-radius: 10px; /* 调整气泡圆角 */
-    max-width: 60%;
-    word-wrap: break-word;
-    line-height: 1.5;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.15);
-    position: relative; /* Needed for absolute positioning of controls inside */
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px); /* For Safari */
+    border-radius: 10px;
+    background-color: var(--accent-bg); 
+    color: var(--secondary-text);
+    max-width: 80%;
+    margin-left: auto;
+    margin-right: auto;
+    text-align: center;
+    /* Undo flex for system messages if they are simple */
+    display: block; 
+}
+.message-item.system.system-message-layout .md-content {
+    width: 100%;
+    max-width: 100%; /* Override bubble max-width for system */
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background-color: transparent;
+    padding: 0;
+}
+
+
+.message-item.thinking .md-content .thinking-indicator,
+.message-item.streaming .md-content .thinking-indicator {
+    display: inline-block; 
+    padding: 5px 0; 
 }
 
 .message-controls {
     position: absolute;
     top: 2px;
-    right: 5px;
-    display: none; /* Hidden by default, shown on hover or context menu trigger */
+    /* Adjust right/left based on user/assistant */
+    display: none; 
     z-index: 10;
+}
+.message-item.user .message-controls {
+    left: 5px; /* For user messages if bubble is on the left */
+}
+.message-item.assistant .message-controls {
+    right: 5px;
 }
 
 .message-item:hover .message-controls {
-    display: flex; /* Show on hover for quick access, context menu is alternative */
+    display: flex; 
 }
 
 .message-edit-btn {
     background: rgba(255,255,255,0.1);
     border: none;
     color: var(--primary-text);
-    padding: 3px 6px; /* 调整padding */
+    padding: 3px 6px; 
     font-size: 0.8em;
-    border-radius: 5px; /* 调整圆角 */
+    border-radius: 5px; 
     cursor: pointer;
     margin-left: 5px;
 }
@@ -653,74 +787,49 @@ body.light-theme .chat-actions .header-button:hover {
 }
 
 
-.message-item.user {
-    background-color: var(--user-bubble-bg);
-    color: var(--primary-text);
-    align-self: flex-end;
-    margin-left: auto;
-    border-bottom-right-radius: 4px; /* 调整尾巴效果 */
-}
-body.light-theme .message-item.user {
-    background-color: var(--user-bubble-bg-light);
-    color: #ffffff; /* 用户气泡在亮色主题下文字用白色 */
-}
-
-.message-item.assistant {
-    background-color: var(--assistant-bubble-bg);
-    color: var(--primary-text);
-    align-self: flex-start;
-    margin-right: auto;
-    border-bottom-left-radius: 4px; /* 调整尾巴效果 */
-    max-width: 75%; /* 将AI气泡最大宽度调整为75% */
-}
-body.light-theme .message-item.assistant {
-    background-color: var(--assistant-bubble-bg-light);
-    color: var(--primary-text-light); /* AI气泡在亮色主题下文字用深色 */
-    border: 1px solid #d0d8e0; /* 给AI气泡一个浅色边框 */
-}
-.message-item .sender-name { /* Less prominent sender name */
-    font-weight: 500;
-    margin-bottom: 3px;
-    font-size: 0.85em;
-    color: var(--secondary-text);
-    opacity: 0.8;
-}
-.message-item img, .message-item video, .message-item audio {
+.message-item .md-content img, 
+.message-item .md-content video, 
+.message-item .md-content audio {
     max-width: 100%;
     border-radius: 8px;
     margin-top: 8px;
     display: block;
 }
-.message-item pre { /* For code blocks within messages */
+.message-item .md-content pre { 
     background-color: rgba(0,0,0,0.2);
     padding: 10px;
     border-radius: 6px;
-    white-space: pre-wrap; /* Preserve whitespace and allow wrapping */
-    word-break: break-all;   /* Break long words/strings to prevent overflow */
-    overflow-x: auto; /* Keep horizontal scroll for cases where break-all is not enough or desired */
+    white-space: pre-wrap; 
+    word-break: break-all;   
+    overflow-x: auto; 
     font-size: 0.9em;
     margin-top: 8px;
     border: 1px solid var(--border-color);
 }
+/* Attachments inside the bubble */
+.message-item .md-content .message-attachments {
+    display: flex;
+    flex-wrap: wrap; 
+    gap: 8px; 
+    margin-top: 8px;
+}
 
-/* --- 话题创建时间戳气泡 --- */
 .topic-timestamp-bubble {
-    display: none; /* 默认隐藏，由JS控制显示 */
+    display: none; 
     text-align: center;
-    padding: 3px 12px; /* 细长的感觉 */
-    font-size: 0.75em; /* 较小的字体 */
+    padding: 3px 12px; 
+    font-size: 0.75em; 
     color: var(--secondary-text);
-    background-color: var(--accent-bg); /* 使用强调背景色 */
-    border-radius: 12px; /* 圆角使其像胶囊 */
-    margin: 6px auto 8px auto; /* 上方与header间距，下方与聊天内容间距，左右自动居中 */
-    max-width: fit-content; /* 宽度适应内容 */
-    box-shadow: 0 1px 2px rgba(0,0,0,0.1); /* 轻微阴影 */
-    opacity: 0.8; /* 略微透明 */
+    background-color: var(--accent-bg); 
+    border-radius: 12px; 
+    margin: 6px auto 8px auto; 
+    max-width: fit-content; 
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1); 
+    opacity: 0.8; 
 }
 
 
-/* VCP Tool Request Bubble */
-.vcp-tool-request-bubble {
+.vcp-tool-request-bubble { /* This is for the old style, might conflict or be replaced by new .vcp-tool-use-bubble */
     background-color: var(--tool-bubble-bg);
     border: 1px solid var(--tool-bubble-border);
     border-radius: 8px;
@@ -728,32 +837,32 @@ body.light-theme .message-item.assistant {
     margin-top: 10px;
     font-family: 'Consolas', 'Monaco', monospace;
     font-size: 0.9em;
-    color: #c5c8c6; /* Light gray for code-like text */
-    white-space: pre-wrap; /* Preserve formatting */
+    color: #c5c8c6; 
+    white-space: pre-wrap; 
     box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
-.vcp-tool-request-bubble strong { /* For tool_name: */
-    color: #81a2be; /* Light blue for keywords */
+.vcp-tool-request-bubble strong { 
+    color: #81a2be; 
 }
-.vcp-tool-request-bubble span.vcp-param-value { /* For 「始」value「末」 */
-    color: #b5bd68; /* Light green for values */
+.vcp-tool-request-bubble span.vcp-param-value { 
+    color: #b5bd68; 
 }
 
 
 .chat-input-area {
-    padding-top: 8px; /* Reduced top padding for the entire input area */
+    padding-top: 8px; 
     padding-right: 15px;
-    padding-bottom: 12px; /* Kept bottom padding same */
+    padding-bottom: 12px; 
     padding-left: 15px;
     background-color: var(--secondary-bg);
     border-top: 1px solid var(--border-color);
     display: flex;
-    align-items: flex-end; /* Align items to bottom for multi-line textarea */
-    flex-wrap: wrap; /* Allow items to wrap */
+    align-items: flex-end; 
+    flex-wrap: wrap; 
+    flex-shrink: 0; /* Prevent input area from shrinking */
 }
-/* .attachment-preview-area specific styles are defined around line 1295 */
-/* The old .attachment-preview-area style at line 627 will be overridden or removed by the more specific one if it targets the same ID/class */
-.attachment-preview-area .file-preview {
+
+.attachment-preview-area .file-preview { /* This is the old attachment preview style in input area */
     background-color: var(--accent-bg);
     padding: 3px 6px;
     border-radius: 4px;
@@ -774,18 +883,18 @@ body.light-theme .message-item.assistant {
 
 #messageInput {
     flex-grow: 1;
-    padding-top: 8px; /* Reduced top padding */
+    padding-top: 8px; 
     padding-right: 12px;
     padding-bottom: 10px;
     padding-left: 12px;
     border: 1px solid var(--border-color);
-    border-radius: 20px; /* 统一圆角，使其更圆润 */
+    border-radius: 20px; 
     background-color: var(--input-bg);
     color: var(--primary-text);
     font-size: 1em;
-    resize: none; /* Prevent manual resize, JS will handle height */
+    resize: none; 
     margin-right: 10px;
-    max-height: 150px; /* Limit max height */
+    max-height: 150px; 
     overflow-y: auto;
     line-height: 1.4;
 }
@@ -796,9 +905,9 @@ body.light-theme .message-item.assistant {
 }
 
 #sendMessageBtn, #attachFileBtn {
-    background-color: var(--button-bg); /* 使用统一的按钮背景色 */
+    background-color: var(--button-bg); 
     border: none;
-    border-radius: 50%; /* 保持圆形 */
+    border-radius: 50%; 
     width: 40px;
     height: 40px;
     display: flex;
@@ -810,14 +919,14 @@ body.light-theme .message-item.assistant {
     margin-left: 8px;
 }
 #sendMessageBtn svg, #attachFileBtn svg {
-    width: 24px; /* 缩小图标尺寸 */
-    height: 24px; /* 缩小图标尺寸 */
-    stroke: var(--secondary-text); /* 图标描边颜色改为中灰 */
-    fill: var(--secondary-text);   /* 图标填充颜色改为中灰 */
+    width: 24px; 
+    height: 24px; 
+    stroke: var(--secondary-text); 
+    fill: var(--secondary-text);   
 }
 body.light-theme #sendMessageBtn svg, body.light-theme #attachFileBtn svg {
-    stroke: #ffffff; /* 亮色主题下图标用白色 */
-    fill: #ffffff; /* 亮色主题下图标用白色 */
+    stroke: #ffffff; 
+    fill: #ffffff; 
 }
 
 #sendMessageBtn:hover, #attachFileBtn:hover {
@@ -826,70 +935,67 @@ body.light-theme #sendMessageBtn svg, body.light-theme #attachFileBtn svg {
 
 /* --- Notifications Sidebar --- */
 .notifications-sidebar {
-    width: 300px;
-    min-width: 250px;
+    width: 300px; /* Default width */
+    min-width: 220px; /* Adjusted min-width */
+    max-width: 600px; /* Added max-width */
     background-color: var(--secondary-bg);
     border-left: 1px solid var(--border-color);
     display: flex;
     flex-direction: column;
-    padding: 0; /* Header will have padding */
-    transition: width 0.3s ease-in-out, min-width 0.3s ease-in-out, padding 0.3s ease-in-out; /* Added transition */
-    overflow: hidden; /* Add overflow hidden for smooth transition */
+    padding: 0; 
+    transition: width 0.3s cubic-bezier(0.25, 0.1, 0.25, 1), 
+                min-width 0.3s cubic-bezier(0.25, 0.1, 0.25, 1), 
+                padding 0.3s cubic-bezier(0.25, 0.1, 0.25, 1),
+                opacity 0.3s ease-out, 
+                transform 0.3s ease-out;
+    overflow: hidden; 
+    flex-shrink: 0; /* Prevent shrinking */
 }
 
-/* Styles for when the notifications sidebar is not active (hidden) */
 .notifications-sidebar:not(.active) {
-    width: 0 !important; /* Force width to 0 */
-    min-width: 0 !important; /* Force min-width to 0 */
-    padding-left: 0 !important; /* Remove padding when hidden */
-    padding-right: 0 !important; /* Remove padding when hidden */
-    border-left-width: 0 !important; /* Hide border when hidden */
-}
-
-/* Styles for the main content when the notifications sidebar is active */
-.main-content.notifications-sidebar-active {
-    /* Adjustments might not be needed if using flex-grow correctly, */
-    /* but can be used for explicit margin or width changes if required. */
-    /* For example: margin-right: 300px; (if sidebar width is fixed) */
-    /* Or, if sidebar width is variable, this class might not be strictly necessary */
-    /* if the flex layout handles it. Let's assume flex handles it for now. */
+    width: 0 !important; 
+    min-width: 0 !important; 
+    padding-left: 0 !important; 
+    padding-right: 0 !important; 
+    border-left-width: 0 !important; 
+    opacity: 0;
+    transform: translateX(100%); /* Slide out to the right */
 }
 
 .notifications-header {
-    /* background-color: #e1e5eb; */ /* Removed fixed light color */
-    padding: 10px 15px; /* Adjusted padding */
-    background-color: var(--notification-header-bg); /* 使用新定义的、略深的颜色 */
+    padding: 10px 15px; 
+    background-color: var(--notification-header-bg); 
     display: flex;
-    justify-content: space-between; /* Puts datetime-container to left, button to right */
+    justify-content: space-between; 
     align-items: center;
-    border-bottom: none; /* 确认底部分隔线已移除 */
+    border-bottom: none; 
+    flex-shrink: 0; /* Prevent header from shrinking */
 }
 
 .notification-header-actions {
     display: flex;
     align-items: center;
-    gap: 8px; /* Adjust gap as needed */
+    gap: 8px; 
 }
-/* Removed .notifications-header h4 style as it's hidden */
 
 .datetime-container {
     display: flex;
     flex-direction: column;
-    align-items: flex-start; /* Align text to the left */
+    align-items: flex-start; 
 }
 
-#clearNotificationsBtn, .notifications-header .header-button { /* Apply to both */
+#clearNotificationsBtn, .notifications-header .header-button { 
     background: transparent;
     border: 1px solid var(--button-bg);
     color: var(--secondary-text);
     font-size: 0.8em;
     padding: 4px 8px;
-    border-radius: 6px; /* 统一圆角 */
+    border-radius: 6px; 
     cursor: pointer;
-    display: inline-flex; /* For icon alignment */
+    display: inline-flex; 
     align-items: center;
     justify-content: center;
-    height: 30px; /* Match other header buttons roughly */
+    height: 30px; 
     box-sizing: border-box;
 }
 #clearNotificationsBtn:hover, .notifications-header .header-button:hover {
@@ -903,14 +1009,14 @@ body.light-theme #clearNotificationsBtn, body.light-theme .notifications-header 
 body.light-theme #clearNotificationsBtn:hover, body.light-theme .notifications-header .header-button:hover {
     color: #ffffff;
 }
-/* Specific for icon-only button in notifications header if needed */
+
 .notifications-header .header-button#openAdminPanelBtn {
-    padding: 0 8px; /* Adjust padding for icon-only */
+    padding: 0 8px; 
 }
 .notifications-header .header-button svg {
     stroke: currentColor;
-    width: 18px; /* Increased icon size */
-    height: 18px; /* Increased icon size */
+    width: 18px; 
+    height: 18px; 
 }
 
 .notifications-status {
@@ -920,6 +1026,7 @@ body.light-theme #clearNotificationsBtn:hover, body.light-theme .notifications-h
     color: var(--secondary-text);
     border-bottom: 1px solid var(--border-color);
     text-align: center;
+    flex-shrink: 0; /* Prevent status bar from shrinking */
 }
 .notifications-status.status-open { background-color: #2e7d32; color: white;}
 .notifications-status.status-closed { background-color: #c62828; color: white;}
@@ -939,7 +1046,7 @@ body.light-theme #clearNotificationsBtn:hover, body.light-theme .notifications-h
     border-bottom: 1px solid var(--border-color);
     font-size: 0.9em;
     background-color: var(--notification-bg);
-    color: var(--primary-text); /* 确保文字颜色 */
+    color: var(--primary-text); 
 }
 .notification-item:last-child {
     border-bottom: none;
@@ -949,7 +1056,7 @@ body.light-theme #clearNotificationsBtn:hover, body.light-theme .notifications-h
     display: block;
     margin-bottom: 4px;
 }
-.notification-item pre { /* For JSON data in notifications */
+.notification-item pre { 
     background-color: rgba(0,0,0,0.2);
     padding: 6px;
     border-radius: 4px;
@@ -969,52 +1076,47 @@ body.light-theme #clearNotificationsBtn:hover, body.light-theme .notifications-h
     margin-top: 5px;
 }
  
-/* Notes Section in Notifications Sidebar */
-/* Notes Section in Notifications Sidebar */
 .notes-section {
     padding: 10px 15px;
-    /* border-top: 1px solid var(--border-color); /* Removed as divider is now separate */
     display: flex;
-    justify-content: flex-end; /* Align button to the right */
+    justify-content: flex-end; 
     align-items: center;
-    background-color: var(--secondary-bg); /* Match sidebar background */
-    padding-top: 10px; /* Add padding to separate from divider */
+    background-color: var(--secondary-bg); 
+    padding-top: 10px; 
     padding-bottom: 10px;
+    flex-shrink: 0; /* Prevent notes section from shrinking */
 }
 
-/* Divider style (now a direct child of notifications-sidebar) */
-.notifications-sidebar > .section-divider { /* Target directly inside sidebar */
+.notifications-sidebar > .section-divider { 
     border: none;
-    /* border-top: 1px solid var(--border-color); */
-    margin: 0; /* Remove default margin from hr */
+    margin: 0; 
     width: 100%;
-    box-sizing: border-box; /* Ensure border is within width */
-    padding: 0 15px; /* Match sidebar padding for visual alignment */
+    box-sizing: border-box; 
+    padding: 0 15px; 
 }
 
 .notes-section #openNotesBtn {
     background-color: var(--button-bg);
-    color: var(--secondary-text); /* Use secondary-text for consistency with header-button */
+    color: var(--secondary-text); 
     border: 1px solid var(--button-bg);
-    padding: 0 10px; /* Adjusted padding to match header-button */
-    height: 32px; /* Set unified height to match header-button */
+    padding: 0 10px; 
+    height: 32px; 
     border-radius: 8px;
     cursor: pointer;
-    font-size: 0.9em; /* Adjusted font size to match header-button */
+    font-size: 0.9em; 
     transition: background-color 0.2s, border-color 0.2s;
-    display: inline-flex; /* Use flex layout for internal alignment */
-    align-items: center; /* Vertical centering */
-    justify-content: center; /* Horizontal centering */
-    box-sizing: border-box; /* Ensure padding and border are within height */
-    margin-left: 8px; /* Add margin to separate from other buttons */
-    width: auto; /* Allow button to size based on content */
-    /* Removed max-width to allow content to determine width */
+    display: inline-flex; 
+    align-items: center; 
+    justify-content: center; 
+    box-sizing: border-box; 
+    margin-left: 8px; 
+    width: auto; 
 }
 
 .notes-section #openNotesBtn:hover {
     background-color: var(--button-hover-bg);
     border-color: var(--button-hover-bg);
-    color: var(--primary-text); /* Keep primary-text for hover state */
+    color: var(--primary-text); 
 }
 
 .notes-section #openNotesBtn svg {
@@ -1024,18 +1126,18 @@ body.light-theme #clearNotificationsBtn:hover, body.light-theme .notifications-h
 }
 
 body.light-theme .notes-section #openNotesBtn {
-    color: #ffffff; /* 亮色主题下按钮文字用白色 */
+    color: #ffffff; 
     border: 1px solid var(--button-bg-light);
 }
 
 body.light-theme .notes-section #openNotesBtn:hover {
-    color: #ffffff; /* Match header-button light theme hover color */
+    color: #ffffff; 
     border-color: var(--button-hover-bg-light);
 }
 
 /* --- Modals --- */
 .modal {
-    display: none; /* Hidden by default */
+    display: none; 
     position: fixed;
     z-index: 1000;
     left: 0;
@@ -1052,15 +1154,19 @@ body.light-theme .notes-section #openNotesBtn:hover {
 }
 
 .modal-content {
-    background-color: var(--secondary-bg);
+    background-color: var(--secondary-bg) !important; /* Ensure this overrides for cropper */
     margin: auto;
     padding: 25px 30px;
     border: 1px solid var(--border-color);
-    border-radius: 12px; /* 统一圆角 */
+    border-radius: 12px; 
     width: 90%;
     max-width: 550px;
     box-shadow: 0 5px 15px rgba(0,0,0,0.3);
     position: relative;
+    color: var(--primary-text);
+}
+
+#avatarCropperModal .modal-content { /* Specific styles for cropper modal if needed */
     color: var(--primary-text);
 }
 .modal-content h2 {
@@ -1085,7 +1191,7 @@ body.light-theme .notes-section #openNotesBtn:hover {
     width: calc(100% - 20px);
     padding: 10px;
     margin-bottom: 15px;
-    border-radius: 8px; /* 统一圆角 */
+    border-radius: 8px; 
     border: 1px solid var(--border-color);
     background-color: var(--input-bg);
     color: var(--primary-text);
@@ -1100,10 +1206,10 @@ body.light-theme .notes-section #openNotesBtn:hover {
 }
 .modal-content button[type="submit"], .modal-content .danger-button {
     background-color: var(--user-bubble-bg);
-    color: #ffffff; /* 确保文字是白色 */
+    color: #ffffff; 
     padding: 10px 18px;
     border: none;
-    border-radius: 8px; /* 统一圆角 */
+    border-radius: 8px; 
     cursor: pointer;
     font-size: 1em;
     transition: background-color 0.2s;
@@ -1118,7 +1224,7 @@ body.light-theme .modal-content button[type="submit"] {
 
 .modal-content .danger-button {
     background-color: var(--danger-color);
-    color: #ffffff; /* 确保危险按钮文字是白色 */
+    color: #ffffff; 
 }
 .modal-content .danger-button:hover {
     background-color: var(--danger-hover-bg);
@@ -1165,7 +1271,6 @@ body.light-theme .modal-content .danger-button {
     background: var(--scrollbar-thumb-hover);
 }
 
-/* --- Sidebar Lists Scrollbar: Auto-hide with fade effect --- */
 .sidebar .agent-list::-webkit-scrollbar,
 .sidebar .topic-list::-webkit-scrollbar {
     width: 8px;
@@ -1174,35 +1279,32 @@ body.light-theme .modal-content .danger-button {
 
 .sidebar .agent-list::-webkit-scrollbar-thumb,
 .sidebar .topic-list::-webkit-scrollbar-thumb {
-    background-color: transparent; /* Default to transparent */
+    background-color: transparent; 
     border-radius: 4px;
     transition: background-color 0.3s ease-in-out;
 }
 
 .sidebar .agent-list::-webkit-scrollbar-track,
 .sidebar .topic-list::-webkit-scrollbar-track {
-    background-color: transparent; /* Default to transparent */
+    background-color: transparent; 
     border-radius: 4px;
     transition: background-color 0.3s ease-in-out;
 }
 
-/* Show scrollbar on hover of the agent-list or topic-list itself */
 .sidebar .agent-list:hover::-webkit-scrollbar-thumb,
 .sidebar .topic-list:hover::-webkit-scrollbar-thumb {
-    background-color: var(--scrollbar-thumb); /* Show with theme color */
+    background-color: var(--scrollbar-thumb); 
 }
 
 .sidebar .agent-list:hover::-webkit-scrollbar-track,
 .sidebar .topic-list:hover::-webkit-scrollbar-track {
-    background-color: var(--scrollbar-track); /* Show with theme color */
+    background-color: var(--scrollbar-track); 
 }
 
-/* Keep the hover effect for the thumb itself when visible and hovered */
 .sidebar .agent-list:hover::-webkit-scrollbar-thumb:hover,
 .sidebar .topic-list:hover::-webkit-scrollbar-thumb:hover {
     background-color: var(--scrollbar-thumb-hover);
 }
-/* --- End Sidebar Lists Scrollbar --- */
 
 /* Markdown specific styling for chat messages */
 .message-item .md-content p { margin: 0 0 0.5em 0; }
@@ -1210,12 +1312,11 @@ body.light-theme .modal-content .danger-button {
 .message-item .md-content ul, .message-item .md-content ol { margin-left: 20px; padding-left: 0; }
 .message-item .md-content blockquote { border-left: 3px solid var(--user-bubble-bg); margin-left: 0; padding-left: 1em; color: var(--secondary-text); }
 .message-item .md-content code { background-color: rgba(0,0,0,0.2); padding: 0.2em 0.4em; border-radius: 3px; font-size: 0.9em; }
-.message-item .md-content pre code { padding: 0; background: none; } /* Reset for code inside pre */
+.message-item .md-content pre code { padding: 0; background: none; } 
 
-/* Styles for Message Editing */
 .message-edit-textarea {
-    width: 500px; /* 修改：设置一个较大的初始固定宽度 */
-    min-width: 250px; /* 新增：确保一个合理的最小宽度 */
+    /* width: 500px;  No longer fixed width */
+    min-width: 250px; 
     min-height: 50px;
     padding: 8px;
     margin-top: 5px;
@@ -1226,9 +1327,11 @@ body.light-theme .modal-content .danger-button {
     color: var(--primary-text);
     font-family: inherit;
     font-size: 0.95em;
-    resize: both; /* 修改: 允许双向调整大小 */
-    max-width: 100%; /* 保留：限制最大宽度，防止超出父元素 */
+    resize: both; 
+    max-width: 100%; 
     box-sizing: border-box;
+    /* Will be a flex child of .message-item.message-item-editing */
+    flex-grow: 1;
 }
 
 .message-edit-controls {
@@ -1236,6 +1339,8 @@ body.light-theme .modal-content .danger-button {
     justify-content: flex-end;
     gap: 8px;
     margin-top: 5px;
+    /* Will be a flex child or sibling of textarea */
+    width: 100%; /* if it's a block below textarea */
 }
 .message-edit-controls button {
     padding: 5px 10px;
@@ -1244,18 +1349,35 @@ body.light-theme .modal-content .danger-button {
     cursor: pointer;
     font-size: 0.9em;
     background-color: var(--button-bg);
-    color: var(--primary-text); /* 确保文字颜色 */
+    color: var(--primary-text); 
     transition: background-color 0.2s ease;
 }
 .message-edit-controls button:hover {
     background-color: var(--button-hover-bg);
 }
 body.light-theme .message-edit-controls button {
-    color: #ffffff; /* 亮色主题下按钮文字用白色 */
+    color: #ffffff; 
+}
+
+/* Editing mode for QQ Style */
+.message-item.message-item-editing {
+    flex-direction: column; /* Stack textarea and controls vertically */
+    align-items: stretch; /* Make children (textarea, controls) take full width */
+}
+.message-item.message-item-editing .chat-avatar,
+.message-item.message-item-editing .name-time-block {
+    display: none; /* Hide avatar and name/time block when editing */
+}
+.message-item.message-item-editing .md-content {
+    display: none; /* Hide the original bubble content */
+}
+
+/* Ensure the details-and-bubble-wrapper is also hidden when editing, if it exists */
+.message-item.message-item-editing .details-and-bubble-wrapper {
+    display: none;
 }
 
 
-/* Context Menu Styling */
 .context-menu {
     position: fixed;
     background-color: var(--secondary-bg);
@@ -1263,7 +1385,7 @@ body.light-theme .message-edit-controls button {
     border-radius: 5px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.2);
     padding: 5px 0;
-    z-index: 1001; /* Above modals if any, but below system UI */
+    z-index: 1001; 
     min-width: 150px;
 }
 .context-menu-item {
@@ -1281,20 +1403,19 @@ body.light-theme .message-edit-controls button {
 }
 .context-menu-item.danger-text:hover {
     background-color: var(--danger-hover-bg);
-    color: white; /* Or a lighter shade of red for hover text */
+    color: white; 
 }
 
 
-/* Mobile Responsiveness (Basic Example) */
 @media (max-width: 768px) {
     .sidebar {
         width: 100%;
         height: auto;
         border-right: none;
         border-bottom: 1px solid var(--border-color);
-        position: absolute; /* Or handle with JS toggle */
+        position: absolute; 
         z-index: 100;
-        transform: translateX(-100%); /* Initially hidden */
+        transform: translateX(-100%); 
         transition: transform 0.3s ease-in-out;
     }
     .sidebar.open {
@@ -1304,22 +1425,21 @@ body.light-theme .message-edit-controls button {
         width: 100%;
     }
     .notifications-sidebar {
-        display: none; /* Simpler to hide on mobile, or make it a toggleable panel */
+        display: none; 
     }
-    .message-item {
-        max-width: 90%;
+    /* .message-item {
+        max-width: 90%; // This might conflict with flex based .md-content max-width
+    } */
+    .message-item .md-content {
+        max-width: 85%; /* Adjust bubble width for smaller screens */
     }
     .modal-content {
         width: 95%;
         padding: 20px;
     }
-    /* Add a menu button to toggle sidebar on mobile */
 }
 
-/* Styles for Agent Settings within the Tab Content */
 #tabContentSettings {
-    /* It's already display: flex; flex-direction: column; flex-grow: 1; overflow-y: auto; */
-    /* Adding some padding to the tab content area for better spacing */
     padding: 15px;
     box-sizing: border-box;
 }
@@ -1327,11 +1447,9 @@ body.light-theme .message-edit-controls button {
 #agentSettingsContainer {
     width: 100%;
     box-sizing: border-box;
-    /* overflow-y: auto; /* If the form itself becomes too long */
-    /* max-height: calc(100% - 80px); /* Example: Adjust if header/footer in tabContentSettings take space */
 }
 
-#agentSettingsContainer h3 { /* Style for "助手设置: AgentName" title */
+#agentSettingsContainer h3 { 
     color: var(--highlight-text);
     margin-top: 0;
     margin-bottom: 15px;
@@ -1346,18 +1464,16 @@ body.light-theme .message-edit-controls button {
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    gap: 12px; /* Space between form groups */
+    gap: 12px; 
 }
 
-#agentSettingsForm > div { /* Direct div children of the form (label/input groups) */
+#agentSettingsForm > div { 
     display: flex;
-    flex-direction: column; /* Stack label on top of input */
-    gap: 6px; /* Space between label and input */
+    flex-direction: column; 
+    gap: 6px; 
 }
 
 #agentSettingsForm label {
-    /* Styles from modal were: display: block; margin-bottom: 6px; font-weight: 500; color: var(--secondary-text); */
-    /* Re-applying similar styles, adjusting margin as gap is now used */
     display: block;
     font-weight: 500;
     color: var(--secondary-text);
@@ -1374,15 +1490,15 @@ body.light-theme .message-edit-controls button {
     width: 100%;
     box-sizing: border-box;
     padding: 9px 10px;
-    margin-bottom: 0; /* Gap is handled by parent flex */
-    border-radius: 8px; /* 统一圆角 */
+    margin-bottom: 0; 
+    border-radius: 8px; 
     border: 1px solid var(--border-color);
     background-color: var(--input-bg);
     color: var(--primary-text);
     font-size: 0.95em;
 }
 #agentSettingsForm input[type="file"] {
-    padding: 5px; /* File input often needs different padding */
+    padding: 5px; 
 }
 
 
@@ -1392,25 +1508,24 @@ body.light-theme .message-edit-controls button {
 }
 
 #agentSettingsForm .form-actions {
-    /* Styles from modal: margin-top: 20px; display: flex; justify-content: flex-end; */
-    margin-top: 15px; /* Adjust spacing */
+    margin-top: 15px; 
     display: flex;
-    justify-content: flex-start; /* Align buttons to the start or use space-between */
+    justify-content: flex-start; 
     gap: 10px;
 }
 
 #agentSettingsForm .form-actions button {
-    padding: 10px 18px; /* 与 modal 按钮一致 */
-    font-size: 1em;    /* 与 modal 按钮一致 */
-    border-radius: 8px; /* 与 modal 按钮一致 */
-    border: none;       /* 与 modal 按钮一致 */
-    cursor: pointer;    /* 与 modal 按钮一致 */
-    transition: background-color 0.2s; /* 与 modal 按钮一致 */
-    color: #ffffff; /* 确保文字默认是白色 */
+    padding: 10px 18px; 
+    font-size: 1em;    
+    border-radius: 8px; 
+    border: none;       
+    cursor: pointer;    
+    transition: background-color 0.2s; 
+    color: #ffffff; 
 }
 
 #agentSettingsForm .form-actions button[type="submit"] {
-    background-color: var(--user-bubble-bg); /* 使用 user-bubble-bg 作为主操作按钮颜色 */
+    background-color: var(--user-bubble-bg); 
 }
 #agentSettingsForm .form-actions button[type="submit"]:hover {
     background-color: var(--button-hover-bg);
@@ -1423,94 +1538,88 @@ body.light-theme .message-edit-controls button {
     background-color: var(--danger-hover-bg);
 }
 
-/* 确保 agentSettingsForm 中的按钮也应用亮色主题颜色 */
-/* 亮色主题下，按钮背景色已通过变量切换，文字颜色保持白色 */
 body.light-theme #agentSettingsForm .form-actions button[type="submit"] {
-    background-color: var(--user-bubble-bg-light); /* 明确指定亮色主题下的背景 */
+    background-color: var(--user-bubble-bg-light); 
 }
 body.light-theme #agentSettingsForm .form-actions button[type="submit"]:hover {
     background-color: var(--button-hover-bg-light);
 }
 body.light-theme #agentSettingsForm .form-actions .danger-button {
-    background-color: var(--danger-color-light); /* 明确指定亮色主题下的背景 */
+    background-color: var(--danger-color-light); 
 }
 body.light-theme #agentSettingsForm .form-actions .danger-button:hover {
     background-color: var(--danger-hover-bg-light);
 }
 
-#selectAgentPromptForSettings { /* The "Please select an agent" prompt */
+#selectAgentPromptForSettings { 
     text-align: center;
     padding: 20px;
     color: var(--secondary-text);
 }
 
-/* --- Keyframes for animations (from userscript) --- */
 @keyframes vcp-shimmer-bg {
-    0% { background-position: 150% 0; } /* Start shimmer off-screen to the right */
-    100% { background-position: -150% 0; } /* End shimmer off-screen to the left */
+    0% { background-position: 150% 0; } 
+    100% { background-position: -150% 0; } 
 }
 
-/* --- Enhanced Notification Item Styles --- */
-.notification-item { /* Re-styling existing .notification-item to match original screenshot style */
-    position: relative; /* For positioning the copy button */
-    background-color: var(--notification-bg); /* Use existing theme variable */
-    color: var(--primary-text); /* 确保文字颜色 */
-    padding: 10px 15px; /* Original padding */
-    padding-right: 40px; /* Make slightly more space for the copy button */
-    border-bottom: 1px solid var(--border-color); /* Separator line */
-    border-radius: 0; /* No rounded corners, or a very small value like 2px if subtle rounding is okay */
-    margin: 0; /* No margin between items, they stack directly */
+.notification-item { 
+    position: relative; 
+    background-color: var(--notification-bg); 
+    color: var(--primary-text); 
+    padding: 10px 15px; 
+    padding-right: 40px; 
+    border-bottom: 1px solid var(--border-color); 
+    border-radius: 0; 
+    margin: 0; 
     font-size: 0.9em;
-    box-shadow: none; /* Original screenshot doesn't show prominent shadow per item */
-    opacity: 0; /* Start hidden for animation */
-    transform: translateX(100%); /* Start off-screen for animation */
+    box-shadow: none; 
+    opacity: 0; 
+    transform: translateX(100%); 
     transition: opacity 0.5s ease, transform 0.5s ease;
-    width: 100%; /* Take full width of the parent list */
+    width: 100%; 
     box-sizing: border-box;
-    cursor: pointer; /* To allow manual dismissal */
-    overflow: hidden; /* Important for containing bg animations */
+    cursor: pointer; 
+    overflow: hidden; 
 
-    /* Animated Shimmer Background */
     background-image: linear-gradient(
         110deg,
-        var(--notification-bg) 0%, /* Base color from theme */
+        var(--notification-bg) 0%, 
         var(--notification-bg) 40%,
-        var(--accent-bg) 50%,    /* Shimmer highlight using accent color */
+        var(--accent-bg) 50%,    
         var(--notification-bg) 60%,
-        var(--notification-bg) 100% /* Base color from theme */
+        var(--notification-bg) 100% 
     );
-    background-size: 250% 100%; /* Make gradient wider than element for sweep effect */
-    animation: vcp-shimmer-bg 7s linear infinite; /* Slower shimmer */
+    background-size: 250% 100%; 
+    animation: vcp-shimmer-bg 7s linear infinite; 
 }
 
-.notification-item.visible { /* Class to trigger animation */
+.notification-item.visible { 
     opacity: 1;
     transform: translateX(0);
 }
 
 .notification-item:last-child {
-    border-bottom: 1px solid var(--border-color); /* Keep border for last item if margin is used */
-}
-/* Override for when it's the actual last one in the list without margin issues */
-.notifications-list > .notification-item:last-of-type {
-   /* border-bottom: none; /* If no margin, then no border for the very last */
+    border-bottom: 1px solid var(--border-color); 
 }
 
-.notification-item strong { /* Title style */
-    color: var(--highlight-text); /* Use existing theme variable */
+.notifications-list > .notification-item:last-of-type {
+}
+
+.notification-item strong { 
+    color: var(--highlight-text); 
     display: block;
     margin-bottom: 4px;
-    position: relative; /* Ensure text is above the background animation */
+    position: relative; 
     z-index: 1;
 }
 
-.notification-item .notification-content { /* Container for main text */
+.notification-item .notification-content { 
     position: relative;
     z-index: 1;
 }
 
-.notification-item pre { /* For JSON data or preformatted content in notifications */
-    background-color: rgba(0,0,0,0.2); /* Consistent with existing pre style */
+.notification-item pre { 
+    background-color: rgba(0,0,0,0.2); 
     padding: 6px;
     border-radius: 4px;
     font-size: 0.85em;
@@ -1519,7 +1628,7 @@ body.light-theme #agentSettingsForm .form-actions .danger-button:hover {
     overflow: auto;
     white-space: pre-wrap;
     word-break: break-all;
-    position: relative; /* Ensure text is above the background animation */
+    position: relative; 
     z-index: 1;
 }
 
@@ -1528,7 +1637,7 @@ body.light-theme #agentSettingsForm .form-actions .danger-button:hover {
     top: 5px;
     right: 5px;
     background: rgba(255,255,255,0.1);
-    color: var(--primary-text); /* 确保复制按钮文字颜色 */
+    color: var(--primary-text); 
     border: 1px solid rgba(255,255,255,0.3);
     border-radius: 4px;
     padding: 2px 5px;
@@ -1536,18 +1645,17 @@ body.light-theme #agentSettingsForm .form-actions .danger-button:hover {
     cursor: pointer;
     opacity: 0.7;
     transition: opacity 0.2s, background-color 0.2s;
-    z-index: 2; /* Ensure copy button is above the background animation and content */
+    z-index: 2; 
 }
 .notification-copy-btn:hover {
     opacity: 1;
     background: rgba(255,255,255,0.2);
 }
 
-/* Adjust timestamp to be part of the flow, or position it differently if needed */
 .notification-timestamp {
     font-size: 0.75em;
-    color: #444444; /* 更深的颜色，确保在浅色背景下清晰可见 */
-    opacity: 0.9; /* 提高不透明度 */
+    color: #444444; 
+    opacity: 0.9; 
     display: block;
     text-align: right;
     margin-top: 5px;
@@ -1555,46 +1663,40 @@ body.light-theme #agentSettingsForm .form-actions .danger-button:hover {
     z-index: 1;
 }
 
-/* 确保亮色主题下通知项的文字清晰可见 */
 body.light-theme .notification-item {
-    color: #000000; /* 纯黑色，确保在浅色背景下清晰可见 */
+    color: #000000; 
 }
 
-/* --- 重新生成回复选项的样式 --- */
 .context-menu-item.regenerate-text {
-    color: #28a745; /* 绿色 */
-    /* 确保亮色模式下颜色也可见 */
+    color: #28a745; 
 }
 
 .context-menu-item.regenerate-text:hover {
-    color: #1e7e34; /* 深绿色 on hover */
-    background-color: var(--accent-bg); /* 保持与其他选项一致的悬停背景色 */
+    color: #1e7e34; 
+    background-color: var(--accent-bg); 
 }
 
-/* --- 附件预览区域美化 --- */
 .attachment-preview-area {
     display: flex;
-    flex-wrap: wrap; /* 允许换行 */
-    gap: 8px; /* 附件之间的间距 */
-    /* padding: 8px 0; */ /* 上下留出一些空间 */
-    width: 100%; /* Take full width to occupy the first "row" */
-    order: -1; /* Ensure it's visually the first item in the flex container */
-    margin-bottom: 8px; /* Space below the preview area and above the input row */
-    /* padding-bottom: 8px; */ /* Optional: if items inside need bottom padding */
+    flex-wrap: wrap; 
+    gap: 8px; 
+    width: 100%; 
+    order: -1; 
+    margin-bottom: 8px; 
 }
 
 .attachment-preview-item {
-    background-color: var(--accent-bg); /* 使用主题的强调色作为背景 */
-    color: var(--primary-text); /* 使用主题的主要文字颜色 */
-    border-radius: 16px; /* 更圆润的胶囊形状 */
-    padding: 2px 6px; /* 进一步减小内边距 */
+    background-color: var(--accent-bg); 
+    color: var(--primary-text); 
+    border-radius: 16px; 
+    padding: 2px 6px; 
     display: flex;
     align-items: center;
     font-size: 0.9em;
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     transition: all 0.2s ease-in-out;
-    cursor: default; /* 默认光标 */
-    position: relative; /* 为内部的绝对定位元素提供参考 */
+    cursor: default; 
+    position: relative; 
 }
 
 .attachment-preview-item:hover {
@@ -1604,73 +1706,62 @@ body.light-theme .notification-item {
 
 .file-preview-icon {
     margin-right: 4px;
-    font-size: 0.9em; /* 图标稍大一些 */
+    font-size: 0.9em; 
 }
 
 .file-preview-name {
-    display: none; /* 隐藏文件名 */
+    display: none; 
 }
 
 .file-preview-remove-btn {
-    position: absolute; /* 绝对定位 */
-    top: -8px; /* 向上移动 */
-    right: -8px; /* 向右移动 */
-    background: transparent; /* 透明背景 */
+    position: absolute; 
+    top: -8px; 
+    right: -8px; 
+    background: transparent; 
     border: none;
-    color: var(--danger-color); /* 使用危险颜色 */
-    margin: 0; /* 移除外边距 */
-    padding: 0; /* 移除内边距 */
+    color: var(--danger-color); 
+    margin: 0; 
+    padding: 0; 
     cursor: pointer;
-    font-size: 1.2em; /* 增大 "x" 的大小 */
+    font-size: 1.2em; 
     line-height: 1;
-    border-radius: 50%; /* 圆形按钮 */
-    width: 20px; /* 固定宽度 */
-    height: 20px; /* 固定高度 */
+    border-radius: 50%; 
+    width: 20px; 
+    height: 20px; 
     display: flex;
     align-items: center;
     justify-content: center;
     transition: background-color 0.2s ease, color 0.2s ease;
-    z-index: 10; /* 确保在气泡上方 */
+    z-index: 10; 
 }
 
 .file-preview-remove-btn:hover {
-    background-color: var(--danger-hover-bg); /* 悬停时使用危险颜色背景 */
-    color: white; /* 悬停时文字变白 */
+    background-color: var(--danger-hover-bg); 
+    color: white; 
 }
-/* 确保旧的 .file-preview 样式不会冲突，或者可以考虑移除旧的 .file-preview 相关CSS */
-.attachment-preview-area .file-preview { /* 如果还存在旧的 .file-preview 元素 */
-    display: none; /* 隐藏旧的样式，如果新的 attachment-preview-item 完全替代了它 */
+.attachment-preview-area .file-preview { 
+    display: none; 
 }
 
-/* --- 聊天气泡内图片附件缩略图样式 --- */
 .message-attachment-image-thumbnail {
-    max-width: 150px; /* 限制最大宽度 */
-    max-height: 150px; /* 限制最大高度 */
-    border-radius: 8px; /* 圆角 */
-    cursor: pointer; /* 点击手势 */
-    object-fit: cover; /* 保持图片比例并填充 */
-    margin: 5px; /* 与其他附件或文本的间距 */
-    border: 2px solid var(--button-bg); /* 调整边框宽度和颜色以更突出 */
+    max-width: 150px; 
+    max-height: 150px; 
+    border-radius: 8px; 
+    cursor: pointer; 
+    object-fit: cover; 
+    margin: 5px; 
+    border: 2px solid var(--button-bg); 
     transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
 }
 
 .message-attachment-image-thumbnail:hover {
-    transform: scale(1.05); /* 轻微放大效果 */
-    box-shadow: 0 2px 8px rgba(0,0,0,0.2); /* 悬停时添加阴影 */
+    transform: scale(1.05); 
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2); 
 }
 
-/* 确保附件容器内的元素能正确排列 */
-.message-attachments {
-    display: flex;
-    flex-wrap: wrap; /* 允许换行 */
-    gap: 8px; /* 附件之间的间距 */
-    margin-top: 8px;
-}
-
-/* --- Topic Search Bar Styling --- */
 .topics-header {
     display: flex;
-    flex-direction: column; /* Stack title and search bar */
+    flex-direction: column; 
     padding-bottom: 10px;
     border-bottom: 1px solid var(--border-color);
     margin-bottom: 15px;
@@ -1678,32 +1769,32 @@ body.light-theme .notification-item {
 
 .topics-header h2 {
     margin-top: 5px;
-    margin-bottom: 10px; /* Space between title and search bar */
+    margin-bottom: 10px; 
     color: var(--secondary-text);
     font-size: 1.4em;
-    border-bottom: none; /* Remove border from h2 as parent now has it */
+    border-bottom: none; 
     padding-bottom: 0;
 }
 
 .topic-search-container {
     display: flex;
     width: 100%;
-    gap: 8px; /* Space between input and button */
-    padding: 0 15px; /* 与侧边栏左右内边距保持一致 */
-    box-sizing: border-box; /* 确保padding包含在宽度内 */
+    gap: 8px; 
+    padding: 0 15px; 
+    box-sizing: border-box; 
 }
 
 .topic-search-input {
     flex-grow: 1;
     padding: 10px 12px;
     border: 1px solid var(--border-color);
-    border-radius: 20px; /* Rounded corners */
+    border-radius: 20px; 
     background-color: var(--input-bg);
     color: var(--primary-text);
     font-size: 1em;
-    box-sizing: border-box; /* Include padding and border in the element's total width and height */
-    max-width: calc(100% - 8px); /* 限制最大宽度，减去gap */
-    min-width: 0; /* 允许缩小 */
+    box-sizing: border-box; 
+    max-width: calc(100% - 8px); 
+    min-width: 0; 
 }
 
 .topic-search-input::placeholder {
@@ -1717,17 +1808,14 @@ body.light-theme .notification-item {
     box-shadow: 0 0 0 2px rgba(61, 90, 128, 0.3);
 }
 
-/* .topic-search-button styles removed as the button is no longer in use */
-
-/* --- Digital Clock Styles --- */
 .digital-clock {
-    font-size: 2.0em; /* Reduced font size */
+    font-size: 2.0em; 
     color: var(--highlight-text);
     font-family: 'Maven Pro ExtraBold', 'Arial Black', sans-serif;
     font-weight: 800;
     letter-spacing: 1px;
     line-height: 1;
-    margin-bottom: -1px; /* Adjusted for new font size */
+    margin-bottom: -1px; 
     text-align: left;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -1735,7 +1823,7 @@ body.light-theme .notification-item {
 }
 
 .date-display {
-    font-size: 0.7em; /* Reduced font size for date */
+    font-size: 0.7em; 
     color: var(--secondary-text);
     font-weight: 500;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -1744,31 +1832,25 @@ body.light-theme .notification-item {
     margin-top: 0px;
     position: relative;
     top: -1px;
-    left: 3px;           /* Increased left value to move date further right */
+    left: 3px;           
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }
 
 @keyframes blinkColon {
     0%, 100% { opacity: 1; }
-    50% { opacity: 0.2; } /* Or 0 for full blink */
+    50% { opacity: 0.2; } 
 }
 
 .digital-clock .colon {
-    animation: blinkColon 2s infinite; /* Changed duration to 2 seconds */
+    animation: blinkColon 2s infinite; 
     position: relative;
-    /* top: -0.05em; */
 }
 
-/* .notifications-header adjustments are now at the top of this diff block */
-
-/* --- 引号内文本样式 --- */
 .message-item .md-content .quoted-text {
     color: var(--quoted-text);
-    /* font-style: italic; */ /* 可选：如果需要斜体 */
 }
-/* --- Active Topic Glow Effect --- */
-@keyframes st-colon-blink { /* This seems unrelated to the ripple, but was provided. Keeping it. */
+@keyframes st-colon-blink { 
     0%, 100% { opacity: 1; }
     50% { opacity: 0.2; }
 }
@@ -1776,21 +1858,21 @@ body.light-theme .notification-item {
 @keyframes st-soft-circular-ripple-effect {
     0% {
         transform: translate(-50%, -50%) scale(0);
-        opacity: 0.7; /* Start a bit more visible to see the initial soft color */
+        opacity: 0.7; 
     }
-    80% { /* Ripple expands and fades, hold opacity a bit longer before full fade */
-        transform: translate(-50%, -50%) scale(18); /* Slightly larger scale for a wider soft ripple */
+    80% { 
+        transform: translate(-50%, -50%) scale(18); 
         opacity: 0;
     }
     100% {
-        transform: translate(-50%, -50%) scale(0); /* Reset for next loop */
+        transform: translate(-50%, -50%) scale(0); 
         opacity: 0;
     }
 }
 
 .topic-item.active-topic-glowing {
-    position: relative; /* Ensure positioning context for the pseudo-element */
-    overflow: hidden;   /* Contain the ripple effect */
+    position: relative; 
+    overflow: hidden;   
 }
 
 .topic-item.active-topic-glowing::before {
@@ -1798,97 +1880,83 @@ body.light-theme .notification-item {
     position: absolute;
     left: 50%;
     top: 50%;
-    width: 10px; /* Initial size of the ripple's source */
+    width: 10px; 
     height: 10px;
-    /* Using a radial gradient for a soft edge */
     background-image: radial-gradient(
         circle,
-        rgba(190, 210, 240, 0.45) 0%, /* Center color - slightly more opaque */
-        rgba(190, 210, 240, 0.3) 40%, /* Mid color */
-        rgba(190, 210, 240, 0) 70%   /* Edge color - fully transparent */
+        rgba(190, 210, 240, 0.45) 0%, 
+        rgba(190, 210, 240, 0.3) 40%, 
+        rgba(190, 210, 240, 0) 70%   
     );
     border-radius: 50%;
-    transform: translate(-50%, -50%) scale(0); /* Initial state: centered and scaled down */
-    opacity: 0; /* Start transparent, animation will handle fade-in */
-    animation: st-soft-circular-ripple-effect 3.8s ease-out infinite; /* Slightly adjusted timing */
-    z-index: 0; /* Behind the content */
-    pointer-events: none; /* So it doesn't interfere with clicks */
+    transform: translate(-50%, -50%) scale(0); 
+    opacity: 0; 
+    animation: st-soft-circular-ripple-effect 3.8s ease-out infinite; 
+    z-index: 0; 
+    pointer-events: none; 
 }
-/* --- Active Topic Glow Effect (Light Theme Override) --- */
 body.light-theme .topic-item.active-topic-glowing::before {
     background-image: radial-gradient(
         circle,
-        rgba(65, 144, 213, 0.041) 0%,  /* Center color - deeper blue, increased opacity */
-        rgba(56, 131, 196, 0.358) 40%, /* Mid color - deeper blue */
-        rgba(14, 78, 134, 0) 70%   /* Edge color - fully transparent */
+        rgba(65, 144, 213, 0.041) 0%,  
+        rgba(56, 131, 196, 0.358) 40%, 
+        rgba(14, 78, 134, 0) 70%   
     ) !important;
 }
-/* --- End Active Topic Glow Effect --- */
-/* Custom File Upload Button Styling */
-
-/* Hide the default "No file chosen" text and style the input area minimally */
 input[type="file"] {
-    font-size: 0; /* Hide the "No file chosen" or filename text */
+    font-size: 0; 
     background-color: transparent;
     border: none;
     padding: 0;
-    margin: 0; /* Adjust as needed for layout */
-    width: auto; /* Allow the button to determine the width */
-    display: inline-block; /* Or 'block' depending on layout needs */
+    margin: 0; 
+    width: auto; 
+    display: inline-block; 
 }
 
 input[type="file"]::-webkit-file-upload-button,
 input[type="file"]::file-selector-button {
     background-color: var(--button-bg);
-    color: var(--primary-text); /* Default text color, overridden for light theme */
-    border: 1px solid var(--button-bg); /* Match button background for a solid feel */
+    color: var(--primary-text); 
+    border: 1px solid var(--button-bg); 
     padding: 10px 15px;
-    border-radius: 8px; /* Consistent with other buttons like .sidebar-button */
+    border-radius: 8px; 
     cursor: pointer;
-    font-size: 0.95em; /* Consistent font size with other buttons */
+    font-size: 0.95em; 
     transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
-    font-family: inherit; /* Ensure font consistency */
+    font-family: inherit; 
 }
 
 input[type="file"]::-webkit-file-upload-button:hover,
 input[type="file"]::file-selector-button:hover {
     background-color: var(--button-hover-bg);
     border-color: var(--button-hover-bg);
-    /* Text color on hover will use the theme-specific color defined below if applicable */
 }
 
-/* Light theme overrides for text color */
 body.light-theme input[type="file"]::-webkit-file-upload-button,
 body.light-theme input[type="file"]::file-selector-button {
-    color: #ffffff; /* White text for light theme buttons, as per other buttons */
+    color: #ffffff; 
 }
 
-/* Ensure hover text color is also white for light theme */
 body.light-theme input[type="file"]::-webkit-file-upload-button:hover,
 body.light-theme input[type="file"]::file-selector-button:hover {
     color: #ffffff;
 }
-/* Agent Settings Avatar Preview Border */
-/* Attempt to target the avatar preview image within the agent settings form */
-#agentSettingsForm img.avatar-preview, /* If a specific class like 'avatar-preview' is used by JS */
-#agentSettingsContainer img[alt="Avatar Preview"], /* If the image has alt text "Avatar Preview" */
-#agentSettingsForm div > img[src*="blob:"], /* If it's a blob URL preview directly in a div */
-#agentSettingsForm div > img[data-preview-for], /* If it has a data attribute linking it to an input */
-#agentSettingsForm img[id*="AvatarPreview"], /* If its ID contains "AvatarPreview" */
-#agentSettingsForm img[class*="AvatarPreview"] /* If its class contains "AvatarPreview" */ {
-    border: 2px solid var(--button-bg) !important; /* Ensure border is visible and uses theme color */
-    border-radius: 8px; /* Consistent rounded corners */
-    max-width: 100px;   /* Adjust size as needed, e.g., to match screenshot */
-    max-height: 100px;  /* Adjust size as needed */
-    object-fit: cover;  /* Ensures the image covers the area, might crop */
-    display: block;     /* Ensures proper block-level rendering for margins/borders */
-    margin-top: 10px;   /* Adds some space below the file input or above other elements */
-    margin-bottom: 10px; /* Adds some space below the preview */
+#agentSettingsForm img.avatar-preview, 
+#agentSettingsContainer img[alt="Avatar Preview"], 
+#agentSettingsForm div > img[src*="blob:"], 
+#agentSettingsForm div > img[data-preview-for], 
+#agentSettingsForm img[id*="AvatarPreview"], 
+#agentSettingsForm img[class*="AvatarPreview"] {
+    border: 2px solid var(--button-bg) !important; 
+    border-radius: 8px; 
+    max-width: 100px;   
+    max-height: 100px;  
+    object-fit: cover;  
+    display: block;     
+    margin-top: 10px;   
+    margin-bottom: 10px; 
 }
 
-/* A slightly more general fallback if the above are too specific */
-/* This targets any image that is a direct child of a div within the agentSettingsForm,
-   and is likely to be a preview if it's the only image there. */
 #agentSettingsForm > div > img:only-child {
     border: 2px solid var(--button-bg) !important;
     border-radius: 8px;
@@ -1899,54 +1967,32 @@ body.light-theme input[type="file"]::file-selector-button:hover {
     margin-top: 10px;
     margin-bottom: 10px;
 }
-/* Agent Settings Save Button Error Feedback */
 #agentSettingsForm .form-actions button.error-feedback {
-    background-color: var(--danger-color) !important; /* Use danger color for background */
-    color: white !important; /* Ensure text is white for contrast */
-    /* Optionally, add a border or other visual cues */
-    /* border: 1px solid var(--danger-hover-bg); */
+    background-color: var(--danger-color) !important; 
+    color: white !important; 
 }
 
 #agentSettingsForm .form-actions button.error-feedback:hover {
-    background-color: var(--danger-hover-bg) !important; /* Darken on hover */
-}
-/* --- 聊天气泡编辑模式宽度调整 --- */
-/* 当消息项处于编辑模式时 (具有 .message-item-editing 类), 允许其扩展宽度以适应上下文 */
-.message-item.message-item-editing {
-    max-width: 95% !important; /* 覆盖原有的 max-width (如 60% 或 75%)，使其更宽。*/
-                               /* 95% 是一个示例值，可以根据需要调整以适应“上下文窗口的大宽度”。*/
-    width: auto;               /* 允许内容根据需要撑开，直到达到 max-width。 */
-                               /* 这确保了即使内容较少，气泡也不会不必要地变得过宽。*/
-    /* 原有的 align-self: flex-start/flex-end 和 margin-left/right: auto 仍然会尝试定位气泡，*/
-    /* 但由于宽度较大，视觉上它会占据大部分可用空间。*/
+    background-color: var(--danger-hover-bg) !important; 
 }
 
-/* 确保编辑文本区在 message-item-editing 状态下表现正常 */
-.message-item.message-item-editing .message-edit-textarea {
-    width: 100%; /* 已经在JS中设置，这里再次强调以确保CSS层面的行为一致 */
-    /* 其他 .message-edit-textarea 的样式 (如 min-width, min-height, padding 等) 保持不变 */
-}
-
-/* --- Floating Toast Notifications --- */
 #floating-toast-notifications-container {
     position: fixed;
-    top: 40px; /* Adjust based on title bar height + desired spacing */
+    top: 40px; 
     right: 20px;
-    width: 320px; /* Adjust as needed */
-    z-index: 2000; /* High z-index to be on top */
+    width: 320px; 
+    z-index: 2000; 
     display: flex;
     flex-direction: column;
-    gap: 10px; /* Spacing between toasts */
+    gap: 10px; 
 }
 
 .floating-toast-notification {
-    /* background-color: var(--notification-bg); */ /* Replaced for磨砂效果 */
-    background-color: rgba(var(--rgb-secondary-bg-dark, 40, 40, 44), 0.85); /* Fallback for dark, see below for theme specific */
+    background-color: rgba(var(--rgb-secondary-bg-dark, 40, 40, 44), 0.85); 
     color: var(--primary-text);
-    padding: 12px 15px; /* padding-right will be adjusted as close button is removed */
+    padding: 12px 15px; 
     border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.25); /* Slightly stronger shadow */
-    /* border: 1px solid var(--notification-border); */ /* Removed border */
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25); 
     font-size: 0.9em;
     position: relative;
     opacity: 0;
@@ -1957,27 +2003,26 @@ body.light-theme input[type="file"]::file-selector-button:hover {
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
 
-    /* 流光动画 (copied from .notification-item) */
     background-image: linear-gradient(
         110deg,
-        transparent 0%, /* Start with transparent for better blend with blur */
-        transparent 35%, /* Hold transparency longer */
-        var(--accent-bg) 50%,    /* Shimmer highlight using accent color */
+        transparent 0%, 
+        transparent 35%, 
+        var(--accent-bg) 50%,    
         transparent 65%,
         transparent 100%
     );
-    background-size: 300% 100%; /* Make gradient wider than element for sweep effect */
-    animation: vcp-shimmer-bg 5s linear infinite; /* Adjusted speed */
+    background-size: 300% 100%; 
+    animation: vcp-shimmer-bg 5s linear infinite; 
 }
 
-body.dark-theme .floating-toast-notification { /* Explicit for dark theme */
-    background-color: rgba(40, 40, 44, 0.85); /* Darker磨砂 */
+body.dark-theme .floating-toast-notification { 
+    background-color: rgba(40, 40, 44, 0.85); 
 }
 
 body.light-theme .floating-toast-notification {
-    background-color: rgba(240, 244, 248, 0.85); /* Lighter磨砂 for light theme */
+    background-color: rgba(240, 244, 248, 0.85); 
     color: var(--primary-text-light);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1); /* Lighter shadow for light theme */
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1); 
 }
 
 
@@ -1988,7 +2033,7 @@ body.light-theme .floating-toast-notification {
 
 .floating-toast-notification.exiting {
     opacity: 0;
-    transform: translateX(110%); /* Slide out further */
+    transform: translateX(110%); 
 }
 
 
@@ -2004,19 +2049,16 @@ body.light-theme .floating-toast-notification {
     line-height: 1.4;
 }
 .floating-toast-notification .notification-content pre {
-    background-color: rgba(0,0,0,0.1); /* Slightly darker for pre in toast */
+    background-color: rgba(0,0,0,0.1); 
     padding: 6px 8px;
     border-radius: 4px;
     font-size: 0.85em;
     margin-top: 6px;
-    max-height: 80px; /* Limit height for toasts */
+    max-height: 80px; 
     overflow: auto;
     white-space: pre-wrap;
     word-break: break-all;
 }
-
-
-/* .floating-toast-notification .toast-close-btn styles removed as button is removed */
 
 .floating-toast-notification .notification-timestamp {
     font-size: 0.75em;
