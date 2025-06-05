@@ -1701,7 +1701,11 @@ function toggleEditMode(messageItem, message) {
                 cancelButton.click();
             }
             // Allow Enter for newlines, Ctrl+Enter for save could be an option
-            if (event.ctrlKey && event.key === 'Enter') {
+            // If Enter is pressed without Shift or Ctrl, save the message
+            if (event.key === 'Enter' && !event.shiftKey && !event.ctrlKey) {
+                event.preventDefault(); // Prevent default newline behavior
+                saveButton.click();
+            } else if (event.ctrlKey && event.key === 'Enter') { // Keep Ctrl+Enter as an alternative save
                 saveButton.click();
             }
         });
