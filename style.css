@@ -639,16 +639,36 @@ body.light-theme .chat-actions .header-button:hover {
 }
 
 .message-item.user .name-time-block {
-    align-items: flex-end; 
-    margin-right: 5px; 
+    align-items: flex-end;
+    /* margin-right: 5px; */ /* Removed as bubble is now below */
 }
 
 .message-item.assistant .name-time-block {
-    align-items: flex-start; 
+    align-items: flex-start;
+    /* No specific margin needed here by default */
 }
 
-.message-item .sender-name { 
-    font-weight: 500;
+/* New wrapper for name/time and bubble column */
+.details-and-bubble-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 4px; /* Small gap between name/time block and the bubble */
+    flex-grow: 1; /* Allow this wrapper to take available horizontal space */
+    min-width: 0; /* Fixes potential overflow issues with flex children */
+}
+
+/* Align content within the wrapper based on user/assistant */
+.message-item.user .details-and-bubble-wrapper {
+    align-items: flex-end; /* Aligns name/time and bubble to the right */
+}
+
+.message-item.assistant .details-and-bubble-wrapper {
+    align-items: flex-start; /* Aligns name/time and bubble to the left */
+}
+
+.message-item .sender-name {
+    /* font-weight: 500; */ /* Replaced by more specific bold below */
+    font-weight: bold; /* Make all sender names bold */
     margin-bottom: 2px;
     font-size: 0.85em;
 }
@@ -658,7 +678,7 @@ body.light-theme .chat-actions .header-button:hover {
 }
 .message-item.user .sender-name {
     color: var(--secondary-text); 
-    opacity: 0.9;
+    /* opacity: 0.9; */ /* Remove opacity to make it more solid and highlighted */
 }
 
 .message-item .message-timestamp {

@@ -5,6 +5,9 @@ const ENHANCED_RENDER_DEBOUNCE_DELAY = 400; // ms, for general blocks during str
 const DIARY_RENDER_DEBOUNCE_DELAY = 1000; // ms, potentially longer for diary if complex
 const enhancedRenderDebounceTimers = new WeakMap(); // For debouncing prettify calls
 
+// Cache for dominant avatar colors
+const avatarColorCache = new Map();
+
 // --- Enhanced Rendering Styles (from UserScript) ---
 function injectEnhancedStyles() {
     const css = `
@@ -181,8 +184,13 @@ function injectEnhancedStyles() {
                 box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
                 margin-bottom: 10px !important;
                 position: relative;
-                overflow: hidden; 
+                overflow: hidden; /* Keep for safety, though wrapping should prevent overflow */
                 line-height: 1.5;
+                /* Styles for the <pre> tag itself to ensure wrapping */
+                display: block; /* Or inline-block if shrink-to-fit is desired */
+                white-space: normal !important; /* Crucial: Override <pre> default */
+                word-break: break-word !important; /* Crucial: Allow long words to break */
+                font-family: 'Georgia', 'Times New Roman', serif !important; /* Match inner content font */
             }
 
             /* Animated Border for Maid Diary */
@@ -465,7 +473,7 @@ function processAllPreBlocksInContentDiv(contentDiv) {
         } 
         // Check for DailyNote (ensure it's not already processed as VCP)
         else if (blockText.includes('<<<DailyNoteStart>>>') && blockText.includes('<<<DailyNoteEnd>>>') && !preElement.dataset.vcpPrettified) {
-            const dailyNoteContentMatch = blockText.match(/<<<DailyNoteStart>>>([\s\S]*?)<<<\[DailyNoteEnd\]>>>/); // Corrected closing tag
+            const dailyNoteContentMatch = blockText.match(/<<<DailyNoteStart>>>([\s\S]*?)<<<DailyNoteEnd>>>/); // Corrected closing tag <<<DailyNoteEnd>>>
             const actualDailyNoteText = dailyNoteContentMatch ? dailyNoteContentMatch[1].trim() : ""; 
             prettifySinglePreElement(preElement, 'dailynote', actualDailyNoteText);
         }
@@ -621,11 +629,11 @@ function renderMessage(message, isInitialLoad = false) {
         const avatarImg = document.createElement('img');
         avatarImg.classList.add('chat-avatar');
         if (message.role === 'user') {
-            avatarImg.src = currentUserAvatarUrl; 
+            avatarImg.src = currentUserAvatarUrl;
             avatarImg.alt = (globalSettings.userName || 'User') + ' Avatar';
             avatarImg.onerror = () => { avatarImg.src = 'assets/default_user_avatar.png'; }; // Fallback
         } else { // assistant
-            avatarImg.src = currentAgentAvatarUrl; 
+            avatarImg.src = currentAgentAvatarUrl;
             const agentNameElem = document.querySelector(`.agent-list li[data-agent-id="${currentAgentId}"] .agent-name`);
             avatarImg.alt = (agentNameElem?.textContent || 'AI') + ' Avatar';
             avatarImg.onerror = () => { avatarImg.src = 'assets/default_avatar.png'; };
@@ -633,7 +641,6 @@ function renderMessage(message, isInitialLoad = false) {
 
         const nameTimeDiv = document.createElement('div');
         nameTimeDiv.classList.add('name-time-block');
-
         const senderNameDiv = document.createElement('div');
         senderNameDiv.classList.add('sender-name');
         if (message.role === 'user') {
@@ -651,15 +658,13 @@ function renderMessage(message, isInitialLoad = false) {
             nameTimeDiv.appendChild(timestampDiv);
         }
         
-        if (message.role === 'user') {
-            messageItem.appendChild(contentDiv); // Bubble first for user
-            messageItem.appendChild(nameTimeDiv);
-            messageItem.appendChild(avatarImg);
-        } else { // assistant
-            messageItem.appendChild(avatarImg);
-            messageItem.appendChild(nameTimeDiv);
-            messageItem.appendChild(contentDiv); // Bubble last for assistant
-        }
+        const detailsAndBubbleWrapper = document.createElement('div');
+        detailsAndBubbleWrapper.classList.add('details-and-bubble-wrapper');
+        detailsAndBubbleWrapper.appendChild(nameTimeDiv);
+        detailsAndBubbleWrapper.appendChild(contentDiv);
+
+        messageItem.appendChild(avatarImg);
+        messageItem.appendChild(detailsAndBubbleWrapper);
 
     } else { // system messages (keep simpler layout or specific styling)
         messageItem.appendChild(contentDiv); // Just content for system
