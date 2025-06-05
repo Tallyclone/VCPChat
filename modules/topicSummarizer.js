@@ -14,7 +14,9 @@ async function summarizeTopicFromMessages(messages, agentName) {
     // 提取最近的几条消息内容用于总结
     // 例如，提取最近4条消息
     const recentMessagesContent = messages.slice(-4).map(msg => {
-        return `${msg.role === 'user' ? (globalSettings.userName || '用户') : agentName}: ${msg.content}`;
+        // 确保从消息内容中提取文本，即使它是对象 { text: '...' }
+        const contentText = typeof msg.content === 'string' ? msg.content : (msg.content?.text || '');
+        return `${msg.role === 'user' ? (globalSettings.userName || '用户') : agentName}: ${contentText}`;
     }).join('\n');
 
     console.log('[TopicSummarizer] 准备总结的内容:', recentMessagesContent);

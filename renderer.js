@@ -1143,6 +1143,8 @@ async function handleSendMessage() {
         if (useStreaming) {
             // activeStreamingMessageId = thinkingMessage.id; // Set active stream ID - REMOVED
             if (window.messageRenderer) { // Update the existing "thinking" message to be the stream target
+                // 添加延迟以确保 "思考中" 动画有时间显示
+                await new Promise(resolve => setTimeout(resolve, 500));
                 window.messageRenderer.startStreamingMessage({ ...thinkingMessage, content: "" });
             }
         }

@@ -470,7 +470,7 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
             }
 
             // Short delay to allow renderer to process 'agent_thinking' before 'start' might arrive if VCP is very fast
-            await new Promise(resolve => setTimeout(resolve, 100)); // Increased delay to 100ms
+            await new Promise(resolve => setTimeout(resolve, 500)); // 增加延迟到 500ms
 
             console.log(`[GroupChat] Preparing to send 'start' event for ${agentName} (msgId: ${messageIdForAgentResponse})`);
             if (typeof sendStreamChunkToRenderer === 'function') {
@@ -703,7 +703,18 @@ async function triggerTopicSummarizationIfNeeded(groupId, topicId, groupHistory,
 
         const recentMessagesContent = groupHistory.slice(-MIN_MESSAGES_FOR_SUMMARY).map(msg => {
             const speakerName = msg.name || (msg.role === 'user' ? (globalVcpSettings.userName || '用户') : 'AI成员');
+            // 确保从消息内容中提取文本，即使它是对象 { text: '...' }
             let contentText = typeof msg.content === 'string' ? msg.content : (msg.content?.text || '');
+            // 如果消息有附件且包含提取的文本，也将其包含在内
+            if (msg.attachments && msg.attachments.length > 0) {
+                for (const att of msg.attachments) {
+                    if (att._fileManagerData && typeof att._fileManagerData.extractedText === 'string' && att._fileManagerData.extractedText.trim() !== '') {
+                        contentText += `\n\n[附加文件: ${att.name || '未知文件'}]\n${att._fileManagerData.extractedText}\n[/附加文件结束: ${att.name || '未知文件'}]`;
+                    } else if (att._fileManagerData && att.type && !att.type.startsWith('image/')) {
+                        contentText += `\n\n[附加文件: ${att.name || '未知文件'} (无法预览文本内容)]`;
+                    }
+                }
+            }
             return `${speakerName}: ${contentText}`;
         }).join('\n\n');
 
