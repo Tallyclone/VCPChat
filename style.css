@@ -435,20 +435,28 @@ body {
     padding-top: 10px;
     border-top: 1px solid var(--border-color);
     display: flex;
-    flex-direction: column;
+    flex-direction: row; /* Changed to row for horizontal buttons */
     gap: 8px;
+    justify-content: space-between; /* Distribute space between buttons */
 }
 .sidebar-button {
     background-color: var(--button-bg);
     color: var(--primary-text);
-    border: 1px solid transparent; 
+    border: 1px solid transparent;
     padding: 10px;
     width: 100%;
-    border-radius: 8px; 
+    border-radius: 8px;
     cursor: pointer;
     font-size: 0.95em;
     transition: background-color 0.2s ease;
     text-align: center;
+}
+
+.sidebar-button.small-button {
+    flex: 1; /* Make buttons take equal width */
+    min-width: 100px; /* Ensure a minimum width */
+    max-width: 140px; /* Increase max-width slightly */
+    flex-shrink: 0;
 }
 .sidebar-button:hover {
     background-color: var(--button-hover-bg);
@@ -746,6 +754,36 @@ body.light-theme .message-item.assistant .md-content {
     background-color: transparent;
     padding: 0;
 }
+
+/* Welcome bubble for initial "no item selected" message */
+.message-item.system.welcome-bubble {
+    background-color: rgba(var(--rgb-secondary-bg-dark, 40, 40, 44), 0.65); /* Default to dark theme's secondary bg with opacity */
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(var(--rgb-secondary-bg-dark, 40, 40, 44), 0.3);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    color: var(--primary-text);
+    padding: 8px 20px; /* Minimal vertical padding */
+    border-radius: 12px;
+    max-width: 500px;
+    margin: 30px auto;
+    display: block; /* Changed from inline-block, parent is already block and centered */
+    text-align: center;
+}
+
+body.light-theme .message-item.system.welcome-bubble {
+    background-color: rgba(var(--rgb-secondary-bg-light, 255, 255, 255), 0.7);
+    border: 1px solid rgba(var(--rgb-secondary-bg-light, 255, 255, 255), 0.4);
+    color: var(--primary-text-light);
+}
+
+.message-item.system.welcome-bubble p {
+    margin: 0; /* Ensure no vertical margin on the paragraph itself */
+    padding: 0; /* Ensure no vertical padding on the paragraph itself */
+    line-height: 1.2; /* Reset to a more standard single line height */
+    font-size: 1em;
+}
+/* Removed p:last-child rule as it's no longer necessary */
 
 
 .message-item.thinking .md-content .thinking-indicator,
@@ -1206,17 +1244,64 @@ body.light-theme .notes-section #openNotesBtn:hover {
 }
 .modal-content button[type="submit"], .modal-content .danger-button {
     background-color: var(--user-bubble-bg);
-    color: #ffffff; 
+    color: #ffffff;
     padding: 10px 18px;
     border: none;
-    border-radius: 8px; 
+    border-radius: 8px;
     cursor: pointer;
     font-size: 1em;
     transition: background-color 0.2s;
-    margin-right: 10px;
 }
 .modal-content button[type="submit"]:hover {
     background-color: var(--button-hover-bg);
+}
+
+.button-primary {
+    background-color: var(--user-bubble-bg);
+    color: #ffffff;
+    padding: 10px 18px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1em;
+    transition: background-color 0.2s;
+}
+
+.button-primary:hover {
+    background-color: var(--button-hover-bg);
+}
+
+body.light-theme .button-primary {
+    background-color: var(--user-bubble-bg-light);
+    color: #ffffff;
+}
+
+body.light-theme .button-primary:hover {
+    background-color: var(--button-hover-bg-light);
+}
+
+.button-secondary {
+    background-color: var(--user-bubble-bg); /* Same as primary */
+    color: #ffffff; /* Same as primary */
+    padding: 10px 18px;
+    border: none; /* Same as primary */
+    border-radius: 8px; /* Same as primary */
+    cursor: pointer; /* Same as primary */
+    font-size: 1em; /* Same as primary */
+    transition: background-color 0.2s; /* Same as primary */
+}
+
+.button-secondary:hover {
+    background-color: var(--button-hover-bg); /* Same as primary */
+}
+
+body.light-theme .button-secondary {
+    background-color: var(--user-bubble-bg-light); /* Same as primary */
+    color: #ffffff; /* Same as primary */
+}
+
+body.light-theme .button-secondary:hover {
+    background-color: var(--button-hover-bg-light); /* Same as primary */
 }
 body.light-theme .modal-content button[type="submit"] {
     color: #ffffff;
@@ -1510,7 +1595,8 @@ body.light-theme .message-edit-controls button {
 #agentSettingsForm .form-actions {
     margin-top: 15px; 
     display: flex;
-    justify-content: flex-start; 
+    flex-direction: column; /* Make buttons stack vertically */
+    justify-content: flex-start;
     gap: 10px;
 }
 
@@ -1551,75 +1637,261 @@ body.light-theme #agentSettingsForm .form-actions .danger-button:hover {
     background-color: var(--danger-hover-bg-light);
 }
 
-#selectAgentPromptForSettings { 
+#selectAgentPromptForSettings {
     text-align: center;
     padding: 20px;
     color: var(--secondary-text);
 }
 
-@keyframes vcp-shimmer-bg {
-    0% { background-position: 150% 0; } 
-    100% { background-position: -150% 0; } 
+/* --- Group Settings Specific Styles --- */
+#groupSettingsContainer {
+    width: 100%;
+    box-sizing: border-box;
+    /* Similar to #agentSettingsContainer if needed, or rely on parent #tabContentSettings padding */
 }
 
-.notification-item { 
-    position: relative; 
-    background-color: var(--notification-bg); 
-    color: var(--primary-text); 
-    padding: 10px 15px; 
-    padding-right: 40px; 
-    border-bottom: 1px solid var(--border-color); 
-    border-radius: 0; 
-    margin: 0; 
-    font-size: 0.9em;
-    box-shadow: none; 
-    opacity: 0; 
-    transform: translateX(100%); 
-    transition: opacity 0.5s ease, transform 0.5s ease;
-    width: 100%; 
+#groupSettingsContainer h3 { /* Assuming a title like agent settings */
+    color: var(--highlight-text);
+    margin-top: 0;
+    margin-bottom: 15px;
+    font-size: 1.2em;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 8px;
+}
+
+#groupSettingsForm {
+    width: 100%;
     box-sizing: border-box;
-    cursor: pointer; 
-    overflow: hidden; 
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+#groupSettingsForm .form-group { /* Common class for form sections */
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+#groupSettingsForm label {
+    display: block;
+    font-weight: 500;
+    color: var(--secondary-text);
+    font-size: 0.9em;
+}
+
+#groupSettingsForm input[type="text"],
+#groupSettingsForm input[type="file"],
+#groupSettingsForm textarea,
+#groupSettingsForm select {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 9px 10px;
+    margin-bottom: 0;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background-color: var(--input-bg);
+    color: var(--primary-text);
+    font-size: 0.95em;
+}
+#groupSettingsForm input[type="file"] {
+    padding: 5px;
+}
+
+#groupSettingsForm textarea {
+    min-height: 60px; /* Slightly smaller for group prompts */
+    resize: vertical;
+}
+
+#groupSettingsForm .form-actions {
+    margin-top: 15px;
+    display: flex;
+    flex-direction: column; /* Make buttons stack vertically */
+    justify-content: flex-start;
+    gap: 10px;
+}
+
+#groupSettingsForm .form-actions button {
+    padding: 10px 18px;
+    font-size: 1em;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    color: #ffffff;
+    flex: 1; /* Make buttons take equal width */
+    text-align: center; /* Center text within the button */
+}
+
+#groupSettingsForm .form-actions button[type="submit"] {
+    background-color: var(--user-bubble-bg);
+}
+#groupSettingsForm .form-actions button[type="submit"]:hover {
+    background-color: var(--button-hover-bg);
+}
+
+#groupSettingsForm .form-actions #deleteGroupBtn {
+    background-color: var(--danger-color);
+}
+#groupSettingsForm .form-actions #deleteGroupBtn:hover {
+    background-color: var(--danger-hover-bg);
+}
+
+body.light-theme #groupSettingsForm .form-actions button[type="submit"] {
+    background-color: var(--user-bubble-bg-light);
+}
+body.light-theme #groupSettingsForm .form-actions button[type="submit"]:hover {
+    background-color: var(--button-hover-bg-light);
+}
+body.light-theme #groupSettingsForm .form-actions #deleteGroupBtn {
+    background-color: var(--danger-color-light);
+}
+body.light-theme #groupSettingsForm .form-actions #deleteGroupBtn:hover {
+    background-color: var(--danger-hover-bg-light);
+}
+
+
+.group-members-list-container {
+    max-height: 150px;
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 8px;
+    background-color: var(--input-bg);
+}
+
+.group-member-item {
+    display: flex;
+    align-items: center;
+    padding: 5px 0;
+}
+
+.group-member-item input[type="checkbox"] {
+    margin-right: 8px;
+    width: 16px; /* Custom size for checkbox */
+    height: 16px;
+    accent-color: var(--highlight-text); /* Color the checkbox itself */
+}
+
+.group-member-item label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    font-weight: normal; /* Override general label style if needed */
+    color: var(--primary-text);
+    font-size: 0.95em;
+}
+
+.group-member-item .avatar-small {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    margin-right: 8px;
+    object-fit: cover;
+}
+
+#memberTagsContainer {
+    /* Styles for the container of all tag inputs, if needed */
+}
+
+#memberTagsInputs {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.member-tag-input-item {
+    display: flex;
+    flex-direction: column; /* Stack label and input */
+    gap: 4px;
+}
+.member-tag-input-item label {
+    font-size: 0.85em;
+    color: var(--secondary-text);
+}
+.member-tag-input-item input[type="text"] {
+    font-size: 0.9em;
+    padding: 6px 8px;
+}
+
+#groupSettingsForm img#groupAvatarPreview {
+    border: 2px solid var(--button-bg) !important;
+    border-radius: 8px;
+    max-width: 100px;
+    max-height: 100px;
+    object-fit: cover;
+    display: block;
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+
+/* End Group Settings Specific Styles */
+
+
+@keyframes vcp-shimmer-bg {
+    0% { background-position: 150% 0; }
+    100% { background-position: -150% 0; }
+}
+
+.notification-item {
+    position: relative;
+    background-color: var(--notification-bg);
+    color: var(--primary-text);
+    padding: 10px 15px;
+    padding-right: 40px;
+    border-bottom: 1px solid var(--border-color);
+    border-radius: 0;
+    margin: 0;
+    font-size: 0.9em;
+    box-shadow: none;
+    opacity: 0;
+    transform: translateX(100%);
+    transition: opacity 0.5s ease, transform 0.5s ease;
+    width: 100%;
+    box-sizing: border-box;
+    cursor: pointer;
+    overflow: hidden;
 
     background-image: linear-gradient(
         110deg,
-        var(--notification-bg) 0%, 
+        var(--notification-bg) 0%,
         var(--notification-bg) 40%,
-        var(--accent-bg) 50%,    
+        var(--accent-bg) 50%,
         var(--notification-bg) 60%,
-        var(--notification-bg) 100% 
+        var(--notification-bg) 100%
     );
-    background-size: 250% 100%; 
-    animation: vcp-shimmer-bg 7s linear infinite; 
+    background-size: 250% 100%;
+    animation: vcp-shimmer-bg 7s linear infinite;
 }
 
-.notification-item.visible { 
+.notification-item.visible {
     opacity: 1;
     transform: translateX(0);
 }
 
 .notification-item:last-child {
-    border-bottom: 1px solid var(--border-color); 
+    border-bottom: 1px solid var(--border-color);
 }
 
 .notifications-list > .notification-item:last-of-type {
 }
 
-.notification-item strong { 
-    color: var(--highlight-text); 
+.notification-item strong {
+    color: var(--highlight-text);
     display: block;
     margin-bottom: 4px;
-    position: relative; 
-    z-index: 1;
-}
-
-.notification-item .notification-content { 
     position: relative;
     z-index: 1;
 }
 
-.notification-item pre { 
-    background-color: rgba(0,0,0,0.2); 
+.notification-item .notification-content {
+    position: relative;
+    z-index: 1;
+}
+
+.notification-item pre {
+    background-color: rgba(0,0,0,0.2);
     padding: 6px;
     border-radius: 4px;
     font-size: 0.85em;
@@ -1628,7 +1900,7 @@ body.light-theme #agentSettingsForm .form-actions .danger-button:hover {
     overflow: auto;
     white-space: pre-wrap;
     word-break: break-all;
-    position: relative; 
+    position: relative;
     z-index: 1;
 }
 
@@ -1637,7 +1909,7 @@ body.light-theme #agentSettingsForm .form-actions .danger-button:hover {
     top: 5px;
     right: 5px;
     background: rgba(255,255,255,0.1);
-    color: var(--primary-text); 
+    color: var(--primary-text);
     border: 1px solid rgba(255,255,255,0.3);
     border-radius: 4px;
     padding: 2px 5px;
@@ -1645,7 +1917,7 @@ body.light-theme #agentSettingsForm .form-actions .danger-button:hover {
     cursor: pointer;
     opacity: 0.7;
     transition: opacity 0.2s, background-color 0.2s;
-    z-index: 2; 
+    z-index: 2;
 }
 .notification-copy-btn:hover {
     opacity: 1;
@@ -1654,8 +1926,8 @@ body.light-theme #agentSettingsForm .form-actions .danger-button:hover {
 
 .notification-timestamp {
     font-size: 0.75em;
-    color: #444444; 
-    opacity: 0.9; 
+    color: #444444;
+    opacity: 0.9;
     display: block;
     text-align: right;
     margin-top: 5px;
@@ -1664,39 +1936,39 @@ body.light-theme #agentSettingsForm .form-actions .danger-button:hover {
 }
 
 body.light-theme .notification-item {
-    color: #000000; 
+    color: #000000;
 }
 
 .context-menu-item.regenerate-text {
-    color: #28a745; 
+    color: #28a745;
 }
 
 .context-menu-item.regenerate-text:hover {
-    color: #1e7e34; 
-    background-color: var(--accent-bg); 
+    color: #1e7e34;
+    background-color: var(--accent-bg);
 }
 
 .attachment-preview-area {
     display: flex;
-    flex-wrap: wrap; 
-    gap: 8px; 
-    width: 100%; 
-    order: -1; 
-    margin-bottom: 8px; 
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
+    order: -1;
+    margin-bottom: 8px;
 }
 
 .attachment-preview-item {
-    background-color: var(--accent-bg); 
-    color: var(--primary-text); 
-    border-radius: 16px; 
-    padding: 2px 6px; 
+    background-color: var(--accent-bg);
+    color: var(--primary-text);
+    border-radius: 16px;
+    padding: 2px 6px;
     display: flex;
     align-items: center;
     font-size: 0.9em;
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     transition: all 0.2s ease-in-out;
-    cursor: default; 
-    position: relative; 
+    cursor: default;
+    position: relative;
 }
 
 .attachment-preview-item:hover {
@@ -1706,62 +1978,62 @@ body.light-theme .notification-item {
 
 .file-preview-icon {
     margin-right: 4px;
-    font-size: 0.9em; 
+    font-size: 0.9em;
 }
 
 .file-preview-name {
-    display: none; 
+    display: none;
 }
 
 .file-preview-remove-btn {
-    position: absolute; 
-    top: -8px; 
-    right: -8px; 
-    background: transparent; 
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    background: transparent;
     border: none;
-    color: var(--danger-color); 
-    margin: 0; 
-    padding: 0; 
+    color: var(--danger-color);
+    margin: 0;
+    padding: 0;
     cursor: pointer;
-    font-size: 1.2em; 
+    font-size: 1.2em;
     line-height: 1;
-    border-radius: 50%; 
-    width: 20px; 
-    height: 20px; 
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: background-color 0.2s ease, color 0.2s ease;
-    z-index: 10; 
+    z-index: 10;
 }
 
 .file-preview-remove-btn:hover {
-    background-color: var(--danger-hover-bg); 
-    color: white; 
+    background-color: var(--danger-hover-bg);
+    color: white;
 }
-.attachment-preview-area .file-preview { 
-    display: none; 
+.attachment-preview-area .file-preview {
+    display: none;
 }
 
 .message-attachment-image-thumbnail {
-    max-width: 150px; 
-    max-height: 150px; 
-    border-radius: 8px; 
-    cursor: pointer; 
-    object-fit: cover; 
-    margin: 5px; 
-    border: 2px solid var(--button-bg); 
+    max-width: 150px;
+    max-height: 150px;
+    border-radius: 8px;
+    cursor: pointer;
+    object-fit: cover;
+    margin: 5px;
+    border: 2px solid var(--button-bg);
     transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
 }
 
 .message-attachment-image-thumbnail:hover {
-    transform: scale(1.05); 
-    box-shadow: 0 2px 8px rgba(0,0,0,0.2); 
+    transform: scale(1.05);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
 }
 
 .topics-header {
     display: flex;
-    flex-direction: column; 
+    flex-direction: column;
     padding-bottom: 10px;
     border-bottom: 1px solid var(--border-color);
     margin-bottom: 15px;
@@ -1769,32 +2041,32 @@ body.light-theme .notification-item {
 
 .topics-header h2 {
     margin-top: 5px;
-    margin-bottom: 10px; 
+    margin-bottom: 10px;
     color: var(--secondary-text);
     font-size: 1.4em;
-    border-bottom: none; 
+    border-bottom: none;
     padding-bottom: 0;
 }
 
 .topic-search-container {
     display: flex;
     width: 100%;
-    gap: 8px; 
-    padding: 0 15px; 
-    box-sizing: border-box; 
+    gap: 8px;
+    padding: 0 15px;
+    box-sizing: border-box;
 }
 
 .topic-search-input {
     flex-grow: 1;
     padding: 10px 12px;
     border: 1px solid var(--border-color);
-    border-radius: 20px; 
+    border-radius: 20px;
     background-color: var(--input-bg);
     color: var(--primary-text);
     font-size: 1em;
-    box-sizing: border-box; 
-    max-width: calc(100% - 8px); 
-    min-width: 0; 
+    box-sizing: border-box;
+    max-width: calc(100% - 8px);
+    min-width: 0;
 }
 
 .topic-search-input::placeholder {
@@ -1809,13 +2081,13 @@ body.light-theme .notification-item {
 }
 
 .digital-clock {
-    font-size: 2.0em; 
+    font-size: 2.0em;
     color: var(--highlight-text);
     font-family: 'Maven Pro ExtraBold', 'Arial Black', sans-serif;
     font-weight: 800;
     letter-spacing: 1px;
     line-height: 1;
-    margin-bottom: -1px; 
+    margin-bottom: -1px;
     text-align: left;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -1823,7 +2095,7 @@ body.light-theme .notification-item {
 }
 
 .date-display {
-    font-size: 0.7em; 
+    font-size: 0.7em;
     color: var(--secondary-text);
     font-weight: 500;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -1832,25 +2104,25 @@ body.light-theme .notification-item {
     margin-top: 0px;
     position: relative;
     top: -1px;
-    left: 3px;           
+    left: 3px;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }
 
 @keyframes blinkColon {
     0%, 100% { opacity: 1; }
-    50% { opacity: 0.2; } 
+    50% { opacity: 0.2; }
 }
 
 .digital-clock .colon {
-    animation: blinkColon 2s infinite; 
+    animation: blinkColon 2s infinite;
     position: relative;
 }
 
 .message-item .md-content .quoted-text {
     color: var(--quoted-text);
 }
-@keyframes st-colon-blink { 
+@keyframes st-colon-blink {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.2; }
 }
@@ -1858,21 +2130,21 @@ body.light-theme .notification-item {
 @keyframes st-soft-circular-ripple-effect {
     0% {
         transform: translate(-50%, -50%) scale(0);
-        opacity: 0.7; 
+        opacity: 0.7;
     }
-    80% { 
-        transform: translate(-50%, -50%) scale(18); 
+    80% {
+        transform: translate(-50%, -50%) scale(18);
         opacity: 0;
     }
     100% {
-        transform: translate(-50%, -50%) scale(0); 
+        transform: translate(-50%, -50%) scale(0);
         opacity: 0;
     }
 }
 
 .topic-item.active-topic-glowing {
-    position: relative; 
-    overflow: hidden;   
+    position: relative;
+    overflow: hidden;
 }
 
 .topic-item.active-topic-glowing::before {
@@ -1880,50 +2152,50 @@ body.light-theme .notification-item {
     position: absolute;
     left: 50%;
     top: 50%;
-    width: 10px; 
+    width: 10px;
     height: 10px;
     background-image: radial-gradient(
         circle,
-        rgba(190, 210, 240, 0.45) 0%, 
-        rgba(190, 210, 240, 0.3) 40%, 
-        rgba(190, 210, 240, 0) 70%   
+        rgba(190, 210, 240, 0.45) 0%,
+        rgba(190, 210, 240, 0.3) 40%,
+        rgba(190, 210, 240, 0) 70%
     );
     border-radius: 50%;
-    transform: translate(-50%, -50%) scale(0); 
-    opacity: 0; 
-    animation: st-soft-circular-ripple-effect 3.8s ease-out infinite; 
-    z-index: 0; 
-    pointer-events: none; 
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0;
+    animation: st-soft-circular-ripple-effect 3.8s ease-out infinite;
+    z-index: 0;
+    pointer-events: none;
 }
 body.light-theme .topic-item.active-topic-glowing::before {
     background-image: radial-gradient(
         circle,
-        rgba(65, 144, 213, 0.041) 0%,  
-        rgba(56, 131, 196, 0.358) 40%, 
-        rgba(14, 78, 134, 0) 70%   
+        rgba(65, 144, 213, 0.041) 0%,
+        rgba(56, 131, 196, 0.358) 40%,
+        rgba(14, 78, 134, 0) 70%
     ) !important;
 }
 input[type="file"] {
-    font-size: 0; 
+    font-size: 0;
     background-color: transparent;
     border: none;
     padding: 0;
-    margin: 0; 
-    width: auto; 
-    display: inline-block; 
+    margin: 0;
+    width: auto;
+    display: inline-block;
 }
 
 input[type="file"]::-webkit-file-upload-button,
 input[type="file"]::file-selector-button {
     background-color: var(--button-bg);
-    color: var(--primary-text); 
-    border: 1px solid var(--button-bg); 
+    color: var(--primary-text);
+    border: 1px solid var(--button-bg);
     padding: 10px 15px;
-    border-radius: 8px; 
+    border-radius: 8px;
     cursor: pointer;
-    font-size: 0.95em; 
+    font-size: 0.95em;
     transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
-    font-family: inherit; 
+    font-family: inherit;
 }
 
 input[type="file"]::-webkit-file-upload-button:hover,
@@ -1934,27 +2206,27 @@ input[type="file"]::file-selector-button:hover {
 
 body.light-theme input[type="file"]::-webkit-file-upload-button,
 body.light-theme input[type="file"]::file-selector-button {
-    color: #ffffff; 
+    color: #ffffff;
 }
 
 body.light-theme input[type="file"]::-webkit-file-upload-button:hover,
 body.light-theme input[type="file"]::file-selector-button:hover {
     color: #ffffff;
 }
-#agentSettingsForm img.avatar-preview, 
-#agentSettingsContainer img[alt="Avatar Preview"], 
-#agentSettingsForm div > img[src*="blob:"], 
-#agentSettingsForm div > img[data-preview-for], 
-#agentSettingsForm img[id*="AvatarPreview"], 
+#agentSettingsForm img.avatar-preview,
+#agentSettingsContainer img[alt="Avatar Preview"],
+#agentSettingsForm div > img[src*="blob:"],
+#agentSettingsForm div > img[data-preview-for],
+#agentSettingsForm img[id*="AvatarPreview"],
 #agentSettingsForm img[class*="AvatarPreview"] {
-    border: 2px solid var(--button-bg) !important; 
-    border-radius: 8px; 
-    max-width: 100px;   
-    max-height: 100px;  
-    object-fit: cover;  
-    display: block;     
-    margin-top: 10px;   
-    margin-bottom: 10px; 
+    border: 2px solid var(--button-bg) !important;
+    border-radius: 8px;
+    max-width: 100px;
+    max-height: 100px;
+    object-fit: cover;
+    display: block;
+    margin-top: 10px;
+    margin-bottom: 10px;
 }
 
 #agentSettingsForm > div > img:only-child {
@@ -1968,31 +2240,31 @@ body.light-theme input[type="file"]::file-selector-button:hover {
     margin-bottom: 10px;
 }
 #agentSettingsForm .form-actions button.error-feedback {
-    background-color: var(--danger-color) !important; 
-    color: white !important; 
+    background-color: var(--danger-color) !important;
+    color: white !important;
 }
 
 #agentSettingsForm .form-actions button.error-feedback:hover {
-    background-color: var(--danger-hover-bg) !important; 
+    background-color: var(--danger-hover-bg) !important;
 }
 
 #floating-toast-notifications-container {
     position: fixed;
-    top: 40px; 
+    top: 40px;
     right: 20px;
-    width: 320px; 
-    z-index: 2000; 
+    width: 320px;
+    z-index: 2000;
     display: flex;
     flex-direction: column;
-    gap: 10px; 
+    gap: 10px;
 }
 
 .floating-toast-notification {
-    background-color: rgba(var(--rgb-secondary-bg-dark, 40, 40, 44), 0.85); 
+    background-color: rgba(var(--rgb-secondary-bg-dark, 40, 40, 44), 0.85);
     color: var(--primary-text);
-    padding: 12px 15px; 
+    padding: 12px 15px;
     border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.25); 
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
     font-size: 0.9em;
     position: relative;
     opacity: 0;
@@ -2005,24 +2277,24 @@ body.light-theme input[type="file"]::file-selector-button:hover {
 
     background-image: linear-gradient(
         110deg,
-        transparent 0%, 
-        transparent 35%, 
-        var(--accent-bg) 50%,    
+        transparent 0%,
+        transparent 35%,
+        var(--accent-bg) 50%,
         transparent 65%,
         transparent 100%
     );
-    background-size: 300% 100%; 
-    animation: vcp-shimmer-bg 5s linear infinite; 
+    background-size: 300% 100%;
+    animation: vcp-shimmer-bg 5s linear infinite;
 }
 
-body.dark-theme .floating-toast-notification { 
-    background-color: rgba(40, 40, 44, 0.85); 
+body.dark-theme .floating-toast-notification {
+    background-color: rgba(40, 40, 44, 0.85);
 }
 
 body.light-theme .floating-toast-notification {
-    background-color: rgba(240, 244, 248, 0.85); 
+    background-color: rgba(240, 244, 248, 0.85);
     color: var(--primary-text-light);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1); 
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 
 
@@ -2033,7 +2305,7 @@ body.light-theme .floating-toast-notification {
 
 .floating-toast-notification.exiting {
     opacity: 0;
-    transform: translateX(110%); 
+    transform: translateX(110%);
 }
 
 
@@ -2049,12 +2321,12 @@ body.light-theme .floating-toast-notification {
     line-height: 1.4;
 }
 .floating-toast-notification .notification-content pre {
-    background-color: rgba(0,0,0,0.1); 
+    background-color: rgba(0,0,0,0.1);
     padding: 6px 8px;
     border-radius: 4px;
     font-size: 0.85em;
     margin-top: 6px;
-    max-height: 80px; 
+    max-height: 80px;
     overflow: auto;
     white-space: pre-wrap;
     word-break: break-all;
@@ -2067,4 +2339,18 @@ body.light-theme .floating-toast-notification {
     display: block;
     text-align: right;
     margin-top: 8px;
+}
+
+/* @tag 高亮样式 */
+.highlighted-tag {
+    color: var(--highlight-text); /* 使用主题的高亮颜色 */
+    background-color: rgba(var(--rgb-secondary-bg-dark, 40, 40, 44), 0.2); /* 轻微背景，暗色主题兼容 */
+    padding: 0.1em 0.3em;
+    border-radius: 4px;
+    font-weight: 500;
+}
+
+body.light-theme .highlighted-tag {
+    color: var(--highlight-text-light);
+    background-color: rgba(var(--rgb-secondary-bg-light, 255, 255, 255), 0.3); /* 轻微背景，亮色主题兼容 */
 }

@@ -1,14 +1,5 @@
 // preload.js
-const { contextBridge, ipcRenderer, clipboard: topLevelClipboard } = require('electron'); // topLevelClipboard 仍可用于 readText
-
-console.log('[Preload TOP LEVEL] typeof topLevelClipboard:', typeof topLevelClipboard);
-if (topLevelClipboard) {
-    console.log('[Preload TOP LEVEL] topLevelClipboard keys:', Object.keys(topLevelClipboard));
-    console.log('[Preload TOP LEVEL] typeof topLevelClipboard.readImage:', typeof topLevelClipboard.readImage); // 这行日志预期会显示 function，但实际调用时可能出问题
-    console.log('[Preload TOP LEVEL] typeof topLevelClipboard.readText:', typeof topLevelClipboard.readText);
-} else {
-    console.error('[Preload TOP LEVEL] topLevelClipboard is undefined or null at top level even after direct destructuring!');
-}
+const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
     // Settings
@@ -58,10 +49,29 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Agent and Topic Order
     saveAgentOrder: (orderedAgentIds) => ipcRenderer.invoke('save-agent-order', orderedAgentIds),
     saveTopicOrder: (agentId, orderedTopicIds) => ipcRenderer.invoke('save-topic-order', agentId, orderedTopicIds),
+    saveCombinedItemOrder: (orderedItemsWithTypes) => ipcRenderer.invoke('save-combined-item-order', orderedItemsWithTypes), // Added for combined list
 
     // VCP Communication
     sendToVCP: (vcpUrl, vcpApiKey, messages, modelConfig, messageId) => ipcRenderer.invoke('send-to-vcp', vcpUrl, vcpApiKey, messages, modelConfig, messageId),
     onVCPStreamChunk: (callback) => ipcRenderer.on('vcp-stream-chunk', (_event, eventData) => callback(eventData)),
+    // Group Chat
+    createAgentGroup: (groupName, initialConfig) => ipcRenderer.invoke('create-agent-group', groupName, initialConfig),
+    getAgentGroups: () => ipcRenderer.invoke('get-agent-groups'),
+    getAgentGroupConfig: (groupId) => ipcRenderer.invoke('get-agent-group-config', groupId),
+    saveAgentGroupConfig: (groupId, configData) => ipcRenderer.invoke('save-agent-group-config', groupId, configData),
+    deleteAgentGroup: (groupId) => ipcRenderer.invoke('delete-agent-group', groupId),
+    saveAgentGroupAvatar: (groupId, avatarData) => ipcRenderer.invoke('save-agent-group-avatar', groupId, avatarData),
+    getGroupTopics: (groupId, searchTerm) => ipcRenderer.invoke('get-group-topics', groupId, searchTerm),
+    createNewTopicForGroup: (groupId, topicName) => ipcRenderer.invoke('create-new-topic-for-group', groupId, topicName),
+    deleteGroupTopic: (groupId, topicId) => ipcRenderer.invoke('delete-group-topic', groupId, topicId),
+    saveGroupTopicTitle: (groupId, topicId, newTitle) => ipcRenderer.invoke('save-group-topic-title', groupId, topicId, newTitle),
+    getGroupChatHistory: (groupId, topicId) => ipcRenderer.invoke('get-group-chat-history', groupId, topicId),
+    saveGroupChatHistory: (groupId, topicId, history) => ipcRenderer.invoke('save-group-chat-history', groupId, topicId, history), // Added for saving group chat history
+    sendGroupChatMessage: (groupId, topicId, userMessage) => ipcRenderer.invoke('send-group-chat-message', groupId, topicId, userMessage),
+    onVCPGroupStreamChunk: (callback) => ipcRenderer.on('vcp-group-stream-chunk', (_event, eventData) => callback(eventData)),
+    onVCPGroupTopicUpdated: (callback) => ipcRenderer.on('vcp-group-topic-updated', (_event, eventData) => callback(eventData)), // Added for topic title updates
+    saveGroupTopicOrder: (groupId, orderedTopicIds) => ipcRenderer.invoke('save-group-topic-order', groupId, orderedTopicIds), // Added for group topic order
+    searchTopicsByContent: (itemId, itemType, searchTerm) => ipcRenderer.invoke('search-topics-by-content', itemId, itemType, searchTerm), // Added for content search
 
     // VCPLog Notifications
     connectVCPLog: (url, key) => ipcRenderer.send('connect-vcplog', { url, key }),

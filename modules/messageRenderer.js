@@ -7,6 +7,7 @@ const enhancedRenderDebounceTimers = new WeakMap(); // For debouncing prettify c
 
 // Cache for dominant avatar colors
 const avatarColorCache = new Map();
+
 // --- Helper functions for color conversion ---
 function rgbToHsl(r, g, b) {
     r /= 255; g /= 255; b /= 255;
@@ -371,6 +372,26 @@ function injectEnhancedStyles() {
                 width: 10px !important;
                 border-radius: 50% !important;
             }
+
+           /* Context Menu Item Colors */
+           .context-menu-item.danger-item {
+               color:hsl(1, 83.80%, 61.20%) !important; /* Red */
+           }
+           .context-menu-item.danger-item:hover {
+               background-color: rgba(229, 57, 53, 0.1) !important;
+           }
+           .context-menu-item.info-item {
+               color:rgb(90, 171, 238) !important; /* Lighter Blue */
+           }
+           .context-menu-item.info-item:hover {
+               background-color: rgba(30, 136, 229, 0.1) !important;
+           }
+           .context-menu-item.regenerate-text {
+               color: #43A047 !important; /* Green for regenerate */
+           }
+           .context-menu-item.regenerate-text:hover {
+               background-color: rgba(67, 160, 71, 0.1) !important;
+           }
     `;
     try {
         const existingStyleElement = document.getElementById('vcp-enhanced-ui-styles');
@@ -382,7 +403,7 @@ function injectEnhancedStyles() {
             styleElement.textContent = css;
             document.head.appendChild(styleElement);
         }
-        console.log('VCPSub Enhanced UI: Styles injected/updated.');
+        // console.log('VCPSub Enhanced UI: Styles injected/updated.'); // Reduced logging
     } catch (error) {
         console.error('VCPSub Enhanced UI: Failed to inject styles:', error);
     }
@@ -392,105 +413,64 @@ function injectEnhancedStyles() {
  * @param {string} imageUrl The URL of the image.
  * @param {function(string|null)} callback Called with the CSS color string (e.g., "rgb(r,g,b)") or null on error.
  */
-function getAverageColorFromAvatar(imageUrl, callback) {
-    if (!imageUrl) {
-        callback(null);
-        return;
-    }
-    const cacheKey = imageUrl.split('?')[0]; // Use URL without timestamp for cache
+async function getDominantAvatarColor(imageUrl) {
+    if (!imageUrl) return null;
+
+    const cacheKey = imageUrl.split('?')[0];
     if (avatarColorCache.has(cacheKey)) {
-        callback(avatarColorCache.get(cacheKey));
-        return;
+        return avatarColorCache.get(cacheKey);
     }
 
-    const img = new Image();
-    img.crossOrigin = "Anonymous";
-    const uniqueImageUrlForErrorLog = imageUrl; // Capture for error logging
-    img.src = imageUrl;
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = "Anonymous";
+        img.src = imageUrl;
 
-    img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        const tempCanvasSize = 30; // Smaller for faster processing
-        canvas.width = tempCanvasSize;
-        canvas.height = tempCanvasSize;
-        ctx.drawImage(img, 0, 0, tempCanvasSize, tempCanvasSize);
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const tempCanvasSize = 30;
+            canvas.width = tempCanvasSize;
+            canvas.height = tempCanvasSize;
+            ctx.drawImage(img, 0, 0, tempCanvasSize, tempCanvasSize);
 
-        let bestHue = null;
-        let maxSaturation = -1;
-        let r_sum = 0, g_sum = 0, b_sum = 0, pixelCount = 0;
+            let bestHue = null;
+            let maxSaturation = -1;
+            let r_sum = 0, g_sum = 0, b_sum = 0, pixelCount = 0;
 
-        try {
-            const imageData = ctx.getImageData(0, 0, tempCanvasSize, tempCanvasSize);
-            const data = imageData.data;
-            for (let i = 0; i < data.length; i += 4) {
-                const r = data[i];
-                const g = data[i + 1];
-                const b = data[i + 2];
-                const alpha = data[i + 3];
-
-                if (alpha < 128) continue; // Skip mostly transparent pixels
-
-                const [h, s, l] = rgbToHsl(r, g, b);
-
-                // Filter pixels: Keep only those with saturation above a certain threshold (e.g., > 20-30%)
-                // and lightness within a good range (e.g., 30-80%).
-                const SATURATION_THRESHOLD = 20; // %
-                const LIGHTNESS_MIN = 30; // %
-                const LIGHTNESS_MAX = 80; // %
-
-                if (s > SATURATION_THRESHOLD && l >= LIGHTNESS_MIN && l <= LIGHTNESS_MAX) {
-                    if (s > maxSaturation) {
-                        maxSaturation = s;
-                        bestHue = h;
+            try {
+                const imageData = ctx.getImageData(0, 0, tempCanvasSize, tempCanvasSize);
+                const data = imageData.data;
+                for (let i = 0; i < data.length; i += 4) {
+                    const r = data[i], g = data[i+1], b = data[i+2], alpha = data[i+3];
+                    if (alpha < 128) continue;
+                    const [h, s, l] = rgbToHsl(r, g, b);
+                    if (s > 20 && l >= 30 && l <= 80) {
+                        if (s > maxSaturation) { maxSaturation = s; bestHue = h; }
+                        r_sum += r; g_sum += g; b_sum += b; pixelCount++;
                     }
-                    r_sum += r;
-                    g_sum += g;
-                    b_sum += b;
-                    pixelCount++;
                 }
+                let finalColorString = null;
+                if (bestHue !== null) {
+                    finalColorString = hslToRgb(bestHue, 75, 55);
+                } else if (pixelCount > 0) {
+                    const [h_avg, s_avg, l_avg] = rgbToHsl(r_sum/pixelCount, g_sum/pixelCount, b_sum/pixelCount);
+                    finalColorString = hslToRgb(h_avg, s_avg, Math.max(40, Math.min(70, l_avg)));
+                }
+                avatarColorCache.set(cacheKey, finalColorString);
+                resolve(finalColorString);
+            } catch (e) {
+                console.error(`[AvatarColor] Error processing ${imageUrl}:`, e);
+                avatarColorCache.set(cacheKey, null);
+                resolve(null);
             }
-
-            let finalColorString;
-            if (bestHue !== null) {
-                // Reconstruct the final color using the chosen Hue, but with a fixed high saturation (e.g., 70-90%)
-                // and a fixed good lightness (e.g., 50-60%) to ensure it's vibrant and generally readable.
-                const fixedSaturation = 75; // %
-                const fixedLightness = 55; // %
-                finalColorString = hslToRgb(bestHue, fixedSaturation, fixedLightness);
-            } else if (pixelCount > 0) {
-                // Fallback: if no sufficiently saturated pixels, use a modified average RGB
-                // This fallback biases towards brighter components by taking a simple average
-                // and then ensuring it's not too dark or too light.
-                const avg_r = Math.round(r_sum / pixelCount);
-                const avg_g = Math.round(g_sum / pixelCount);
-                const avg_b = Math.round(b_sum / pixelCount);
-
-                const [h_avg, s_avg, l_avg] = rgbToHsl(avg_r, avg_g, avg_b);
-                // Adjust lightness to be within a readable range if the average is too extreme
-                const adjustedLightness = Math.max(40, Math.min(70, l_avg)); // Ensure it's not too dark or too light
-                finalColorString = hslToRgb(h_avg, s_avg, adjustedLightness);
-
-            } else {
-                finalColorString = null; // No suitable pixels at all
-            }
-
-            avatarColorCache.set(cacheKey, finalColorString);
-            // console.log(`[AvatarColor] Processed and cached ${finalColorString} for: ${imageUrl ? imageUrl.split('?')[0] : 'null_url'}`);
-            callback(finalColorString);
-
-        } catch (e) {
-            console.error(`[AvatarColor] Error in getImageData/processing for: ${uniqueImageUrlForErrorLog.split('?')[0]}`, e);
-            avatarColorCache.set(imageUrl, null);
-            callback(null);
-        }
-    };
-
-    img.onerror = () => {
-        console.warn(`Failed to load image for color extraction: ${imageUrl}`);
-        avatarColorCache.set(cacheKey, null); // Cache null on error to prevent retries for same broken URL
-        callback(null);
-    };
+        };
+        img.onerror = () => {
+            console.warn(`Failed to load image for color extraction: ${imageUrl}`);
+            avatarColorCache.set(cacheKey, null);
+            resolve(null);
+        };
+    });
 }
 
 // --- Enhanced Rendering Core Logic ---
@@ -525,6 +505,22 @@ function ensureSpaceAfterTilde(text) {
 function removeIndentationFromCodeBlockMarkers(text) {
     if (typeof text !== 'string') return text;
     return text.replace(/^(\s*)(```.*)/gm, '$2');
+}
+
+/**
+ * Removes speaker tags like "[Sender's speech]: " from the beginning of a string.
+ * @param {string} text The input string.
+ * @returns {string} The processed string without the leading speaker tag.
+ */
+function removeSpeakerTags(text) {
+    if (typeof text !== 'string') return text;
+    const speakerTagRegex = /^\[(?:(?!\]:\s).)*的发言\]:\s*/;
+    let newText = text;
+    // Loop to remove all occurrences of the speaker tag at the beginning of the string
+    while (speakerTagRegex.test(newText)) {
+        newText = newText.replace(speakerTagRegex, '');
+    }
+    return newText;
 }
 
 /**
@@ -593,6 +589,67 @@ function prettifySinglePreElement(preElement, type, relevantContent) {
     }
 }
 
+/**
+ * Highlights @tag patterns within the text nodes of a given HTML element.
+ * This function should be called AFTER Markdown and LaTeX rendering.
+ * @param {HTMLElement} messageElement - The HTML element containing the message content.
+ */
+function highlightTagsInMessage(messageElement) {
+    if (!messageElement) return;
+
+    const tagRegex = /@([\u4e00-\u9fa5A-Za-z0-9_]+)/g;
+    const walker = document.createTreeWalker(
+        messageElement,
+        NodeFilter.SHOW_TEXT,
+        null,
+        false
+    );
+
+    let node;
+    const nodesToProcess = [];
+
+    while (node = walker.nextNode()) {
+        if (node.parentElement.tagName === 'STYLE' ||
+            node.parentElement.tagName === 'SCRIPT' ||
+            node.parentElement.classList.contains('highlighted-tag')) {
+            continue;
+        }
+
+        const text = node.nodeValue;
+        let match;
+        const matches = [];
+        tagRegex.lastIndex = 0;
+        while ((match = tagRegex.exec(text)) !== null) {
+            matches.push({
+                index: match.index,
+                tagText: match[0],
+                tagName: match[1]
+            });
+        }
+
+        if (matches.length > 0) {
+            nodesToProcess.push({ node, matches });
+        }
+    }
+
+    for (let i = nodesToProcess.length - 1; i >= 0; i--) {
+        const { node, matches } = nodesToProcess[i];
+        let currentNode = node;
+
+        for (let j = matches.length - 1; j >= 0; j--) {
+            const matchInfo = matches[j];
+            const textAfterMatch = currentNode.splitText(matchInfo.index + matchInfo.tagText.length);
+            
+            const span = document.createElement('span');
+            span.className = 'highlighted-tag';
+            span.textContent = matchInfo.tagText;
+
+            currentNode.parentNode.insertBefore(span, textAfterMatch);
+            currentNode.nodeValue = currentNode.nodeValue.substring(0, matchInfo.index);
+        }
+    }
+}
+
 
 /**
  * Processes all relevant <pre> blocks within a message's contentDiv AFTER marked.parse().
@@ -634,131 +691,106 @@ function processAllPreBlocksInContentDiv(contentDiv) {
  * @property {boolean} [isThinking]
  * @property {Array<{type: string, src: string, name: string}>} [attachments]
  * @property {string} [finishReason] 
+ * @property {boolean} [isGroupMessage] // New: Indicates if it's a group message
+ * @property {string} [agentId] // New: ID of the speaking agent in a group
+ * @property {string} [name] // New: Name of the speaking agent in a group (can override default role name)
+ * @property {string} [avatarUrl] // New: Specific avatar for this message (e.g. group member)
+ * @property {string} [avatarColor] // New: Specific avatar color for this message
  */
 
-/**
- * @typedef {Object} GlobalSettings
- * @property {string} [userName]
- * @property {string} vcpServerUrl
- * @property {string} vcpApiKey
- * @property {string} [userAvatarUrl] // Added for user avatar
- */
 
 /**
- * @typedef {Object} AgentConfig
- * @property {string} id
- * @property {string} name
- * @property {string} [systemPrompt]
- * @property {string} [model]
- * @property {number} [temperature]
- * @property {number} [maxOutputTokens]
- * @property {string} [topicTitle] 
- * @property {Array<Object>} [topics] 
+ * @typedef {Object} CurrentSelectedItem
+ * @property {string|null} id - Can be agentId or groupId
+ * @property {'agent'|'group'|null} type 
+ * @property {string|null} name
+ * @property {string|null} avatarUrl
+ * @property {object|null} config - Full config of the selected item
  */
+
 
 let mainRendererReferences = {
-    currentChatHistory: [],
-    currentAgentId: null,
-    currentTopicId: null, 
-    currentAgentAvatarUrl: 'assets/default_avatar.png',
-    currentUserAvatarUrl: 'assets/default_user_avatar.png', // Added for user avatar
-    globalSettings: {},
+    currentChatHistoryRef: { get: () => [], set: () => {} }, // Ref to array
+    currentSelectedItemRef: { get: () => ({ id: null, type: null, name: null, avatarUrl: null, config: null }), set: () => {} }, // Ref to object
+    currentTopicIdRef: { get: () => null, set: () => {} }, // Ref to string/null
+    globalSettingsRef: { get: () => ({ userName: '用户', userAvatarUrl: 'assets/default_user_avatar.png', userAvatarCalculatedColor: null }), set: () => {} }, // Ref to object
+
     chatMessagesDiv: null,
     electronAPI: null,
-    currentUserCalculatedColor: null, // For persisted user color
-    currentAgentCalculatedColor: null, // For persisted agent color
-    currentAgentName: 'AI', // Add this with a default
     markedInstance: null,
-    scrollToBottom: () => {},
+    uiHelper: {
+        scrollToBottom: () => {},
+        openModal: () => {},
+        autoResizeTextarea: () => {},
+        // ... other uiHelper functions ...
+    },
     summarizeTopicFromMessages: async () => "",
-    openModal: () => {},
-    openImagePreviewModal: () => {},
-    autoResizeTextarea: () => {},
     handleCreateBranch: () => {},
-    activeStreamingMessageId: null,
+    // activeStreamingMessageId: null, // ID of the message currently being streamed - REMOVED
 };
 
 function initializeMessageRenderer(refs) {
-    mainRendererReferences.currentChatHistory = refs.currentChatHistory;
-    mainRendererReferences.currentAgentId = refs.currentAgentId;
-    mainRendererReferences.currentTopicId = refs.currentTopicId;
-    mainRendererReferences.globalSettings = refs.globalSettings;
+    mainRendererReferences.currentChatHistoryRef = refs.currentChatHistoryRef;
+    mainRendererReferences.currentSelectedItemRef = refs.currentSelectedItemRef;
+    mainRendererReferences.currentTopicIdRef = refs.currentTopicIdRef;
+    mainRendererReferences.globalSettingsRef = refs.globalSettingsRef;
     mainRendererReferences.chatMessagesDiv = refs.chatMessagesDiv;
     mainRendererReferences.electronAPI = refs.electronAPI;
     mainRendererReferences.markedInstance = refs.markedInstance;
-    mainRendererReferences.scrollToBottom = refs.scrollToBottom;
+    mainRendererReferences.uiHelper = refs.uiHelper || mainRendererReferences.uiHelper; // Merge if some helpers are passed
     mainRendererReferences.summarizeTopicFromMessages = refs.summarizeTopicFromMessages;
-    mainRendererReferences.openModal = refs.openModal;
-    mainRendererReferences.openImagePreviewModal = refs.openImagePreviewModal; 
-    mainRendererReferences.autoResizeTextarea = refs.autoResizeTextarea;
     mainRendererReferences.handleCreateBranch = refs.handleCreateBranch;
-    if (refs.currentAgentAvatarUrl) {
-        mainRendererReferences.currentAgentAvatarUrl = refs.currentAgentAvatarUrl;
-    }
-    if (refs.globalSettings && refs.globalSettings.userAvatarUrl) { // Initialize user avatar from global settings
-        mainRendererReferences.currentUserAvatarUrl = refs.globalSettings.userAvatarUrl;
-    }
-    if (refs.globalSettings && refs.globalSettings.userAvatarCalculatedColor) {
-        mainRendererReferences.currentUserCalculatedColor = refs.globalSettings.userAvatarCalculatedColor;
-    } else {
-        mainRendererReferences.currentUserCalculatedColor = null;
-    }
-
+    
     injectEnhancedStyles();
+    console.log("[MessageRenderer] Initialized. Current selected item type on init:", mainRendererReferences.currentSelectedItemRef.get().type);
 }
 
-function setCurrentAgentId(agentId) {
-    // When agent ID changes, reset the agent-specific calculated color.
-    // It will be re-loaded when the new agent's config is processed.
-    // mainRendererReferences.currentAgentCalculatedColor = null; // This might be too aggressive. Let selectAgent handle setting it.
-    mainRendererReferences.currentAgentId = agentId;
+
+function setCurrentSelectedItem(item) {
+    // This function is mainly for renderer.js to update the shared state.
+    // messageRenderer will read from currentSelectedItemRef.get() when rendering.
+    // console.log("[MessageRenderer] setCurrentSelectedItem called with:", item);
 }
 
 function setCurrentTopicId(topicId) {
-    // Topic changes don't affect avatar colors directly.
-    mainRendererReferences.currentTopicId = topicId;
+    // console.log("[MessageRenderer] setCurrentTopicId called with:", topicId);
 }
 
-function setCurrentAgentAvatar(avatarUrl) {
-    const oldUrl = mainRendererReferences.currentAgentAvatarUrl;
-    // Only clear cache if the URL is actually different AND the old URL was valid
-    if (oldUrl && oldUrl !== (avatarUrl || 'assets/default_avatar.png')) {
-        avatarColorCache.delete(oldUrl);
-        console.log(`[AvatarColor] Cleared cache for old agent avatar: ${oldUrl}`);
-    }
-    mainRendererReferences.currentAgentAvatarUrl = avatarUrl || 'assets/default_avatar.png';
-    // When agent avatar changes, its persisted color might be from an old avatar, so clear it
-    // The new color will be extracted and saved if needed.
-    // mainRendererReferences.currentAgentCalculatedColor = null; // Let's rely on loading from config
+// These are for specific avatar of the current *context* (agent or user), not for individual group member messages
+function setCurrentItemAvatar(avatarUrl) { // Renamed from setCurrentAgentAvatar
+    // This updates the avatar for the main selected agent/group, not individual group members in a message.
+    // The currentSelectedItemRef should hold the correct avatar for the overall context.
 }
 
-function setUserAvatar(avatarUrl) {
-    const oldUrl = mainRendererReferences.currentUserAvatarUrl;
-    // Only clear cache if the URL is actually different AND the old URL was valid
+function setUserAvatar(avatarUrl) { // For the user's global avatar
+    const globalSettings = mainRendererReferences.globalSettingsRef.get();
+    const oldUrl = globalSettings.userAvatarUrl;
     if (oldUrl && oldUrl !== (avatarUrl || 'assets/default_user_avatar.png')) {
-        avatarColorCache.delete(oldUrl);
-        console.log(`[AvatarColor] Cleared cache for old user avatar: ${oldUrl}`);
+        avatarColorCache.delete(oldUrl.split('?')[0]);
     }
-    mainRendererReferences.currentUserAvatarUrl = avatarUrl || 'assets/default_user_avatar.png';
-    // Similar to agent, if user avatar URL changes, clear the old persisted color assumption.
-    // mainRendererReferences.currentUserCalculatedColor = null;
+    mainRendererReferences.globalSettingsRef.set({...globalSettings, userAvatarUrl: avatarUrl || 'assets/default_user_avatar.png' });
 }
 
-// New functions to set persisted colors
-function setCurrentAgentAvatarColor(color) {
-    // console.log(`[AvatarColorState] Setting Agent Calculated Color: ${color} for agent ${mainRendererReferences.currentAgentId}`);
-    mainRendererReferences.currentAgentCalculatedColor = color;
+function setCurrentItemAvatarColor(color) { // Renamed from setCurrentAgentAvatarColor
+    // For the main selected agent/group
 }
-function setUserAvatarColor(color) {
-    // console.log(`[AvatarColorState] Setting User Calculated Color: ${color}`);
-    mainRendererReferences.currentUserCalculatedColor = color;
+
+function setUserAvatarColor(color) { // For the user's global avatar
+    const globalSettings = mainRendererReferences.globalSettingsRef.get();
+    mainRendererReferences.globalSettingsRef.set({...globalSettings, userAvatarCalculatedColor: color });
 }
 
 
-function renderMessage(message, isInitialLoad = false) {
-    const { chatMessagesDiv, globalSettings, currentAgentId, currentTopicId, currentAgentAvatarUrl, currentUserAvatarUrl, electronAPI, markedInstance, scrollToBottom, currentUserCalculatedColor, currentAgentCalculatedColor, currentAgentName } = mainRendererReferences; // Added currentAgentName
+async function renderMessage(message, isInitialLoad = false) {
+    console.log('[MessageRenderer renderMessage] Received message:', JSON.parse(JSON.stringify(message))); // Log incoming message
+    const { chatMessagesDiv, electronAPI, markedInstance, uiHelper } = mainRendererReferences;
+    const globalSettings = mainRendererReferences.globalSettingsRef.get();
+    const currentSelectedItem = mainRendererReferences.currentSelectedItemRef.get();
+    const currentChatHistory = mainRendererReferences.currentChatHistoryRef.get();
+
+
     if (!chatMessagesDiv || !electronAPI || !markedInstance) {
-        console.error("MessageRenderer: Missing critical references.");
+        console.error("MessageRenderer: Missing critical references for rendering.");
         return null;
     }
 
@@ -768,8 +800,10 @@ function renderMessage(message, isInitialLoad = false) {
 
     const messageItem = document.createElement('div');
     messageItem.classList.add('message-item', message.role);
+    if (message.isGroupMessage) messageItem.classList.add('group-message-item');
     messageItem.dataset.timestamp = String(message.timestamp);
     messageItem.dataset.messageId = message.id;
+    if (message.agentId) messageItem.dataset.agentId = message.agentId; // For group messages
 
     if (message.role !== 'system' && !message.isThinking) {
         messageItem.addEventListener('contextmenu', (e) => {
@@ -778,33 +812,54 @@ function renderMessage(message, isInitialLoad = false) {
         });
     }
     
-    const contentDiv = document.createElement('div'); // This is the bubble content
+    const contentDiv = document.createElement('div');
     contentDiv.classList.add('md-content');
 
-    // --- Build message structure (avatar, name/time, bubble) ---
     let avatarImg, nameTimeDiv, senderNameDiv, detailsAndBubbleWrapper;
+    let avatarUrlToUse, senderNameToUse, avatarColorToUse;
 
+    if (message.role === 'user') {
+        avatarUrlToUse = globalSettings.userAvatarUrl || 'assets/default_user_avatar.png';
+        senderNameToUse = message.name || globalSettings.userName || '你'; // message.name for user if provided (e.g. in group chat history)
+        avatarColorToUse = globalSettings.userAvatarCalculatedColor;
+    } else if (message.role === 'assistant') {
+        if (message.isGroupMessage) {
+            // This is a message from an agent within a group
+            if (message.avatarUrl) { // If the specific agent in the group has an avatar
+                avatarUrlToUse = message.avatarUrl;
+            } else { // Agent in group has no specific avatar, use a default AGENT avatar
+                avatarUrlToUse = 'assets/default_avatar.png';
+            }
+            senderNameToUse = message.name || '群成员';
+            avatarColorToUse = message.avatarColor;
+        } else if (currentSelectedItem && currentSelectedItem.avatarUrl) {
+            // This is a message from a directly selected agent (not in a group context for this message)
+            // OR it's a fallback if somehow a group message didn't get its specific avatar logic handled above (less likely now)
+            avatarUrlToUse = currentSelectedItem.avatarUrl;
+            senderNameToUse = message.name || currentSelectedItem.name || 'AI';
+            avatarColorToUse = currentSelectedItem.config?.avatarCalculatedColor;
+        } else { // Absolute fallback (e.g., no selected item, or selected item has no avatar)
+            avatarUrlToUse = 'assets/default_avatar.png';
+            senderNameToUse = message.name || 'AI';
+            avatarColorToUse = null;
+        }
+    }
+    console.log(`[MessageRenderer renderMessage] For message ID ${message.id}, role ${message.role}, isGroup: ${message.isGroupMessage}, determined avatarUrlToUse: ${avatarUrlToUse}, senderNameToUse: ${senderNameToUse}`);
+ 
     if (message.role === 'user' || message.role === 'assistant') {
         avatarImg = document.createElement('img');
         avatarImg.classList.add('chat-avatar');
+        avatarImg.src = avatarUrlToUse;
+        avatarImg.alt = `${senderNameToUse} 头像`;
+        avatarImg.onerror = () => { avatarImg.src = message.role === 'user' ? 'assets/default_user_avatar.png' : 'assets/default_avatar.png'; };
 
         nameTimeDiv = document.createElement('div');
         nameTimeDiv.classList.add('name-time-block');
         
         senderNameDiv = document.createElement('div');
         senderNameDiv.classList.add('sender-name');
+        senderNameDiv.textContent = senderNameToUse;
 
-        if (message.role === 'user') {
-            avatarImg.src = currentUserAvatarUrl;
-            avatarImg.alt = (globalSettings.userName || 'User') + ' Avatar';
-            avatarImg.onerror = () => { avatarImg.src = 'assets/default_user_avatar.png'; };
-            senderNameDiv.textContent = globalSettings.userName || '你';
-        } else { // assistant
-            avatarImg.src = currentAgentAvatarUrl;
-            senderNameDiv.textContent = currentAgentName || 'AI'; // Use mainRendererReferences.currentAgentName
-            avatarImg.alt = (currentAgentName || 'AI') + ' Avatar';
-            avatarImg.onerror = () => { avatarImg.src = 'assets/default_avatar.png'; };
-        }
         nameTimeDiv.appendChild(senderNameDiv);
 
         if (message.timestamp && !message.isThinking) {
@@ -817,101 +872,123 @@ function renderMessage(message, isInitialLoad = false) {
         detailsAndBubbleWrapper = document.createElement('div');
         detailsAndBubbleWrapper.classList.add('details-and-bubble-wrapper');
         detailsAndBubbleWrapper.appendChild(nameTimeDiv);
-        detailsAndBubbleWrapper.appendChild(contentDiv); // Bubble content goes here
+        detailsAndBubbleWrapper.appendChild(contentDiv);
 
         messageItem.appendChild(avatarImg);
         messageItem.appendChild(detailsAndBubbleWrapper);
     } else { // system messages
-        messageItem.appendChild(contentDiv); // Just content for system
+        messageItem.appendChild(contentDiv);
         messageItem.classList.add('system-message-layout');
     }
 
-    // *** CRITICAL FIX: Append to DOM *before* synchronous color application ***
     chatMessagesDiv.appendChild(messageItem);
 
-    // --- Content processing (Markdown, thinking indicator) ---
     if (message.isThinking) {
         contentDiv.innerHTML = `<span class="thinking-indicator">${message.content || '思考中'}<span class="thinking-indicator-dots">...</span></span>`;
         messageItem.classList.add('thinking');
     } else {
-        let processedContent = ensureNewlineAfterCodeBlock(message.content);
+        let textToRender = "";
+        if (typeof message.content === 'string') {
+            textToRender = message.content;
+        } else if (message.content && typeof message.content.text === 'string') {
+            // This case handles objects like { text: "..." }, common for group messages before history saving
+            textToRender = message.content.text;
+        } else if (message.content === null || message.content === undefined) {
+            textToRender = ""; // Handle null or undefined content gracefully
+             console.warn('[MessageRenderer] message.content is null or undefined for message ID:', message.id);
+        } else {
+            // Fallback for other unexpected object structures, log and use a placeholder
+            console.warn('[MessageRenderer] Unexpected message.content type. Message ID:', message.id, 'Content:', JSON.stringify(message.content));
+            textToRender = "[消息内容格式异常]";
+        }
+        
+        let processedContent = ensureNewlineAfterCodeBlock(textToRender);
         processedContent = ensureSpaceAfterTilde(processedContent);
         processedContent = removeIndentationFromCodeBlockMarkers(processedContent);
+        processedContent = removeSpeakerTags(processedContent); // Remove speaker tags before parsing
         contentDiv.innerHTML = markedInstance.parse(processedContent);
-        processAllPreBlocksInContentDiv(contentDiv); // For VCP Tool / Maid Diary
-
-        // Image click/context menu (ensure this happens after marked parsing)
+        processAllPreBlocksInContentDiv(contentDiv);
 
         const imagesInContent = contentDiv.querySelectorAll('img');
         imagesInContent.forEach(img => {
-            if (!img.classList.contains('message-attachment-image-thumbnail')) {
+            // Add an onload event listener to each image.
+            // This helps prevent the "flicker" or "jump" when an image loads
+            // by ensuring the chat scrolls to the bottom *after* the image has
+            // taken up its space in the layout.
+            img.addEventListener('load', () => {
+                const chatContainer = mainRendererReferences.chatMessagesDiv;
+                // Only scroll if the user is already near the bottom, to avoid interrupting them
+                // if they have scrolled up to read previous messages.
+                const isScrolledToBottom = chatContainer.scrollHeight - chatContainer.clientHeight <= chatContainer.scrollTop + 150; // 150px tolerance
+                if (isScrolledToBottom) {
+                    uiHelper.scrollToBottom();
+                }
+            });
+
+            if (!img.classList.contains('message-attachment-image-thumbnail')) { // Avoid re-adding listeners to attachment thumbs
                 img.style.cursor = 'pointer';
                 img.title = `点击在新窗口预览: ${img.alt || img.src}\n右键可复制图片`;
                 img.addEventListener('click', (e) => {
-                    e.stopPropagation(); 
-                    mainRendererReferences.electronAPI.openImageInNewWindow(img.src, img.alt || img.src.split('/').pop() || 'AI 图片');
+                    e.stopPropagation();
+                    electronAPI.openImageInNewWindow(img.src, img.alt || img.src.split('/').pop() || 'AI 图片');
                 });
                 img.addEventListener('contextmenu', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    mainRendererReferences.electronAPI.showImageContextMenu(img.src);
+                    e.preventDefault(); e.stopPropagation();
+                    electronAPI.showImageContextMenu(img.src);
                 });
             }
         });
     }
     
-    // --- Avatar Color Application Logic (now after messageItem is in DOM) ---
-    if (message.role === 'user' || message.role === 'assistant') {
-        const isUserMessage = message.role === 'user';
-        const avatarUrlForColor = isUserMessage ? currentUserAvatarUrl : currentAgentAvatarUrl;
-        const persistedColor = isUserMessage ? currentUserCalculatedColor : currentAgentCalculatedColor;
- 
+    // Avatar Color Application (after messageItem is in DOM)
+    if ((message.role === 'user' || message.role === 'assistant') && avatarImg && senderNameDiv) {
         const applyColorToElements = (colorStr) => {
-            // messageItem.isConnected should be true now
-            if (colorStr && messageItem.isConnected) {
-                const nameDivToColor = messageItem.querySelector('.sender-name'); // Query within messageItem
-                if (nameDivToColor) nameDivToColor.style.color = colorStr;
-                const avatarImgToBorder = messageItem.querySelector('.chat-avatar'); // Query within messageItem
-                if (avatarImgToBorder) avatarImgToBorder.style.borderColor = colorStr;
+            if (colorStr && messageItem.isConnected) { // Check if still in DOM
+                senderNameDiv.style.color = colorStr;
+                avatarImg.style.borderColor = colorStr;
             }
         };
- 
-        if (persistedColor) {
-            applyColorToElements(persistedColor);
-        } else if (avatarUrlForColor && !avatarUrlForColor.endsWith('default_avatar.png') && !avatarUrlForColor.endsWith('default_user_avatar.png')) {
-            getAverageColorFromAvatar(avatarUrlForColor, (avgColor) => {
-                applyColorToElements(avgColor); // Callback applies color
-                if (avgColor && messageItem.isConnected) { // Save if extracted and still connected
-                    const type = isUserMessage ? 'user' : 'agent';
-                    const idToSaveFor = isUserMessage ? 'user_global' : currentAgentId;
- 
-                    if (idToSaveFor) {
-                        electronAPI.saveAvatarColor({ type, id: idToSaveFor, color: avgColor })
-                            .then(result => {
-                                if (result.success) {
-                                    if (type === 'user') setUserAvatarColor(avgColor);
-                                    // Only update currentAgentCalculatedColor if the agent hasn't changed during async op
-                                    if (type === 'agent' && idToSaveFor === mainRendererReferences.currentAgentId) {
-                                        setCurrentAgentAvatarColor(avgColor);
-                                    }
-                                }
-                            });
-                    }
+
+        if (avatarColorToUse) { // If a specific color was passed (e.g. for group member or persisted user/agent color)
+            applyColorToElements(avatarColorToUse);
+        } else if (avatarUrlToUse && !avatarUrlToUse.includes('default_')) { // No persisted color, try to extract
+            const dominantColor = await getDominantAvatarColor(avatarUrlToUse);
+            applyColorToElements(dominantColor);
+            if (dominantColor && messageItem.isConnected) { // If extracted and still in DOM, try to persist
+                let typeToSave, idToSaveFor;
+                if (message.role === 'user') {
+                    typeToSave = 'user'; idToSaveFor = 'user_global';
+                } else if (message.isGroupMessage && message.agentId) {
+                    typeToSave = 'agent'; idToSaveFor = message.agentId; // Save for the specific group member
+                } else if (currentSelectedItem && currentSelectedItem.type === 'agent') {
+                    typeToSave = 'agent'; idToSaveFor = currentSelectedItem.id; // Current agent
                 }
-            });
+
+                if (typeToSave && idToSaveFor) {
+                    electronAPI.saveAvatarColor({ type: typeToSave, id: idToSaveFor, color: dominantColor })
+                        .then(result => {
+                            if (result.success) {
+                                if (typeToSave === 'user') {
+                                     mainRendererReferences.globalSettingsRef.set({...globalSettings, userAvatarCalculatedColor: dominantColor });
+                                } else if (typeToSave === 'agent' && idToSaveFor === currentSelectedItem.id && currentSelectedItem.config) {
+                                    // Update currentSelectedItem.config if it's the active agent
+                                    currentSelectedItem.config.avatarCalculatedColor = dominantColor;
+                                }
+                                // For group messages, the individual agent's config isn't directly held in currentSelectedItem.config
+                                // The color is applied directly to the message. If persistence is needed for each group member,
+                                // it should happen when their main config is loaded/saved.
+                            }
+                        });
+                }
+            }
         } else { // Default avatar or no URL, reset to theme defaults
-            const nameDivDefault = messageItem.querySelector('.sender-name');
-            const avatarBorderDefault = messageItem.querySelector('.chat-avatar');
-            if (nameDivDefault) {
-                nameDivDefault.style.color = isUserMessage ? 'var(--secondary-text)' : 'var(--highlight-text)';
-            }
-            if (avatarBorderDefault) {
-                avatarBorderDefault.style.borderColor = 'transparent'; // Or var(--border-color) as per your design
-            }
+            senderNameDiv.style.color = message.role === 'user' ? 'var(--secondary-text)' : 'var(--highlight-text)';
+            avatarImg.style.borderColor = 'transparent';
         }
     }
 
-    // --- Attachments (ensure contentDiv is the bubble's content div) ---
+
+    // Attachments (ensure contentDiv is the bubble's content div)
     if (message.attachments && message.attachments.length > 0) {
         const attachmentsContainer = document.createElement('div');
         attachmentsContainer.classList.add('message-attachments');
@@ -919,17 +996,17 @@ function renderMessage(message, isInitialLoad = false) {
             let attachmentElement;
             if (att.type.startsWith('image/')) {
                 attachmentElement = document.createElement('img');
-                attachmentElement.src = att.src;
+                attachmentElement.src = att.src; // This src should be usable (e.g., file:// or data:)
                 attachmentElement.alt = `附件图片: ${att.name}`;
                 attachmentElement.title = `点击在新窗口预览: ${att.name}`;
                 attachmentElement.classList.add('message-attachment-image-thumbnail');
                 attachmentElement.onclick = (e) => {
                     e.stopPropagation();
-                    mainRendererReferences.electronAPI.openImageInNewWindow(att.src, att.name);
+                    electronAPI.openImageInNewWindow(att.src, att.name);
                 };
-                img.addEventListener('contextmenu', (e) => {
+                 attachmentElement.addEventListener('contextmenu', (e) => { // Use attachmentElement here
                     e.preventDefault(); e.stopPropagation();
-                    mainRendererReferences.electronAPI.showImageContextMenu(img.src);
+                    electronAPI.showImageContextMenu(att.src);
                 });
             } else if (att.type.startsWith('audio/')) {
                 attachmentElement = document.createElement('audio');
@@ -939,18 +1016,14 @@ function renderMessage(message, isInitialLoad = false) {
                 attachmentElement = document.createElement('video');
                 attachmentElement.src = att.src;
                 attachmentElement.controls = true;
-                attachmentElement.style.maxWidth = '300px'; // Example style
+                attachmentElement.style.maxWidth = '300px';
             } else { // Generic file
                 attachmentElement = document.createElement('a');
-                attachmentElement.href = att.src; // This would be the file:// internalPath
+                attachmentElement.href = att.src;
                 attachmentElement.textContent = `📄 ${att.name}`;
-                attachmentElement.target = '_blank'; // Usually for web links, for file:// it might try to open in browser
                 attachmentElement.title = `点击打开文件: ${att.name}`;
-                // For local files, you might want to use shell.openPath via IPC
                 attachmentElement.onclick = (e) => {
                     e.preventDefault();
-                    // Assuming electronAPI.openPath or similar exists and handles file:// paths
-                    // For simplicity, using openExternalLink which should handle file:// URIs by opening with default app
                     if (electronAPI.sendOpenExternalLink && att.src.startsWith('file://')) {
                          electronAPI.sendOpenExternalLink(att.src);
                     } else {
@@ -960,11 +1033,9 @@ function renderMessage(message, isInitialLoad = false) {
             }
             if (attachmentElement) attachmentsContainer.appendChild(attachmentElement);
         });
-        contentDiv.appendChild(attachmentsContainer); // Append to the actual bubble content
+        contentDiv.appendChild(attachmentsContainer);
     }
     
-    // chatMessagesDiv.appendChild(messageItem); // MOVED EARLIER
-
     if (!message.isThinking && window.renderMathInElement) {
         window.renderMathInElement(contentDiv, {
             delimiters: [
@@ -974,46 +1045,60 @@ function renderMessage(message, isInitialLoad = false) {
             throwOnError: false
         });
     }
+    processAllPreBlocksInContentDiv(contentDiv); // Placed before highlightTags for pre block integrity
+    highlightTagsInMessage(contentDiv); // Highlight @tags after all other rendering
     
     if (!isInitialLoad && !message.isThinking) {
-        mainRendererReferences.currentChatHistory.push(message);
-        if (currentAgentId && currentTopicId) {
-             electronAPI.saveChatHistory(currentAgentId, currentTopicId, mainRendererReferences.currentChatHistory);
+        const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
+        currentChatHistoryArray.push(message);
+        mainRendererReferences.currentChatHistoryRef.set(currentChatHistoryArray); // Update the ref
+
+        if (currentSelectedItem.id && mainRendererReferences.currentTopicIdRef.get()) {
+             if (currentSelectedItem.type === 'agent') {
+                electronAPI.saveChatHistory(currentSelectedItem.id, mainRendererReferences.currentTopicIdRef.get(), currentChatHistoryArray);
+             } else if (currentSelectedItem.type === 'group') {
+                // Group history is usually saved by groupchat.js in main process after AI response
+                // If we need to save user's message immediately for groups too, add IPC for it.
+                // For now, this saveChatHistory call is agent-specific.
+             }
         }
     } else if (isInitialLoad && message.isThinking) {
-        const thinkingMsgIndex = mainRendererReferences.currentChatHistory.findIndex(m => m.id === message.id && m.isThinking);
+        // This case should ideally not happen if thinking messages aren't persisted.
+        // If it does, remove the transient thinking message.
+        const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
+        const thinkingMsgIndex = currentChatHistoryArray.findIndex(m => m.id === message.id && m.isThinking);
         if (thinkingMsgIndex > -1) {
-            mainRendererReferences.currentChatHistory.splice(thinkingMsgIndex, 1);
+            currentChatHistoryArray.splice(thinkingMsgIndex, 1);
+            mainRendererReferences.currentChatHistoryRef.set(currentChatHistoryArray);
         }
         messageItem.remove();
         return null;
     }
     
-    scrollToBottom();
+    uiHelper.scrollToBottom();
     return messageItem;
 }
 
-function startStreamingMessage(message) {
-    const { chatMessagesDiv, scrollToBottom } = mainRendererReferences;
+function startStreamingMessage(message) { // message can now include agentName, agentId for group messages
+    console.log('[MessageRenderer startStreamingMessage] Received message:', JSON.parse(JSON.stringify(message)));
+    const { chatMessagesDiv, uiHelper } = mainRendererReferences;
     if (!message || !message.id) {
-        console.error("startStreamingMessage: Message or message.id is undefined.", message);
+        console.error("[MessageRenderer startStreamingMessage] Message or message.id is undefined.", message);
         return null;
     }
-    mainRendererReferences.activeStreamingMessageId = message.id;
+    // mainRendererReferences.activeStreamingMessageId = message.id; // REMOVED
 
     let messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${message.id}"]`);
 
-    if (!messageItem) {
-        console.warn(`startStreamingMessage: Thinking message item with id ${message.id} not found. Rendering placeholder.`);
+    if (!messageItem) { // If no "thinking" placeholder, create one
         const placeholderMessage = { 
-            ...message, 
-            role: 'assistant', 
+            ...message, // Includes role, name, agentId, avatarUrl, avatarColor from group stream start
             content: '', 
-            isThinking: false, 
-            timestamp: message.timestamp || Date.now() 
+            isThinking: false, // It's now streaming, not just thinking
+            timestamp: message.timestamp || Date.now(),
+            isGroupMessage: message.isGroupMessage || false,
         };
         messageItem = renderMessage(placeholderMessage, false); 
-
         if (!messageItem) {
            console.error(`startStreamingMessage: Failed to render placeholder for new stream ${message.id}. Aborting stream start.`);
            mainRendererReferences.activeStreamingMessageId = null; 
@@ -1025,77 +1110,102 @@ function startStreamingMessage(message) {
     messageItem.classList.remove('thinking'); 
 
     const contentDiv = messageItem.querySelector('.md-content');
-    if (contentDiv) {
+    if (contentDiv) { // Clear "Thinking..." and prepare for stream
         contentDiv.innerHTML = ''; 
-        contentDiv.innerHTML = `<span class="thinking-indicator">正在接收<span class="thinking-indicator-dots">...</span></span>`;
+        // Optionally add a subtle "receiving" indicator if desired, but often just letting content flow is fine.
+        // contentDiv.innerHTML = `<span class="streaming-indicator"></span>`;
     }
     
-    const historyIndex = mainRendererReferences.currentChatHistory.findIndex(m => m.id === message.id);
-    if (historyIndex === -1) {
-        mainRendererReferences.currentChatHistory.push({ 
-            ...message, 
-            role: 'assistant', 
+    const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
+    const historyIndex = currentChatHistoryArray.findIndex(m => m.id === message.id);
+    if (historyIndex === -1) { // New message for the stream
+        currentChatHistoryArray.push({ 
+            ...message, // Includes role, name, agentId etc.
             content: '', 
             isThinking: false, 
-            timestamp: message.timestamp || Date.now() 
+            timestamp: message.timestamp || Date.now(),
+            isGroupMessage: message.isGroupMessage || false,
         });
-    } else {
-        console.warn(`startStreamingMessage: Message ID ${message.id} already found in history. Updating existing entry.`);
-        mainRendererReferences.currentChatHistory[historyIndex].isThinking = false;
-        mainRendererReferences.currentChatHistory[historyIndex].content = ""; 
-        mainRendererReferences.currentChatHistory[historyIndex].timestamp = message.timestamp || Date.now(); 
+    } else { // Update existing placeholder in history
+        currentChatHistoryArray[historyIndex].isThinking = false;
+        currentChatHistoryArray[historyIndex].content = ""; 
+        currentChatHistoryArray[historyIndex].timestamp = message.timestamp || Date.now(); 
+        currentChatHistoryArray[historyIndex].name = message.name || currentChatHistoryArray[historyIndex].name;
+        currentChatHistoryArray[historyIndex].agentId = message.agentId || currentChatHistoryArray[historyIndex].agentId;
+        currentChatHistoryArray[historyIndex].isGroupMessage = message.isGroupMessage || currentChatHistoryArray[historyIndex].isGroupMessage || false;
     }
+    mainRendererReferences.currentChatHistoryRef.set(currentChatHistoryArray);
 
-    scrollToBottom();
+
+    uiHelper.scrollToBottom();
     return messageItem;
 }
 
-function appendStreamChunk(messageId, chunkData) {
-    if (messageId !== mainRendererReferences.activeStreamingMessageId) {
-        return;
-    }
-    const { chatMessagesDiv, markedInstance, scrollToBottom } = mainRendererReferences;
+function appendStreamChunk(messageId, chunkData, agentNameForGroup, agentIdForGroup) { // Added agentName/Id for group context
+    // if (messageId !== mainRendererReferences.activeStreamingMessageId) { // REMOVED CHECK
+    //     // console.warn(`appendStreamChunk: Received chunk for inactive/mismatched stream ${messageId}. Current active: ${mainRendererReferences.activeStreamingMessageId}`);
+    //     return;
+    // }
+    const { chatMessagesDiv, markedInstance, uiHelper } = mainRendererReferences;
+    const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
+
     const messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
     if (!messageItem) return;
 
     const contentDiv = messageItem.querySelector('.md-content'); 
     if (!contentDiv) return;
 
+    // Remove "Receiving..." indicator if it was there
+    const streamingIndicator = contentDiv.querySelector('.streaming-indicator, .thinking-indicator');
+    if (streamingIndicator) streamingIndicator.remove();
+
+
     let textToAppend = "";
-    if (chunkData && chunkData.choices && chunkData.choices.length > 0) {
-        const delta = chunkData.choices[0].delta;
-        if (delta && delta.content) {
-            textToAppend = delta.content;
-        }
-    } else if (typeof chunkData === 'string') {
+    // Standard OpenAI-like chunk structure
+    if (chunkData && chunkData.choices && chunkData.choices.length > 0 && chunkData.choices[0].delta && chunkData.choices[0].delta.content) {
+        textToAppend = chunkData.choices[0].delta.content;
+    } 
+    // Anthropic-like or other direct delta content
+    else if (chunkData && chunkData.delta && typeof chunkData.delta.content === 'string') {
+        textToAppend = chunkData.delta.content;
+    } 
+    else if (chunkData && typeof chunkData.content === 'string') { // Simpler structure with direct content
+        textToAppend = chunkData.content;
+    }
+    else if (typeof chunkData === 'string') { // Direct string chunk
         textToAppend = chunkData;
-    } else if (chunkData && chunkData.raw) {
+    } else if (chunkData && chunkData.raw) { // Raw data with potential error
         textToAppend = chunkData.raw + (chunkData.error ? ` (解析错误)` : "");
     }
 
-    const messageIndex = mainRendererReferences.currentChatHistory.findIndex(msg => msg.id === messageId);
+
+    const messageIndex = currentChatHistoryArray.findIndex(msg => msg.id === messageId);
     let fullCurrentText = "";
     if (messageIndex > -1) {
-        mainRendererReferences.currentChatHistory[messageIndex].content += textToAppend;
-        fullCurrentText = mainRendererReferences.currentChatHistory[messageIndex].content;
-    } else {
-        const tempContainer = document.createElement('div');
-        let existingText = "";
-        const thinkingIndicator = contentDiv.querySelector('.thinking-indicator');
-        if (thinkingIndicator && contentDiv.childNodes.length === 1 && contentDiv.firstChild === thinkingIndicator) {
-            existingText = ""; 
-        } else {
-             tempContainer.innerHTML = contentDiv.innerHTML; 
-             existingText = tempContainer.textContent || ""; 
+        currentChatHistoryArray[messageIndex].content += textToAppend;
+        // If it's a group message and this is the first chunk, ensure name/agentId are set in history
+        if (currentChatHistoryArray[messageIndex].isGroupMessage) {
+            if (agentNameForGroup && !currentChatHistoryArray[messageIndex].name) currentChatHistoryArray[messageIndex].name = agentNameForGroup;
+            if (agentIdForGroup && !currentChatHistoryArray[messageIndex].agentId) currentChatHistoryArray[messageIndex].agentId = agentIdForGroup;
         }
-        fullCurrentText = existingText + textToAppend;
+        fullCurrentText = currentChatHistoryArray[messageIndex].content;
+    } else {
+        // This case should ideally be handled by startStreamingMessage creating an entry.
+        // If not, we create a temporary representation for rendering.
+        console.warn(`appendStreamChunk: Message ID ${messageId} not found in history for appending. Rendering directly.`);
+        const tempContainer = document.createElement('div');
+        tempContainer.innerHTML = contentDiv.innerHTML;
+        fullCurrentText = (tempContainer.textContent || "") + textToAppend;
     }
+    mainRendererReferences.currentChatHistoryRef.set([...currentChatHistoryArray]); // Update history reference
     
-    let processedFullCurrentTextForParse = ensureNewlineAfterCodeBlock(fullCurrentText);
+    let processedFullCurrentTextForParse = removeSpeakerTags(fullCurrentText); // Remove speaker tags first
+    processedFullCurrentTextForParse = ensureNewlineAfterCodeBlock(processedFullCurrentTextForParse);
     processedFullCurrentTextForParse = ensureSpaceAfterTilde(processedFullCurrentTextForParse);
-    processedFullCurrentTextForParse = removeIndentationFromCodeBlockMarkers(processedFullCurrentTextForParse); 
+    processedFullCurrentTextForParse = removeIndentationFromCodeBlockMarkers(processedFullCurrentTextForParse);
     contentDiv.innerHTML = markedInstance.parse(processedFullCurrentTextForParse);
     
+    // Debounced enhanced rendering (VCP Tool, Diary)
     if (messageItem) {
         let currentDelay = ENHANCED_RENDER_DEBOUNCE_DELAY;
         if (fullCurrentText.includes("<<<DailyNoteStart>>>") || fullCurrentText.includes("<<<[TOOL_REQUEST]>>>")) {
@@ -1106,64 +1216,80 @@ function appendStreamChunk(messageId, chunkData) {
             clearTimeout(enhancedRenderDebounceTimers.get(messageItem));
         }
         enhancedRenderDebounceTimers.set(messageItem, setTimeout(() => {
-            if (document.body.contains(messageItem)) {
+            if (document.body.contains(messageItem)) { // Check if item still in DOM
                 const targetContentDiv = messageItem.querySelector('.md-content');
                 if (targetContentDiv) {
+                    // Clear prettified flags before re-parsing and re-prettifying
                     targetContentDiv.querySelectorAll('pre[data-vcp-prettified="true"], pre[data-maid-diary-prettified="true"]').forEach(pre => {
                         delete pre.dataset.vcpPrettified;
                         delete pre.dataset.maidDiaryPrettified;
                     });
-                    let processedFullCurrentTextForDebounceParse = ensureNewlineAfterCodeBlock(fullCurrentText);
-                    processedFullCurrentTextForDebounceParse = ensureSpaceAfterTilde(processedFullCurrentTextForDebounceParse);
-                    processedFullCurrentTextForDebounceParse = removeIndentationFromCodeBlockMarkers(processedFullCurrentTextForDebounceParse);
-                    targetContentDiv.innerHTML = markedInstance.parse(processedFullCurrentTextForDebounceParse);
+                    // Re-parse with latest full content
+                    let processedForDebounce = ensureNewlineAfterCodeBlock(fullCurrentText);
+                    processedForDebounce = ensureSpaceAfterTilde(processedForDebounce);
+                    processedForDebounce = removeIndentationFromCodeBlockMarkers(processedForDebounce);
+                    processedForDebounce = removeSpeakerTags(processedForDebounce); // Remove speaker tags
+                    targetContentDiv.innerHTML = markedInstance.parse(processedForDebounce);
 
                     if (window.renderMathInElement) {
                          window.renderMathInElement(targetContentDiv, {
-                            delimiters: [
-                                {left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false},
-                                {left: "\\(", right: "\\)", display: false}, {left: "\\[", right: "\\]", display: true}
-                            ], throwOnError: false });
+                            delimiters: [ {left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}, {left: "\\(", right: "\\)", display: false}, {left: "\\[", right: "\\]", display: true} ],
+                            throwOnError: false
+                        });
                     }
-                    processAllPreBlocksInContentDiv(targetContentDiv);
+                    processAllPreBlocksInContentDiv(targetContentDiv); // Re-apply special formatting
+                    highlightTagsInMessage(targetContentDiv); // Highlight @tags after all other rendering
                 }
             }
             enhancedRenderDebounceTimers.delete(messageItem);
         }, currentDelay));
-    } else if (contentDiv) { 
+    } else if (contentDiv) { // Fallback if messageItem somehow null but contentDiv exists (less likely)
          if (window.renderMathInElement) {
-             window.renderMathInElement(contentDiv, {
-                delimiters: [
-                    {left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false},
-                    {left: "\\(", right: "\\)", display: false}, {left: "\\[", right: "\\]", display: true}
-                ], throwOnError: false });
+             window.renderMathInElement(contentDiv, {delimiters: [ {left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}, {left: "\\(", right: "\\)", display: false}, {left: "\\[", right: "\\]", display: true} ], throwOnError: false });
          }
         processAllPreBlocksInContentDiv(contentDiv);
+        highlightTagsInMessage(contentDiv); // Highlight @tags after all other rendering
     }
     
-    scrollToBottom();
+    uiHelper.scrollToBottom();
 }
 
-function finalizeStreamedMessage(messageId, finishReason) {
-    if (messageId !== mainRendererReferences.activeStreamingMessageId) {
-       console.warn(`finalizeStreamedMessage: Received end for inactive/mismatched stream ${messageId}. Current active stream is ${mainRendererReferences.activeStreamingMessageId}.`);
-        return;
-    }
-    mainRendererReferences.activeStreamingMessageId = null; 
+function finalizeStreamedMessage(messageId, finishReason, fullResponseText, agentNameForGroup, agentIdForGroup) {
+    // if (messageId !== mainRendererReferences.activeStreamingMessageId) { // REMOVED CHECK
+    //    console.warn(`finalizeStreamedMessage: Received end for inactive/mismatched stream ${messageId}. Current: ${mainRendererReferences.activeStreamingMessageId}.`);
+    //     return;
+    // }
+    // mainRendererReferences.activeStreamingMessageId = null; // REMOVED
 
-    const { chatMessagesDiv, electronAPI, currentAgentId, currentTopicId, scrollToBottom, markedInstance } = mainRendererReferences;
+    const { chatMessagesDiv, electronAPI, uiHelper, markedInstance } = mainRendererReferences;
+    const currentSelectedItem = mainRendererReferences.currentSelectedItemRef.get();
+    const currentTopicIdVal = mainRendererReferences.currentTopicIdRef.get();
+    const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
+
+
     const messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
     if (!messageItem) return;
 
     messageItem.classList.remove('streaming');
     
-    const messageIndex = mainRendererReferences.currentChatHistory.findIndex(msg => msg.id === messageId);
+    const messageIndex = currentChatHistoryArray.findIndex(msg => msg.id === messageId);
     let finalFullText = "";
+
     if (messageIndex > -1) {
-        const message = mainRendererReferences.currentChatHistory[messageIndex];
+        const message = currentChatHistoryArray[messageIndex];
         message.finishReason = finishReason;
-        finalFullText = message.content;
+        // If fullResponseText is provided (e.g., from group chat stream end), use it. Otherwise, content should be accumulated.
+        if (typeof fullResponseText === 'string') {
+            message.content = fullResponseText;
+        }
+        finalFullText = message.content; // This is the fully accumulated/provided text
         
+        // Update name/agentId if this was a group message and they were finalized
+        if (message.isGroupMessage) {
+            message.name = agentNameForGroup || message.name;
+            message.agentId = agentIdForGroup || message.agentId;
+        }
+
         const nameTimeBlock = messageItem.querySelector('.name-time-block');
         if (nameTimeBlock && !nameTimeBlock.querySelector('.message-timestamp')) {
             const timestampDiv = document.createElement('div');
@@ -1172,6 +1298,7 @@ function finalizeStreamedMessage(messageId, finishReason) {
             nameTimeBlock.appendChild(timestampDiv);
         }
 
+        // Re-enable context menu now that streaming is done
         if (message.role !== 'system' && !messageItem.classList.contains('thinking')) { 
              messageItem.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
@@ -1179,45 +1306,63 @@ function finalizeStreamedMessage(messageId, finishReason) {
             });
         }
         
-        if (currentAgentId && currentTopicId) {
-            electronAPI.saveChatHistory(currentAgentId, currentTopicId, mainRendererReferences.currentChatHistory);
-        }
+        mainRendererReferences.currentChatHistoryRef.set([...currentChatHistoryArray]); // Update history
+
+        // if (currentSelectedItem.id && currentTopicIdVal) { // REMOVED: History saving is now handled by main process (groupchat.js) for group messages
+        //     if (currentSelectedItem.type === 'agent') {
+        //         electronAPI.saveChatHistory(currentSelectedItem.id, currentTopicIdVal, currentChatHistoryArray);
+        //     } else if (currentSelectedItem.type === 'group') {
+        //         // electronAPI.saveChatHistory(currentSelectedItem.id, currentTopicIdVal, currentChatHistoryArray);
+        //     }
+        // }
+    } else {
+        console.warn(`finalizeStreamedMessage: Message ID ${messageId} not found in history at finalization.`);
+        finalFullText = fullResponseText || ""; // Use provided full text if history entry is missing
     }
     
     const contentDiv = messageItem.querySelector('.md-content');
     if (contentDiv) {
-        const thinkingIndicator = contentDiv.querySelector('.thinking-indicator');
+        const thinkingIndicator = contentDiv.querySelector('.thinking-indicator, .streaming-indicator');
         if (thinkingIndicator) thinkingIndicator.remove();
         
-        let processedFinalFullText = ensureNewlineAfterCodeBlock(finalFullText);
+        let processedFinalFullText = removeSpeakerTags(finalFullText); // Remove speaker tags first
+        processedFinalFullText = ensureNewlineAfterCodeBlock(processedFinalFullText);
         processedFinalFullText = ensureSpaceAfterTilde(processedFinalFullText);
-        processedFinalFullText = removeIndentationFromCodeBlockMarkers(processedFinalFullText); 
-        contentDiv.innerHTML = markedInstance.parse(processedFinalFullText); 
+        processedFinalFullText = removeIndentationFromCodeBlockMarkers(processedFinalFullText);
+        contentDiv.innerHTML = markedInstance.parse(processedFinalFullText);
 
         if (window.renderMathInElement) {
              window.renderMathInElement(contentDiv, { delimiters: [{left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}, {left: "\\(", right: "\\)", display: false}, {left: "\\[", right: "\\]", display: true}], throwOnError: false });
         }
         
-        if (enhancedRenderDebounceTimers.has(messageItem)) {
+        // Final re-application of special formatting
+        if (enhancedRenderDebounceTimers.has(messageItem)) { // Clear any pending debounce timer
             clearTimeout(enhancedRenderDebounceTimers.get(messageItem));
             enhancedRenderDebounceTimers.delete(messageItem);
         }
+        // Ensure all prettify flags are cleared before final processing
         contentDiv.querySelectorAll('pre[data-vcp-prettified="true"], pre[data-maid-diary-prettified="true"]').forEach(pre => {
             delete pre.dataset.vcpPrettified;
             delete pre.dataset.maidDiaryPrettified;
         });
-        processAllPreBlocksInContentDiv(contentDiv); 
+        processAllPreBlocksInContentDiv(contentDiv); // Apply VCP/Diary styles one last time
+        highlightTagsInMessage(contentDiv); // Highlight @tags after all other rendering
     }
 
-    scrollToBottom();
-    console.log(`Streaming finalized for message ${messageId}, reason: ${finishReason}`);
+    uiHelper.scrollToBottom();
+    // console.log(`Streaming finalized for message ${messageId}, reason: ${finishReason}`);
 }
+
 
 function showContextMenu(event, messageItem, message) {
     closeContextMenu(); 
-    closeTopicContextMenu(); 
+    closeTopicContextMenu(); // Also close topic context menu if open
 
-    const { currentChatHistory, currentAgentId, currentTopicId, electronAPI } = mainRendererReferences;
+    const { electronAPI, uiHelper } = mainRendererReferences;
+    const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
+    const currentSelectedItemVal = mainRendererReferences.currentSelectedItemRef.get();
+    const currentTopicIdVal = mainRendererReferences.currentTopicIdRef.get();
+
 
     const menu = document.createElement('div');
     menu.id = 'chatContextMenu';
@@ -1230,15 +1375,18 @@ function showContextMenu(event, messageItem, message) {
         cancelOption.classList.add('context-menu-item');
         cancelOption.textContent = message.isThinking ? "强制移除'思考中...'" : "取消回复生成";
         cancelOption.onclick = () => {
-            if (message.isThinking) {
-                const thinkingMsgIndex = currentChatHistory.findIndex(msg => msg.id === message.id && msg.isThinking);
+            if (message.isThinking) { // Should not happen if correctly managed
+                const thinkingMsgIndex = currentChatHistoryArray.findIndex(msg => msg.id === message.id && msg.isThinking);
                 if (thinkingMsgIndex > -1) {
-                    currentChatHistory.splice(thinkingMsgIndex, 1);
-                    if (currentAgentId && currentTopicId) electronAPI.saveChatHistory(currentAgentId, currentTopicId, currentChatHistory);
+                    currentChatHistoryArray.splice(thinkingMsgIndex, 1);
+                    mainRendererReferences.currentChatHistoryRef.set([...currentChatHistoryArray]);
+                     if (currentSelectedItemVal.id && currentTopicIdVal) {
+                         electronAPI.saveChatHistory(currentSelectedItemVal.id, currentTopicIdVal, currentChatHistoryArray);
+                     }
                 }
                 messageItem.remove();
             } else if (messageItem.classList.contains('streaming')) {
-                finalizeStreamedMessage(message.id, 'cancelled_by_user');
+                finalizeStreamedMessage(message.id, 'cancelled_by_user'); // Pass the ID of the message being cancelled
             }
             closeContextMenu();
         };
@@ -1250,7 +1398,7 @@ function showContextMenu(event, messageItem, message) {
         if (!isEditing) {
             const editOption = document.createElement('div');
             editOption.classList.add('context-menu-item');
-            editOption.textContent = '编辑消息';
+            editOption.innerHTML = `<i class="fas fa-edit"></i> 编辑消息`;
             editOption.onclick = () => {
                 toggleEditMode(messageItem, message);
                 closeContextMenu();
@@ -1260,11 +1408,11 @@ function showContextMenu(event, messageItem, message) {
 
         const copyOption = document.createElement('div');
         copyOption.classList.add('context-menu-item');
-        copyOption.textContent = '复制文本';
+        copyOption.innerHTML = `<i class="fas fa-copy"></i> 复制文本`;
         copyOption.onclick = () => {
-            const textToCopy = message.content.replace(/<img[^>]*>/g, '').trim();
+            const textToCopy = message.content.replace(/<img[^>]*>/g, '').trim(); // Basic strip of img tags
             navigator.clipboard.writeText(textToCopy)
-                .then(() => console.log('Message content (without img tags) copied to clipboard.'))
+                .then(() => console.log('Message content (text only) copied to clipboard.'))
                 .catch(err => console.error('Failed to copy message content: ', err));
             closeContextMenu();
         };
@@ -1273,62 +1421,59 @@ function showContextMenu(event, messageItem, message) {
         if (isEditing && textarea) {
             const cutOption = document.createElement('div');
             cutOption.classList.add('context-menu-item');
-            cutOption.textContent = '剪切文本';
+            cutOption.innerHTML = `<i class="fas fa-cut"></i> 剪切文本`;
             cutOption.onclick = () => {
-                textarea.focus();
-                document.execCommand('cut');
-                closeContextMenu();
+                textarea.focus(); document.execCommand('cut'); closeContextMenu();
             };
             menu.appendChild(cutOption);
 
             const pasteOption = document.createElement('div');
             pasteOption.classList.add('context-menu-item');
-            pasteOption.textContent = '粘贴文本';
+            pasteOption.innerHTML = `<i class="fas fa-paste"></i> 粘贴文本`;
             pasteOption.onclick = async () => {
                 textarea.focus();
                 try {
-                    const text = await window.electronAPI.readTextFromClipboard();
+                    const text = await electronAPI.readTextFromClipboard(); // Use exposed API
                     if (text) {
-                        const start = textarea.selectionStart;
-                        const end = textarea.selectionEnd;
+                        const start = textarea.selectionStart; const end = textarea.selectionEnd;
                         textarea.value = textarea.value.substring(0, start) + text + textarea.value.substring(end);
                         textarea.selectionStart = textarea.selectionEnd = start + text.length;
-                        textarea.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+                        textarea.dispatchEvent(new Event('input', { bubbles: true, cancelable: true })); // Trigger auto-resize
                     }
-                } catch (err) {
-                    console.error('Failed to paste text from clipboard:', err);
-                }
+                } catch (err) { console.error('Failed to paste text:', err); }
                 closeContextMenu();
             };
             menu.appendChild(pasteOption);
         }
+        
+        // Create Branch - only for agent messages
+        if (currentSelectedItemVal.type === 'agent') {
+            const createBranchOption = document.createElement('div');
+            createBranchOption.classList.add('context-menu-item');
+            createBranchOption.innerHTML = `<i class="fas fa-code-branch"></i> 创建分支`;
+            createBranchOption.onclick = () => {
+                if (typeof mainRendererReferences.handleCreateBranch === 'function') {
+                     mainRendererReferences.handleCreateBranch(message);
+                } else {
+                    console.error("handleCreateBranch function is not available.");
+                }
+                closeContextMenu();
+            }; 
+            menu.appendChild(createBranchOption); 
+        }
 
-        const createBranchOption = document.createElement('div');
-        createBranchOption.classList.add('context-menu-item');
-        createBranchOption.textContent = '创建分支';
-        createBranchOption.onclick = () => {
-            if (typeof mainRendererReferences.handleCreateBranch === 'function') {
-                 mainRendererReferences.handleCreateBranch(message);
-            } else {
-                console.error("handleCreateBranch function is not available in mainRendererReferences.");
-            }
-            closeContextMenu();
-        }; 
-        menu.appendChild(createBranchOption); 
 
         const readModeOption = document.createElement('div');
-        readModeOption.classList.add('context-menu-item');
-        readModeOption.textContent = '阅读模式';
+        readModeOption.classList.add('context-menu-item', 'info-item'); // Added 'info-item' for blue color
+        readModeOption.innerHTML = `<i class="fas fa-book-reader"></i> 阅读模式`;
         readModeOption.onclick = () => {
-            const plainTextContent = message.content.replace(/<img[^>]*>/gi, "").replace(/<audio[^>]*>.*?<\/audio>/gi, "").replace(/<video[^>]*>.*?<\/video>/gi, "");
-            const windowTitle = `阅读模式: ${message.id.substring(0,12)}...`;
-            const currentTheme = localStorage.getItem('theme') || 'dark'; 
-            console.log('[MessageRenderer] Attempting to open read mode. Title:', windowTitle, 'Content length:', plainTextContent.length, 'Theme:', currentTheme);
-            if (mainRendererReferences.electronAPI && typeof mainRendererReferences.electronAPI.openTextInNewWindow === 'function') {
-                mainRendererReferences.electronAPI.openTextInNewWindow(plainTextContent, windowTitle, currentTheme); 
+            const plainTextContent = message.content.replace(/<img[^>]*>/gi, "[图片]").replace(/<audio[^>]*>.*?<\/audio>/gi, "[音频]").replace(/<video[^>]*>.*?<\/video>/gi, "[视频]");
+            const windowTitle = `阅读: ${message.id.substring(0,10)}...`;
+            const currentTheme = document.body.classList.contains('light-theme') ? 'light' : 'dark';
+            if (electronAPI && typeof electronAPI.openTextInNewWindow === 'function') {
+                electronAPI.openTextInNewWindow(plainTextContent, windowTitle, currentTheme); 
             } else {
-                console.error('[MessageRenderer] electronAPI.openTextInNewWindow is not available or not a function!');
-                alert('错误：无法调用阅读模式功能。');
+                console.error('electronAPI.openTextInNewWindow is not available!');
             }
             closeContextMenu();
         };
@@ -1336,24 +1481,51 @@ function showContextMenu(event, messageItem, message) {
 
 
         const deleteOption = document.createElement('div');
-        deleteOption.classList.add('context-menu-item', 'danger-text');
-        deleteOption.textContent = '删除消息';
+        deleteOption.classList.add('context-menu-item', 'danger-item'); // danger-item for red text
+        deleteOption.innerHTML = `<i class="fas fa-trash-alt"></i> 删除消息`;
         deleteOption.onclick = async () => {
-            if (confirm(`确定要删除此消息吗？\n"${message.content.substring(0, 50)}${message.content.length > 50 ? '...' : ''}"`)) {
-                const messageIndex = currentChatHistory.findIndex(msg => msg.id === message.id);
+            // message.content should be a string if loaded from history or for AI replies
+            // For user messages in group chat that might be in transit as {text: "..."}, handle it.
+            let textForConfirm = "";
+            if (typeof message.content === 'string') {
+                textForConfirm = message.content;
+            } else if (message.content && typeof message.content.text === 'string') {
+                textForConfirm = message.content.text;
+            } else {
+                textForConfirm = '[消息内容无法预览]';
+                console.warn('[MessageRenderer DeleteConfirm] message.content is not a string or {text: string} object:', message.content);
+            }
+            
+            if (confirm(`确定要删除此消息吗？\n"${textForConfirm.substring(0, 50)}${textForConfirm.length > 50 ? '...' : ''}"`)) {
+                const messageIndex = currentChatHistoryArray.findIndex(msg => msg.id === message.id);
                 if (messageIndex > -1) {
-                    currentChatHistory.splice(messageIndex, 1);
-                    if (currentAgentId && currentTopicId) await electronAPI.saveChatHistory(currentAgentId, currentTopicId, currentChatHistory);
+                    currentChatHistoryArray.splice(messageIndex, 1);
+                    mainRendererReferences.currentChatHistoryRef.set([...currentChatHistoryArray]);
+                    if (currentSelectedItemVal.id && currentTopicIdVal) { // Save history for current item type
+                        if (currentSelectedItemVal.type === 'agent') {
+                            await electronAPI.saveChatHistory(currentSelectedItemVal.id, currentTopicIdVal, currentChatHistoryArray);
+                        } else if (currentSelectedItemVal.type === 'group') {
+                            // For groups, history needs to be saved via an IPC call to the main process,
+                            // which will then use groupchat.js to update the history file.
+                            if (electronAPI.saveGroupChatHistory) {
+                                await electronAPI.saveGroupChatHistory(currentSelectedItemVal.id, currentTopicIdVal, currentChatHistoryArray);
+                                console.log(`[MessageRenderer] Requested saveGroupChatHistory for group ${currentSelectedItemVal.id}, topic ${currentTopicIdVal}`);
+                            } else {
+                                console.warn("MessageRenderer: electronAPI.saveGroupChatHistory is not defined. Group chat history will not be saved after deletion.");
+                            }
+                        }
+                    }
                     messageItem.remove();
                 }
             }
             closeContextMenu();
         };
 
-        if (message.role === 'assistant') {
+        // Regenerate - only for assistant messages and if not a group message (group regen is complex)
+        if (message.role === 'assistant' && !message.isGroupMessage && currentSelectedItemVal.type === 'agent') {
             const regenerateOption = document.createElement('div');
-            regenerateOption.classList.add('context-menu-item', 'regenerate-text');
-            regenerateOption.textContent = '重新回复';
+            regenerateOption.classList.add('context-menu-item', 'regenerate-text'); // Special class for styling if needed
+            regenerateOption.innerHTML = `<i class="fas fa-sync-alt"></i> 重新回复`;
             regenerateOption.onclick = () => {
                 handleRegenerateResponse(message);
                 closeContextMenu();
@@ -1374,6 +1546,7 @@ function closeContextMenu() {
         document.removeEventListener('click', closeContextMenuOnClickOutside, true);
     }
 }
+// Separate closer for topic context menu to avoid interference
 function closeTopicContextMenu() { 
     const existingMenu = document.getElementById('topicContextMenu');
     if (existingMenu) existingMenu.remove();
@@ -1384,336 +1557,330 @@ function closeContextMenuOnClickOutside(event) {
     if (menu && !menu.contains(event.target)) {
         closeContextMenu();
     }
+    // Also close topic menu if click is outside of it
+    const topicMenu = document.getElementById('topicContextMenu');
+    if (topicMenu && !topicMenu.contains(event.target)) {
+        closeTopicContextMenu();
+    }
 }
 
+
 function toggleEditMode(messageItem, message) {
-    const { currentChatHistory, currentAgentId, currentTopicId, electronAPI, markedInstance, autoResizeTextarea } = mainRendererReferences;
+    const { electronAPI, markedInstance, uiHelper } = mainRendererReferences;
+    const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
+    const currentSelectedItemVal = mainRendererReferences.currentSelectedItemRef.get();
+    const currentTopicIdVal = mainRendererReferences.currentTopicIdRef.get();
+
     const contentDiv = messageItem.querySelector('.md-content');
     if (!contentDiv) return;
 
     const existingTextarea = messageItem.querySelector('.message-edit-textarea');
     const existingControls = messageItem.querySelector('.message-edit-controls');
 
-    if (existingTextarea) {
-        let originalContentProcessed = ensureNewlineAfterCodeBlock(message.content);
+    if (existingTextarea) { // Revert to display mode (Cancel was clicked)
+        // message.content should be a string (original user input or AI reply)
+        let textToDisplay = (typeof message.content === 'string') ? message.content :
+                            (message.content && typeof message.content.text === 'string') ? message.content.text :
+                            '[内容错误]';
+        if (typeof message.content !== 'string' && !(message.content && typeof message.content.text === 'string')) {
+            console.warn('[MessageRenderer EditRevert] message.content is not a string or {text: string}:', message.content);
+        }
+
+        let originalContentProcessed = removeSpeakerTags(textToDisplay);
+        originalContentProcessed = ensureNewlineAfterCodeBlock(originalContentProcessed);
         originalContentProcessed = ensureSpaceAfterTilde(originalContentProcessed);
-        contentDiv.innerHTML = markedInstance.parse(originalContentProcessed); 
+        contentDiv.innerHTML = markedInstance.parse(originalContentProcessed);
         if (window.renderMathInElement) {
              window.renderMathInElement(contentDiv, { delimiters: [{left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}, {left: "\\(", right: "\\)", display: false}, {left: "\\[", right: "\\]", display: true}], throwOnError: false });
         }
         processAllPreBlocksInContentDiv(contentDiv); 
 
         messageItem.classList.remove('message-item-editing'); 
-        messageItem.style.maxWidth = ''; 
-        messageItem.style.width = '';    
         existingTextarea.remove();
         if (existingControls) existingControls.remove();
         contentDiv.style.display = '';
-         // Restore visibility of avatar and nameTimeDiv if they were hidden
+        // Restore visibility of avatar and nameTimeDiv
         const avatarEl = messageItem.querySelector('.chat-avatar');
         const nameTimeEl = messageItem.querySelector('.name-time-block');
         if(avatarEl) avatarEl.style.display = '';
         if(nameTimeEl) nameTimeEl.style.display = '';
-    } else {
-        const currentBubbleWidth = contentDiv.offsetWidth; 
+    } else { // Switch to edit mode
         const originalContentHeight = contentDiv.offsetHeight;
         contentDiv.style.display = 'none';
-         // Hide avatar and nameTimeDiv during editing for a cleaner look
         const avatarEl = messageItem.querySelector('.chat-avatar');
         const nameTimeEl = messageItem.querySelector('.name-time-block');
         if(avatarEl) avatarEl.style.display = 'none';
         if(nameTimeEl) nameTimeEl.style.display = 'none';
 
         messageItem.classList.add('message-item-editing'); 
-        messageItem.style.width = 'auto';  // Let it adjust, but still constrained by parent max-width
-        messageItem.style.maxWidth = 'calc(100% - 40px)'; // Adjust to be less than full chat width
-
 
         const textarea = document.createElement('textarea');
         textarea.classList.add('message-edit-textarea');
-        textarea.value = message.content;
+        // message.content should be a string (original user input or AI reply from history)
+        // If it's an object {text: "..."}, use .text (though this shouldn't happen for history items)
+        let textForEditing = "";
+        if (typeof message.content === 'string') {
+            textForEditing = message.content;
+        } else if (message.content && typeof message.content.text === 'string') {
+            textForEditing = message.content.text;
+            console.warn('[MessageRenderer EditLoad] message.content was an object {text:...} when populating textarea. This is unexpected for history items.');
+        } else {
+            textForEditing = '[内容加载错误]';
+            console.error('[MessageRenderer EditLoad] message.content is not a string or {text: string} for editing:', message.content);
+        }
+        textarea.value = textForEditing;
         textarea.style.minHeight = `${Math.max(originalContentHeight, 50)}px`;
-        textarea.style.width = '100%'; 
+        textarea.style.width = '100%';
 
         const controlsDiv = document.createElement('div');
         controlsDiv.classList.add('message-edit-controls');
 
         const saveButton = document.createElement('button');
-        saveButton.textContent = '保存';
+        saveButton.innerHTML = `<i class="fas fa-save"></i> 保存`;
         saveButton.onclick = async () => {
             const newContent = textarea.value;
-            const messageIndex = currentChatHistory.findIndex(msg => msg.id === message.id); 
+            const messageIndex = currentChatHistoryArray.findIndex(msg => msg.id === message.id); 
             if (messageIndex > -1) {
-                currentChatHistory[messageIndex].content = newContent;
-                if (currentAgentId && currentTopicId) await electronAPI.saveChatHistory(currentAgentId, currentTopicId, currentChatHistory);
+                // Ensure we are saving a string back to message.content
+                // If original message.content was an object {text: "..."}, we should update that structure
+                // However, the goal is for history message.content to always be a string.
+                if (typeof currentChatHistoryArray[messageIndex].content === 'object' &&
+                    currentChatHistoryArray[messageIndex].content !== null &&
+                    typeof currentChatHistoryArray[messageIndex].content.text === 'string') {
+                    console.warn("[MessageRenderer EditSave] Original message.content in history was an object. Updating .text field. This indicates an issue with how history was saved previously for this message.");
+                    currentChatHistoryArray[messageIndex].content.text = newContent;
+                } else {
+                    currentChatHistoryArray[messageIndex].content = newContent;
+                }
+                
+                mainRendererReferences.currentChatHistoryRef.set([...currentChatHistoryArray]); // Update ref
+                // Also update the 'message' object passed into toggleEditMode, ensuring its 'content' is a string
                 message.content = newContent;
-                let newContentProcessed = ensureNewlineAfterCodeBlock(newContent);
+
+                if (currentSelectedItemVal.id && currentTopicIdVal) { // Save based on item type
+                     if (currentSelectedItemVal.type === 'agent') {
+                        await electronAPI.saveChatHistory(currentSelectedItemVal.id, currentTopicIdVal, currentChatHistoryArray);
+                     } else if (currentSelectedItemVal.type === 'group') {
+                        if (electronAPI.saveGroupChatHistory) { // Check if function exists
+                           await electronAPI.saveGroupChatHistory(currentSelectedItemVal.id, currentTopicIdVal, currentChatHistoryArray);
+                        } else {
+                           console.warn("MessageRenderer: electronAPI.saveGroupChatHistory is not defined. Group chat history will not be saved after edit.");
+                        }
+                     }
+                }
+                
+                let newContentProcessed = removeSpeakerTags(newContent);
+                newContentProcessed = ensureNewlineAfterCodeBlock(newContentProcessed);
                 newContentProcessed = ensureSpaceAfterTilde(newContentProcessed);
-                contentDiv.innerHTML = markedInstance.parse(newContentProcessed); 
+                contentDiv.innerHTML = markedInstance.parse(newContentProcessed);
                 if (window.renderMathInElement) {
                     window.renderMathInElement(contentDiv, { delimiters: [{left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}, {left: "\\(", right: "\\)", display: false}, {left: "\\[", right: "\\]", display: true}], throwOnError: false });
                 }
                 processAllPreBlocksInContentDiv(contentDiv); 
             }
-            toggleEditMode(messageItem, message); // Call again to revert to display mode
+            toggleEditMode(messageItem, message);
         };
 
         const cancelButton = document.createElement('button');
-        cancelButton.textContent = '取消';
+        cancelButton.innerHTML = `<i class="fas fa-times"></i> 取消`;
         cancelButton.onclick = () => {
-             toggleEditMode(messageItem, message); // Call again to revert to display mode
+             toggleEditMode(messageItem, message);
         };
 
         controlsDiv.appendChild(saveButton);
         controlsDiv.appendChild(cancelButton);
  
         messageItem.appendChild(textarea);
-        // Ensure controls are appended to the messageItem, not inside another wrapper
-        // If .details-and-bubble-wrapper was being used before, ensure it's bypassed for editing
-        // or that messageItem is the direct parent for the textarea and controlsDiv.
         messageItem.appendChild(controlsDiv);
          
-        if (autoResizeTextarea) autoResizeTextarea(textarea);
+        if (uiHelper.autoResizeTextarea) uiHelper.autoResizeTextarea(textarea);
         textarea.focus();
-        textarea.addEventListener('input', () => autoResizeTextarea(textarea));
+        textarea.addEventListener('input', () => uiHelper.autoResizeTextarea(textarea));
         textarea.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter' && !event.shiftKey) {
-                // Do NOT save on Enter. Allow default behavior (newline).
-                // saveButton.click(); // Removed
-            } else if (event.key === 'Escape') {
+            if (event.key === 'Escape') {
                 cancelButton.click();
+            }
+            // Allow Enter for newlines, Ctrl+Enter for save could be an option
+            if (event.ctrlKey && event.key === 'Enter') {
+                saveButton.click();
             }
         });
     }
 }
 
 async function handleRegenerateResponse(originalAssistantMessage) {
-    const { currentChatHistory, currentAgentId, currentTopicId, globalSettings, electronAPI, chatMessagesDiv, scrollToBottom } = mainRendererReferences;
+    const { electronAPI, uiHelper } = mainRendererReferences;
+    const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
+    const currentSelectedItemVal = mainRendererReferences.currentSelectedItemRef.get();
+    const currentTopicIdVal = mainRendererReferences.currentTopicIdRef.get();
+    const globalSettingsVal = mainRendererReferences.globalSettingsRef.get();
 
-    if (!currentAgentId || !currentTopicId || !originalAssistantMessage || originalAssistantMessage.role !== 'assistant') {
-        console.warn('MessageRenderer: Cannot regenerate response, invalid parameters.');
+
+    if (!currentSelectedItemVal.id || currentSelectedItemVal.type !== 'agent' || !currentTopicIdVal || !originalAssistantMessage || originalAssistantMessage.role !== 'assistant') {
+        console.warn('MessageRenderer: Cannot regenerate response, invalid parameters or not an agent context.');
+        uiHelper.showToastNotification("只能为 Agent 的回复进行重新生成。", "warning");
         return;
     }
 
-    const originalMessageIndex = currentChatHistory.findIndex(
-        msg => msg.id === originalAssistantMessage.id
-    );
-
+    const originalMessageIndex = currentChatHistoryArray.findIndex(msg => msg.id === originalAssistantMessage.id);
     if (originalMessageIndex === -1) {
         console.warn('MessageRenderer: Cannot regenerate, original message not found in history.');
         return;
     }
 
-    const historyForRegeneration = currentChatHistory.slice(0, originalMessageIndex);
-    currentChatHistory.splice(originalMessageIndex);
+    // History up to (but not including) the message before the one to regenerate
+    const historyForRegeneration = currentChatHistoryArray.slice(0, originalMessageIndex);
+    // Remove the original assistant message and any subsequent messages
+    currentChatHistoryArray.splice(originalMessageIndex);
+    mainRendererReferences.currentChatHistoryRef.set([...currentChatHistoryArray]);
 
-    if (currentAgentId && currentTopicId) {
+
+    if (currentSelectedItemVal.id && currentTopicIdVal) {
         try {
-            await electronAPI.saveChatHistory(currentAgentId, currentTopicId, currentChatHistory);
+            await electronAPI.saveChatHistory(currentSelectedItemVal.id, currentTopicIdVal, currentChatHistoryArray);
         } catch (saveError) {
             console.error("MessageRenderer: Failed to save chat history after splice in regenerate:", saveError);
         }
     }
 
-    let currentElementToRemove = chatMessagesDiv.querySelector(`.message-item[data-message-id="${originalAssistantMessage.id}"]`);
-    while(currentElementToRemove) {
-        const siblingToRemove = currentElementToRemove.nextElementSibling;
-        currentElementToRemove.remove();
-        currentElementToRemove = siblingToRemove;
+    // Remove message items from DOM
+    let elementToRemove = mainRendererReferences.chatMessagesDiv.querySelector(`.message-item[data-message-id="${originalAssistantMessage.id}"]`);
+    while (elementToRemove) {
+        const nextSibling = elementToRemove.nextElementSibling;
+        elementToRemove.remove();
+        elementToRemove = nextSibling;
     }
+
 
     const regenerationThinkingMessage = {
         role: 'assistant', 
+        name: currentSelectedItemVal.name || 'AI',
         content: '重新生成中...',
         timestamp: Date.now(),
         id: `regen_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-        isThinking: true 
+        isThinking: true,
+        avatarUrl: currentSelectedItemVal.avatarUrl,
+        avatarColor: currentSelectedItemVal.config?.avatarCalculatedColor,
     };
     
-    const thinkingMessageItem = renderMessage(regenerationThinkingMessage, false); 
-    if (thinkingMessageItem) {
-        thinkingMessageItem.classList.add('thinking'); 
-        const thinkingContentDiv = thinkingMessageItem.querySelector('.md-content .thinking-indicator');
-        if (thinkingContentDiv) thinkingContentDiv.innerHTML = `重新生成中<span class="thinking-indicator-dots">...</span>`;
-    }
-
-    mainRendererReferences.activeStreamingMessageId = regenerationThinkingMessage.id; 
+    renderMessage(regenerationThinkingMessage, false); // This will add to history and render "thinking"
+    mainRendererReferences.activeStreamingMessageId = regenerationThinkingMessage.id;
 
     try {
-        const agentConfig = await electronAPI.getAgentConfig(currentAgentId);
+        const agentConfig = await electronAPI.getAgentConfig(currentSelectedItemVal.id); // Fetch fresh config
         
         let messagesForVCP = await Promise.all(historyForRegeneration.map(async msg => {
+            // Simplified attachment processing for regeneration context
             let vcpAttachments = [];
             if (msg.attachments && msg.attachments.length > 0) {
-                vcpAttachments = await Promise.all(msg.attachments.map(async att => {
-                    console.log('[Regenerate] Processing attachment for VCP:', JSON.stringify(att, (key, value) => {
-                        if ((key === 'data' || key === 'extractedText') && typeof value === 'string' && value.length > 200) {
-                            return `${value.substring(0, 50)}...[${key}, length: ${value.length}]...${value.substring(value.length - 50)}`;
-                        }
-                        return value;
-                    }, 2));
-
-                    if (att.type.startsWith('image/') || att.type.startsWith('audio/')) {
-                        try {
-                            const internalPath = att.src; 
-                            console.log(`[Regenerate] Calling getFileAsBase64 for: ${internalPath}`);
-                            const base64Result = await electronAPI.getFileAsBase64(internalPath);
-                            if (base64Result && base64Result.error) {
-                                console.error(`[Regenerate] Error from getFileAsBase64 for ${att.name} (internal: ${internalPath}):`, base64Result.error);
-                                return { ...att, error: `Regen failed to load data: ${base64Result.error}` };
-                            } else if (typeof base64Result === 'string') {
-                                console.log(`[Regenerate] Successfully got Base64 for ${att.name} (internal: ${internalPath}), length: ${base64Result.length}`);
-                                return { ...att, data: base64Result };
-                            }
-                            console.warn(`[Regenerate] getFileAsBase64 returned unexpected data for ${att.name} (internal: ${internalPath}):`,
-                                (typeof base64Result === 'string' && base64Result.length > 200)
-                                    ? `${base64Result.substring(0,50)}...[String, length: ${base64Result.length}]`
-                                    : base64Result
-                            );
-                            return { ...att, error: "Regen failed: Unexpected Base64 result" };
-                        } catch (error) {
-                            console.error(`[Regenerate] Exception during getBase64 for ${att.name} (internal: ${att.src}):`, error);
-                            return { ...att, error: `Regen Base64 Exception: ${error.message}` };
-                        }
-                    } else if (att.type.startsWith('text/') || ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'].includes(att.type) || /\.(txt|md|log|js|json|html|css|py)$/i.test(att.name) ) {
-                         try {
-                            const internalPath = att.src;
-                            console.log(`[Regenerate] Calling getTextContent for: ${internalPath}, type: ${att.type}`);
-                            const textResult = await electronAPI.getTextContent(internalPath, att.type);
-                            if (textResult && textResult.error) {
-                                console.error(`[Regenerate] Error from getTextContent for ${att.name} (internal: ${internalPath}):`, textResult.error);
-                                return { ...att, error: `Regen failed to extract text: ${textResult.error}` };
-                            } else if (typeof textResult.textContent === 'string') {
-                                console.log(`[Regenerate] Successfully got text for ${att.name}, length: ${textResult.textContent.length}`);
-                                return { ...att, extractedText: textResult.textContent };
-                            }
-                             console.warn(`[Regenerate] getTextContent returned unexpected data for ${att.name} (internal: ${internalPath}):`, textResult);
-                            return { ...att, error: "Regen failed: Unexpected text result" };
-                        } catch (error) {
-                            console.error(`[Regenerate] Exception during getTextContent for ${att.name} (internal: ${att.src}):`, error);
-                            return { ...att, error: `Regen Text Exception: ${error.message}` };
-                        }
+                 vcpAttachments = await Promise.all(msg.attachments.map(async att => {
+                    if (att.type.startsWith('image/')) {
+                        const base64Result = await electronAPI.getFileAsBase64(att.src);
+                        return base64Result && !base64Result.error ? { type: 'image_url', image_url: { url: `data:${att.type};base64,${base64Result}` } } : null;
                     }
-                    return att; 
+                    return null; // Only handle images for simplicity in regen, or expand as needed
                 }));
             }
-
-            if (msg.role === 'user') {
-                let userPrimaryText = msg.content || "";
-                const mediaParts = [];
-                const documentStrings = [];
-                let documentIndex = 1;
-
-                vcpAttachments.forEach(att => {
-                    if (att.error) {
-                        console.warn(`[Regenerate] Skipping attachment ${att.name} for VCP processing due to error: ${att.error}`);
-                        return;
-                    }
-                    if (att.type.startsWith('image/') && att.data) {
-                        mediaParts.push({ type: 'image_url', image_url: { url: `data:${att.type};base64,${att.data}` } });
-                    } else if (att.type.startsWith('audio/') && att.data) {
-                        mediaParts.push({ type: 'audio_url', audio_url: { url: `data:${att.type};base64,${att.data}` } });
-                    } else if (att.extractedText) {
-                        documentStrings.push(`[文档${documentIndex}-${att.name}：${att.extractedText}]`);
-                        documentIndex++;
-                    }
-                });
-
-                let combinedTextContent = userPrimaryText;
-                if (documentStrings.length > 0) {
-                    if (combinedTextContent.length > 0) {
-                        combinedTextContent += "\n\n";
-                    }
-                    combinedTextContent += documentStrings.join("\n");
-                }
-                
-                const finalContentForVCP = [{ type: 'text', text: combinedTextContent }];
-                finalContentForVCP.push(...mediaParts);
-                return { role: msg.role, content: finalContentForVCP };
+            let finalContentForVCP = [];
+            if (typeof msg.content === 'string' && msg.content.trim() !== '') {
+                finalContentForVCP.push({ type: 'text', text: msg.content });
             }
-            return { role: msg.role, content: msg.content }; 
+            finalContentForVCP.push(...vcpAttachments.filter(Boolean));
+            return { role: msg.role, content: finalContentForVCP.length > 0 ? finalContentForVCP : msg.content };
         }));
 
         if (agentConfig.systemPrompt) {
-            const systemPromptContent = agentConfig.systemPrompt.replace(/\{\{AgentName\}\}/g, agentConfig.name || currentAgentId);
-            messagesForVCP.unshift({ role: 'system', content: systemPromptContent });
+            messagesForVCP.unshift({ role: 'system', content: agentConfig.systemPrompt.replace(/\{\{AgentName\}\}/g, agentConfig.name) });
         }
 
         const modelConfigForVCP = {
             model: agentConfig.model,
             temperature: parseFloat(agentConfig.temperature),
-            ...(agentConfig.maxOutputTokens && { max_tokens: parseInt(agentConfig.maxOutputTokens) }),
-            stream: agentConfig.streamOutput === true || agentConfig.streamOutput === 'true'
+            max_tokens: agentConfig.maxOutputTokens ? parseInt(agentConfig.maxOutputTokens) : undefined,
+            stream: agentConfig.streamOutput === true || String(agentConfig.streamOutput) === 'true'
         };
         
         const vcpResult = await electronAPI.sendToVCP(
-            globalSettings.vcpServerUrl,
-            globalSettings.vcpApiKey,
+            globalSettingsVal.vcpServerUrl,
+            globalSettingsVal.vcpApiKey,
             messagesForVCP,
             modelConfigForVCP,
-            regenerationThinkingMessage.id 
+            regenerationThinkingMessage.id // Associate with the new thinking message ID
         );
 
         if (modelConfigForVCP.stream) {
             if (vcpResult.streamingStarted) {
-                startStreamingMessage({ ...regenerationThinkingMessage, content: "" }); 
-            } else if (vcpResult.streamError) { 
-                const thinkingItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${regenerationThinkingMessage.id}"]`);
-                if(thinkingItem) thinkingItem.remove();
-                if (mainRendererReferences.activeStreamingMessageId === regenerationThinkingMessage.id) {
-                    mainRendererReferences.activeStreamingMessageId = null;
-                }
-                 renderMessage({ role: 'system', content: `VCP 流错误 (重新生成): ${vcpResult.streamError}`, timestamp: Date.now() });
-            } else {
-                 throw new Error("Streaming for regeneration was expected but did not start correctly.");
+                // Stream will be handled by onVCPStreamChunk, which calls startStreamingMessage
+                // We've already rendered a thinking message; onVCPStreamChunk will update it.
+            } else if (vcpResult.streamError || !vcpResult.streamingStarted) {
+                finalizeStreamedMessage(regenerationThinkingMessage.id, 'error'); // Mark as error
+                renderMessage({ role: 'system', content: `VCP 流错误 (重新生成): ${vcpResult.error || '未能启动流'}`, timestamp: Date.now() });
             }
         } else { 
-            const thinkingItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${regenerationThinkingMessage.id}"]`);
-            if(thinkingItem) thinkingItem.remove();
+            // Non-streaming response for regeneration
+            const thinkingItem = mainRendererReferences.chatMessagesDiv.querySelector(`.message-item[data-message-id="${regenerationThinkingMessage.id}"]`);
+            if(thinkingItem) thinkingItem.remove(); // Remove "thinking"
+            const thinkingIdxHistory = currentChatHistoryArray.findIndex(m => m.id === regenerationThinkingMessage.id);
+            if(thinkingIdxHistory > -1) currentChatHistoryArray.splice(thinkingIdxHistory, 1);
+
 
             if (vcpResult.error) {
                 renderMessage({ role: 'system', content: `VCP错误 (重新生成): ${vcpResult.error}`, timestamp: Date.now() });
             } else if (vcpResult.choices && vcpResult.choices.length > 0) {
                 const assistantMessageContent = vcpResult.choices[0].message.content;
-                renderMessage({ role: 'assistant', content: assistantMessageContent, timestamp: Date.now() });
+                renderMessage({ role: 'assistant', name: agentConfig.name, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor, content: assistantMessageContent, timestamp: Date.now() });
             } else {
                 renderMessage({ role: 'system', content: 'VCP返回了未知格式的响应 (重新生成)。', timestamp: Date.now() });
             }
-            if (currentAgentId && currentTopicId) await electronAPI.saveChatHistory(currentAgentId, currentTopicId, currentChatHistory);
-            scrollToBottom();
+            mainRendererReferences.currentChatHistoryRef.set([...currentChatHistoryArray]);
+            if (currentSelectedItemVal.id && currentTopicIdVal) await electronAPI.saveChatHistory(currentSelectedItemVal.id, currentTopicIdVal, currentChatHistoryArray);
+            uiHelper.scrollToBottom();
         }
 
     } catch (error) {
         console.error('MessageRenderer: Error regenerating response:', error);
-        const thinkingItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${regenerationThinkingMessage.id}"]`);
-        if(thinkingItem) thinkingItem.remove();
-        if (mainRendererReferences.activeStreamingMessageId === regenerationThinkingMessage.id) {
-            mainRendererReferences.activeStreamingMessageId = null;
-        }
-        const historyIdx = currentChatHistory.findIndex(m => m.id === regenerationThinkingMessage.id);
-        if (historyIdx > -1) currentChatHistory.splice(historyIdx, 1);
-        
+        finalizeStreamedMessage(regenerationThinkingMessage.id, 'error'); // Clean up stream
         renderMessage({ role: 'system', content: `错误 (重新生成): ${error.message}`, timestamp: Date.now() });
-        if (currentAgentId && currentTopicId) await electronAPI.saveChatHistory(currentAgentId, currentTopicId, currentChatHistory);
-        scrollToBottom();
+        if (currentSelectedItemVal.id && currentTopicIdVal) await electronAPI.saveChatHistory(currentSelectedItemVal.id, currentTopicIdVal, currentChatHistoryArray);
+        uiHelper.scrollToBottom();
     }
 }
 
+// Expose methods to renderer.js
 window.messageRenderer = {
     initializeMessageRenderer,
-    setCurrentAgentId,
-    setCurrentTopicId,
-    setCurrentAgentAvatar,
-    setUserAvatar, // Expose new function
-    setCurrentAgentAvatarColor, // New
-    setUserAvatarColor,         // New
-    setCurrentAgentName, // Add this
+    setCurrentSelectedItem, // Keep for renderer.js to call
+    setCurrentTopicId,      // Keep for renderer.js to call
+    setCurrentItemAvatar,   // Renamed for clarity
+    setUserAvatar,          
+    setCurrentItemAvatarColor, // Renamed
+    setUserAvatarColor,         
     renderMessage,
     startStreamingMessage,
     appendStreamChunk,
-    finalizeStreamedMessage
+    finalizeStreamedMessage,
+    // Helper functions that renderer might need if they were previously here, e.g., clearChat
+    clearChat: () => {
+        if (mainRendererReferences.chatMessagesDiv) mainRendererReferences.chatMessagesDiv.innerHTML = '';
+        mainRendererReferences.currentChatHistoryRef.set([]); // Clear the history array via its ref
+    },
+    removeMessageById: (messageId) => {
+        const item = mainRendererReferences.chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
+        if (item) item.remove();
+        const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
+        const index = currentChatHistoryArray.findIndex(m => m.id === messageId);
+        if (index > -1) {
+            currentChatHistoryArray.splice(index, 1);
+            mainRendererReferences.currentChatHistoryRef.set([...currentChatHistoryArray]);
+        }
+    },
+    summarizeTopicFromMessages: async (history, agentName) => { // Example: Keep this if it's generic enough
+        // This function was passed in, so it's likely defined in renderer.js or another module.
+        // If it's meant to be internal to messageRenderer, its logic would go here.
+        // For now, assume it's an external utility.
+        if (mainRendererReferences.summarizeTopicFromMessages) {
+            return mainRendererReferences.summarizeTopicFromMessages(history, agentName);
+        }
+        return null;
+    }
 };
-
-function setCurrentAgentName(name) {
-    mainRendererReferences.currentAgentName = name || 'AI';
-}

@@ -145,12 +145,14 @@ function initializeInputEnhancer(refs) {
                     results.forEach(result => {
                         if (result.success && result.attachment) {
                             const att = result.attachment;
-                             attachedFilesRef.push({
+                            const currentFiles = attachedFilesRef.get();
+                            currentFiles.push({
                                 file: { name: att.name, type: att.type, size: att.size },
                                 localPath: att.internalPath,
                                 originalName: att.name,
                                 _fileManagerData: att
                             });
+                            attachedFilesRef.set(currentFiles);
                             console.log(`[InputEnhancer] Successfully attached dropped file: ${att.name}`);
                         } else if (result.error) {
                             console.error(`[InputEnhancer] Error processing dropped file ${result.name || 'unknown'}: ${result.error}`);
@@ -211,12 +213,14 @@ function initializeInputEnhancer(refs) {
                             console.log('[InputEnhancer] Result from handleFilePaste (path):', result);
                             if (result.success && result.attachment) {
                                 const att = result.attachment;
-                                attachedFilesRef.push({
+                                const currentFiles = attachedFilesRef.get();
+                                currentFiles.push({
                                     file: { name: att.name, type: att.type, size: att.size },
                                     localPath: att.internalPath,
                                     originalName: att.name,
                                     _fileManagerData: att
                                 });
+                                attachedFilesRef.set(currentFiles);
                                 updateAttachmentPreviewRef();
                                 console.log(`[InputEnhancer] Successfully attached pasted file (path): ${att.name}`);
                             } else {
@@ -240,12 +244,14 @@ function initializeInputEnhancer(refs) {
                                 console.log('[InputEnhancer] Result from handleFilePaste (base64):', result);
                                 if (result.success && result.attachment) {
                                     const att = result.attachment;
-                                    attachedFilesRef.push({
+                                    const currentFiles = attachedFilesRef.get();
+                                    currentFiles.push({
                                         file: { name: att.name, type: att.type, size: att.size },
                                         localPath: att.internalPath,
                                         originalName: att.name,
                                         _fileManagerData: att
                                     });
+                                    attachedFilesRef.set(currentFiles);
                                     updateAttachmentPreviewRef();
                                     console.log(`[InputEnhancer] Successfully attached pasted image (base64): ${att.name}`);
                                 } else {
@@ -292,8 +298,10 @@ function initializeInputEnhancer(refs) {
                         _fileManagerData: att
                     };
                     console.log('[InputEnhancer] Preparing to push new attachment for long text:', JSON.stringify(newAttachment));
-                    attachedFilesRef.push(newAttachment);
-                    console.log(`[InputEnhancer] Pushed to attachedFilesRef. Current length: ${attachedFilesRef.length}. First item (if any): ${attachedFilesRef.length > 0 ? JSON.stringify(attachedFilesRef[0]) : 'N/A'}. Last item (if any): ${attachedFilesRef.length > 0 ? JSON.stringify(attachedFilesRef[attachedFilesRef.length - 1]) : 'N/A'}`);
+                    const currentFiles = attachedFilesRef.get();
+                    currentFiles.push(newAttachment);
+                    attachedFilesRef.set(currentFiles);
+                    console.log(`[InputEnhancer] Pushed to attachedFilesRef. Current length: ${currentFiles.length}. First item (if any): ${currentFiles.length > 0 ? JSON.stringify(currentFiles[0]) : 'N/A'}. Last item (if any): ${currentFiles.length > 0 ? JSON.stringify(currentFiles[currentFiles.length - 1]) : 'N/A'}`);
                     
                     console.log('[InputEnhancer] Scheduling updateAttachmentPreviewRef for long text paste using setTimeout.');
                     // Using setTimeout to ensure the call happens after the current execution context,

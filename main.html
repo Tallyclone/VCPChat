@@ -59,7 +59,8 @@
                     -->
                 </ul>
                 <div class="sidebar-actions">
-                    <button id="createNewAgentBtn" class="sidebar-button create-agent-btn">创建新Agent</button>
+                    <button id="createNewAgentBtn" class="sidebar-button create-agent-btn small-button">创建Agent</button>
+                    <button id="createNewGroupBtn" class="sidebar-button create-group-btn small-button">创建 Group</button>
                 </div>
             </div>
             <div class="sidebar-tab-content" id="tabContentTopics">
@@ -277,6 +278,22 @@
         </div>
     </div>
 
+<div class="modal" id="createGroupModal">
+        <div class="modal-content">
+            <span class="close-button" onclick="closeModal('createGroupModal')">×</span>
+            <h2>创建新群组</h2>
+            <form id="createGroupForm">
+                <div>
+                    <label for="newGroupNameInput">群组名称:</label>
+                    <input type="text" id="newGroupNameInput" name="groupName" placeholder="请输入群组名称" required>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="button-secondary" onclick="closeModal('createGroupModal')">取消</button>
+                    <button type="submit" class="button-primary">创建</button>
+                </div>
+            </form>
+        </div>
+    </div>
     <!-- Agent Settings Modal is now removed, its content moved to #tabContentSettings -->
 
     <script src="modules/topicSummarizer.js"></script>
@@ -284,6 +301,7 @@
     <script src="modules/messageRenderer.js"></script>
     <script src="modules/inputEnhancer.js"></script> <!-- Add inputEnhancer.js -->
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+<script src="Groupmodules/grouprenderer.js"></script>
     <script src="renderer.js"></script>
 </body>
 </html>
