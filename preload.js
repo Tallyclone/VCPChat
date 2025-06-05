@@ -14,19 +14,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Settings
     loadSettings: () => ipcRenderer.invoke('load-settings'),
     saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
+    saveUserAvatar: (avatarData) => ipcRenderer.invoke('save-user-avatar', avatarData), // New for user avatar
 
     // Agents
     getAgents: () => ipcRenderer.invoke('get-agents'),
     getAgentConfig: (agentId) => ipcRenderer.invoke('get-agent-config', agentId),
     saveAgentConfig: (agentId, config) => ipcRenderer.invoke('save-agent-config', agentId, config),
-    selectAvatar: () => ipcRenderer.invoke('select-avatar'),
-    saveAvatar: (agentId, avatarData) => ipcRenderer.invoke('save-avatar', agentId, avatarData), // avatarData is { name, type, buffer }
+    selectAvatar: () => ipcRenderer.invoke('select-avatar'), // This can be used for both, or make a specific one for user
+    saveAvatar: (agentId, avatarData) => ipcRenderer.invoke('save-avatar', agentId, avatarData), // For agent avatar
     createAgent: (agentName, initialConfig) => ipcRenderer.invoke('create-agent', agentName, initialConfig),
     deleteAgent: (agentId) => ipcRenderer.invoke('delete-agent', agentId),
 
     // Topic related
     getAgentTopics: (agentId) => ipcRenderer.invoke('get-agent-topics', agentId),
-    createNewTopicForAgent: (agentId, topicName) => ipcRenderer.invoke('create-new-topic-for-agent', agentId, topicName),
+    createNewTopicForAgent: (agentId, topicName, refreshTimestamp) => ipcRenderer.invoke('create-new-topic-for-agent', agentId, topicName, refreshTimestamp),
     saveAgentTopicTitle: (agentId, topicId, newTitle) => ipcRenderer.invoke('save-agent-topic-title', agentId, topicId, newTitle),
     deleteTopic: (agentId, topicId) => ipcRenderer.invoke('delete-topic', agentId, topicId),
 
@@ -109,9 +110,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     unmaximizeWindow: () => ipcRenderer.send('unmaximize-window'),
     closeWindow: () => ipcRenderer.send('close-window'),
     openDevTools: () => ipcRenderer.send('open-dev-tools'),
-    sendToggleNotificationsSidebar: () => ipcRenderer.send('toggle-notifications-sidebar'), // 新增：发送切换通知侧边栏的请求
-    onDoToggleNotificationsSidebar: (callback) => ipcRenderer.on('do-toggle-notifications-sidebar', (_event) => callback()), // 新增：监听主进程的切换指令
-    openAdminPanel: () => ipcRenderer.invoke('open-admin-panel'), // 新增
+    sendToggleNotificationsSidebar: () => ipcRenderer.send('toggle-notifications-sidebar'), 
+    onDoToggleNotificationsSidebar: (callback) => ipcRenderer.on('do-toggle-notifications-sidebar', (_event) => callback()), 
+    openAdminPanel: () => ipcRenderer.invoke('open-admin-panel'), 
     onWindowMaximized: (callback) => ipcRenderer.on('window-maximized', (_event) => callback()),
     onWindowUnmaximized: (callback) => ipcRenderer.on('window-unmaximized', (_event) => callback()),
 
@@ -120,10 +121,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Open Image in New Window
     openImageInNewWindow: (imageUrl, imageTitle) => ipcRenderer.send('open-image-in-new-window', imageUrl, imageTitle),
     // Open Text in New Window (Read Mode)
-    openTextInNewWindow: async (textContent, windowTitle, theme) => { // Added theme parameter
+    openTextInNewWindow: async (textContent, windowTitle, theme) => { 
         console.log('[Preload] openTextInNewWindow called (invoke with new channel). Title:', windowTitle, 'Content length:', textContent.length, 'Theme:', theme);
         try {
-            await ipcRenderer.invoke('display-text-content-in-viewer', textContent, windowTitle, theme); // Pass theme parameter
+            await ipcRenderer.invoke('display-text-content-in-viewer', textContent, windowTitle, theme); 
             console.log('[Preload] ipcRenderer.invoke("display-text-content-in-viewer") was CALLED and awaited.');
         } catch (e) {
             console.error('[Preload] Error during ipcRenderer.invoke("display-text-content-in-viewer"):', e);
@@ -143,13 +144,13 @@ const electronAPIForLogging = {
     saveChatHistory: "function", handleFilePaste: "function", selectFilesToSend: "function",
     getFileAsBase64: "function", getTextContent: "function", handleTextPasteAsFile: "function",
     handleFileDrop: "function",
-    readTxtNotes: "function", // New
-    writeTxtNote: "function", // New
-    deleteTxtNote: "function", // New
+    readTxtNotes: "function", 
+    writeTxtNote: "function", 
+    deleteTxtNote: "function", 
     openNotesWindow: "function",
-    openNotesWithContent: "function", // Added for sharing
-    saveAgentOrder: "function", // New
-    saveTopicOrder: "function", // New
+    openNotesWithContent: "function", 
+    saveAgentOrder: "function", 
+    saveTopicOrder: "function", 
     sendToVCP: "function", onVCPStreamChunk: "function",
     connectVCPLog: "function", disconnectVCPLog: "function", onVCPLogMessage: "function",
     onVCPLogStatus: "function", readImageFromClipboard: "function", readTextFromClipboard: "function",
@@ -159,6 +160,7 @@ const electronAPIForLogging = {
     onWindowMaximized: "function", onWindowUnmaximized: "function",
     showImageContextMenu: "function",
     openImageInNewWindow: "function",
+    saveUserAvatar: "function" // Added
 };
 console.log('[Preload] electronAPI object that *should* be exposed (structure check):', electronAPIForLogging);
 console.log('preload.js loaded and contextBridge exposure attempted.');

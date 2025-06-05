@@ -465,7 +465,7 @@ function processAllPreBlocksInContentDiv(contentDiv) {
         } 
         // Check for DailyNote (ensure it's not already processed as VCP)
         else if (blockText.includes('<<<DailyNoteStart>>>') && blockText.includes('<<<DailyNoteEnd>>>') && !preElement.dataset.vcpPrettified) {
-            const dailyNoteContentMatch = blockText.match(/<<<DailyNoteStart>>>([\s\S]*?)<<<DailyNoteEnd>>>/);
+            const dailyNoteContentMatch = blockText.match(/<<<DailyNoteStart>>>([\s\S]*?)<<<\[DailyNoteEnd\]>>>/); // Corrected closing tag
             const actualDailyNoteText = dailyNoteContentMatch ? dailyNoteContentMatch[1].trim() : ""; 
             prettifySinglePreElement(preElement, 'dailynote', actualDailyNoteText);
         }
@@ -488,6 +488,7 @@ function processAllPreBlocksInContentDiv(contentDiv) {
  * @property {string} [userName]
  * @property {string} vcpServerUrl
  * @property {string} vcpApiKey
+ * @property {string} [userAvatarUrl] // Added for user avatar
  */
 
 /**
@@ -506,6 +507,8 @@ let mainRendererReferences = {
     currentChatHistory: [],
     currentAgentId: null,
     currentTopicId: null, 
+    currentAgentAvatarUrl: 'assets/default_avatar.png',
+    currentUserAvatarUrl: 'assets/default_user_avatar.png', // Added for user avatar
     globalSettings: {},
     chatMessagesDiv: null,
     electronAPI: null,
@@ -513,8 +516,9 @@ let mainRendererReferences = {
     scrollToBottom: () => {},
     summarizeTopicFromMessages: async () => "",
     openModal: () => {},
-    openImagePreviewModal: () => {}, // Added reference for image preview
+    openImagePreviewModal: () => {}, 
     autoResizeTextarea: () => {},
+    handleCreateBranch: () => {},
     activeStreamingMessageId: null,
 };
 
@@ -529,8 +533,15 @@ function initializeMessageRenderer(refs) {
     mainRendererReferences.scrollToBottom = refs.scrollToBottom;
     mainRendererReferences.summarizeTopicFromMessages = refs.summarizeTopicFromMessages;
     mainRendererReferences.openModal = refs.openModal;
-    mainRendererReferences.openImagePreviewModal = refs.openImagePreviewModal; // Store the reference
+    mainRendererReferences.openImagePreviewModal = refs.openImagePreviewModal; 
     mainRendererReferences.autoResizeTextarea = refs.autoResizeTextarea;
+    mainRendererReferences.handleCreateBranch = refs.handleCreateBranch;
+    if (refs.currentAgentAvatarUrl) {
+        mainRendererReferences.currentAgentAvatarUrl = refs.currentAgentAvatarUrl;
+    }
+    if (refs.globalSettings && refs.globalSettings.userAvatarUrl) { // Initialize user avatar from global settings
+        mainRendererReferences.currentUserAvatarUrl = refs.globalSettings.userAvatarUrl;
+    }
     injectEnhancedStyles();
 }
 
@@ -542,8 +553,17 @@ function setCurrentTopicId(topicId) {
     mainRendererReferences.currentTopicId = topicId;
 }
 
+function setCurrentAgentAvatar(avatarUrl) {
+    mainRendererReferences.currentAgentAvatarUrl = avatarUrl || 'assets/default_avatar.png';
+}
+
+function setUserAvatar(avatarUrl) { // New function to update user avatar
+    mainRendererReferences.currentUserAvatarUrl = avatarUrl || 'assets/default_user_avatar.png';
+}
+
+
 function renderMessage(message, isInitialLoad = false) {
-    const { chatMessagesDiv, globalSettings, currentAgentId, currentTopicId, electronAPI, markedInstance, scrollToBottom } = mainRendererReferences;
+    const { chatMessagesDiv, globalSettings, currentAgentId, currentTopicId, currentAgentAvatarUrl, currentUserAvatarUrl, electronAPI, markedInstance, scrollToBottom } = mainRendererReferences;
     if (!chatMessagesDiv || !electronAPI || !markedInstance) {
         console.error("MessageRenderer: Missing critical references.");
         return null;
@@ -564,13 +584,7 @@ function renderMessage(message, isInitialLoad = false) {
             showContextMenu(e, messageItem, message);
         });
     }
-
-    const senderNameDiv = document.createElement('div');
-    senderNameDiv.classList.add('sender-name');
-    const agentNameElem = document.querySelector(`.agent-list li[data-agent-id="${currentAgentId}"] .agent-name`);
-    senderNameDiv.textContent = message.role === 'user' ? (globalSettings.userName || '你') : (agentNameElem?.textContent || 'AI');
-    if (message.role !== 'system') messageItem.appendChild(senderNameDiv);
-
+    
     const contentDiv = document.createElement('div');
     contentDiv.classList.add('md-content');
 
@@ -578,27 +592,21 @@ function renderMessage(message, isInitialLoad = false) {
         contentDiv.innerHTML = `<span class="thinking-indicator">${message.content || '思考中'}<span class="thinking-indicator-dots">...</span></span>`;
         messageItem.classList.add('thinking');
     } else {
-        // Always parse with marked first
         let processedContent = ensureNewlineAfterCodeBlock(message.content);
         processedContent = ensureSpaceAfterTilde(processedContent);
-        processedContent = removeIndentationFromCodeBlockMarkers(processedContent); // Added
+        processedContent = removeIndentationFromCodeBlockMarkers(processedContent);
         contentDiv.innerHTML = markedInstance.parse(processedContent);
-        // Then process for special blocks
         processAllPreBlocksInContentDiv(contentDiv);
 
-        // Add click to zoom for AI-generated images within contentDiv
         const imagesInContent = contentDiv.querySelectorAll('img');
         imagesInContent.forEach(img => {
-            // Avoid adding to images that are already part of user attachments (if any could be rendered this way)
             if (!img.classList.contains('message-attachment-image-thumbnail')) {
                 img.style.cursor = 'pointer';
-                img.title = `点击在新窗口预览: ${img.alt || img.src}\n右键可复制图片`; // Update title
+                img.title = `点击在新窗口预览: ${img.alt || img.src}\n右键可复制图片`;
                 img.addEventListener('click', (e) => {
-                    e.stopPropagation(); // Prevent other clicks if image is inside other clickable elements
-                    // mainRendererReferences.openImagePreviewModal(img.src, img.alt || img.src.split('/').pop()); // Old modal
+                    e.stopPropagation(); 
                     mainRendererReferences.electronAPI.openImageInNewWindow(img.src, img.alt || img.src.split('/').pop() || 'AI 图片');
                 });
-                // Add context menu for AI images
                 img.addEventListener('contextmenu', (e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -606,10 +614,58 @@ function renderMessage(message, isInitialLoad = false) {
                 });
             }
         });
-
     }
-    messageItem.appendChild(contentDiv);
     
+    // --- New structure for QQ-like appearance ---
+    if (message.role === 'user' || message.role === 'assistant') {
+        const avatarImg = document.createElement('img');
+        avatarImg.classList.add('chat-avatar');
+        if (message.role === 'user') {
+            avatarImg.src = currentUserAvatarUrl; 
+            avatarImg.alt = (globalSettings.userName || 'User') + ' Avatar';
+            avatarImg.onerror = () => { avatarImg.src = 'assets/default_user_avatar.png'; }; // Fallback
+        } else { // assistant
+            avatarImg.src = currentAgentAvatarUrl; 
+            const agentNameElem = document.querySelector(`.agent-list li[data-agent-id="${currentAgentId}"] .agent-name`);
+            avatarImg.alt = (agentNameElem?.textContent || 'AI') + ' Avatar';
+            avatarImg.onerror = () => { avatarImg.src = 'assets/default_avatar.png'; };
+        }
+
+        const nameTimeDiv = document.createElement('div');
+        nameTimeDiv.classList.add('name-time-block');
+
+        const senderNameDiv = document.createElement('div');
+        senderNameDiv.classList.add('sender-name');
+        if (message.role === 'user') {
+            senderNameDiv.textContent = globalSettings.userName || '你';
+        } else { // assistant
+            const agentNameElem = document.querySelector(`.agent-list li[data-agent-id="${currentAgentId}"] .agent-name`);
+            senderNameDiv.textContent = agentNameElem?.textContent || 'AI';
+        }
+        nameTimeDiv.appendChild(senderNameDiv);
+
+        if (message.timestamp && !message.isThinking) {
+            const timestampDiv = document.createElement('div');
+            timestampDiv.classList.add('message-timestamp');
+            timestampDiv.textContent = new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            nameTimeDiv.appendChild(timestampDiv);
+        }
+        
+        if (message.role === 'user') {
+            messageItem.appendChild(contentDiv); // Bubble first for user
+            messageItem.appendChild(nameTimeDiv);
+            messageItem.appendChild(avatarImg);
+        } else { // assistant
+            messageItem.appendChild(avatarImg);
+            messageItem.appendChild(nameTimeDiv);
+            messageItem.appendChild(contentDiv); // Bubble last for assistant
+        }
+
+    } else { // system messages (keep simpler layout or specific styling)
+        messageItem.appendChild(contentDiv); // Just content for system
+        messageItem.classList.add('system-message-layout');
+    }
+
     if (message.attachments && message.attachments.length > 0) {
         const attachmentsContainer = document.createElement('div');
         attachmentsContainer.classList.add('message-attachments');
@@ -617,13 +673,12 @@ function renderMessage(message, isInitialLoad = false) {
             let attachmentElement;
             if (att.type.startsWith('image/')) {
                 attachmentElement = document.createElement('img');
-                attachmentElement.src = att.src; // This src is usually file:// for user attachments
+                attachmentElement.src = att.src; 
                 attachmentElement.alt = `附件图片: ${att.name}`;
                 attachmentElement.title = `点击在新窗口预览: ${att.name}`;
                 attachmentElement.classList.add('message-attachment-image-thumbnail');
                 attachmentElement.onclick = (e) => {
                     e.stopPropagation();
-                    // mainRendererReferences.openImagePreviewModal(att.src, att.name); // Old modal
                     mainRendererReferences.electronAPI.openImageInNewWindow(att.src, att.name);
                 };
             } else if (att.type.startsWith('audio/')) {
@@ -645,16 +700,9 @@ function renderMessage(message, isInitialLoad = false) {
             }
             if (attachmentElement) attachmentsContainer.appendChild(attachmentElement);
         });
-        messageItem.appendChild(attachmentsContainer);
+        contentDiv.appendChild(attachmentsContainer);
     }
-
-    if (message.timestamp && !message.isThinking) {
-        const timestampDiv = document.createElement('div');
-        timestampDiv.classList.add('message-timestamp');
-        timestampDiv.textContent = new Date(message.timestamp).toLocaleTimeString();
-        messageItem.appendChild(timestampDiv);
-    }
-
+    
     chatMessagesDiv.appendChild(messageItem);
 
     if (!message.isThinking && window.renderMathInElement) {
@@ -697,7 +745,15 @@ function startStreamingMessage(message) {
 
     if (!messageItem) {
         console.warn(`startStreamingMessage: Thinking message item with id ${message.id} not found. Rendering placeholder.`);
-        messageItem = renderMessage({ ...message, isThinking: true, content: '' }, false); 
+        const placeholderMessage = { 
+            ...message, 
+            role: 'assistant', 
+            content: '', 
+            isThinking: false, 
+            timestamp: message.timestamp || Date.now() 
+        };
+        messageItem = renderMessage(placeholderMessage, false); 
+
         if (!messageItem) {
            console.error(`startStreamingMessage: Failed to render placeholder for new stream ${message.id}. Aborting stream start.`);
            mainRendererReferences.activeStreamingMessageId = null; 
@@ -706,18 +762,23 @@ function startStreamingMessage(message) {
     }
     
     messageItem.classList.add('streaming');
-    messageItem.classList.remove('thinking');
+    messageItem.classList.remove('thinking'); 
 
     const contentDiv = messageItem.querySelector('.md-content');
     if (contentDiv) {
-        contentDiv.innerHTML = ''; // 清空现有内容
-        // 流式传输开始时，重新插入一个持续的加载指示器
+        contentDiv.innerHTML = ''; 
         contentDiv.innerHTML = `<span class="thinking-indicator">正在接收<span class="thinking-indicator-dots">...</span></span>`;
     }
     
     const historyIndex = mainRendererReferences.currentChatHistory.findIndex(m => m.id === message.id);
     if (historyIndex === -1) {
-        mainRendererReferences.currentChatHistory.push({ ...message, content: '', isThinking: false, timestamp: message.timestamp || Date.now() });
+        mainRendererReferences.currentChatHistory.push({ 
+            ...message, 
+            role: 'assistant', 
+            content: '', 
+            isThinking: false, 
+            timestamp: message.timestamp || Date.now() 
+        });
     } else {
         console.warn(`startStreamingMessage: Message ID ${message.id} already found in history. Updating existing entry.`);
         mainRendererReferences.currentChatHistory[historyIndex].isThinking = false;
@@ -737,7 +798,7 @@ function appendStreamChunk(messageId, chunkData) {
     const messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
     if (!messageItem) return;
 
-    const contentDiv = messageItem.querySelector('.md-content');
+    const contentDiv = messageItem.querySelector('.md-content'); 
     if (!contentDiv) return;
 
     let textToAppend = "";
@@ -759,20 +820,26 @@ function appendStreamChunk(messageId, chunkData) {
         fullCurrentText = mainRendererReferences.currentChatHistory[messageIndex].content;
     } else {
         const tempContainer = document.createElement('div');
-        tempContainer.innerHTML = contentDiv.innerHTML; 
-        const existingText = tempContainer.textContent || ""; 
+        let existingText = "";
+        const thinkingIndicator = contentDiv.querySelector('.thinking-indicator');
+        if (thinkingIndicator && contentDiv.childNodes.length === 1 && contentDiv.firstChild === thinkingIndicator) {
+            existingText = ""; 
+        } else {
+             tempContainer.innerHTML = contentDiv.innerHTML; 
+             existingText = tempContainer.textContent || ""; 
+        }
         fullCurrentText = existingText + textToAppend;
     }
     
     let processedFullCurrentTextForParse = ensureNewlineAfterCodeBlock(fullCurrentText);
     processedFullCurrentTextForParse = ensureSpaceAfterTilde(processedFullCurrentTextForParse);
-    processedFullCurrentTextForParse = removeIndentationFromCodeBlockMarkers(processedFullCurrentTextForParse); // Added
+    processedFullCurrentTextForParse = removeIndentationFromCodeBlockMarkers(processedFullCurrentTextForParse); 
     contentDiv.innerHTML = markedInstance.parse(processedFullCurrentTextForParse);
     
     if (messageItem) {
         let currentDelay = ENHANCED_RENDER_DEBOUNCE_DELAY;
         if (fullCurrentText.includes("<<<DailyNoteStart>>>") || fullCurrentText.includes("<<<[TOOL_REQUEST]>>>")) {
-             currentDelay = DIARY_RENDER_DEBOUNCE_DELAY; // Use longer delay for potentially complex blocks
+             currentDelay = DIARY_RENDER_DEBOUNCE_DELAY;
         }
 
         if (enhancedRenderDebounceTimers.has(messageItem)) {
@@ -782,15 +849,13 @@ function appendStreamChunk(messageId, chunkData) {
             if (document.body.contains(messageItem)) {
                 const targetContentDiv = messageItem.querySelector('.md-content');
                 if (targetContentDiv) {
-                    // Clear prettified flags before re-processing
                     targetContentDiv.querySelectorAll('pre[data-vcp-prettified="true"], pre[data-maid-diary-prettified="true"]').forEach(pre => {
                         delete pre.dataset.vcpPrettified;
                         delete pre.dataset.maidDiaryPrettified;
                     });
-                    // Re-parse the full content to ensure structure is correct before prettifying
                     let processedFullCurrentTextForDebounceParse = ensureNewlineAfterCodeBlock(fullCurrentText);
                     processedFullCurrentTextForDebounceParse = ensureSpaceAfterTilde(processedFullCurrentTextForDebounceParse);
-                    processedFullCurrentTextForDebounceParse = removeIndentationFromCodeBlockMarkers(processedFullCurrentTextForDebounceParse); // Added
+                    processedFullCurrentTextForDebounceParse = removeIndentationFromCodeBlockMarkers(processedFullCurrentTextForDebounceParse);
                     targetContentDiv.innerHTML = markedInstance.parse(processedFullCurrentTextForDebounceParse);
 
                     if (window.renderMathInElement) {
@@ -839,11 +904,12 @@ function finalizeStreamedMessage(messageId, finishReason) {
         message.finishReason = finishReason;
         finalFullText = message.content;
         
-        if (!messageItem.querySelector('.message-timestamp')) {
+        const nameTimeBlock = messageItem.querySelector('.name-time-block');
+        if (nameTimeBlock && !nameTimeBlock.querySelector('.message-timestamp')) {
             const timestampDiv = document.createElement('div');
             timestampDiv.classList.add('message-timestamp');
-            timestampDiv.textContent = new Date(message.timestamp).toLocaleTimeString();
-            messageItem.appendChild(timestampDiv);
+            timestampDiv.textContent = new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            nameTimeBlock.appendChild(timestampDiv);
         }
 
         if (message.role !== 'system' && !messageItem.classList.contains('thinking')) { 
@@ -860,10 +926,13 @@ function finalizeStreamedMessage(messageId, finishReason) {
     
     const contentDiv = messageItem.querySelector('.md-content');
     if (contentDiv) {
+        const thinkingIndicator = contentDiv.querySelector('.thinking-indicator');
+        if (thinkingIndicator) thinkingIndicator.remove();
+        
         let processedFinalFullText = ensureNewlineAfterCodeBlock(finalFullText);
         processedFinalFullText = ensureSpaceAfterTilde(processedFinalFullText);
-        processedFinalFullText = removeIndentationFromCodeBlockMarkers(processedFinalFullText); // Added
-        contentDiv.innerHTML = markedInstance.parse(processedFinalFullText); // Final parse
+        processedFinalFullText = removeIndentationFromCodeBlockMarkers(processedFinalFullText); 
+        contentDiv.innerHTML = markedInstance.parse(processedFinalFullText); 
 
         if (window.renderMathInElement) {
              window.renderMathInElement(contentDiv, { delimiters: [{left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}, {left: "\\(", right: "\\)", display: false}, {left: "\\[", right: "\\]", display: true}], throwOnError: false });
@@ -877,7 +946,7 @@ function finalizeStreamedMessage(messageId, finishReason) {
             delete pre.dataset.vcpPrettified;
             delete pre.dataset.maidDiaryPrettified;
         });
-        processAllPreBlocksInContentDiv(contentDiv); // Final prettification
+        processAllPreBlocksInContentDiv(contentDiv); 
     }
 
     scrollToBottom();
@@ -933,7 +1002,6 @@ function showContextMenu(event, messageItem, message) {
         copyOption.classList.add('context-menu-item');
         copyOption.textContent = '复制文本';
         copyOption.onclick = () => {
-            // 移除 HTML 图像标签
             const textToCopy = message.content.replace(/<img[^>]*>/g, '').trim();
             navigator.clipboard.writeText(textToCopy)
                 .then(() => console.log('Message content (without img tags) copied to clipboard.'))
@@ -961,12 +1029,10 @@ function showContextMenu(event, messageItem, message) {
                 try {
                     const text = await window.electronAPI.readTextFromClipboard();
                     if (text) {
-                        // Insert text at cursor position or replace selection
                         const start = textarea.selectionStart;
                         const end = textarea.selectionEnd;
                         textarea.value = textarea.value.substring(0, start) + text + textarea.value.substring(end);
                         textarea.selectionStart = textarea.selectionEnd = start + text.length;
-                        // Trigger input event for any listeners (e.g., autoResizeTextarea)
                         textarea.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
                     }
                 } catch (err) {
@@ -977,29 +1043,29 @@ function showContextMenu(event, messageItem, message) {
             menu.appendChild(pasteOption);
         }
 
-        // Option: Create Branch (Moved)
         const createBranchOption = document.createElement('div');
         createBranchOption.classList.add('context-menu-item');
         createBranchOption.textContent = '创建分支';
         createBranchOption.onclick = () => {
-            handleCreateBranch(message); // We'll define this function in renderer.js
+            if (typeof mainRendererReferences.handleCreateBranch === 'function') {
+                 mainRendererReferences.handleCreateBranch(message);
+            } else {
+                console.error("handleCreateBranch function is not available in mainRendererReferences.");
+            }
             closeContextMenu();
-        };
-        menu.appendChild(createBranchOption); // Appended after "复制文本"
+        }; 
+        menu.appendChild(createBranchOption); 
 
-        // Option: Read Mode
         const readModeOption = document.createElement('div');
         readModeOption.classList.add('context-menu-item');
         readModeOption.textContent = '阅读模式';
         readModeOption.onclick = () => {
-            // Strip HTML tags, specifically <img> for now.
-            // A more robust solution might use a DOM parser if complex HTML is present.
             const plainTextContent = message.content.replace(/<img[^>]*>/gi, "").replace(/<audio[^>]*>.*?<\/audio>/gi, "").replace(/<video[^>]*>.*?<\/video>/gi, "");
             const windowTitle = `阅读模式: ${message.id.substring(0,12)}...`;
-            const currentTheme = localStorage.getItem('theme') || 'dark'; // 获取当前主题
+            const currentTheme = localStorage.getItem('theme') || 'dark'; 
             console.log('[MessageRenderer] Attempting to open read mode. Title:', windowTitle, 'Content length:', plainTextContent.length, 'Theme:', currentTheme);
             if (mainRendererReferences.electronAPI && typeof mainRendererReferences.electronAPI.openTextInNewWindow === 'function') {
-                mainRendererReferences.electronAPI.openTextInNewWindow(plainTextContent, windowTitle, currentTheme); // 传递主题参数
+                mainRendererReferences.electronAPI.openTextInNewWindow(plainTextContent, windowTitle, currentTheme); 
             } else {
                 console.error('[MessageRenderer] electronAPI.openTextInNewWindow is not available or not a function!');
                 alert('错误：无法调用阅读模式功能。');
@@ -1023,7 +1089,6 @@ function showContextMenu(event, messageItem, message) {
             }
             closeContextMenu();
         };
-        // menu.appendChild(deleteOption); // Will be appended or inserted before by regenerate
 
         if (message.role === 'assistant') {
             const regenerateOption = document.createElement('div');
@@ -1033,10 +1098,9 @@ function showContextMenu(event, messageItem, message) {
                 handleRegenerateResponse(message);
                 closeContextMenu();
             };
-            // Insert "重新回复" before "删除消息"
             menu.appendChild(regenerateOption);
         }
-        menu.appendChild(deleteOption); // "删除消息" is now after "重新回复" (if present) or "创建分支"
+        menu.appendChild(deleteOption); 
     }
 
     document.body.appendChild(menu);
@@ -1073,32 +1137,43 @@ function toggleEditMode(messageItem, message) {
     if (existingTextarea) {
         let originalContentProcessed = ensureNewlineAfterCodeBlock(message.content);
         originalContentProcessed = ensureSpaceAfterTilde(originalContentProcessed);
-        contentDiv.innerHTML = markedInstance.parse(originalContentProcessed); // Re-parse original content
+        contentDiv.innerHTML = markedInstance.parse(originalContentProcessed); 
         if (window.renderMathInElement) {
              window.renderMathInElement(contentDiv, { delimiters: [{left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}, {left: "\\(", right: "\\)", display: false}, {left: "\\[", right: "\\]", display: true}], throwOnError: false });
         }
-        processAllPreBlocksInContentDiv(contentDiv); // Re-prettify
+        processAllPreBlocksInContentDiv(contentDiv); 
 
-        messageItem.classList.remove('message-item-editing'); // 退出编辑模式时移除类
-        messageItem.style.maxWidth = ''; // 清除内联 maxWidth
-        messageItem.style.width = '';    // 清除内联 width
+        messageItem.classList.remove('message-item-editing'); 
+        messageItem.style.maxWidth = ''; 
+        messageItem.style.width = '';    
         existingTextarea.remove();
         if (existingControls) existingControls.remove();
         contentDiv.style.display = '';
+         // Restore visibility of avatar and nameTimeDiv if they were hidden
+        const avatarEl = messageItem.querySelector('.chat-avatar');
+        const nameTimeEl = messageItem.querySelector('.name-time-block');
+        if(avatarEl) avatarEl.style.display = '';
+        if(nameTimeEl) nameTimeEl.style.display = '';
     } else {
-        const currentBubbleWidth = messageItem.offsetWidth; // 获取当前气泡的渲染宽度
+        const currentBubbleWidth = contentDiv.offsetWidth; 
         const originalContentHeight = contentDiv.offsetHeight;
-        // const originalContentWidth = contentDiv.offsetWidth; // 不再需要基于旧宽度设置textarea宽度
         contentDiv.style.display = 'none';
-        messageItem.classList.add('message-item-editing'); // 进入编辑模式时添加类
-        messageItem.style.width = `${currentBubbleWidth}px`;  // 应用获取到的宽度
-        messageItem.style.maxWidth = '95%'; // 仍然限制最大宽度，以防400px过大
+         // Hide avatar and nameTimeDiv during editing for a cleaner look
+        const avatarEl = messageItem.querySelector('.chat-avatar');
+        const nameTimeEl = messageItem.querySelector('.name-time-block');
+        if(avatarEl) avatarEl.style.display = 'none';
+        if(nameTimeEl) nameTimeEl.style.display = 'none';
+
+        messageItem.classList.add('message-item-editing'); 
+        messageItem.style.width = 'auto';  // Let it adjust, but still constrained by parent max-width
+        messageItem.style.maxWidth = 'calc(100% - 40px)'; // Adjust to be less than full chat width
+
 
         const textarea = document.createElement('textarea');
         textarea.classList.add('message-edit-textarea');
         textarea.value = message.content;
         textarea.style.minHeight = `${Math.max(originalContentHeight, 50)}px`;
-        textarea.style.width = '100%'; // 让textarea宽度填充其父元素（message-item）
+        textarea.style.width = '100%'; 
 
         const controlsDiv = document.createElement('div');
         controlsDiv.classList.add('message-edit-controls');
@@ -1114,44 +1189,38 @@ function toggleEditMode(messageItem, message) {
                 message.content = newContent;
                 let newContentProcessed = ensureNewlineAfterCodeBlock(newContent);
                 newContentProcessed = ensureSpaceAfterTilde(newContentProcessed);
-                contentDiv.innerHTML = markedInstance.parse(newContentProcessed); // Parse new content
+                contentDiv.innerHTML = markedInstance.parse(newContentProcessed); 
                 if (window.renderMathInElement) {
                     window.renderMathInElement(contentDiv, { delimiters: [{left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}, {left: "\\(", right: "\\)", display: false}, {left: "\\[", right: "\\]", display: true}], throwOnError: false });
                 }
-                processAllPreBlocksInContentDiv(contentDiv); // Prettify new content
+                processAllPreBlocksInContentDiv(contentDiv); 
             }
-            textarea.remove();
-            controlsDiv.remove();
-            contentDiv.style.display = '';
+            toggleEditMode(messageItem, message); // Call again to revert to display mode
         };
 
         const cancelButton = document.createElement('button');
         cancelButton.textContent = '取消';
         cancelButton.onclick = () => {
-            textarea.remove();
-            controlsDiv.remove();
-            contentDiv.style.display = ''; 
+             toggleEditMode(messageItem, message); // Call again to revert to display mode
         };
 
         controlsDiv.appendChild(saveButton);
         controlsDiv.appendChild(cancelButton);
 
-        contentDiv.parentNode.insertBefore(textarea, contentDiv.nextSibling);
-        textarea.parentNode.insertBefore(controlsDiv, textarea.nextSibling);
+        messageItem.appendChild(textarea); 
+        messageItem.appendChild(controlsDiv);
         
         if (autoResizeTextarea) autoResizeTextarea(textarea);
         textarea.focus();
         textarea.addEventListener('input', () => autoResizeTextarea(textarea));
         textarea.addEventListener('keydown', (event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault(); // 阻止默认的回车换行
+                event.preventDefault(); 
                 saveButton.click();
             } else if (event.key === 'Escape') {
                 cancelButton.click();
             }
-            // Shift + Enter 会执行默认的换行行为
         });
-        // Removed contextmenu listener for textarea, as we will modify the existing showContextMenu
     }
 }
 
@@ -1191,25 +1260,29 @@ async function handleRegenerateResponse(originalAssistantMessage) {
     }
 
     const regenerationThinkingMessage = {
-        role: 'assistant',
+        role: 'assistant', 
         content: '重新生成中...',
         timestamp: Date.now(),
         id: `regen_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-        isThinking: true
+        isThinking: true 
     };
     
-    renderMessage(regenerationThinkingMessage, false); // This will render the "thinking" message
-    mainRendererReferences.activeStreamingMessageId = regenerationThinkingMessage.id; // Set active stream for VCP
+    const thinkingMessageItem = renderMessage(regenerationThinkingMessage, false); 
+    if (thinkingMessageItem) {
+        thinkingMessageItem.classList.add('thinking'); 
+        const thinkingContentDiv = thinkingMessageItem.querySelector('.md-content .thinking-indicator');
+        if (thinkingContentDiv) thinkingContentDiv.innerHTML = `重新生成中<span class="thinking-indicator-dots">...</span>`;
+    }
+
+    mainRendererReferences.activeStreamingMessageId = regenerationThinkingMessage.id; 
 
     try {
         const agentConfig = await electronAPI.getAgentConfig(currentAgentId);
         
-        // --- Rebuild messagesForVCP with attachment processing, similar to handleSendMessage ---
         let messagesForVCP = await Promise.all(historyForRegeneration.map(async msg => {
             let vcpAttachments = [];
             if (msg.attachments && msg.attachments.length > 0) {
                 vcpAttachments = await Promise.all(msg.attachments.map(async att => {
-                    // Log the attachment being processed (with potential truncation for sensitive/long data)
                     console.log('[Regenerate] Processing attachment for VCP:', JSON.stringify(att, (key, value) => {
                         if ((key === 'data' || key === 'extractedText') && typeof value === 'string' && value.length > 200) {
                             return `${value.substring(0, 50)}...[${key}, length: ${value.length}]...${value.substring(value.length - 50)}`;
@@ -1219,7 +1292,7 @@ async function handleRegenerateResponse(originalAssistantMessage) {
 
                     if (att.type.startsWith('image/') || att.type.startsWith('audio/')) {
                         try {
-                            const internalPath = att.src; // Already an internal path
+                            const internalPath = att.src; 
                             console.log(`[Regenerate] Calling getFileAsBase64 for: ${internalPath}`);
                             const base64Result = await electronAPI.getFileAsBase64(internalPath);
                             if (base64Result && base64Result.error) {
@@ -1258,7 +1331,7 @@ async function handleRegenerateResponse(originalAssistantMessage) {
                             return { ...att, error: `Regen Text Exception: ${error.message}` };
                         }
                     }
-                    return att; // For other types or if no processing needed
+                    return att; 
                 }));
             }
 
@@ -1295,9 +1368,8 @@ async function handleRegenerateResponse(originalAssistantMessage) {
                 finalContentForVCP.push(...mediaParts);
                 return { role: msg.role, content: finalContentForVCP };
             }
-            return { role: msg.role, content: msg.content }; // For system/assistant messages
+            return { role: msg.role, content: msg.content }; 
         }));
-        // --- End of Rebuild messagesForVCP ---
 
         if (agentConfig.systemPrompt) {
             const systemPromptContent = agentConfig.systemPrompt.replace(/\{\{AgentName\}\}/g, agentConfig.name || currentAgentId);
@@ -1322,7 +1394,7 @@ async function handleRegenerateResponse(originalAssistantMessage) {
         if (modelConfigForVCP.stream) {
             if (vcpResult.streamingStarted) {
                 startStreamingMessage({ ...regenerationThinkingMessage, content: "" }); 
-            } else if (vcpResult.streamError) { // Handle if VCP itself reports a stream start error
+            } else if (vcpResult.streamError) { 
                 const thinkingItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${regenerationThinkingMessage.id}"]`);
                 if(thinkingItem) thinkingItem.remove();
                 if (mainRendererReferences.activeStreamingMessageId === regenerationThinkingMessage.id) {
@@ -1368,6 +1440,8 @@ window.messageRenderer = {
     initializeMessageRenderer,
     setCurrentAgentId,
     setCurrentTopicId,
+    setCurrentAgentAvatar,
+    setUserAvatar, // Expose new function
     renderMessage,
     startStreamingMessage,
     appendStreamChunk,
