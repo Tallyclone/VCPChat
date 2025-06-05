@@ -1367,11 +1367,17 @@ function setupEventListeners() {
                         window.messageRenderer.setUserAvatar(avatarSaveResult.avatarUrl);
                     }
                     // Trigger color extraction and saving for the new user avatar
-                    if (avatarSaveResult.needsColorExtraction && window.messageRenderer && window.messageRenderer.electronAPI.saveAvatarColor) {
-                        getAverageColorFromAvatar(avatarSaveResult.avatarUrl, (avgColor) => { // Assuming getAverageColorFromAvatar is accessible here or via messageRenderer
+                    if (avatarSaveResult.needsColorExtraction && window.electronAPI && window.electronAPI.saveAvatarColor) { // Use window.electronAPI directly
+                        getAverageColorFromAvatar(avatarSaveResult.avatarUrl, (avgColor) => {
                             if (avgColor) {
-                                window.messageRenderer.electronAPI.saveAvatarColor({ type: 'user', id: 'user_global', color: avgColor })
-                                    .then(() => window.messageRenderer.setUserAvatarColor(avgColor));
+                                window.electronAPI.saveAvatarColor({ type: 'user', id: 'user_global', color: avgColor }) // Use window.electronAPI directly
+                                    .then((saveColorResult) => {
+                                        if (saveColorResult && saveColorResult.success) {
+                                            if (window.messageRenderer) window.messageRenderer.setUserAvatarColor(avgColor);
+                                        } else {
+                                            console.warn("Failed to save user avatar color via IPC:", saveColorResult?.error);
+                                        }
+                                    }).catch(err => console.error("Error saving user avatar color:", err));
                             }
                         });
                     }
@@ -1998,11 +2004,17 @@ async function saveCurrentAgentSettings(event) {
                 alert(`保存头像失败: ${avatarResult.error}`);
             } else {
                 // Trigger color extraction and saving for the new agent avatar
-                if (avatarResult.needsColorExtraction && window.messageRenderer && window.messageRenderer.electronAPI.saveAvatarColor) {
-                     getAverageColorFromAvatar(avatarResult.avatarUrl, (avgColor) => { // Assuming getAverageColorFromAvatar is accessible
+                if (avatarResult.needsColorExtraction && window.electronAPI && window.electronAPI.saveAvatarColor) { // Use window.electronAPI directly
+                     getAverageColorFromAvatar(avatarResult.avatarUrl, (avgColor) => {
                         if (avgColor) {
-                            window.messageRenderer.electronAPI.saveAvatarColor({ type: 'agent', id: agentId, color: avgColor })
-                                .then(() => { if(currentAgentId === agentId) window.messageRenderer.setCurrentAgentAvatarColor(avgColor); });
+                            window.electronAPI.saveAvatarColor({ type: 'agent', id: agentId, color: avgColor }) // Use window.electronAPI directly
+                                .then((saveColorResult) => {
+                                    if (saveColorResult && saveColorResult.success) {
+                                        if(currentAgentId === agentId && window.messageRenderer) window.messageRenderer.setCurrentAgentAvatarColor(avgColor);
+                                    } else {
+                                        console.warn(`Failed to save agent ${agentId} avatar color via IPC:`, saveColorResult?.error);
+                                    }
+                                }).catch(err => console.error(`Error saving agent ${agentId} avatar color:`, err));
                         }
                     });
                 }
