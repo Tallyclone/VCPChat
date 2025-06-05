@@ -1321,6 +1321,7 @@ body.light-theme .modal-content .danger-button {
     margin-top: 20px;
     display: flex;
     justify-content: flex-end;
+    gap: 10px; /* 为按钮之间添加间距 */
 }
 
 
