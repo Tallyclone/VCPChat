@@ -7,6 +7,46 @@ const enhancedRenderDebounceTimers = new WeakMap(); // For debouncing prettify c
 
 // Cache for dominant avatar colors
 const avatarColorCache = new Map();
+// --- Helper functions for color conversion ---
+function rgbToHsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h, s, l = (max + min) / 2;
+
+    if (max === min) {
+        h = s = 0; // achromatic
+    } else {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch (max) {
+            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+            case g: h = (b - r) / d + 2; break;
+            case b: h = (r - g) / d + 4; break;
+        }
+        h /= 6;
+    }
+    return [h * 360, s * 100, l * 100]; // Hue in degrees, S/L in %
+}
+
+function hslToRgb(h, s, l) {
+    s /= 100; l /= 100;
+    let c = (1 - Math.abs(2 * l - 1)) * s,
+        x = c * (1 - Math.abs((h / 60) % 2 - 1)),
+        m = l - c / 2,
+        r = 0, g = 0, b = 0;
+
+    if (0 <= h && h < 60) { r = c; g = x; b = 0; }
+    else if (60 <= h && h < 120) { r = x; g = c; b = 0; }
+    else if (120 <= h && h < 180) { r = 0; g = c; b = x; }
+    else if (180 <= h && h < 240) { r = 0; g = x; b = c; }
+    else if (240 <= h && h < 300) { r = x; g = 0; b = c; }
+    else if (300 <= h && h < 360) { r = c; g = 0; b = x; }
+    
+    r = Math.round((r + m) * 255);
+    g = Math.round((g + m) * 255);
+    b = Math.round((b + m) * 255);
+    return `rgb(${r},${g},${b})`;
+}
 
 // --- Enhanced Rendering Styles (from UserScript) ---
 function injectEnhancedStyles() {
@@ -347,6 +387,108 @@ function injectEnhancedStyles() {
         console.error('VCPSub Enhanced UI: Failed to inject styles:', error);
     }
 }
+/**
+ * Extracts a more vibrant and representative color from an image.
+ * @param {string} imageUrl The URL of the image.
+ * @param {function(string|null)} callback Called with the CSS color string (e.g., "rgb(r,g,b)") or null on error.
+ */
+function getAverageColorFromAvatar(imageUrl, callback) {
+    if (!imageUrl) {
+        callback(null);
+        return;
+    }
+    if (avatarColorCache.has(imageUrl)) {
+        callback(avatarColorCache.get(imageUrl));
+        return;
+    }
+
+    const img = new Image();
+    img.crossOrigin = "Anonymous";
+    img.src = imageUrl;
+
+    img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const tempCanvasSize = 30; // Smaller for faster processing
+        canvas.width = tempCanvasSize;
+        canvas.height = tempCanvasSize;
+        ctx.drawImage(img, 0, 0, tempCanvasSize, tempCanvasSize);
+
+        let bestHue = null;
+        let maxSaturation = -1;
+        let r_sum = 0, g_sum = 0, b_sum = 0, pixelCount = 0;
+
+        try {
+            const imageData = ctx.getImageData(0, 0, tempCanvasSize, tempCanvasSize);
+            const data = imageData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+                const alpha = data[i + 3];
+
+                if (alpha < 128) continue; // Skip mostly transparent pixels
+
+                const [h, s, l] = rgbToHsl(r, g, b);
+
+                // Filter pixels: Keep only those with saturation above a certain threshold (e.g., > 20-30%)
+                // and lightness within a good range (e.g., 30-80%).
+                const SATURATION_THRESHOLD = 20; // %
+                const LIGHTNESS_MIN = 30; // %
+                const LIGHTNESS_MAX = 80; // %
+
+                if (s > SATURATION_THRESHOLD && l >= LIGHTNESS_MIN && l <= LIGHTNESS_MAX) {
+                    if (s > maxSaturation) {
+                        maxSaturation = s;
+                        bestHue = h;
+                    }
+                    r_sum += r;
+                    g_sum += g;
+                    b_sum += b;
+                    pixelCount++;
+                }
+            }
+
+            let finalColorString;
+            if (bestHue !== null) {
+                // Reconstruct the final color using the chosen Hue, but with a fixed high saturation (e.g., 70-90%)
+                // and a fixed good lightness (e.g., 50-60%) to ensure it's vibrant and generally readable.
+                const fixedSaturation = 75; // %
+                const fixedLightness = 55; // %
+                finalColorString = hslToRgb(bestHue, fixedSaturation, fixedLightness);
+            } else if (pixelCount > 0) {
+                // Fallback: if no sufficiently saturated pixels, use a modified average RGB
+                // This fallback biases towards brighter components by taking a simple average
+                // and then ensuring it's not too dark or too light.
+                const avg_r = Math.round(r_sum / pixelCount);
+                const avg_g = Math.round(g_sum / pixelCount);
+                const avg_b = Math.round(b_sum / pixelCount);
+
+                const [h_avg, s_avg, l_avg] = rgbToHsl(avg_r, avg_g, avg_b);
+                // Adjust lightness to be within a readable range if the average is too extreme
+                const adjustedLightness = Math.max(40, Math.min(70, l_avg)); // Ensure it's not too dark or too light
+                finalColorString = hslToRgb(h_avg, s_avg, adjustedLightness);
+
+            } else {
+                finalColorString = null; // No suitable pixels at all
+            }
+
+            avatarColorCache.set(imageUrl, finalColorString);
+            callback(finalColorString);
+
+        } catch (e) {
+            console.error("Error processing image data for color extraction:", e, "URL:", imageUrl);
+            avatarColorCache.set(imageUrl, null);
+            callback(null);
+        }
+    };
+
+    img.onerror = () => {
+        console.warn(`Failed to load image for color extraction: ${imageUrl}`);
+        avatarColorCache.set(imageUrl, null);
+        callback(null);
+    };
+}
 
 // --- Enhanced Rendering Core Logic ---
 
@@ -562,10 +704,18 @@ function setCurrentTopicId(topicId) {
 }
 
 function setCurrentAgentAvatar(avatarUrl) {
+    const oldUrl = mainRendererReferences.currentAgentAvatarUrl;
+    if (oldUrl && oldUrl !== avatarUrl) {
+        avatarColorCache.delete(oldUrl); // Clear cache for the old URL
+    }
     mainRendererReferences.currentAgentAvatarUrl = avatarUrl || 'assets/default_avatar.png';
 }
 
 function setUserAvatar(avatarUrl) { // New function to update user avatar
+    const oldUrl = mainRendererReferences.currentUserAvatarUrl;
+    if (oldUrl && oldUrl !== avatarUrl) {
+        avatarColorCache.delete(oldUrl); // Clear cache for the old URL
+    }
     mainRendererReferences.currentUserAvatarUrl = avatarUrl || 'assets/default_user_avatar.png';
 }
 
@@ -658,6 +808,18 @@ function renderMessage(message, isInitialLoad = false) {
             nameTimeDiv.appendChild(timestampDiv);
         }
         
+        // Color the sender's name based on avatar's average color
+        const avatarUrlForColor = message.role === 'user' ? currentUserAvatarUrl : currentAgentAvatarUrl;
+        getAverageColorFromAvatar(avatarUrlForColor, (avgColor) => {
+            // Ensure messageItem is still in the DOM when the async callback fires
+            if (avgColor && messageItem.isConnected) {
+                const nameDivToColor = messageItem.querySelector('.sender-name');
+                if (nameDivToColor) {
+                    nameDivToColor.style.color = avgColor;
+                }
+            }
+        });
+
         const detailsAndBubbleWrapper = document.createElement('div');
         detailsAndBubbleWrapper.classList.add('details-and-bubble-wrapper');
         detailsAndBubbleWrapper.appendChild(nameTimeDiv);
@@ -1211,17 +1373,20 @@ function toggleEditMode(messageItem, message) {
 
         controlsDiv.appendChild(saveButton);
         controlsDiv.appendChild(cancelButton);
-
-        messageItem.appendChild(textarea); 
+ 
+        messageItem.appendChild(textarea);
+        // Ensure controls are appended to the messageItem, not inside another wrapper
+        // If .details-and-bubble-wrapper was being used before, ensure it's bypassed for editing
+        // or that messageItem is the direct parent for the textarea and controlsDiv.
         messageItem.appendChild(controlsDiv);
-        
+         
         if (autoResizeTextarea) autoResizeTextarea(textarea);
         textarea.focus();
         textarea.addEventListener('input', () => autoResizeTextarea(textarea));
         textarea.addEventListener('keydown', (event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault(); 
-                saveButton.click();
+                // Do NOT save on Enter. Allow default behavior (newline).
+                // saveButton.click(); // Removed
             } else if (event.key === 'Escape') {
                 cancelButton.click();
             }

@@ -1359,8 +1359,8 @@ body.light-theme .message-edit-controls button {
 
 /* Editing mode for QQ Style */
 .message-item.message-item-editing {
-    /* When editing, the .message-item still a flex container.
-       We might hide avatar and name-time for simplicity. */
+    flex-direction: column; /* Stack textarea and controls vertically */
+    align-items: stretch; /* Make children (textarea, controls) take full width */
 }
 .message-item.message-item-editing .chat-avatar,
 .message-item.message-item-editing .name-time-block {
@@ -1368,6 +1368,11 @@ body.light-theme .message-edit-controls button {
 }
 .message-item.message-item-editing .md-content {
     display: none; /* Hide the original bubble content */
+}
+
+/* Ensure the details-and-bubble-wrapper is also hidden when editing, if it exists */
+.message-item.message-item-editing .details-and-bubble-wrapper {
+    display: none;
 }
 
 
