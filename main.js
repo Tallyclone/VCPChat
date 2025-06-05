@@ -788,7 +788,7 @@ ipcMain.handle('save-avatar', async (event, agentId, avatarData) => {
         await fs.writeFile(newAvatarPath, nodeBuffer);
         console.log(`Agent ${agentId} 的头像已保存到: ${newAvatarPath}`);
         // Return success and URL, color will be calculated and saved by renderer via 'save-avatar-color'
-        return { success: true, avatarUrl: `file://${newAvatarPath}?t=${Date.Now()}`, needsColorExtraction: true };
+        return { success: true, avatarUrl: `file://${newAvatarPath}?t=${Date.now()}`, needsColorExtraction: true };
     } catch (error) {
         console.error(`保存Agent ${agentId} 头像失败:`, error);
         return { error: `保存头像失败: ${error.message}` };
