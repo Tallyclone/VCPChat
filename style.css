@@ -2217,6 +2217,9 @@ input[type="file"] {
     margin: 0;
     width: auto;
     display: inline-block;
+    vertical-align: middle; /* 保持垂直居中对齐 */
+    position: relative; /* 启用相对定位 */
+    top: 8px; /* 向下微调3像素 */
 }
 
 input[type="file"]::-webkit-file-upload-button,
@@ -2224,7 +2227,7 @@ input[type="file"]::file-selector-button {
     background-color: var(--button-bg);
     color: var(--primary-text);
     border: 1px solid var(--button-bg);
-    padding: 10px 15px;
+    padding: 10px 15px; /* 恢复垂直内边距 */
     border-radius: 8px;
     cursor: pointer;
     font-size: 0.95em;
@@ -2399,5 +2402,16 @@ body.light-theme .highlighted-tag {
 }
 
 .form-group-inline label {
+    margin-bottom: 0; /* 移除标签的底部外边距 */
+}
+
+/* 新增样式：使用户头像表单组内的元素水平排列 */
+.form-group-inline-avatar {
+    display: flex;
+    align-items: center;
+    gap: 10px; /* 调整元素之间的间距 */
+}
+
+.form-group-inline-avatar label {
     margin-bottom: 0; /* 移除标签的底部外边距 */
 }
