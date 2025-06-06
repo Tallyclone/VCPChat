@@ -2388,3 +2388,16 @@ body.light-theme .highlighted-tag {
     color: var(--highlight-text-light);
     background-color: rgba(var(--rgb-secondary-bg-light, 255, 255, 255), 0.3); /* 轻微背景，亮色主题兼容 */
 }
+
+/* 新增样式：使表单组内的元素水平排列 */
+.form-group-inline {
+    display: flex;
+    flex-direction: row !important; /* 确保水平排列 */
+    align-items: center;
+    justify-content: flex-start; /* 将内容靠左对齐 */
+    gap: 10px; /* 调整元素之间的间距 */
+}
+
+.form-group-inline label {
+    margin-bottom: 0; /* 移除标签的底部外边距 */
+}
