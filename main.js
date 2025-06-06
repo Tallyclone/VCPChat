@@ -1,5 +1,7 @@
 // main.js - Electron 主进程
 
+const sharp = require('sharp'); // 确保在文件顶部引入
+
 const { app, BrowserWindow, ipcMain, dialog, nativeTheme, Menu, shell, clipboard, net, nativeImage, globalShortcut } = require('electron'); // Added net, nativeImage, and globalShortcut
 const path = require('path');
 const fs = require('fs-extra'); // Using fs-extra for convenience
@@ -1421,47 +1423,50 @@ ipcMain.handle('select-files-to-send', async (event, agentId, topicId) => {
 
 ipcMain.handle('get-file-as-base64', async (event, filePath) => {
     try {
-        console.log(`[Main - get-file-as-base64] Received request for filePath: "${filePath}"`);
+        console.log(`[Main - get-file-as-base64] ===== REQUEST START ===== Received raw filePath: "${filePath}"`);
         if (!filePath || typeof filePath !== 'string') {
-            console.error('[Main - get-file-as-base64] Invalid file path received:', filePath);
-            throw new Error('Invalid file path provided.');
+            console.error('[Main - get-file-as-base-64] Invalid file path received:', filePath);
+            // 返回一个包含错误信息的对象，并明确指出 base64String 为 null
+            return { error: 'Invalid file path provided.', base64String: null };
         }
         
-        const cleanPath = filePath.startsWith('file://') ? filePath.substring(7) : filePath;
-        console.log(`[Main - get-file-as-base64] Cleaned path: "${cleanPath}"`);
+        const cleanPath = filePath.startsWith('file://') ? decodeURIComponent(filePath.substring(7)) : decodeURIComponent(filePath);
+        console.log(`[Main - get-file-as-base-64] Cleaned path: "${cleanPath}"`);
         
         if (!await fs.pathExists(cleanPath)) {
-            console.error(`[Main - get-file-as-base64] File not found at path: ${cleanPath}`);
-            throw new Error(`File not found at path: ${cleanPath}`);
+            console.error(`[Main - get-file-as-base-64] File not found at path: ${cleanPath}`);
+            return { error: `File not found at path: ${cleanPath}`, base64String: null };
         }
         
-        console.log(`[Main - get-file-as-base64] Reading file: ${cleanPath}`);
+        console.log(`[Main - get-file-as-base-64] Reading file: ${cleanPath}`);
         const fileBuffer = await fs.readFile(cleanPath);
+
+        // 可选：如果需要对图片进行处理（例如调整大小、转换格式），可以在这里添加逻辑
+        // 例如，使用 nativeImage (如果 sharp 不可用或不想引入)
+        // const image = nativeImage.createFromBuffer(fileBuffer);
+        // if (!image.isEmpty()) {
+        //     // 示例：如果图片宽度大于1024px，则调整大小
+        //     const size = image.getSize();
+        //     if (size.width > 1024) {
+        //         const resizedImage = image.resize({ width: 1024 });
+        //         // 根据需要转换为 PNG 或 JPEG buffer
+        //         // fileBuffer = resizedImage.toPNG(); // 或者 resizedImage.toJPEG(quality)
+        //         // console.log(`[Main - get-file-as-base-64] Image resized. New buffer length: ${fileBuffer.length}`);
+        //     }
+        // }
+
         const base64String = fileBuffer.toString('base64');
-        console.log(`[Main - get-file-as-base64] Successfully converted "${cleanPath}" to Base64, length: ${base64String.length}`);
-        return base64String;
+        console.log(`[Main - get-file-as-base-64] Successfully converted "${cleanPath}" to Base64, length: ${base64String.length}`);
+        console.log(`[Main - get-file-as-base64] ===== REQUEST END (SUCCESS) =====`);
+        return base64String; // 成功时直接返回 base64 字符串
     } catch (error) {
-        console.error(`[Main - get-file-as-base64] Error processing path "${filePath}":`, error.message);
-        return { error: `获取文件Base64失败: ${error.message}` };
+        console.error(`[Main - get-file-as-base-64] Error processing path "${filePath}":`, error.message, error.stack);
+        console.log(`[Main - get-file-as-base-64] ===== REQUEST END (ERROR) =====`);
+        // 返回一个包含错误信息的对象
+        return { error: `获取文件Base64失败: ${error.message}`, base64String: null };
     }
 });
 
-ipcMain.handle('get-text-content', async (event, filePath, fileType) => {
-    try {
-        console.log(`[Main - get-text-content] Received request for filePath: "${filePath}", type: "${fileType}"`);
-        if (!filePath || !filePath.startsWith('file://')) {
-            throw new Error('Invalid internal file path provided for text content extraction.');
-        }
-        const textContent = await fileManager.getTextContent(filePath, fileType);
-        if (textContent === null) {
-            return { error: `不支持的文件类型 (${fileType}) 或无法提取文本内容。` };
-        }
-        return { success: true, textContent: textContent };
-    } catch (error) {
-        console.error(`[Main - get-text-content] Error extracting text for path "${filePath}":`, error);
-        return { error: `提取文本内容失败: ${error.message}` };
-    }
-});
 
 ipcMain.handle('handle-text-paste-as-file', async (event, agentId, topicId, textContent) => {
     if (!agentId || !topicId) {

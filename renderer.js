@@ -1096,13 +1096,27 @@ async function handleSendMessage() {
                     .filter(att => att.type.startsWith('image/')) // Only process images for VCP's image_url part
                     .map(async att => {
                         try {
-                            const base64Result = await window.electronAPI.getFileAsBase64(att.src);
-                            if (base64Result && !base64Result.error) {
-                                return { type: 'image_url', image_url: { url: `data:${att.type};base64,${base64Result}` } };
+                            const base64Data = await window.electronAPI.getFileAsBase64(att.src); // att.src 对应 af.localPath
+                            if (base64Data && typeof base64Data === 'string') { // 成功获取到 base64 字符串
+                                console.log(`[Renderer - handleSendMessage] Image ${att.name} - Base64 length: ${base64Data.length}`);
+                                return {
+                                    type: 'image_url', // Gemini-style
+                                    image_url: {
+                                        url: `data:${att.type};base64,${base64Data}`
+                                    }
+                                };
+                            } else if (base64Data && base64Data.error) { // IPC 调用返回了错误对象
+                                console.error(`[Renderer - handleSendMessage] Failed to get Base64 for ${att.name}: ${base64Data.error}`);
+                                uiHelperFunctions.showToastNotification(`处理图片 ${att.name} 失败: ${base64Data.error}`, 'error');
+                                return null; // 不将此图片添加到 vcpImageAttachmentsPayload
+                            } else {
+                                // 返回的不是字符串也不是错误对象，这不应该发生
+                                console.error(`[Renderer - handleSendMessage] Unexpected return from getFileAsBase64 for ${att.name}:`, base64Data);
+                                return null;
                             }
-                            return null;
-                        } catch (imgError) {
-                            console.warn(`Error processing image ${att.name} for VCP image_url:`, imgError);
+                        } catch (processingError) {
+                            console.error(`[Renderer - handleSendMessage] Exception during getBase64 for ${att.name} (internal: ${att.src}):`, processingError);
+                            uiHelperFunctions.showToastNotification(`处理图片 ${att.name} 时发生异常: ${processingError.message}`, 'error');
                             return null;
                         }
                     })
