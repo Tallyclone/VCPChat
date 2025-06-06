@@ -5,6 +5,19 @@ const ENHANCED_RENDER_DEBOUNCE_DELAY = 400; // ms, for general blocks during str
 const DIARY_RENDER_DEBOUNCE_DELAY = 1000; // ms, potentially longer for diary if complex
 const enhancedRenderDebounceTimers = new WeakMap(); // For debouncing prettify calls
 
+// --- Smooth Streaming Constants & State ---
+// const ENABLE_SMOOTH_STREAMING = false; // Master switch for the feature - Will be read from globalSettings
+// const SMOOTH_STREAM_INTERVAL_MS = 25; // Interval for processing the chunk queue (ms) - Will be read from globalSettings
+// const MIN_CHUNK_BUFFER_SIZE = 1; // Minimum characters to try to batch for rendering in one go. - Will be read from globalSettings
+
+const streamingChunkQueues = new Map(); // messageId -> array of original chunk strings
+const streamingTimers = new Map();      // messageId -> intervalId
+// Stores the full text received so far, even if not yet rendered by the smooth timer.
+// This is crucial for features like VCP/Diary block detection that need the complete context.
+const accumulatedStreamText = new Map(); // messageId -> string
+// pendingRenderBuffer is no longer needed with per-character queuing and batching in processAndRenderSmoothChunk
+
+
 // Cache for dominant avatar colors
 const avatarColorCache = new Map();
 
@@ -408,6 +421,14 @@ function injectEnhancedStyles() {
         console.error('VCPSub Enhanced UI: Failed to inject styles:', error);
     }
 }
+
+function shouldEnableSmoothStreaming(/* messageId */) {
+    const globalSettings = mainRendererReferences.globalSettingsRef.get();
+    const enabled = globalSettings.enableSmoothStreaming === true; // Ensure it's explicitly true
+    // console.log('[SmoothStreamCheck] shouldEnableSmoothStreaming called. Global setting:', globalSettings.enableSmoothStreaming, 'Returning:', enabled);
+    return enabled;
+}
+
 /**
  * Extracts a more vibrant and representative color from an image.
  * @param {string} imageUrl The URL of the image.
@@ -1118,17 +1139,29 @@ function startStreamingMessage(message) { // message can now include agentName, 
     
     const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
     const historyIndex = currentChatHistoryArray.findIndex(m => m.id === message.id);
+
+    let initialContentForHistory = '';
+    if (shouldEnableSmoothStreaming(message.id)) {
+        console.log(`[SmoothStream START] Initializing smooth streaming for messageId: ${message.id}`);
+        streamingChunkQueues.set(message.id, []); // This will store individual characters
+        accumulatedStreamText.set(message.id, '');
+        // pendingRenderBuffer.set(message.id, ""); // No longer needed
+        // For smooth streaming, the history's content will be updated by the timer.
+        // The `accumulatedStreamText` will hold the "true" full content as chunks arrive.
+        // The `content` in `currentChatHistoryArray` will reflect what's *visibly rendered* by the timer.
+    }
+
     if (historyIndex === -1) { // New message for the stream
         currentChatHistoryArray.push({
             ...message, // Includes role, name, agentId etc.
-            content: '', // Ensure content is empty when stream starts
+            content: initialContentForHistory, // Start with empty or specific initial content
             isThinking: false,
             timestamp: message.timestamp || Date.now(),
             isGroupMessage: message.isGroupMessage || false,
         });
     } else { // Update existing placeholder in history
         currentChatHistoryArray[historyIndex].isThinking = false;
-        currentChatHistoryArray[historyIndex].content = ""; // Ensure content is empty when stream starts
+        currentChatHistoryArray[historyIndex].content = initialContentForHistory; // Reset content
         currentChatHistoryArray[historyIndex].timestamp = message.timestamp || Date.now();
         currentChatHistoryArray[historyIndex].name = message.name || currentChatHistoryArray[historyIndex].name;
         currentChatHistoryArray[historyIndex].agentId = message.agentId || currentChatHistoryArray[historyIndex].agentId;
@@ -1141,34 +1174,138 @@ function startStreamingMessage(message) { // message can now include agentName, 
     return messageItem;
 }
 
+
+// This is the new core processing function that will be called by the timer
+function processAndRenderSmoothChunk(messageId) {
+    // console.log(`[SmoothStream PROCESS] Timer fired for messageId: ${messageId}`);
+    const { chatMessagesDiv, markedInstance, uiHelper } = mainRendererReferences;
+    const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
+    
+    const messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
+    if (!messageItem || !document.body.contains(messageItem)) {
+        if (streamingTimers.has(messageId)) { // Check before clearing
+            clearTimeout(streamingTimers.get(messageId)); // Should be clearInterval
+            streamingTimers.delete(messageId);
+        }
+        streamingChunkQueues.delete(messageId);
+        accumulatedStreamText.delete(messageId);
+        // pendingRenderBuffer.delete(messageId); // No longer needed
+        return;
+    }
+
+    const contentDiv = messageItem.querySelector('.md-content');
+    if (!contentDiv) return;
+
+    const queue = streamingChunkQueues.get(messageId); // This queue now contains individual characters
+
+    if (!queue || queue.length === 0) {
+        return; // Nothing to process from the character queue
+    }
+
+    let textBatchToRender = "";
+    const globalSettings = mainRendererReferences.globalSettingsRef.get();
+    const minChunkSize = globalSettings.minChunkBufferSize !== undefined && globalSettings.minChunkBufferSize >= 1 ? globalSettings.minChunkBufferSize : 1;
+
+    while (queue.length > 0 && textBatchToRender.length < minChunkSize) {
+        textBatchToRender += queue.shift(); // Take one character at a time
+    }
+    
+    const chunkToProcess = textBatchToRender;
+
+    // console.log(`[SmoothStream PROCESS] Timer for ${messageId}. Batch to render: "${chunkToProcess}". Chars in batch: ${chunkToProcess.length}. Queue left: ${queue.length}`);
+
+    if (!chunkToProcess) {
+        return;
+    }
+
+    const messageIndex = currentChatHistoryArray.findIndex(msg => msg.id === messageId);
+    if (messageIndex === -1) {
+        console.warn(`[ProcessSmoothChunk] Message ID ${messageId} not found in history. Aborting render for this chunk.`);
+        return;
+    }
+
+    // Append new chunk to the *history* content, which is the source of truth for rendering
+    currentChatHistoryArray[messageIndex].content += chunkToProcess;
+    mainRendererReferences.currentChatHistoryRef.set([...currentChatHistoryArray]); // Update history reference
+
+    // The `accumulatedStreamText` is already up-to-date from `appendStreamChunk`.
+    // For rendering, we use the content from history, which is now updated.
+    const textForRendering = currentChatHistoryArray[messageIndex].content;
+    
+    // --- Core Rendering Logic (similar to original appendStreamChunk's rendering part) ---
+    const streamingIndicator = contentDiv.querySelector('.streaming-indicator, .thinking-indicator');
+    if (streamingIndicator) streamingIndicator.remove();
+
+    let processedTextForParse = removeSpeakerTags(textForRendering);
+    processedTextForParse = ensureNewlineAfterCodeBlock(processedTextForParse);
+    processedTextForParse = ensureSpaceAfterTilde(processedTextForParse);
+    processedTextForParse = removeIndentationFromCodeBlockMarkers(processedTextForParse);
+    contentDiv.innerHTML = markedInstance.parse(processedTextForParse);
+
+    // Debounced enhanced rendering (VCP Tool, Diary) - uses accumulatedStreamText for detection
+    const fullAccumulatedText = accumulatedStreamText.get(messageId) || ""; // Get the most up-to-date raw text
+    if (messageItem) {
+        let currentDelay = ENHANCED_RENDER_DEBOUNCE_DELAY;
+        if (fullAccumulatedText.includes("<<<DailyNoteStart>>>") || fullAccumulatedText.includes("<<<[TOOL_REQUEST]>>>")) {
+            currentDelay = DIARY_RENDER_DEBOUNCE_DELAY;
+        }
+
+        if (enhancedRenderDebounceTimers.has(messageItem)) {
+            clearTimeout(enhancedRenderDebounceTimers.get(messageItem));
+        }
+        enhancedRenderDebounceTimers.set(messageItem, setTimeout(() => {
+            if (document.body.contains(messageItem)) {
+                const targetContentDiv = messageItem.querySelector('.md-content');
+                if (targetContentDiv) {
+                    targetContentDiv.querySelectorAll('pre[data-vcp-prettified="true"], pre[data-maid-diary-prettified="true"]').forEach(pre => {
+                        delete pre.dataset.vcpPrettified;
+                        delete pre.dataset.maidDiaryPrettified;
+                    });
+                    
+                    // Re-parse with the *currently rendered* text for visual consistency of this step
+                    // but detection was based on full accumulated text.
+                    let processedForDebounce = removeSpeakerTags(textForRendering); // Use textForRendering
+                    processedForDebounce = ensureNewlineAfterCodeBlock(processedForDebounce);
+                    processedForDebounce = ensureSpaceAfterTilde(processedForDebounce);
+                    processedForDebounce = removeIndentationFromCodeBlockMarkers(processedForDebounce);
+                    targetContentDiv.innerHTML = markedInstance.parse(processedForDebounce);
+
+                    if (window.renderMathInElement) {
+                        window.renderMathInElement(targetContentDiv, {
+                            delimiters: [ {left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}, {left: "\\(", right: "\\)", display: false}, {left: "\\[", right: "\\]", display: true} ],
+                            throwOnError: false
+                        });
+                    }
+                    processAllPreBlocksInContentDiv(targetContentDiv);
+                    highlightTagsInMessage(targetContentDiv);
+                }
+            }
+            enhancedRenderDebounceTimers.delete(messageItem);
+        }, currentDelay));
+    }
+    // --- End Core Rendering Logic ---
+    
+    uiHelper.scrollToBottom();
+}
+
+
 function appendStreamChunk(messageId, chunkData, agentNameForGroup, agentIdForGroup) { // Added agentName/Id for group context
     // if (messageId !== mainRendererReferences.activeStreamingMessageId) { // REMOVED CHECK
     //     // console.warn(`appendStreamChunk: Received chunk for inactive/mismatched stream ${messageId}. Current active: ${mainRendererReferences.activeStreamingMessageId}`);
     //     return;
     // }
-    const { chatMessagesDiv, markedInstance, uiHelper } = mainRendererReferences;
+    const { chatMessagesDiv, markedInstance, uiHelper } = mainRendererReferences; // Keep for direct access if needed
     const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
-
-    const messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
-    if (!messageItem) return;
-
-    const contentDiv = messageItem.querySelector('.md-content'); 
-    if (!contentDiv) return;
-
-    // Remove "Receiving..." indicator if it was there
-    const streamingIndicator = contentDiv.querySelector('.streaming-indicator, .thinking-indicator');
-    if (streamingIndicator) streamingIndicator.remove();
-
 
     let textToAppend = "";
     // Standard OpenAI-like chunk structure
     if (chunkData && chunkData.choices && chunkData.choices.length > 0 && chunkData.choices[0].delta && chunkData.choices[0].delta.content) {
         textToAppend = chunkData.choices[0].delta.content;
-    } 
+    }
     // Anthropic-like or other direct delta content
     else if (chunkData && chunkData.delta && typeof chunkData.delta.content === 'string') {
         textToAppend = chunkData.delta.content;
-    } 
+    }
     else if (chunkData && typeof chunkData.content === 'string') { // Simpler structure with direct content
         textToAppend = chunkData.content;
     }
@@ -1178,81 +1315,139 @@ function appendStreamChunk(messageId, chunkData, agentNameForGroup, agentIdForGr
         textToAppend = chunkData.raw + (chunkData.error ? ` (解析错误)` : "");
     }
 
+    if (!textToAppend) return; // No actual text to append
+
+    if (shouldEnableSmoothStreaming(messageId)) {
+        const queue = streamingChunkQueues.get(messageId); // This queue expects individual characters
+        if (queue) {
+            // Split the incoming server chunk into individual characters
+            const chars = textToAppend.split('');
+            for (const char of chars) {
+                queue.push(char);
+            }
+        } else {
+            // Should not happen if startStreamingMessage initialized correctly
+            console.warn(`[appendStreamChunk] No queue for ${messageId}, rendering directly (fallback).`);
+            // Fallback to old direct rendering if queue is missing (should be rare)
+            renderChunkDirectlyToDOM(messageId, textToAppend, agentNameForGroup, agentIdForGroup); // Implement this helper if needed
+            return;
+        }
+        
+        // Update accumulated text for detection features
+        let currentAccumulated = accumulatedStreamText.get(messageId) || "";
+        currentAccumulated += textToAppend;
+        accumulatedStreamText.set(messageId, currentAccumulated);
+
+        // Ensure name/agentId are set in history for group messages (using accumulated text for first chunk context)
+        const messageIndex = currentChatHistoryArray.findIndex(msg => msg.id === messageId);
+        if (messageIndex > -1 && currentChatHistoryArray[messageIndex].isGroupMessage) {
+            if (agentNameForGroup && !currentChatHistoryArray[messageIndex].name) currentChatHistoryArray[messageIndex].name = agentNameForGroup;
+            if (agentIdForGroup && !currentChatHistoryArray[messageIndex].agentId) currentChatHistoryArray[messageIndex].agentId = agentIdForGroup;
+            // Note: The actual `content` field in history is updated by the timer.
+        }
+        mainRendererReferences.currentChatHistoryRef.set([...currentChatHistoryArray]);
+
+
+        if (!streamingTimers.has(messageId)) {
+            const timerId = setInterval(() => {
+                processAndRenderSmoothChunk(messageId);
+                // If queue becomes empty AND stream is known to be finished (e.g. flag set by finalize), clear interval.
+                // finalizeStreamedMessage will also try to clear it.
+                const currentQueue = streamingChunkQueues.get(messageId);
+                if ((!currentQueue || currentQueue.length === 0) && messageIsFinalized(messageId)) { // messageIsFinalized is a conceptual check
+                    clearInterval(streamingTimers.get(messageId));
+                    streamingTimers.delete(messageId);
+                }
+            }, globalSettings.smoothStreamIntervalMs !== undefined && globalSettings.smoothStreamIntervalMs >= 1 ? globalSettings.smoothStreamIntervalMs : 25);
+            streamingTimers.set(messageId, timerId);
+        }
+    } else {
+        // Original direct rendering logic if smooth streaming is disabled
+        renderChunkDirectlyToDOM(messageId, textToAppend, agentNameForGroup, agentIdForGroup);
+    }
+}
+
+// Helper function to conceptualize direct rendering if needed for fallback or when smooth streaming is off
+// This would encapsulate the original rendering logic from appendStreamChunk
+function renderChunkDirectlyToDOM(messageId, textToAppend, agentNameForGroup, agentIdForGroup) {
+    const { chatMessagesDiv, markedInstance, uiHelper } = mainRendererReferences;
+    const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
+
+    const messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
+    if (!messageItem) return;
+    const contentDiv = messageItem.querySelector('.md-content');
+    if (!contentDiv) return;
+
+    const streamingIndicator = contentDiv.querySelector('.streaming-indicator, .thinking-indicator');
+    if (streamingIndicator) streamingIndicator.remove();
 
     const messageIndex = currentChatHistoryArray.findIndex(msg => msg.id === messageId);
     let fullCurrentText = "";
     if (messageIndex > -1) {
         currentChatHistoryArray[messageIndex].content += textToAppend;
-        // If it's a group message and this is the first chunk, ensure name/agentId are set in history
         if (currentChatHistoryArray[messageIndex].isGroupMessage) {
             if (agentNameForGroup && !currentChatHistoryArray[messageIndex].name) currentChatHistoryArray[messageIndex].name = agentNameForGroup;
             if (agentIdForGroup && !currentChatHistoryArray[messageIndex].agentId) currentChatHistoryArray[messageIndex].agentId = agentIdForGroup;
         }
         fullCurrentText = currentChatHistoryArray[messageIndex].content;
     } else {
-        // This case should ideally be handled by startStreamingMessage creating an entry.
-        // If not, we create a temporary representation for rendering.
-        console.warn(`appendStreamChunk: Message ID ${messageId} not found in history for appending. Rendering directly.`);
+        console.warn(`[RenderDirect] Message ID ${messageId} not found in history. Appending to DOM directly.`);
         const tempContainer = document.createElement('div');
-        tempContainer.innerHTML = contentDiv.innerHTML;
-        fullCurrentText = (tempContainer.textContent || "") + textToAppend;
+        tempContainer.innerHTML = contentDiv.innerHTML; // Get current DOM content
+        fullCurrentText = (tempContainer.textContent || "") + textToAppend; // Approximate
     }
-    mainRendererReferences.currentChatHistoryRef.set([...currentChatHistoryArray]); // Update history reference
-    
-    let processedFullCurrentTextForParse = removeSpeakerTags(fullCurrentText); // Remove speaker tags first
+    mainRendererReferences.currentChatHistoryRef.set([...currentChatHistoryArray]);
+
+    let processedFullCurrentTextForParse = removeSpeakerTags(fullCurrentText);
     processedFullCurrentTextForParse = ensureNewlineAfterCodeBlock(processedFullCurrentTextForParse);
     processedFullCurrentTextForParse = ensureSpaceAfterTilde(processedFullCurrentTextForParse);
     processedFullCurrentTextForParse = removeIndentationFromCodeBlockMarkers(processedFullCurrentTextForParse);
     contentDiv.innerHTML = markedInstance.parse(processedFullCurrentTextForParse);
-    
-    // Debounced enhanced rendering (VCP Tool, Diary)
+
+    // Debounced enhanced rendering
     if (messageItem) {
         let currentDelay = ENHANCED_RENDER_DEBOUNCE_DELAY;
         if (fullCurrentText.includes("<<<DailyNoteStart>>>") || fullCurrentText.includes("<<<[TOOL_REQUEST]>>>")) {
-             currentDelay = DIARY_RENDER_DEBOUNCE_DELAY;
+            currentDelay = DIARY_RENDER_DEBOUNCE_DELAY;
         }
-
         if (enhancedRenderDebounceTimers.has(messageItem)) {
             clearTimeout(enhancedRenderDebounceTimers.get(messageItem));
         }
         enhancedRenderDebounceTimers.set(messageItem, setTimeout(() => {
-            if (document.body.contains(messageItem)) { // Check if item still in DOM
+            if (document.body.contains(messageItem)) {
                 const targetContentDiv = messageItem.querySelector('.md-content');
                 if (targetContentDiv) {
-                    // Clear prettified flags before re-parsing and re-prettifying
                     targetContentDiv.querySelectorAll('pre[data-vcp-prettified="true"], pre[data-maid-diary-prettified="true"]').forEach(pre => {
                         delete pre.dataset.vcpPrettified;
                         delete pre.dataset.maidDiaryPrettified;
                     });
-                    // Re-parse with latest full content
-                    let processedForDebounce = ensureNewlineAfterCodeBlock(fullCurrentText);
+                    let processedForDebounce = removeSpeakerTags(fullCurrentText);
+                    processedForDebounce = ensureNewlineAfterCodeBlock(processedForDebounce);
                     processedForDebounce = ensureSpaceAfterTilde(processedForDebounce);
                     processedForDebounce = removeIndentationFromCodeBlockMarkers(processedForDebounce);
-                    processedForDebounce = removeSpeakerTags(processedForDebounce); // Remove speaker tags
                     targetContentDiv.innerHTML = markedInstance.parse(processedForDebounce);
-
                     if (window.renderMathInElement) {
-                         window.renderMathInElement(targetContentDiv, {
-                            delimiters: [ {left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}, {left: "\\(", right: "\\)", display: false}, {left: "\\[", right: "\\]", display: true} ],
-                            throwOnError: false
-                        });
+                        window.renderMathInElement(targetContentDiv, { delimiters: [ {left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}, {left: "\\(", right: "\\)", display: false}, {left: "\\[", right: "\\]", display: true} ], throwOnError: false });
                     }
-                    processAllPreBlocksInContentDiv(targetContentDiv); // Re-apply special formatting
-                    highlightTagsInMessage(targetContentDiv); // Highlight @tags after all other rendering
+                    processAllPreBlocksInContentDiv(targetContentDiv);
+                    highlightTagsInMessage(targetContentDiv);
                 }
             }
             enhancedRenderDebounceTimers.delete(messageItem);
         }, currentDelay));
-    } else if (contentDiv) { // Fallback if messageItem somehow null but contentDiv exists (less likely)
-         if (window.renderMathInElement) {
-             window.renderMathInElement(contentDiv, {delimiters: [ {left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}, {left: "\\(", right: "\\)", display: false}, {left: "\\[", right: "\\]", display: true} ], throwOnError: false });
-         }
-        processAllPreBlocksInContentDiv(contentDiv);
-        highlightTagsInMessage(contentDiv); // Highlight @tags after all other rendering
     }
-    
     uiHelper.scrollToBottom();
 }
+
+// Conceptual function, needs a real mechanism to know if finalize has been called for this messageId
+// This might involve setting a flag on the message object in history or a separate map.
+// For now, finalizeStreamedMessage will be the primary clearer of timers.
+function messageIsFinalized(messageId) {
+    const history = mainRendererReferences.currentChatHistoryRef.get();
+    const msg = history.find(m => m.id === messageId);
+    return msg && (msg.finishReason || msg.isError); // Example: consider finalized if it has a finishReason or an error flag
+}
+
 
 async function finalizeStreamedMessage(messageId, finishReason, fullResponseText, agentNameForGroup, agentIdForGroup) {
     // if (messageId !== mainRendererReferences.activeStreamingMessageId) { // REMOVED CHECK
@@ -1266,27 +1461,66 @@ async function finalizeStreamedMessage(messageId, finishReason, fullResponseText
     const currentTopicIdVal = mainRendererReferences.currentTopicIdRef.get();
     const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
 
-
     const messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
-    if (!messageItem) return;
+    if (!messageItem) {
+        // Clean up any orphaned timer or queue if messageItem is gone
+        if (streamingTimers.has(messageId)) {
+            clearInterval(streamingTimers.get(messageId));
+            streamingTimers.delete(messageId);
+        }
+        streamingChunkQueues.delete(messageId);
+        accumulatedStreamText.delete(messageId);
+        return;
+    }
 
     messageItem.classList.remove('streaming');
     
+    // --- Smooth Streaming Finalization ---
+    if (shouldEnableSmoothStreaming(messageId)) {
+        if (streamingTimers.has(messageId)) {
+            clearInterval(streamingTimers.get(messageId));
+            streamingTimers.delete(messageId);
+        }
+
+        // Process any remaining characters in the queue immediately
+        const queue = streamingChunkQueues.get(messageId); // Character queue
+        let remainingCharsToRender = "";
+
+        if (queue && queue.length > 0) {
+            remainingCharsToRender = queue.join(''); // Join all remaining characters
+            queue.length = 0; // Clear queue
+        }
+        
+        const msgIdx = currentChatHistoryArray.findIndex(msg => msg.id === messageId);
+        if (msgIdx > -1 && remainingCharsToRender.length > 0) {
+            currentChatHistoryArray[msgIdx].content += remainingCharsToRender;
+        }
+        // pendingRenderBuffer.delete(messageId); // No longer needed
+    }
+    // --- End Smooth Streaming Finalization ---
+
     const messageIndex = currentChatHistoryArray.findIndex(msg => msg.id === messageId);
-    let finalFullText = "";
+    let finalFullTextForRender; // This will be the text used for the final render pass
 
     if (messageIndex > -1) {
         const message = currentChatHistoryArray[messageIndex];
         message.finishReason = finishReason;
-        message.isThinking = false; // Ensure thinking state is cleared
-        // If fullResponseText is provided (e.g., from group chat stream end), use it. Otherwise, content should be accumulated.
-        if (typeof fullResponseText === 'string') {
-            // Remove "重新生成中..." prefix if it exists, as it's a transient UI indicator
+        message.isThinking = false;
+
+        // If fullResponseText is provided (e.g., from group chat stream end, or non-streamed direct response),
+        // it should override whatever was accumulated.
+        // For smooth streaming, accumulatedStreamText.get(messageId) should be the most complete version if fullResponseText isn't given.
+        if (typeof fullResponseText === 'string' && fullResponseText.trim() !== '') {
             message.content = fullResponseText.replace(/^重新生成中\.\.\./, '').trim();
+        } else if (shouldEnableSmoothStreaming(messageId) && accumulatedStreamText.has(messageId)) {
+            // If smooth streaming was active and no overriding fullResponseText,
+            // ensure message.content matches the fully accumulated text.
+            message.content = accumulatedStreamText.get(messageId);
         }
-        finalFullText = message.content; // This is the fully accumulated/provided text
+        // If neither, message.content should have been accumulated correctly by non-smooth or by timer.
         
-        // Update name/agentId if this was a group message and they were finalized
+        finalFullTextForRender = message.content;
+
         if (message.isGroupMessage) {
             message.name = agentNameForGroup || message.name;
             message.agentId = agentIdForGroup || message.agentId;
@@ -1296,88 +1530,84 @@ async function finalizeStreamedMessage(messageId, finishReason, fullResponseText
         if (nameTimeBlock && !nameTimeBlock.querySelector('.message-timestamp')) {
             const timestampDiv = document.createElement('div');
             timestampDiv.classList.add('message-timestamp');
-            timestampDiv.textContent = new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            timestampDiv.textContent = new Date(message.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             nameTimeBlock.appendChild(timestampDiv);
         }
 
-        // Re-enable context menu now that streaming is done
-        if (message.role !== 'system' && !messageItem.classList.contains('thinking')) { 
-             messageItem.addEventListener('contextmenu', (e) => {
+        if (message.role !== 'system' && !messageItem.classList.contains('thinking')) {
+            messageItem.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
                 showContextMenu(e, messageItem, message);
             });
         }
         
-        mainRendererReferences.currentChatHistoryRef.set([...currentChatHistoryArray]); // Update history
- 
+        mainRendererReferences.currentChatHistoryRef.set([...currentChatHistoryArray]);
+
         if (currentSelectedItem && currentSelectedItem.id && currentTopicIdVal) {
-            const historyToSave = currentChatHistoryArray.filter(msg => !msg.isThinking); // 确保不保存临时的 "思考中" 消息
+            const historyToSave = currentChatHistoryArray.filter(msg => !msg.isThinking);
             if (currentSelectedItem.type === 'agent') {
                 try {
-                    // console.log(`[MR finalizeStreamedMessage] Saving AGENT history for ${currentSelectedItem.id}, topic ${currentTopicIdVal}. Length: ${historyToSave.length}`);
                     await electronAPI.saveChatHistory(currentSelectedItem.id, currentTopicIdVal, historyToSave);
-                    // console.log(`[MR finalizeStreamedMessage] AGENT history SAVE SUCCEEDED for ${currentSelectedItem.id}, topic ${currentTopicIdVal}.`);
                 } catch (error) {
                     console.error(`[MR finalizeStreamedMessage] FAILED to save AGENT history for ${currentSelectedItem.id}, topic ${currentTopicIdVal}:`, error);
                 }
             } else if (currentSelectedItem.type === 'group') {
-                // 对于群组消息，也由渲染器发起保存其维护的 currentChatHistory 的最终状态。
-                // 主进程的 groupchat.js 模块内的保存逻辑主要针对其自身处理VCP响应时的即时保存，
-                // 此处的调用确保渲染器在流结束后，将包含最新AI回复的完整历史记录也提交一次保存。
                 if (electronAPI.saveGroupChatHistory) {
                     try {
-                        // console.log(`[MR finalizeStreamedMessage] Saving GROUP history via IPC for ${currentSelectedItem.id}, topic ${currentTopicIdVal}. Length: ${historyToSave.length}`);
                         await electronAPI.saveGroupChatHistory(currentSelectedItem.id, currentTopicIdVal, historyToSave);
-                        // console.log(`[MR finalizeStreamedMessage] GROUP history SAVE SUCCEEDED via IPC for ${currentSelectedItem.id}, topic ${currentTopicIdVal}.`);
                     } catch (error) {
                         console.error(`[MR finalizeStreamedMessage] FAILED to save GROUP history via IPC for ${currentSelectedItem.id}, topic ${currentTopicIdVal}:`, error);
                     }
                 } else {
-                    console.warn("MessageRenderer: electronAPI.saveGroupChatHistory is not defined. Group chat history might not be saved correctly after stream finalization.");
+                    console.warn("MessageRenderer: electronAPI.saveGroupChatHistory is not defined.");
                 }
             }
         }
     } else {
         console.warn(`finalizeStreamedMessage: Message ID ${messageId} not found in history at finalization.`);
-        // If message not in history, but we have fullResponseText (likely an error message), use it.
-        // This is crucial for displaying errors for messages that might not have made it cleanly into history.
-        finalFullText = (typeof fullResponseText === 'string' && fullResponseText.trim() !== '') ? fullResponseText : `(消息 ${messageId} 历史记录未找到，结束原因为: ${finishReason})`;
-        // Try to update the DOM element directly if history is missing, especially for errors.
+        finalFullTextForRender = (typeof fullResponseText === 'string' && fullResponseText.trim() !== '') ? fullResponseText
+                              : accumulatedStreamText.get(messageId) || `(消息 ${messageId} 历史记录未找到，结束: ${finishReason})`;
         const directContentDiv = messageItem.querySelector('.md-content');
-        if(directContentDiv && finishReason === 'error') directContentDiv.innerHTML = markedInstance.parse(finalFullText);
+        if(directContentDiv && (finishReason === 'error' || !fullResponseText)) { // Show error or placeholder if history missing
+             directContentDiv.innerHTML = markedInstance.parse(finalFullTextForRender);
+        }
     }
     
+    // Final Render Pass
     const contentDiv = messageItem.querySelector('.md-content');
     if (contentDiv) {
         const thinkingIndicator = contentDiv.querySelector('.thinking-indicator, .streaming-indicator');
         if (thinkingIndicator) thinkingIndicator.remove();
         
-        let processedFinalFullText = removeSpeakerTags(finalFullText); // Remove speaker tags first
-        processedFinalFullText = ensureNewlineAfterCodeBlock(processedFinalFullText);
-        processedFinalFullText = ensureSpaceAfterTilde(processedFinalFullText);
-        processedFinalFullText = removeIndentationFromCodeBlockMarkers(processedFinalFullText);
-        contentDiv.innerHTML = markedInstance.parse(processedFinalFullText);
+        let processedFinalText = removeSpeakerTags(finalFullTextForRender);
+        processedFinalText = ensureNewlineAfterCodeBlock(processedFinalText);
+        processedFinalText = ensureSpaceAfterTilde(processedFinalText);
+        processedFinalText = removeIndentationFromCodeBlockMarkers(processedFinalText);
+        contentDiv.innerHTML = markedInstance.parse(processedFinalText);
 
         if (window.renderMathInElement) {
              window.renderMathInElement(contentDiv, { delimiters: [{left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}, {left: "\\(", right: "\\)", display: false}, {left: "\\[", right: "\\]", display: true}], throwOnError: false });
         }
         
-        // Final re-application of special formatting
-        if (enhancedRenderDebounceTimers.has(messageItem)) { // Clear any pending debounce timer
+        if (enhancedRenderDebounceTimers.has(messageItem)) {
             clearTimeout(enhancedRenderDebounceTimers.get(messageItem));
             enhancedRenderDebounceTimers.delete(messageItem);
         }
-        // Ensure all prettify flags are cleared before final processing
         contentDiv.querySelectorAll('pre[data-vcp-prettified="true"], pre[data-maid-diary-prettified="true"]').forEach(pre => {
             delete pre.dataset.vcpPrettified;
             delete pre.dataset.maidDiaryPrettified;
         });
-        processAllPreBlocksInContentDiv(contentDiv); // Apply VCP/Diary styles one last time
-        highlightTagsInMessage(contentDiv); // Highlight @tags after all other rendering
+        processAllPreBlocksInContentDiv(contentDiv);
+        highlightTagsInMessage(contentDiv);
+    }
+
+    // Clean up smooth streaming specific maps for this message ID
+    if (shouldEnableSmoothStreaming(messageId)) {
+        streamingChunkQueues.delete(messageId); // Already cleared timer, now clear queue map entry
+        accumulatedStreamText.delete(messageId); // Clear accumulated text map entry
     }
 
     uiHelper.scrollToBottom();
-    // console.log(`Streaming finalized for message ${messageId}, reason: ${finishReason}`);
 }
 
 
@@ -1852,23 +2082,28 @@ async function handleRegenerateResponse(originalAssistantMessage) {
         );
 
         if (modelConfigForVCP.stream) {
+            // If streaming is intended, call startStreamingMessage to prepare the UI
+            // This should happen regardless of vcpResult.streamingStarted, as that's just a confirmation from main.
+            // The UI needs to be ready for chunks.
+            if (window.messageRenderer) {
+                 // console.log(`[handleRegenerateResponse] Attempting to start streaming for ${regenerationThinkingMessage.id}`);
+                 // No need for an artificial delay here as the "thinking" message is already rendered.
+                 window.messageRenderer.startStreamingMessage({ ...regenerationThinkingMessage, content: "" });
+            }
+
             if (vcpResult.streamingStarted) {
-                // Stream will be handled by onVCPStreamChunk, which calls startStreamingMessage
-                // We've already rendered a thinking message; onVCPStreamChunk will update it.
-                // startStreamingMessage (called by onVCPStreamChunk) will handle updating the placeholder.
+                // Main process has confirmed it's handling the stream. Chunks will arrive via onVCPStreamChunk.
+                console.log(`[handleRegenerateResponse] Streaming started for ${regenerationThinkingMessage.id} as confirmed by main process.`);
             } else if (vcpResult.streamError || !vcpResult.streamingStarted) {
-                // 使用从 main.js 传来的更详细的错误信息
                 let detailedError = vcpResult.error || '未能启动流';
-                // Prefer errorDetail.message if it exists and is a non-empty string
                 if (vcpResult.errorDetail && typeof vcpResult.errorDetail.message === 'string' && vcpResult.errorDetail.message.trim() !== '') {
                     detailedError = vcpResult.errorDetail.message;
                 }
                 else if (vcpResult.errorDetail && typeof vcpResult.errorDetail === 'string') detailedError = vcpResult.errorDetail;
-
+                console.error(`[handleRegenerateResponse] VCP Stream Error or did not start for ${regenerationThinkingMessage.id}:`, detailedError);
                 finalizeStreamedMessage(regenerationThinkingMessage.id, 'error', `VCP 流错误 (重新生成): ${detailedError}`);
-                // renderMessage 调用已在 finalizeStreamedMessage 内部（如果需要显示系统消息）或通过流事件处理，此处不再重复添加系统消息
             }
-        } else { 
+        } else {
             // Non-streaming response for regeneration
             const thinkingItem = mainRendererReferences.chatMessagesDiv.querySelector(`.message-item[data-message-id="${regenerationThinkingMessage.id}"]`);
             if(thinkingItem) thinkingItem.remove(); // Remove "thinking"

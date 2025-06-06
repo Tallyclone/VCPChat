@@ -518,6 +518,12 @@ async function loadAndApplyGlobalSettings() {
         document.getElementById('vcpLogUrl').value = globalSettings.vcpLogUrl || '';
         document.getElementById('vcpLogKey').value = globalSettings.vcpLogKey || '';
 
+        // Load smooth streaming settings
+        document.getElementById('enableSmoothStreaming').checked = globalSettings.enableSmoothStreaming === true;
+        document.getElementById('minChunkBufferSize').value = globalSettings.minChunkBufferSize !== undefined ? globalSettings.minChunkBufferSize : 1;
+        document.getElementById('smoothStreamIntervalMs').value = globalSettings.smoothStreamIntervalMs !== undefined ? globalSettings.smoothStreamIntervalMs : 25;
+
+
         if (globalSettings.userAvatarUrl && userAvatarPreview) {
             userAvatarPreview.src = globalSettings.userAvatarUrl; // Already has timestamp from main
             userAvatarPreview.style.display = 'block';
@@ -1758,6 +1764,9 @@ function setupEventListeners() {
             sidebarWidth: globalSettings.sidebarWidth, // Keep existing value if not changed by resizer
             notificationsSidebarWidth: globalSettings.notificationsSidebarWidth, // Keep existing
             // userAvatarUrl and userAvatarCalculatedColor are handled by saveUserAvatar
+            enableSmoothStreaming: document.getElementById('enableSmoothStreaming').checked,
+            minChunkBufferSize: parseInt(document.getElementById('minChunkBufferSize').value, 10) || 1,
+            smoothStreamIntervalMs: parseInt(document.getElementById('smoothStreamIntervalMs').value, 10) || 25,
         };
 
         const userAvatarCropped = getCroppedFile('user'); // Use central getter
