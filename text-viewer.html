@@ -265,27 +265,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            let originalContent = ''; // To store original content of mainContentDiv
-            const codeBlockOriginalContents = new Map(); // To store original content of code blocks
-            let currentEditingElement = null; // Track the currently edited element
-
-            // Custom renderer to handle images
-            const renderer = new marked.Renderer();
-            renderer.image = function(href, title, text) {
-                // If the image is hidden by CSS (display: none), we don't want any alt text to show.
-                // If text (alt attribute) is provided, we can wrap it in a hidden span.
-                // If no text is provided, return an empty string to prevent default [图片] or similar.
-                if (text) {
-                    // Return a span that is hidden by CSS, effectively hiding the alt text.
-                    // This preserves the alt text in the DOM for accessibility tools if needed,
-                    // but visually hides it.
-                    return `<span style="display: none;">${text}</span>`;
-                } else {
-                    // If no alt text is provided, return an empty string to prevent any default placeholder.
-                    return '';
-                }
-            };
-
             function renderQuotedText(text, currentTheme) {
                 // 正则表达式匹配被英文双引号或中文双引号包裹的内容，包括双引号本身
                 // 使用非贪婪匹配确保正确处理一行内多个引用的情况
@@ -329,27 +308,25 @@
 
                 editAllButton.addEventListener('click', () => {
                     const isEditing = contentDiv.isContentEditable;
-                    
+                    contentDiv.contentEditable = !isEditing;
+
                     // Re-query the icon element in case it was replaced
                     currentEditAllButtonIcon = editAllButton.querySelector('svg');
 
                     if (!isEditing) { // Entering edit mode
-                        originalContent = contentDiv.innerHTML; // Save original content
-                        contentDiv.contentEditable = true; // Explicitly set to true
                         contentDiv.focus();
                         if(currentEditAllButtonIcon) currentEditAllButtonIcon.outerHTML = globalDoneIconSVGString;
                         if(editAllButtonText) editAllButtonText.textContent = '完成编辑';
                         editAllButton.setAttribute('title', '完成编辑');
                         contentDiv.classList.add('editing-all');
-                    } else { // Exiting edit mode (saving or cancelling)
-                        contentDiv.contentEditable = false; // Explicitly set to false
+                    } else { // Exiting edit mode
                         if(currentEditAllButtonIcon) currentEditAllButtonIcon.outerHTML = globalEditIconSVGString;
                         if(editAllButtonText) editAllButtonText.textContent = '编辑全文';
                         editAllButton.setAttribute('title', '编辑全文');
                         contentDiv.classList.remove('editing-all');
-                        // Re-render Markdown and highlight if content changed and it's not just a cancel
-                        // For simplicity, we'll just exit edit mode. A real save would involve sending data.
-                        // If re-rendering is desired after save, it would go here.
+                        // Note: The content is now raw HTML. If Markdown re-rendering is desired,
+                        // it would need to be implemented here (e.g., by taking contentDiv.innerText,
+                        // re-parsing with marked, and re-applying syntax highlighting).
                     }
                 });
             }
@@ -388,9 +365,9 @@
                 // 应用自定义引号渲染
                 decodedText = renderQuotedText(decodedText, theme);
 
-                // Render Markdown with custom renderer
+                // Render Markdown
                 if (window.marked) {
-                    contentDiv.innerHTML = marked.parse(decodedText, { renderer: renderer }); // Use custom renderer
+                    contentDiv.innerHTML = marked.parse(decodedText);
                     // Apply syntax highlighting after Markdown is rendered
                     if (window.hljs) {
                         hljs.highlightAll();
@@ -411,15 +388,12 @@
                             editButton.addEventListener('click', (e) => {
                                 e.stopPropagation();
                                 const isEditing = block.isContentEditable;
-                                
-                                if (!isEditing) { // Entering edit mode
-                                    codeBlockOriginalContents.set(block, block.innerText); // Save original content
-                                    block.contentEditable = true; // Explicitly set to true
+                                block.contentEditable = !isEditing; // Toggle contentEditable on the code block itself
+                                if (!isEditing) {
                                     block.focus(); // Focus the block for editing
                                     editButton.innerHTML = doneIconSVG;
                                     editButton.setAttribute('title', '完成编辑');
-                                } else { // Exiting edit mode (saving or cancelling)
-                                    block.contentEditable = false; // Explicitly set to false
+                                } else {
                                     editButton.innerHTML = editIconSVG;
                                     editButton.setAttribute('title', '编辑');
                                     // After editing, syntax highlighting might be lost or incorrect.
@@ -427,7 +401,6 @@
                                     if (window.hljs && typeof hljs.highlightElement === 'function') {
                                         hljs.highlightElement(block);
                                     }
-                                    codeBlockOriginalContents.delete(block); // Clear original content after save
                                 }
                             });
                             preElement.appendChild(editButton);
@@ -543,14 +516,11 @@
                 }
             });
 
-            // This keydown listener will be replaced/modified
-            /*
             document.addEventListener('keydown', (event) => {
                 if (event.key === 'Escape') {
                     contextMenu.style.display = 'none';
                 }
             });
-            */
 
             contextMenuCopyButton.addEventListener('click', () => {
                 const selectedText = window.getSelection().toString();
@@ -614,68 +584,11 @@
                 contextMenu.style.display = 'none';
             });
         }
-
-        // Global keyboard listener for Enter and Escape
+		
+        // Add keyboard listener for Escape key to close the window
         document.addEventListener('keydown', (event) => {
-            const mainContentDiv = document.getElementById('textContent');
-            const isMainContentEditable = mainContentDiv.isContentEditable;
-            const activeElement = document.activeElement;
-            const isCodeBlockEditable = activeElement && activeElement.closest('code.hljs') && activeElement.isContentEditable;
-
             if (event.key === 'Escape') {
-                event.preventDefault(); // Prevent default Escape behavior
-
-                if (isMainContentEditable) {
-                    // "Cancel" for main content: restore original content and exit edit mode
-                    mainContentDiv.innerHTML = originalContent; // Restore original
-                    mainContentDiv.contentEditable = false; // Explicitly set to false
-                    mainContentDiv.classList.remove('editing-all');
-                    const editAllButton = document.getElementById('editAllButton');
-                    if (editAllButton) {
-                        const editAllButtonIcon = editAllButton.querySelector('svg');
-                        const editAllButtonText = editAllButton.querySelector('span');
-                        if(editAllButtonIcon) editAllButtonIcon.outerHTML = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>`;
-                        if(editAllButtonText) editAllButtonText.textContent = '编辑全文';
-                        editAllButton.setAttribute('title', '编辑全文');
-                    }
-                } else if (isCodeBlockEditable) {
-                    const currentCodeBlock = activeElement.closest('code.hljs');
-                    // "Cancel" for code block: restore original content and exit edit mode
-                    if (codeBlockOriginalContents.has(currentCodeBlock)) {
-                        currentCodeBlock.innerText = codeBlockOriginalContents.get(currentCodeBlock); // Restore original
-                        // Re-highlight after restoring
-                        if (window.hljs && typeof hljs.highlightElement === 'function') {
-                            hljs.highlightElement(currentCodeBlock);
-                        }
-                    }
-                    currentCodeBlock.contentEditable = false; // Explicitly set to false
-                    const editButton = currentCodeBlock.parentElement.querySelector('.edit-button');
-                    if (editButton) {
-                        editButton.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>`;
-                        editButton.setAttribute('title', '编辑');
-                    }
-                    codeBlockOriginalContents.delete(currentCodeBlock); // Clear original content after cancel
-                } else {
-                    // Pure viewing mode: Escape closes the window
-                    window.close();
-                }
-            } else if (event.key === 'Enter') {
-                if (isMainContentEditable) {
-                    event.preventDefault(); // Prevent new line in contentEditable
-                    // Simulate "Save" for main content: exit edit mode
-                    const editAllButton = document.getElementById('editAllButton');
-                    if (editAllButton) {
-                        editAllButton.click();
-                    }
-                } else if (isCodeBlockEditable) {
-                    event.preventDefault(); // Prevent new line in contentEditable
-                    // Simulate "Save" for code block: exit edit mode
-                    const currentCodeBlock = activeElement.closest('code.hljs');
-                    const editButton = currentCodeBlock.parentElement.querySelector('.edit-button');
-                    if (editButton) {
-                        editButton.click();
-                    }
-                }
+                window.close();
             }
         });
     </script>
