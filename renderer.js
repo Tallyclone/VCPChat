@@ -2117,51 +2117,65 @@ function updateAttachmentPreview() {
         console.error('[Renderer] updateAttachmentPreview: attachmentPreviewArea is null or undefined!');
         return;
     }
- 
+
     attachmentPreviewArea.innerHTML = ''; // Clear previous previews
     if (attachedFiles.length === 0) {
         attachmentPreviewArea.style.display = 'none';
         return;
     }
     attachmentPreviewArea.style.display = 'flex'; // Show the area
- 
+
     attachedFiles.forEach((af, index) => {
         const prevDiv = document.createElement('div');
         prevDiv.className = 'attachment-preview-item';
-        prevDiv.title = af.originalName || af.file.name; // Use originalName if available
+        prevDiv.title = af.originalName || af.file.name;
 
-        const iconSpan = document.createElement('span');
-        iconSpan.className = 'file-preview-icon';
-        const fileType = af.file.type; // Standard File object 'type'
+        const fileType = af.file.type;
+
         if (fileType.startsWith('image/')) {
-            iconSpan.textContent = '🖼️'; // Image icon
-        } else if (fileType.startsWith('audio/')) {
-            iconSpan.textContent = '🎵'; // Audio icon
-        } else if (fileType.startsWith('video/')) {
-            iconSpan.textContent = '🎞️'; // Video icon
-        } else if (fileType.includes('pdf')) {
-            iconSpan.textContent = '📄'; // PDF icon (generic document)
+            const thumbnailImg = document.createElement('img');
+            thumbnailImg.className = 'attachment-thumbnail-image';
+            thumbnailImg.src = af.localPath; // Assumes localPath is a usable URL (e.g., file://)
+            thumbnailImg.alt = af.originalName || af.file.name;
+            thumbnailImg.onerror = () => { // Fallback to icon if image fails to load
+                thumbnailImg.remove(); // Remove broken image
+                const iconSpanFallback = document.createElement('span');
+                iconSpanFallback.className = 'file-preview-icon';
+                iconSpanFallback.textContent = '⚠️'; // Error/fallback icon
+                prevDiv.prepend(iconSpanFallback); // Add fallback icon at the beginning
+            };
+            prevDiv.appendChild(thumbnailImg);
         } else {
-            iconSpan.textContent = '📎'; // Generic attachment icon
+            const iconSpan = document.createElement('span');
+            iconSpan.className = 'file-preview-icon';
+            if (fileType.startsWith('audio/')) {
+                iconSpan.textContent = '🎵';
+            } else if (fileType.startsWith('video/')) {
+                iconSpan.textContent = '🎞️';
+            } else if (fileType.includes('pdf')) {
+                iconSpan.textContent = '📄';
+            } else {
+                iconSpan.textContent = '📎';
+            }
+            prevDiv.appendChild(iconSpan);
         }
 
         const nameSpan = document.createElement('span');
         nameSpan.className = 'file-preview-name';
         const displayName = af.originalName || af.file.name;
         nameSpan.textContent = displayName.length > 20 ? displayName.substring(0, 17) + '...' : displayName;
-        
+        prevDiv.appendChild(nameSpan);
+
         const removeBtn = document.createElement('button');
         removeBtn.className = 'file-preview-remove-btn';
-        removeBtn.innerHTML = '&times;'; // Close icon
+        removeBtn.innerHTML = '×';
         removeBtn.title = '移除此附件';
         removeBtn.onclick = () => {
-            attachedFiles.splice(index, 1); // Remove file from array
-            updateAttachmentPreview(); // Re-render preview area
+            attachedFiles.splice(index, 1);
+            updateAttachmentPreview();
         };
-
-        prevDiv.appendChild(iconSpan);
-        prevDiv.appendChild(nameSpan);
         prevDiv.appendChild(removeBtn);
+
         attachmentPreviewArea.appendChild(prevDiv);
     });
 }
