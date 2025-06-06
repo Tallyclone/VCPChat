@@ -1349,14 +1349,53 @@ function appendStreamChunk(messageId, chunkData, agentNameForGroup, agentIdForGr
 
 
         if (!streamingTimers.has(messageId)) {
+            const globalSettings = mainRendererReferences.globalSettingsRef.get(); // Ensure globalSettings is accessible
             const timerId = setInterval(() => {
-                processAndRenderSmoothChunk(messageId);
-                // If queue becomes empty AND stream is known to be finished (e.g. flag set by finalize), clear interval.
-                // finalizeStreamedMessage will also try to clear it.
+                processAndRenderSmoothChunk(messageId); // This updates message.content and DOM
+                
                 const currentQueue = streamingChunkQueues.get(messageId);
-                if ((!currentQueue || currentQueue.length === 0) && messageIsFinalized(messageId)) { // messageIsFinalized is a conceptual check
+                if ((!currentQueue || currentQueue.length === 0) && messageIsFinalized(messageId)) {
                     clearInterval(streamingTimers.get(messageId));
                     streamingTimers.delete(messageId);
+                    console.log(`[SmoothStream END] Timer cleared for ${messageId}. Queue empty and message finalized.`);
+                    
+                    // Perform a final explicit render pass to ensure all elements (like pre blocks, tags) are correctly processed on the *absolute final* content.
+                    const finalMessageItem = mainRendererReferences.chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
+                    const finalHistory = mainRendererReferences.currentChatHistoryRef.get();
+                    const finalMsgIdx = finalHistory.findIndex(m => m.id === messageId);
+
+                    if (finalMessageItem && finalMsgIdx > -1) {
+                        const finalContentDiv = finalMessageItem.querySelector('.md-content');
+                        const textForFinalPass = finalHistory[finalMsgIdx].content;
+                        
+                        if (finalContentDiv && typeof textForFinalPass === 'string') {
+                            if (enhancedRenderDebounceTimers.has(finalMessageItem)) {
+                                clearTimeout(enhancedRenderDebounceTimers.get(finalMessageItem));
+                                enhancedRenderDebounceTimers.delete(finalMessageItem);
+                            }
+                            finalContentDiv.querySelectorAll('pre[data-vcp-prettified="true"], pre[data-maid-diary-prettified="true"]').forEach(pre => {
+                                delete pre.dataset.vcpPrettified;
+                                delete pre.dataset.maidDiaryPrettified;
+                            });
+
+                            let processedText = removeSpeakerTags(textForFinalPass);
+                            processedText = ensureNewlineAfterCodeBlock(processedText);
+                            processedText = ensureSpaceAfterTilde(processedText);
+                            processedText = removeIndentationFromCodeBlockMarkers(processedText);
+                            finalContentDiv.innerHTML = mainRendererReferences.markedInstance.parse(processedText);
+
+                            if (window.renderMathInElement) {
+                                window.renderMathInElement(finalContentDiv, { delimiters: [{left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}, {left: "\\(", right: "\\)", display: false}, {left: "\\[", right: "\\]", display: true}], throwOnError: false });
+                            }
+                            processAllPreBlocksInContentDiv(finalContentDiv);
+                            highlightTagsInMessage(finalContentDiv);
+                            mainRendererReferences.uiHelper.scrollToBottom();
+                        }
+                    }
+                    // Clean up maps after everything is done for this stream
+                    streamingChunkQueues.delete(messageId);
+                    accumulatedStreamText.delete(messageId);
+                    console.log(`[SmoothStream CLEANUP] Queue and accumulated text cleared for ${messageId}.`);
                 }
             }, globalSettings.smoothStreamIntervalMs !== undefined && globalSettings.smoothStreamIntervalMs >= 1 ? globalSettings.smoothStreamIntervalMs : 25);
             streamingTimers.set(messageId, timerId);
@@ -1476,49 +1515,33 @@ async function finalizeStreamedMessage(messageId, finishReason, fullResponseText
     messageItem.classList.remove('streaming');
     
     // --- Smooth Streaming Finalization ---
-    if (shouldEnableSmoothStreaming(messageId)) {
-        if (streamingTimers.has(messageId)) {
-            clearInterval(streamingTimers.get(messageId));
-            streamingTimers.delete(messageId);
-        }
-
-        // Process any remaining characters in the queue immediately
-        const queue = streamingChunkQueues.get(messageId); // Character queue
-        let remainingCharsToRender = "";
-
-        if (queue && queue.length > 0) {
-            remainingCharsToRender = queue.join(''); // Join all remaining characters
-            queue.length = 0; // Clear queue
-        }
-        
-        const msgIdx = currentChatHistoryArray.findIndex(msg => msg.id === messageId);
-        if (msgIdx > -1 && remainingCharsToRender.length > 0) {
-            currentChatHistoryArray[msgIdx].content += remainingCharsToRender;
-        }
-        // pendingRenderBuffer.delete(messageId); // No longer needed
-    }
+    // For smooth streaming, we no longer clear the timer or process remaining queue here.
+    // The timer will continue until the queue is empty and messageIsFinalized() is true.
+    // We only set the finishReason and update accumulatedStreamText if fullResponseText is provided.
     // --- End Smooth Streaming Finalization ---
 
     const messageIndex = currentChatHistoryArray.findIndex(msg => msg.id === messageId);
-    let finalFullTextForRender; // This will be the text used for the final render pass
+    let finalFullTextForRender;
 
     if (messageIndex > -1) {
         const message = currentChatHistoryArray[messageIndex];
-        message.finishReason = finishReason;
+        message.finishReason = finishReason; // Set finishReason so messageIsFinalized() works for the timer
         message.isThinking = false;
 
-        // If fullResponseText is provided (e.g., from group chat stream end, or non-streamed direct response),
-        // it should override whatever was accumulated.
-        // For smooth streaming, accumulatedStreamText.get(messageId) should be the most complete version if fullResponseText isn't given.
         if (typeof fullResponseText === 'string' && fullResponseText.trim() !== '') {
-            message.content = fullResponseText.replace(/^重新生成中\.\.\./, '').trim();
-        } else if (shouldEnableSmoothStreaming(messageId) && accumulatedStreamText.has(messageId)) {
-            // If smooth streaming was active and no overriding fullResponseText,
-            // ensure message.content matches the fully accumulated text.
-            message.content = accumulatedStreamText.get(messageId);
+            const correctedText = fullResponseText.replace(/^重新生成中\.\.\./, '').trim();
+            if (shouldEnableSmoothStreaming(messageId)) {
+                accumulatedStreamText.set(messageId, correctedText); // Update the source of truth for full text
+                // message.content will be built by the timer based on the queue
+            } else {
+                message.content = correctedText; // For non-smooth, update content directly
+            }
         }
-        // If neither, message.content should have been accumulated correctly by non-smooth or by timer.
+        // If smooth streaming and no fullResponseText, accumulatedStreamText was already updated by appendStreamChunk.
+        // message.content is being built by processAndRenderSmoothChunk.
         
+        // For the non-smooth streaming path, finalFullTextForRender will use the updated message.content.
+        // For smooth streaming, this final render pass in finalizeStreamedMessage is skipped.
         finalFullTextForRender = message.content;
 
         if (message.isGroupMessage) {
@@ -1565,49 +1588,69 @@ async function finalizeStreamedMessage(messageId, finishReason, fullResponseText
         }
     } else {
         console.warn(`finalizeStreamedMessage: Message ID ${messageId} not found in history at finalization.`);
-        finalFullTextForRender = (typeof fullResponseText === 'string' && fullResponseText.trim() !== '') ? fullResponseText
-                              : accumulatedStreamText.get(messageId) || `(消息 ${messageId} 历史记录未找到，结束: ${finishReason})`;
+        // If message not in history, and smooth streaming was active, still need to clean up maps and timer
+        if (shouldEnableSmoothStreaming(messageId)) {
+            if (streamingTimers.has(messageId)) {
+                clearInterval(streamingTimers.get(messageId));
+                streamingTimers.delete(messageId);
+            }
+        }
+        // For non-smooth, try to render what we have
+        finalFullTextForRender = (typeof fullResponseText === 'string' && fullResponseText.trim() !== '')
+                               ? fullResponseText.replace(/^重新生成中\.\.\./, '').trim()
+                               : accumulatedStreamText.get(messageId) || `(消息 ${messageId} 历史记录未找到，结束: ${finishReason})`;
         const directContentDiv = messageItem.querySelector('.md-content');
-        if(directContentDiv && (finishReason === 'error' || !fullResponseText)) { // Show error or placeholder if history missing
+        if(directContentDiv && (finishReason === 'error' || !fullResponseText || !shouldEnableSmoothStreaming(messageId))) {
              directContentDiv.innerHTML = markedInstance.parse(finalFullTextForRender);
         }
     }
     
-    // Final Render Pass
-    const contentDiv = messageItem.querySelector('.md-content');
-    if (contentDiv) {
-        const thinkingIndicator = contentDiv.querySelector('.thinking-indicator, .streaming-indicator');
-        if (thinkingIndicator) thinkingIndicator.remove();
-        
-        let processedFinalText = removeSpeakerTags(finalFullTextForRender);
-        processedFinalText = ensureNewlineAfterCodeBlock(processedFinalText);
-        processedFinalText = ensureSpaceAfterTilde(processedFinalText);
-        processedFinalText = removeIndentationFromCodeBlockMarkers(processedFinalText);
-        contentDiv.innerHTML = markedInstance.parse(processedFinalText);
+    // Final Render Pass - ONLY for non-smooth streaming.
+    // Smooth streaming handles its final render in the timer's cleanup logic.
+    if (!shouldEnableSmoothStreaming(messageId)) {
+        const contentDiv = messageItem.querySelector('.md-content');
+        if (contentDiv) {
+            const thinkingIndicator = contentDiv.querySelector('.thinking-indicator, .streaming-indicator');
+            if (thinkingIndicator) thinkingIndicator.remove();
+            
+            // Use finalFullTextForRender which should be correctly set for non-smooth path
+            let textForNonSmoothRender = finalFullTextForRender;
+            if (messageIndex > -1) { // Ensure we use the content from history if available
+                textForNonSmoothRender = currentChatHistoryArray[messageIndex].content;
+            }
 
-        if (window.renderMathInElement) {
-             window.renderMathInElement(contentDiv, { delimiters: [{left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}, {left: "\\(", right: "\\)", display: false}, {left: "\\[", right: "\\]", display: true}], throwOnError: false });
+            let processedFinalText = removeSpeakerTags(textForNonSmoothRender);
+            processedFinalText = ensureNewlineAfterCodeBlock(processedFinalText);
+            processedFinalText = ensureSpaceAfterTilde(processedFinalText);
+            processedFinalText = removeIndentationFromCodeBlockMarkers(processedFinalText);
+            contentDiv.innerHTML = markedInstance.parse(processedFinalText);
+
+            if (window.renderMathInElement) {
+                 window.renderMathInElement(contentDiv, { delimiters: [{left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}, {left: "\\(", right: "\\)", display: false}, {left: "\\[", right: "\\]", display: true}], throwOnError: false });
+            }
+            
+            if (enhancedRenderDebounceTimers.has(messageItem)) {
+                clearTimeout(enhancedRenderDebounceTimers.get(messageItem));
+                enhancedRenderDebounceTimers.delete(messageItem);
+            }
+            contentDiv.querySelectorAll('pre[data-vcp-prettified="true"], pre[data-maid-diary-prettified="true"]').forEach(pre => {
+                delete pre.dataset.vcpPrettified;
+                delete pre.dataset.maidDiaryPrettified;
+            });
+            processAllPreBlocksInContentDiv(contentDiv);
+            highlightTagsInMessage(contentDiv);
         }
-        
-        if (enhancedRenderDebounceTimers.has(messageItem)) {
-            clearTimeout(enhancedRenderDebounceTimers.get(messageItem));
-            enhancedRenderDebounceTimers.delete(messageItem);
-        }
-        contentDiv.querySelectorAll('pre[data-vcp-prettified="true"], pre[data-maid-diary-prettified="true"]').forEach(pre => {
-            delete pre.dataset.vcpPrettified;
-            delete pre.dataset.maidDiaryPrettified;
-        });
-        processAllPreBlocksInContentDiv(contentDiv);
-        highlightTagsInMessage(contentDiv);
     }
 
-    // Clean up smooth streaming specific maps for this message ID
-    if (shouldEnableSmoothStreaming(messageId)) {
-        streamingChunkQueues.delete(messageId); // Already cleared timer, now clear queue map entry
-        accumulatedStreamText.delete(messageId); // Clear accumulated text map entry
-    }
+    // For smooth streaming, queue and accumulated text are cleared by the timer when it finishes.
+    // The timer itself will delete streamingTimers.
+    // No longer clearing streamingChunkQueues or accumulatedStreamText here for smooth streaming.
 
-    uiHelper.scrollToBottom();
+    // scrollToBottom is called by the timer's final render for smooth streaming.
+    // For non-smooth, call it here.
+    if (!shouldEnableSmoothStreaming(messageId)) {
+        uiHelper.scrollToBottom();
+    }
 }
 
 
