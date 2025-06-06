@@ -47,7 +47,7 @@ function createWindow() {
     });
 
     mainWindow.loadFile('main.html');
-    mainWindow.webContents.openDevTools(); // Uncomment for debugging
+    //mainWindow.webContents.openDevTools(); // Uncomment for debugging
 
     mainWindow.once('ready-to-show', () => {
         mainWindow.show();
