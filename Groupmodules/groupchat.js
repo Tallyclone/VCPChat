@@ -78,6 +78,7 @@ async function createAgentGroup(groupName, initialConfig = {}) {
             avatarCalculatedColor: null, // 新增：用于存储头像计算出的颜色
             members: [],
             mode: 'sequential',
+            streamOutput: true, // 新增：默认启用流式输出
             memberTags: {},
             groupPrompt: '',
             invitePrompt: '现在轮到你{{VCPChatAgentName}}发言了。系统已经为大家添加[xxx的发言：]这样的标记头，以用于区分不同发言来自谁。大家不用自己再输出自己的发言标记头，也不需要讨论发言标记系统，正常聊天即可。',
@@ -492,7 +493,7 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
                 model: agentConfig.model,
                 temperature: parseFloat(agentConfig.temperature),
                 max_tokens: agentConfig.maxOutputTokens ? parseInt(agentConfig.maxOutputTokens) : undefined,
-                stream: agentConfig.streamOutput === true || String(agentConfig.streamOutput) === 'true' // 确保流式输出
+                stream: groupConfig.streamOutput === true || String(groupConfig.streamOutput) === 'true' // 使用群组的流式输出设置
             };
 
             const response = await fetch(globalVcpSettings.vcpUrl, {
@@ -1024,8 +1025,9 @@ async function getGroupChatHistory(groupId, topicId) {
         try {
             return await fs.readJson(historyFile);
         } catch (e) {
-            console.error(`[GroupChat] Error reading or parsing history for ${groupId}/${topicId}:`, e);
-            return { error: "Failed to read or parse history file." };
+            // console.error(`[GroupChat] Error reading or parsing history for ${groupId}/${topicId}:`, e); // 根据用户要求移除此报错
+            // If reading or parsing fails, treat it as an empty history to avoid blocking the chat.
+            return [];
         }
     }
     return []; // Return empty array if no history

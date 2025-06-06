@@ -19,6 +19,7 @@ window.GroupRenderer = (() => {
     let groupNameInput, groupAvatarInput, groupAvatarPreview;
     let groupMembersListDiv, addRemoveMembersBtn;
     let groupChatModeSelect;
+    let groupStreamOutputCheckbox; // 新增：流式输出复选框
     let memberTagsContainer, memberTagsInputsDiv;
     let groupPromptTextarea, invitePromptTextarea;
     let deleteGroupBtn;
@@ -107,6 +108,10 @@ window.GroupRenderer = (() => {
                         <option value="naturerandom">自然随机</option>
                     </select>
                 </div>
+                <div class="form-group-inline">
+                    <input type="checkbox" id="groupStreamOutputCheckbox">
+                    <label for="groupStreamOutputCheckbox">启用流式输出</label>
+                </div>
                 <div id="memberTagsContainer" class="form-group" style="display: none;">
                     <label>成员 Tags (用于自然随机模式):</label>
                     <div id="memberTagsInputs"></div>
@@ -144,6 +149,7 @@ window.GroupRenderer = (() => {
         groupAvatarPreview = document.getElementById('groupAvatarPreview');
         groupMembersListDiv = document.getElementById('groupMembersList');
         groupChatModeSelect = document.getElementById('groupChatMode');
+        groupStreamOutputCheckbox = document.getElementById('groupStreamOutputCheckbox'); // 获取新元素
         memberTagsContainer = document.getElementById('memberTagsContainer');
         memberTagsInputsDiv = document.getElementById('memberTagsInputs');
         groupPromptTextarea = document.getElementById('groupPrompt');
@@ -340,6 +346,7 @@ window.GroupRenderer = (() => {
         groupAvatarInput.value = ''; // Clear file input
 
         groupChatModeSelect.value = groupConfig.mode || 'sequential';
+        groupStreamOutputCheckbox.checked = groupConfig.streamOutput === true; // 设置流式输出复选框状态
         groupPromptTextarea.value = groupConfig.groupPrompt || '';
         invitePromptTextarea.value = groupConfig.invitePrompt || '现在轮到你{{VCPChatAgentName}}发言了。';
 
@@ -489,6 +496,7 @@ window.GroupRenderer = (() => {
             name: groupNameInput.value.trim(),
             members: selectedMemberIds,
             mode: groupChatModeSelect.value,
+            streamOutput: groupStreamOutputCheckbox.checked, // 保存流式输出设置
             memberTags: memberTags,
             groupPrompt: groupPromptTextarea.value.trim(),
             invitePrompt: invitePromptTextarea.value.trim()
@@ -839,24 +847,24 @@ window.GroupRenderer = (() => {
             );
 
             if (result.error) {
-                console.error("Sending group chat message failed (main process response):", result.error);
-                messageRenderer.renderMessage({
-                    role: 'system',
-                    content: `群聊消息发送失败: ${result.error}`,
-                    timestamp: Date.now()
-                });
+                // console.error("Sending group chat message failed (main process response):", result.error); // 根据用户要求移除此报错
+                // messageRenderer.renderMessage({ // 根据用户要求移除此报错
+                //     role: 'system',
+                //     content: `群聊消息发送失败: ${result.error}`,
+                //     timestamp: Date.now()
+                // });
             } else {
                 // Success means the message was handed off to groupchat.js for processing.
                 // Responses will come via 'vcp-group-stream-chunk'.
                 console.log("Group message sent to main process for handling.");
             }
         } catch (error) {
-            console.error('发送群聊消息时出错:', error);
-            messageRenderer.renderMessage({
-                role: 'system',
-                content: `发送群聊消息时出错: ${error.message}`,
-                timestamp: Date.now()
-            });
+            // console.error('发送群聊消息时出错:', error); // 根据用户要求移除此报错
+            // messageRenderer.renderMessage({ // 根据用户要求移除此报错
+            //     role: 'system',
+            //     content: `发送群聊消息时出错: ${error.message}`,
+            //     timestamp: Date.now()
+            // });
         }
     }
 

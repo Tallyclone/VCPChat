@@ -1674,6 +1674,19 @@ body.light-theme #agentSettingsForm .form-actions .danger-button:hover {
     gap: 6px;
 }
 
+#groupSettingsForm .form-group-inline { /* For checkbox and label on same line */
+    display: flex;
+    align-items: center;
+    gap: 8px; /* Space between checkbox and label */
+}
+
+#groupSettingsForm .form-group-inline label {
+    margin-bottom: 0; /* Remove bottom margin from label */
+    display: inline-flex; /* Allow label to be inline with checkbox */
+    align-items: center;
+    cursor: pointer;
+}
+
 #groupSettingsForm label {
     display: block;
     font-weight: 500;
