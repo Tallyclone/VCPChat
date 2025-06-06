@@ -47,7 +47,7 @@ function createWindow() {
     });
 
     mainWindow.loadFile('main.html');
-    // mainWindow.webContents.openDevTools(); // Uncomment for debugging
+    mainWindow.webContents.openDevTools(); // Uncomment for debugging
 
     mainWindow.once('ready-to-show', () => {
         mainWindow.show();
@@ -1560,12 +1560,21 @@ ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelCo
             const errorMessageToPropagate = `VCP请求失败: ${response.status} - ${errorData.message || errorData.error || (typeof errorData === 'string' ? errorData : '未知服务端错误')}`;
             
             if (modelConfig.stream === true && event && event.sender && !event.sender.isDestroyed()) {
-                const errorPayload = { type: 'error', error: errorMessageToPropagate, details: errorData, messageId: messageId };
+                // 构造更详细的错误信息
+                let detailedErrorMessage = `服务器返回状态 ${response.status}.`;
+                if (errorData && errorData.message) detailedErrorMessage += ` 错误: ${errorData.message}`;
+                else if (errorData && errorData.error && errorData.error.message) detailedErrorMessage += ` 错误: ${errorData.error.message}`;
+                else if (typeof errorData === 'string' && errorData.length < 200) detailedErrorMessage += ` 响应: ${errorData}`;
+                else if (errorData && errorData.details && typeof errorData.details === 'string' && errorData.details.length < 200) detailedErrorMessage += ` 详情: ${errorData.details}`;
+
+                const errorPayload = { type: 'error', error: `VCP请求失败: ${detailedErrorMessage}`, details: errorData, messageId: messageId }; // details 字段保持原始 errorData
                 if (isGroupCall && groupContext) {
                     Object.assign(errorPayload, groupContext); // Add agentId, agentName, groupId, topicId
                 }
                 event.sender.send(streamChannel, errorPayload);
-                return { streamError: true, errorDetail: errorData };
+                // 为函数返回值构造统一的 errorDetail.message
+                const finalErrorMessageForReturn = `VCP请求失败: ${response.status} - ${errorData.message || (errorData.error && errorData.error.message) || (typeof errorData === 'string' ? errorData : '详细错误请查看控制台')}`;
+                return { streamError: true, error: `VCP请求失败 (${response.status})`, errorDetail: { message: finalErrorMessageForReturn, originalData: errorData } };
             }
             const err = new Error(errorMessageToPropagate);
             err.details = errorData;
@@ -1650,7 +1659,7 @@ ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelCo
                 Object.assign(catchErrorPayload, groupContext);
             }
             event.sender.send(streamChannel, catchErrorPayload);
-            return { streamError: true, error: error.message };
+            return { streamError: true, error: `VCP客户端请求错误`, errorDetail: { message: error.message, stack: error.stack } };
         }
         return { error: `VCP请求错误: ${error.message}` };
     }
