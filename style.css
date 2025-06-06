@@ -89,6 +89,9 @@
     /* RGB versions for semi-transparent backgrounds */
     --rgb-secondary-bg-dark: 40, 40, 44;
     --rgb-secondary-bg-light: 255, 255, 255;
+    /* --- 在这里添加以下两行 --- */
+    --shimmer-color-transparent: rgba(224, 224, 224, 0.6); /* 基于您的主文字颜色 #e0e0e0 */
+    --shimmer-color-highlight: #ffffff; /* 暗色模式下，用纯白作为高光最合适 */
 }
 
 /* --- 亮色主题应用 --- */
@@ -117,6 +120,9 @@ body.light-theme {
     --scrollbar-thumb: var(--scrollbar-thumb-light);
     --scrollbar-thumb-hover: var(--scrollbar-thumb-hover-light);
     --quoted-text: var(--quoted-text-light); /* 新增：引用文本颜色 */
+    /* --- 在这里添加以下两行 --- */
+    --shimmer-color-transparent: rgba(44, 62, 80, 0.3); /* 基于您的亮色主文字 #2c3e50 - 降低透明度以增强对比 */
+    --shimmer-color-highlight: #000000; /* 亮色模式下，用纯黑作为高光有强烈的对比感 */
 }
 
 body.light-theme .main-content {
@@ -2414,4 +2420,48 @@ body.light-theme .highlighted-tag {
 
 .form-group-inline-avatar label {
     margin-bottom: 0; /* 移除标签的底部外边距 */
+}
+
+
+/*
+ * =======================================================
+ * 方案A：流式文字动态“流光”效果 (Text Shimmer Effect)
+ * =======================================================
+ */
+
+/* 1. 定义一个名为 "textShimmer" 的动画过程 */
+@keyframes textShimmer {
+  from {
+    /* 动画开始时，背景渐变的位置在最右侧 */
+    background-position: 200% center;
+  }
+  to {
+    /* 动画结束时，背景渐变的位置移动到最左侧，形成流动效果 */
+    background-position: -200% center;
+  }
+}
+
+/* 2. 将此效果应用到正在流式输出的消息内容上 */
+/* 这个选择器精确地指向了正在流式输出(有.streaming类)的消息项(message-item)中的内容区域(md-content) */
+.message-item.streaming .md-content {
+  /* 创建一个从透明到高亮再到透明的线性渐变作为背景 */
+  background-image: linear-gradient(
+    to right,
+    var(--shimmer-color-transparent) 20%,
+    var(--shimmer-color-highlight) 50%,
+    var(--shimmer-color-transparent) 80%
+  );
+  
+  /* 关键魔法#1：将背景的范围裁切成文字的形状 */
+  background-clip: text;
+  -webkit-background-clip: text; /* 兼容Webkit内核浏览器 */
+
+  /* 关键魔法#2：将文字本身的颜色设为透明，这样才能“透”出后面的背景渐变 */
+  color: transparent;
+  
+  /* 将背景尺寸扩大，以便渐变效果有足够的空间进行移动 */
+  background-size: 200% auto;
+  
+  /* 应用我们之前定义的动画 */
+  animation: textShimmer 2.5s linear infinite; /* 减慢动画速度 */
 }

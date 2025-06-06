@@ -1359,15 +1359,32 @@ function appendStreamChunk(messageId, chunkData, agentNameForGroup, agentIdForGr
                     streamingTimers.delete(messageId);
                     console.log(`[SmoothStream END] Timer cleared for ${messageId}. Queue empty and message finalized.`);
                     
-                    // Perform a final explicit render pass to ensure all elements (like pre blocks, tags) are correctly processed on the *absolute final* content.
                     const finalMessageItem = mainRendererReferences.chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
+                    if (finalMessageItem) {
+                        finalMessageItem.classList.remove('streaming'); // Remove streaming class here for smooth streaming
+                    }
+                    
+                    // Perform a final explicit render pass to ensure all elements (like pre blocks, tags) are correctly processed on the *absolute final* content.
                     const finalHistory = mainRendererReferences.currentChatHistoryRef.get();
                     const finalMsgIdx = finalHistory.findIndex(m => m.id === messageId);
+                    const completeAccumulatedText = accumulatedStreamText.get(messageId) || ""; // Get the full text first
 
-                    if (finalMessageItem && finalMsgIdx > -1) {
+                    if (finalMsgIdx > -1) {
+                        // Update the history content with the complete accumulated text
+                        if (finalHistory[finalMsgIdx].content !== completeAccumulatedText) {
+                            console.log(`[SmoothStream END] Updating history content for ${messageId} from accumulated text. Old length: ${finalHistory[finalMsgIdx].content.length}, New length: ${completeAccumulatedText.length}`);
+                            finalHistory[finalMsgIdx].content = completeAccumulatedText;
+                            mainRendererReferences.currentChatHistoryRef.set([...finalHistory]); // Update the ref
+                        }
+                    } else if (finalMessageItem) { // Message item exists but not in history (should be rare)
+                         console.warn(`[SmoothStream END] Message ${messageId} not found in finalHistory array during final render pass, but messageItem exists. Will render with accumulated text.`);
+                    }
+                    
+                    const textForFinalPass = completeAccumulatedText; // Use this for final rendering
+
+                    if (finalMessageItem) { // Proceed with rendering if message item exists
                         const finalContentDiv = finalMessageItem.querySelector('.md-content');
-                        const textForFinalPass = finalHistory[finalMsgIdx].content;
-                        
+                        // Ensure textForFinalPass is a string before using it in markedInstance.parse
                         if (finalContentDiv && typeof textForFinalPass === 'string') {
                             if (enhancedRenderDebounceTimers.has(finalMessageItem)) {
                                 clearTimeout(enhancedRenderDebounceTimers.get(finalMessageItem));
@@ -1512,7 +1529,11 @@ async function finalizeStreamedMessage(messageId, finishReason, fullResponseText
         return;
     }
 
-    messageItem.classList.remove('streaming');
+    // Only remove 'streaming' class here if smooth streaming is NOT enabled.
+    // For smooth streaming, it's removed when the timer finishes and queue is empty.
+    if (!shouldEnableSmoothStreaming(messageId)) {
+        messageItem.classList.remove('streaming');
+    }
     
     // --- Smooth Streaming Finalization ---
     // For smooth streaming, we no longer clear the timer or process remaining queue here.
@@ -1528,20 +1549,32 @@ async function finalizeStreamedMessage(messageId, finishReason, fullResponseText
         message.finishReason = finishReason; // Set finishReason so messageIsFinalized() works for the timer
         message.isThinking = false;
 
+        let authoritativeTextForHistory = message.content; // Default to existing content from history
+
         if (typeof fullResponseText === 'string' && fullResponseText.trim() !== '') {
             const correctedText = fullResponseText.replace(/^重新生成中\.\.\./, '').trim();
+            authoritativeTextForHistory = correctedText; // Prioritize fullResponseText
             if (shouldEnableSmoothStreaming(messageId)) {
-                accumulatedStreamText.set(messageId, correctedText); // Update the source of truth for full text
-                // message.content will be built by the timer based on the queue
+                // If fullResponseText is the authority, ensure accumulatedStreamText is also updated
+                accumulatedStreamText.set(messageId, correctedText);
+            }
+        } else if (shouldEnableSmoothStreaming(messageId)) {
+            // If fullResponseText is NOT provided for smooth streaming,
+            // use the content from accumulatedStreamText as it should contain all received chunks.
+            const accumulated = accumulatedStreamText.get(messageId);
+            if (typeof accumulated === 'string' && accumulated.length > 0) { // Check if accumulated is a non-empty string
+                authoritativeTextForHistory = accumulated;
             } else {
-                message.content = correctedText; // For non-smooth, update content directly
+                 console.warn(`[finalizeStreamedMessage] For smooth stream ${messageId}, fullResponseText was not provided, and accumulatedStreamText was empty or not a string. Using existing message.content for history: "${message.content.substring(0,50)}..."`);
             }
         }
-        // If smooth streaming and no fullResponseText, accumulatedStreamText was already updated by appendStreamChunk.
-        // message.content is being built by processAndRenderSmoothChunk.
+        // For non-smooth streaming without fullResponseText, message.content (already built by renderChunkDirectlyToDOM) is the best version we have.
+        // So, authoritativeTextForHistory would correctly remain as message.content (the default).
+
+        message.content = authoritativeTextForHistory; // Update the history object
         
-        // For the non-smooth streaming path, finalFullTextForRender will use the updated message.content.
-        // For smooth streaming, this final render pass in finalizeStreamedMessage is skipped.
+        // finalFullTextForRender is used for the non-smooth final render pass later in this function.
+        // It should reflect the most authoritative text determined above.
         finalFullTextForRender = message.content;
 
         if (message.isGroupMessage) {
