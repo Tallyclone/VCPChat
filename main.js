@@ -1425,45 +1425,103 @@ ipcMain.handle('get-file-as-base64', async (event, filePath) => {
     try {
         console.log(`[Main - get-file-as-base64] ===== REQUEST START ===== Received raw filePath: "${filePath}"`);
         if (!filePath || typeof filePath !== 'string') {
-            console.error('[Main - get-file-as-base-64] Invalid file path received:', filePath);
-            // 返回一个包含错误信息的对象，并明确指出 base64String 为 null
+            console.error('[Main - get-file-as-base64] Invalid file path received:', filePath);
             return { error: 'Invalid file path provided.', base64String: null };
         }
         
         const cleanPath = filePath.startsWith('file://') ? decodeURIComponent(filePath.substring(7)) : decodeURIComponent(filePath);
-        console.log(`[Main - get-file-as-base-64] Cleaned path: "${cleanPath}"`);
+        console.log(`[Main - get-file-as-base64] Cleaned path: "${cleanPath}"`);
         
         if (!await fs.pathExists(cleanPath)) {
-            console.error(`[Main - get-file-as-base-64] File not found at path: ${cleanPath}`);
+            console.error(`[Main - get-file-as-base64] File not found at path: ${cleanPath}`);
             return { error: `File not found at path: ${cleanPath}`, base64String: null };
         }
         
-        console.log(`[Main - get-file-as-base-64] Reading file: ${cleanPath}`);
-        const fileBuffer = await fs.readFile(cleanPath);
+        let originalFileBuffer = await fs.readFile(cleanPath); // 读取原始文件
+        let processedFileBuffer = originalFileBuffer; // 默认使用原始buffer
 
-        // 可选：如果需要对图片进行处理（例如调整大小、转换格式），可以在这里添加逻辑
-        // 例如，使用 nativeImage (如果 sharp 不可用或不想引入)
-        // const image = nativeImage.createFromBuffer(fileBuffer);
-        // if (!image.isEmpty()) {
-        //     // 示例：如果图片宽度大于1024px，则调整大小
-        //     const size = image.getSize();
-        //     if (size.width > 1024) {
-        //         const resizedImage = image.resize({ width: 1024 });
-        //         // 根据需要转换为 PNG 或 JPEG buffer
-        //         // fileBuffer = resizedImage.toPNG(); // 或者 resizedImage.toJPEG(quality)
-        //         // console.log(`[Main - get-file-as-base-64] Image resized. New buffer length: ${fileBuffer.length}`);
-        //     }
-        // }
+        const fileExtension = path.extname(cleanPath).toLowerCase();
+        const isImage = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.tiff', '.svg'].includes(fileExtension); // 扩展支持的图片类型
 
-        const base64String = fileBuffer.toString('base64');
-        console.log(`[Main - get-file-as-base-64] Successfully converted "${cleanPath}" to Base64, length: ${base64String.length}`);
+        if (isImage) {
+            console.log(`[Main - get-file-as-base64] Processing image: ${cleanPath}`);
+            const MAX_DIMENSION = 800; // 进一步减小目标尺寸，例如800px
+            const JPEG_QUALITY = 70;   // 稍微降低JPEG质量以减小体积
+            const PNG_COMPRESSION_LEVEL = 7; // 增加PNG压缩级别
+
+            try {
+                let image = sharp(originalFileBuffer);
+                const metadata = await image.metadata();
+                console.log(`[Main Sharp] Original: ${metadata.format}, ${metadata.width}x${metadata.height}, size: ${originalFileBuffer.length} bytes`);
+
+                let needsResize = false;
+                if (metadata.width > MAX_DIMENSION || metadata.height > MAX_DIMENSION) {
+                    console.log(`[Main Sharp] Resizing image to fit within ${MAX_DIMENSION}x${MAX_DIMENSION}`);
+                    image = image.resize({
+                        width: MAX_DIMENSION,
+                        height: MAX_DIMENSION,
+                        fit: sharp.fit.inside,
+                        withoutEnlargement: true
+                    });
+                    needsResize = true;
+                }
+
+                // 目标格式：优先JPEG，除非是需要保留透明的PNG/GIF且VCP支持良好
+                // 考虑到503问题，目前所有图片都尝试转为JPEG以最大化压缩
+                let targetFormat = 'jpeg';
+                let encodeOptions = { quality: JPEG_QUALITY };
+
+                // 如果是GIF，sharp默认会处理第一帧。如果需要动画GIF，处理方式会更复杂。
+                // 目前简单处理，也转为静态JPEG。
+                if (metadata.format === 'gif') {
+                    console.log('[Main Sharp] GIF detected, will be converted to static JPEG.');
+                }
+                
+                // 如果原始是PNG且有透明通道，并且你确认VCP能处理且你需要保留透明度
+                // if (metadata.format === 'png' && metadata.hasAlpha) {
+                //    targetFormat = 'png';
+                //    encodeOptions = { compressionLevel: PNG_COMPRESSION_LEVEL, adaptiveFiltering: true };
+                //    console.log(`[Main Sharp] Encoding as PNG to preserve alpha.`);
+                // } else {
+                //    console.log(`[Main Sharp] Encoding as JPEG.`);
+                // }
+                // 为了解决503，我们先强制都转JPEG
+                console.log(`[Main Sharp] Forcing encoding to JPEG with quality ${JPEG_QUALITY}.`);
+
+
+                if (targetFormat === 'jpeg') {
+                    processedFileBuffer = await image.jpeg(encodeOptions).toBuffer();
+                } else if (targetFormat === 'png') {
+                    processedFileBuffer = await image.png(encodeOptions).toBuffer();
+                }
+                // 如果未来支持WEBP等其他格式，可以在这里添加 else if
+
+                const finalMetadata = await sharp(processedFileBuffer).metadata();
+                console.log(`[Main Sharp] Processed: ${finalMetadata.format}, ${finalMetadata.width}x${finalMetadata.height}, final buffer length: ${processedFileBuffer.length} bytes`);
+
+            } catch (sharpError) {
+                console.error(`[Main Sharp] Error processing image with sharp: ${sharpError.message}. Using original image buffer.`, sharpError);
+                // 如果sharp处理失败，回退到使用原始buffer（但仍然可能导致503）
+                // 或者你可以选择在这里返回一个错误
+                // return { error: `图片处理失败: ${sharpError.message}`, base64String: null };
+                // 为简单起见，我们先尝试用原始buffer，但这意味着优化未生效
+                processedFileBuffer = originalFileBuffer; // 回退
+                console.warn('[Main Sharp] Sharp processing failed. Will attempt to send original image data.');
+            }
+        } else {
+            console.log(`[Main - get-file-as-base64] Non-image file. Buffer length: ${originalFileBuffer.length}`);
+            // processedFileBuffer 已经是 originalFileBuffer
+        }
+
+        const base64String = processedFileBuffer.toString('base64');
+        console.log(`[Main - get-file-as-base64] Successfully converted "${cleanPath}" to Base64. Final Base64 length: ${base64String.length}`);
         console.log(`[Main - get-file-as-base64] ===== REQUEST END (SUCCESS) =====`);
         return base64String; // 成功时直接返回 base64 字符串
+
     } catch (error) {
-        console.error(`[Main - get-file-as-base-64] Error processing path "${filePath}":`, error.message, error.stack);
-        console.log(`[Main - get-file-as-base-64] ===== REQUEST END (ERROR) =====`);
-        // 返回一个包含错误信息的对象
-        return { error: `获取文件Base64失败: ${error.message}`, base64String: null };
+        console.error(`[Main - get-file-as-base64] Outer catch: Error processing path "${filePath}":`, error.message, error.stack);
+        console.log(`[Main - get-file-as-base64] ===== REQUEST END (ERROR) =====`);
+        return { error: `获取/处理文件Base64失败: ${error.message}`, base64String: null };
     }
 });
 
