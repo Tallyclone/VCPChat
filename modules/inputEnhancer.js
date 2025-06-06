@@ -173,14 +173,13 @@ function initializeInputEnhancer(refs) {
     // 2. Enhanced Paste functionality
     messageInput.addEventListener('paste', async (event) => {
         console.log('[InputEnhancer] paste event triggered.');
+        // It's often better to prevent default early if we plan to handle any complex paste type.
+        // We can conditionally allow default later if no custom handling applies.
+        // For now, let's prevent default if there's anything other than simple text.
+        
         const agentId = currentAgentIdRef();
         const topicId = currentTopicIdRef();
         console.log(`[InputEnhancer] Paste event - currentAgentId: ${agentId}, currentTopicId: ${topicId}`); // Added log
-
-        if (!agentId || !topicId) {
-            console.warn('[InputEnhancer] Paste handling skipped: Agent ID or Topic ID missing. Allowing default paste.');
-            return;
-        }
 
         const clipboardData = event.clipboardData || window.clipboardData;
         if (!clipboardData) {
@@ -188,62 +187,42 @@ function initializeInputEnhancer(refs) {
             return;
         }
         const items = clipboardData.items;
-        let isFileOrImagePaste = false;
-        let preventDefaultCalled = false;
+        let handled = false; // Flag to track if we've handled the paste
 
+        // Attempt to handle file items first
         for (let i = 0; i < items.length; i++) {
             const item = items[i];
-            console.log(`[InputEnhancer] Paste item ${i}: kind=${item.kind}, type=${item.type}`);
-
             if (item.kind === 'file') {
                 const file = item.getAsFile();
                 if (file) {
-                    event.preventDefault();
-                    preventDefaultCalled = true;
-                    isFileOrImagePaste = true;
-                    console.log(`[InputEnhancer] Pasted file object: Name: ${file.name}, Type: ${file.type}, Path: ${file.path}`);
+                    event.preventDefault(); // We are handling this
+                    handled = true;
+                    console.log(`[InputEnhancer] Pasted file: Name: ${file.name}, Type: ${file.type}, Size: ${file.size}`);
 
-                    if (file.path) {
-                         try {
-                            console.log('[InputEnhancer] Handling pasted file via path.');
-                            const result = await localElectronAPI.handleFilePaste(agentId, topicId, {
-                                type: 'path',
-                                path: file.path
-                            });
-                            console.log('[InputEnhancer] Result from handleFilePaste (path):', result);
-                            if (result.success && result.attachment) {
-                                const att = result.attachment;
-                                const currentFiles = attachedFilesRef.get();
-                                currentFiles.push({
-                                    file: { name: att.name, type: att.type, size: att.size },
-                                    localPath: att.internalPath,
-                                    originalName: att.name,
-                                    _fileManagerData: att
-                                });
-                                attachedFilesRef.set(currentFiles);
-                                updateAttachmentPreviewRef();
-                                console.log(`[InputEnhancer] Successfully attached pasted file (path): ${att.name}`);
-                            } else {
-                                alert(`粘贴文件失败: ${result.error}`);
-                            }
-                        } catch (err) {
-                            console.error('[InputEnhancer] Error during file path paste IPC:', err);
-                            alert('粘贴文件时发生错误。');
-                        }
-                    } else if (item.type.indexOf('image') !== -1) {
-                         try {
-                            console.log('[InputEnhancer] Handling pasted image data (no path). Checking localElectronAPI before readImageFromClipboard:', localElectronAPI);
-                            const imageData = await localElectronAPI.readImageFromClipboard();
-                            console.log('[InputEnhancer] Image data from clipboard:', imageData ? 'Exists' : 'null');
-                            if (imageData && imageData.data) {
-                                const result = await localElectronAPI.handleFilePaste(agentId, topicId, {
-                                    type: 'base64',
-                                    data: imageData.data,
-                                    extension: imageData.extension || 'png'
-                                });
-                                console.log('[InputEnhancer] Result from handleFilePaste (base64):', result);
-                                if (result.success && result.attachment) {
-                                    const att = result.attachment;
+                    if (!agentId || !topicId) {
+                        alert("请先选择一个Agent和话题才能粘贴文件。");
+                        console.warn('[InputEnhancer] File paste aborted: Agent ID or Topic ID missing.');
+                        return; // Stop further processing for this paste event
+                    }
+
+                    const reader = new FileReader();
+                    reader.onload = async (e_reader) => {
+                        const arrayBuffer = e_reader.target.result;
+                        const fileBuffer = new Uint8Array(arrayBuffer);
+                        console.log(`[InputEnhancer] FileReader loaded for pasted file ${file.name}. Buffer length: ${fileBuffer.length}`);
+
+                        if (fileBuffer.length > 0 || file.size === 0) {
+                            try {
+                                // Use handleFileDrop IPC as it expects an array of file-like objects with a 'data' (buffer) property
+                                const results = await localElectronAPI.handleFileDrop(agentId, topicId, [{
+                                    name: file.name,
+                                    type: file.type || 'application/octet-stream',
+                                    data: fileBuffer,
+                                    size: file.size
+                                }]);
+
+                                if (results && results.length > 0 && results[0].success && results[0].attachment) {
+                                    const att = results[0].attachment;
                                     const currentFiles = attachedFilesRef.get();
                                     currentFiles.push({
                                         file: { name: att.name, type: att.type, size: att.size },
@@ -253,77 +232,124 @@ function initializeInputEnhancer(refs) {
                                     });
                                     attachedFilesRef.set(currentFiles);
                                     updateAttachmentPreviewRef();
-                                    console.log(`[InputEnhancer] Successfully attached pasted image (base64): ${att.name}`);
+                                    console.log(`[InputEnhancer] Successfully attached pasted file: ${att.name}`);
                                 } else {
-                                    alert(`粘贴图片失败: ${result.error}`);
+                                    const errorMsg = results && results.length > 0 && results[0].error ? results[0].error : '未知错误';
+                                    alert(`粘贴文件 "${file.name}" 失败: ${errorMsg}`);
+                                    console.error(`[InputEnhancer] Failed to process pasted file ${file.name}:`, errorMsg);
                                 }
-                            } else {
-                                console.warn('[InputEnhancer] Could not read image data from clipboard for a "file" kind item that was an image.');
-                                alert('无法从剪贴板读取图片数据。');
+                            } catch (err_ipc) {
+                                console.error('[InputEnhancer] Error sending pasted file buffer to main via handleFileDrop IPC:', err_ipc);
+                                alert(`粘贴文件 "${file.name}" 时发生 IPC 错误。`);
                             }
-                        } catch (err) {
-                            console.error('[InputEnhancer] Error during image data paste IPC:', err);
-                            alert('粘贴图片时发生错误。');
+                        } else {
+                            alert(`无法读取粘贴的文件 "${file.name}" 的内容。`);
+                            console.warn(`[InputEnhancer] FileReader read empty buffer for ${file.name} but size was ${file.size}`);
                         }
-                    } else {
-                        console.warn(`[InputEnhancer] Pasted file object ${file.name} has no path and is not a recognized image type for direct handling. Type: ${file.type}`);
-                    }
-                }
-                break;
-            }
-        }
-
-        if (isFileOrImagePaste) {
-            console.log('[InputEnhancer] File or image paste handled.');
-            return;
-        }
-
-        const pastedText = clipboardData.getData('text/plain');
-        if (pastedText && pastedText.length > LONG_TEXT_THRESHOLD) {
-            if (!preventDefaultCalled) { // Only prevent if not already done for file/image
-                event.preventDefault();
-            }
-            console.log(`[InputEnhancer] Pasted long text (${pastedText.length} chars). Automatically converting to .txt file.`);
-            // Removed confirm dialog, proceed directly to file conversion
-            try {
-                console.log('[InputEnhancer] Calling localElectronAPI.handleTextPasteAsFile.');
-                const result = await localElectronAPI.handleTextPasteAsFile(agentId, topicId, pastedText);
-                console.log('[InputEnhancer] Result from handleTextPasteAsFile:', result);
-                if (result.success && result.attachment) {
-                    const att = result.attachment;
-                    const newAttachment = {
-                        file: { name: att.name, type: att.type, size: att.size },
-                        localPath: att.internalPath,
-                        originalName: att.name,
-                        _fileManagerData: att
                     };
-                    console.log('[InputEnhancer] Preparing to push new attachment for long text:', JSON.stringify(newAttachment));
-                    const currentFiles = attachedFilesRef.get();
-                    currentFiles.push(newAttachment);
-                    attachedFilesRef.set(currentFiles);
-                    console.log(`[InputEnhancer] Pushed to attachedFilesRef. Current length: ${currentFiles.length}. First item (if any): ${currentFiles.length > 0 ? JSON.stringify(currentFiles[0]) : 'N/A'}. Last item (if any): ${currentFiles.length > 0 ? JSON.stringify(currentFiles[currentFiles.length - 1]) : 'N/A'}`);
-                    
-                    console.log('[InputEnhancer] Scheduling updateAttachmentPreviewRef for long text paste using setTimeout.');
-                    // Using setTimeout to ensure the call happens after the current execution context,
-                    // which can sometimes help with UI updates in complex scenarios.
-                    setTimeout(() => {
-                        console.log('[InputEnhancer] Calling updateAttachmentPreviewRef (from setTimeout) for long text paste.');
-                        updateAttachmentPreviewRef();
-                        console.log('[InputEnhancer] updateAttachmentPreviewRef (from setTimeout) finished.');
-                    }, 0);
-                    
-                    console.log(`[InputEnhancer] Successfully attached long text as file: ${att.name}. Preview update scheduled.`);
-                } else {
-                    console.error(`[InputEnhancer] Failed to attach long text as file. Result success: ${result.success}, attachment: ${JSON.stringify(result.attachment)}, error: ${result.error}`);
-                    alert(`长文本转存为 .txt 文件失败: ${result.error || '未知错误'}`);
+                    reader.onerror = (err_reader) => {
+                        console.error(`[InputEnhancer] FileReader error for pasted file ${file.name}:`, err_reader);
+                        alert(`读取粘贴的文件 "${file.name}" 失败。`);
+                    };
+                    reader.readAsArrayBuffer(file);
                 }
-            } catch (err) {
-                console.error('[InputEnhancer] Error calling handleTextPasteAsFile IPC or processing its result:', err);
-                alert('长文本转存时发生意外错误。');
+                return; // Stop after handling the first file item
             }
-            // The 'else' block for user cancellation is no longer needed as we default to 'yes'.
-        } else if (pastedText) {
-            console.log(`[InputEnhancer] Pasted short text (${pastedText.length} chars). Allowing default paste (if not prevented earlier).`);
+        }
+
+        // If no file was handled, try to read image data directly from clipboard (for screenshots)
+        if (!handled) {
+            try {
+                const imageData = await localElectronAPI.readImageFromClipboard();
+                console.log("[InputEnhancer] Image data from clipboard (direct read attempt):", imageData ? 'Exists' : 'null', imageData);
+                if (imageData && imageData.data) {
+                    event.preventDefault(); // We are handling this
+                    handled = true;
+
+                    if (!agentId || !topicId) {
+                        alert("请先选择一个Agent和话题才能粘贴图片。");
+                        console.warn('[InputEnhancer] Image data paste aborted: Agent ID or Topic ID missing.');
+                        return;
+                    }
+
+                    const result = await localElectronAPI.handleFilePaste(agentId, topicId, {
+                        type: 'base64',
+                        data: imageData.data,
+                        extension: imageData.extension || 'png'
+                    });
+                    if (result.success && result.attachment) {
+                        const att = result.attachment;
+                        const currentFiles = attachedFilesRef.get();
+                        currentFiles.push({
+                            file: { name: att.name, type: att.type, size: att.size },
+                            localPath: att.internalPath,
+                            originalName: att.name,
+                            _fileManagerData: att
+                        });
+                        attachedFilesRef.set(currentFiles);
+                        updateAttachmentPreviewRef();
+                    } else {
+                        alert(`无法从剪贴板粘贴图片: ${result.error || '截图处理失败'}`);
+                    }
+                    return; // Stop after handling screenshot
+                } else if (imageData && imageData.error) {
+                    // This means clipboard.readImage() failed, which is expected if it's not image data.
+                    // We don't alert here as it might just be a text paste.
+                    console.log("[InputEnhancer] readImageFromClipboard failed:", imageData.error);
+                }
+            } catch (e) {
+                console.error("[InputEnhancer] Error during readImageFromClipboard:", e);
+            }
+        }
+
+        // If not handled as a file or direct image data, process as text
+        if (!handled) {
+            const pastedText = clipboardData.getData('text/plain');
+            if (pastedText) {
+                if (!agentId || !topicId) {
+                    // Allow default text paste if no agent/topic selected
+                    console.warn('[InputEnhancer] Agent/Topic not selected, allowing default text paste.');
+                    return;
+                }
+                // If we are here, it means it's not a file or screenshot we explicitly handled.
+                // So, we can prevent default for text to handle long text.
+                event.preventDefault();
+                handled = true;
+
+                if (pastedText.length > LONG_TEXT_THRESHOLD) {
+                    console.log(`[InputEnhancer] Pasted long text (${pastedText.length} chars). Converting to .txt file.`);
+                    try {
+                        const result = await localElectronAPI.handleTextPasteAsFile(agentId, topicId, pastedText);
+                        if (result.success && result.attachment) {
+                            // ... (add to attachedFilesRef and update preview) ...
+                            const att = result.attachment;
+                            const currentFiles = attachedFilesRef.get();
+                            currentFiles.push({
+                                file: { name: att.name, type: att.type, size: att.size },
+                                localPath: att.internalPath,
+                                originalName: att.name,
+                                _fileManagerData: att
+                            });
+                            attachedFilesRef.set(currentFiles);
+                            updateAttachmentPreviewRef();
+                        } else {
+                            alert(`长文本转存为 .txt 文件失败: ${result.error || '未知错误'}`);
+                        }
+                    } catch (err) {
+                        alert('长文本转存时发生意外错误。');
+                    }
+                } else {
+                    // Insert short text normally
+                    document.execCommand('insertText', false, pastedText);
+                }
+            }
+        }
+
+        if (handled) {
+            console.log('[InputEnhancer] Paste event custom handling completed.');
+        } else {
+            console.log('[InputEnhancer] Paste event not handled by custom logic, allowing default.');
+            return;
         }
     });
 

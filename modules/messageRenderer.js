@@ -1254,7 +1254,7 @@ function appendStreamChunk(messageId, chunkData, agentNameForGroup, agentIdForGr
     uiHelper.scrollToBottom();
 }
 
-function finalizeStreamedMessage(messageId, finishReason, fullResponseText, agentNameForGroup, agentIdForGroup) {
+async function finalizeStreamedMessage(messageId, finishReason, fullResponseText, agentNameForGroup, agentIdForGroup) {
     // if (messageId !== mainRendererReferences.activeStreamingMessageId) { // REMOVED CHECK
     //    console.warn(`finalizeStreamedMessage: Received end for inactive/mismatched stream ${messageId}. Current: ${mainRendererReferences.activeStreamingMessageId}.`);
     //     return;
@@ -1307,17 +1307,42 @@ function finalizeStreamedMessage(messageId, finishReason, fullResponseText, agen
         }
         
         mainRendererReferences.currentChatHistoryRef.set([...currentChatHistoryArray]); // Update history
-
-        // if (currentSelectedItem.id && currentTopicIdVal) { // REMOVED: History saving is now handled by main process (groupchat.js) for group messages
-        //     if (currentSelectedItem.type === 'agent') {
-        //         electronAPI.saveChatHistory(currentSelectedItem.id, currentTopicIdVal, currentChatHistoryArray);
-        //     } else if (currentSelectedItem.type === 'group') {
-        //         // electronAPI.saveChatHistory(currentSelectedItem.id, currentTopicIdVal, currentChatHistoryArray);
-        //     }
-        // }
+ 
+        if (currentSelectedItem && currentSelectedItem.id && currentTopicIdVal) {
+            const historyToSave = currentChatHistoryArray.filter(msg => !msg.isThinking); // 确保不保存临时的 "思考中" 消息
+            if (currentSelectedItem.type === 'agent') {
+                try {
+                    // console.log(`[MR finalizeStreamedMessage] Saving AGENT history for ${currentSelectedItem.id}, topic ${currentTopicIdVal}. Length: ${historyToSave.length}`);
+                    await electronAPI.saveChatHistory(currentSelectedItem.id, currentTopicIdVal, historyToSave);
+                    // console.log(`[MR finalizeStreamedMessage] AGENT history SAVE SUCCEEDED for ${currentSelectedItem.id}, topic ${currentTopicIdVal}.`);
+                } catch (error) {
+                    console.error(`[MR finalizeStreamedMessage] FAILED to save AGENT history for ${currentSelectedItem.id}, topic ${currentTopicIdVal}:`, error);
+                }
+            } else if (currentSelectedItem.type === 'group') {
+                // 对于群组消息，也由渲染器发起保存其维护的 currentChatHistory 的最终状态。
+                // 主进程的 groupchat.js 模块内的保存逻辑主要针对其自身处理VCP响应时的即时保存，
+                // 此处的调用确保渲染器在流结束后，将包含最新AI回复的完整历史记录也提交一次保存。
+                if (electronAPI.saveGroupChatHistory) {
+                    try {
+                        // console.log(`[MR finalizeStreamedMessage] Saving GROUP history via IPC for ${currentSelectedItem.id}, topic ${currentTopicIdVal}. Length: ${historyToSave.length}`);
+                        await electronAPI.saveGroupChatHistory(currentSelectedItem.id, currentTopicIdVal, historyToSave);
+                        // console.log(`[MR finalizeStreamedMessage] GROUP history SAVE SUCCEEDED via IPC for ${currentSelectedItem.id}, topic ${currentTopicIdVal}.`);
+                    } catch (error) {
+                        console.error(`[MR finalizeStreamedMessage] FAILED to save GROUP history via IPC for ${currentSelectedItem.id}, topic ${currentTopicIdVal}:`, error);
+                    }
+                } else {
+                    console.warn("MessageRenderer: electronAPI.saveGroupChatHistory is not defined. Group chat history might not be saved correctly after stream finalization.");
+                }
+            }
+        }
     } else {
         console.warn(`finalizeStreamedMessage: Message ID ${messageId} not found in history at finalization.`);
-        finalFullText = fullResponseText || ""; // Use provided full text if history entry is missing
+        // If message not in history, but we have fullResponseText (likely an error message), use it.
+        // This is crucial for displaying errors for messages that might not have made it cleanly into history.
+        finalFullText = (typeof fullResponseText === 'string' && fullResponseText.trim() !== '') ? fullResponseText : `(消息 ${messageId} 历史记录未找到，结束原因为: ${finishReason})`;
+        // Try to update the DOM element directly if history is missing, especially for errors.
+        const directContentDiv = messageItem.querySelector('.md-content');
+        if(directContentDiv && finishReason === 'error') directContentDiv.innerHTML = markedInstance.parse(finalFullText);
     }
     
     const contentDiv = messageItem.querySelector('.md-content');
@@ -1767,8 +1792,19 @@ async function handleRegenerateResponse(originalAssistantMessage) {
         avatarColor: currentSelectedItemVal.config?.avatarCalculatedColor,
     };
     
-    renderMessage(regenerationThinkingMessage, false); // This will add to history and render "thinking"
-    mainRendererReferences.activeStreamingMessageId = regenerationThinkingMessage.id;
+    // Render the "重新生成中..." message to the UI
+    const regenerationMessageItem = renderMessage(regenerationThinkingMessage, false);
+    if (!regenerationMessageItem) {
+        console.error("[MR handleRegenerateResponse] Failed to render regeneration thinking message. Aborting.");
+        return;
+    }
+
+    // Explicitly add the "重新生成中..." message to the history array.
+    // This is crucial because renderMessage normally doesn't add 'isThinking' messages.
+    if (!currentChatHistoryArray.find(m => m.id === regenerationThinkingMessage.id)) {
+        currentChatHistoryArray.push(regenerationThinkingMessage);
+        mainRendererReferences.currentChatHistoryRef.set([...currentChatHistoryArray]);
+    }
 
     try {
         const agentConfig = await electronAPI.getAgentConfig(currentSelectedItemVal.id); // Fetch fresh config
@@ -1816,9 +1852,18 @@ async function handleRegenerateResponse(originalAssistantMessage) {
             if (vcpResult.streamingStarted) {
                 // Stream will be handled by onVCPStreamChunk, which calls startStreamingMessage
                 // We've already rendered a thinking message; onVCPStreamChunk will update it.
+                // startStreamingMessage (called by onVCPStreamChunk) will handle updating the placeholder.
             } else if (vcpResult.streamError || !vcpResult.streamingStarted) {
-                finalizeStreamedMessage(regenerationThinkingMessage.id, 'error'); // Mark as error
-                renderMessage({ role: 'system', content: `VCP 流错误 (重新生成): ${vcpResult.error || '未能启动流'}`, timestamp: Date.now() });
+                // 使用从 main.js 传来的更详细的错误信息
+                let detailedError = vcpResult.error || '未能启动流';
+                // Prefer errorDetail.message if it exists and is a non-empty string
+                if (vcpResult.errorDetail && typeof vcpResult.errorDetail.message === 'string' && vcpResult.errorDetail.message.trim() !== '') {
+                    detailedError = vcpResult.errorDetail.message;
+                }
+                else if (vcpResult.errorDetail && typeof vcpResult.errorDetail === 'string') detailedError = vcpResult.errorDetail;
+
+                finalizeStreamedMessage(regenerationThinkingMessage.id, 'error', `VCP 流错误 (重新生成): ${detailedError}`);
+                // renderMessage 调用已在 finalizeStreamedMessage 内部（如果需要显示系统消息）或通过流事件处理，此处不再重复添加系统消息
             }
         } else { 
             // Non-streaming response for regeneration
@@ -1843,8 +1888,14 @@ async function handleRegenerateResponse(originalAssistantMessage) {
 
     } catch (error) {
         console.error('MessageRenderer: Error regenerating response:', error);
-        finalizeStreamedMessage(regenerationThinkingMessage.id, 'error'); // Clean up stream
-        renderMessage({ role: 'system', content: `错误 (重新生成): ${error.message}`, timestamp: Date.now() });
+        // Ensure finalizeStreamedMessage is called for the thinking message ID
+        // It's possible the thinking message was not correctly updated to streaming state
+        // or found in history if an error occurred very early.
+        // We pass the error message to be displayed.
+        finalizeStreamedMessage(regenerationThinkingMessage.id, 'error', `客户端错误 (重新生成): ${error.message}`);
+        // The renderMessage call for system error might be redundant if finalizeStreamedMessage handles it,
+        // but let's keep it for now as a fallback display if finalize doesn't find the item.
+        // renderMessage({ role: 'system', content: `错误 (重新生成): ${error.message}`, timestamp: Date.now() });
         if (currentSelectedItemVal.id && currentTopicIdVal) await electronAPI.saveChatHistory(currentSelectedItemVal.id, currentTopicIdVal, currentChatHistoryArray);
         uiHelper.scrollToBottom();
     }

@@ -18,14 +18,16 @@
   "author": "莱恩 (由小吉辅助生成)",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^36.0.0",     "electron-builder": "^26.0.15"
+    "electron": "^36.0.0",
+    "electron-builder": "^26.0.15"
   },
   "dependencies": {
     "fs-extra": "^11.2.0",
+    "mammoth": "^1.7.0",
     "marked": "^12.0.0",
-    "ws": "^8.14.2",
     "pdf-parse": "^1.1.1",
-    "mammoth": "^1.7.0"
+    "sharp": "^0.34.2",
+    "ws": "^8.14.2"
   },
   "build": {
     "appId": "com.vcp.chatdesktop",
@@ -55,7 +57,7 @@
     },
     "linux": {
       "target": "AppImage",
-      "icon": "assets" 
+      "icon": "assets"
     }
   }
 }

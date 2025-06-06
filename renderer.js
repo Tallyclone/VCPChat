@@ -1096,13 +1096,27 @@ async function handleSendMessage() {
                     .filter(att => att.type.startsWith('image/')) // Only process images for VCP's image_url part
                     .map(async att => {
                         try {
-                            const base64Result = await window.electronAPI.getFileAsBase64(att.src);
-                            if (base64Result && !base64Result.error) {
-                                return { type: 'image_url', image_url: { url: `data:${att.type};base64,${base64Result}` } };
+                            const base64Data = await window.electronAPI.getFileAsBase64(att.src); // att.src 对应 af.localPath
+                            if (base64Data && typeof base64Data === 'string') { // 成功获取到 base64 字符串
+                                console.log(`[Renderer - handleSendMessage] Image ${att.name} - Base64 length: ${base64Data.length}`);
+                                return {
+                                    type: 'image_url', // Gemini-style
+                                    image_url: {
+                                        url: `data:${att.type};base64,${base64Data}`
+                                    }
+                                };
+                            } else if (base64Data && base64Data.error) { // IPC 调用返回了错误对象
+                                console.error(`[Renderer - handleSendMessage] Failed to get Base64 for ${att.name}: ${base64Data.error}`);
+                                uiHelperFunctions.showToastNotification(`处理图片 ${att.name} 失败: ${base64Data.error}`, 'error');
+                                return null; // 不将此图片添加到 vcpImageAttachmentsPayload
+                            } else {
+                                // 返回的不是字符串也不是错误对象，这不应该发生
+                                console.error(`[Renderer - handleSendMessage] Unexpected return from getFileAsBase64 for ${att.name}:`, base64Data);
+                                return null;
                             }
-                            return null;
-                        } catch (imgError) {
-                            console.warn(`Error processing image ${att.name} for VCP image_url:`, imgError);
+                        } catch (processingError) {
+                            console.error(`[Renderer - handleSendMessage] Exception during getBase64 for ${att.name} (internal: ${att.src}):`, processingError);
+                            uiHelperFunctions.showToastNotification(`处理图片 ${att.name} 时发生异常: ${processingError.message}`, 'error');
                             return null;
                         }
                     })
@@ -2103,51 +2117,65 @@ function updateAttachmentPreview() {
         console.error('[Renderer] updateAttachmentPreview: attachmentPreviewArea is null or undefined!');
         return;
     }
- 
+
     attachmentPreviewArea.innerHTML = ''; // Clear previous previews
     if (attachedFiles.length === 0) {
         attachmentPreviewArea.style.display = 'none';
         return;
     }
     attachmentPreviewArea.style.display = 'flex'; // Show the area
- 
+
     attachedFiles.forEach((af, index) => {
         const prevDiv = document.createElement('div');
         prevDiv.className = 'attachment-preview-item';
-        prevDiv.title = af.originalName || af.file.name; // Use originalName if available
+        prevDiv.title = af.originalName || af.file.name;
 
-        const iconSpan = document.createElement('span');
-        iconSpan.className = 'file-preview-icon';
-        const fileType = af.file.type; // Standard File object 'type'
+        const fileType = af.file.type;
+
         if (fileType.startsWith('image/')) {
-            iconSpan.textContent = '🖼️'; // Image icon
-        } else if (fileType.startsWith('audio/')) {
-            iconSpan.textContent = '🎵'; // Audio icon
-        } else if (fileType.startsWith('video/')) {
-            iconSpan.textContent = '🎞️'; // Video icon
-        } else if (fileType.includes('pdf')) {
-            iconSpan.textContent = '📄'; // PDF icon (generic document)
+            const thumbnailImg = document.createElement('img');
+            thumbnailImg.className = 'attachment-thumbnail-image';
+            thumbnailImg.src = af.localPath; // Assumes localPath is a usable URL (e.g., file://)
+            thumbnailImg.alt = af.originalName || af.file.name;
+            thumbnailImg.onerror = () => { // Fallback to icon if image fails to load
+                thumbnailImg.remove(); // Remove broken image
+                const iconSpanFallback = document.createElement('span');
+                iconSpanFallback.className = 'file-preview-icon';
+                iconSpanFallback.textContent = '⚠️'; // Error/fallback icon
+                prevDiv.prepend(iconSpanFallback); // Add fallback icon at the beginning
+            };
+            prevDiv.appendChild(thumbnailImg);
         } else {
-            iconSpan.textContent = '📎'; // Generic attachment icon
+            const iconSpan = document.createElement('span');
+            iconSpan.className = 'file-preview-icon';
+            if (fileType.startsWith('audio/')) {
+                iconSpan.textContent = '🎵';
+            } else if (fileType.startsWith('video/')) {
+                iconSpan.textContent = '🎞️';
+            } else if (fileType.includes('pdf')) {
+                iconSpan.textContent = '📄';
+            } else {
+                iconSpan.textContent = '📎';
+            }
+            prevDiv.appendChild(iconSpan);
         }
 
         const nameSpan = document.createElement('span');
         nameSpan.className = 'file-preview-name';
         const displayName = af.originalName || af.file.name;
         nameSpan.textContent = displayName.length > 20 ? displayName.substring(0, 17) + '...' : displayName;
-        
+        prevDiv.appendChild(nameSpan);
+
         const removeBtn = document.createElement('button');
         removeBtn.className = 'file-preview-remove-btn';
-        removeBtn.innerHTML = '&times;'; // Close icon
+        removeBtn.innerHTML = '×';
         removeBtn.title = '移除此附件';
         removeBtn.onclick = () => {
-            attachedFiles.splice(index, 1); // Remove file from array
-            updateAttachmentPreview(); // Re-render preview area
+            attachedFiles.splice(index, 1);
+            updateAttachmentPreview();
         };
-
-        prevDiv.appendChild(iconSpan);
-        prevDiv.appendChild(nameSpan);
         prevDiv.appendChild(removeBtn);
+
         attachmentPreviewArea.appendChild(prevDiv);
     });
 }

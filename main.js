@@ -1,5 +1,7 @@
 // main.js - Electron 主进程
 
+const sharp = require('sharp'); // 确保在文件顶部引入
+
 const { app, BrowserWindow, ipcMain, dialog, nativeTheme, Menu, shell, clipboard, net, nativeImage, globalShortcut } = require('electron'); // Added net, nativeImage, and globalShortcut
 const path = require('path');
 const fs = require('fs-extra'); // Using fs-extra for convenience
@@ -47,7 +49,7 @@ function createWindow() {
     });
 
     mainWindow.loadFile('main.html');
-    // mainWindow.webContents.openDevTools(); // Uncomment for debugging
+    //mainWindow.webContents.openDevTools(); // Uncomment for debugging
 
     mainWindow.once('ready-to-show', () => {
         mainWindow.show();
@@ -257,6 +259,9 @@ app.whenReady().then(() => {
         textViewerWindow.on('closed', () => {
             console.log('[Main Process] textViewerWindow has been closed.');
             openChildWindows = openChildWindows.filter(win => win !== textViewerWindow); // Remove from track
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.focus(); // 聚焦主窗口
+            }
         });
     });
     // --- End of Moved IPC Handler Registration ---
@@ -412,6 +417,9 @@ function formatTimestampForFilename(timestamp) {
         notesWindow.on('closed', () => {
             console.log('[Main Process] notesWindow has been closed.');
             openChildWindows = openChildWindows.filter(win => win !== notesWindow);
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.focus(); // 聚焦主窗口
+            }
         });
     });
 
@@ -465,6 +473,9 @@ function formatTimestampForFilename(timestamp) {
         notesWindow.on('closed', () => {
             console.log('[Main Process] New notesWindow (from share) has been closed.');
             openChildWindows = openChildWindows.filter(win => win !== notesWindow);
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.focus(); // 聚焦主窗口
+            }
         });
     });
 
@@ -1412,47 +1423,108 @@ ipcMain.handle('select-files-to-send', async (event, agentId, topicId) => {
 
 ipcMain.handle('get-file-as-base64', async (event, filePath) => {
     try {
-        console.log(`[Main - get-file-as-base64] Received request for filePath: "${filePath}"`);
+        console.log(`[Main - get-file-as-base64] ===== REQUEST START ===== Received raw filePath: "${filePath}"`);
         if (!filePath || typeof filePath !== 'string') {
             console.error('[Main - get-file-as-base64] Invalid file path received:', filePath);
-            throw new Error('Invalid file path provided.');
+            return { error: 'Invalid file path provided.', base64String: null };
         }
         
-        const cleanPath = filePath.startsWith('file://') ? filePath.substring(7) : filePath;
+        const cleanPath = filePath.startsWith('file://') ? decodeURIComponent(filePath.substring(7)) : decodeURIComponent(filePath);
         console.log(`[Main - get-file-as-base64] Cleaned path: "${cleanPath}"`);
         
         if (!await fs.pathExists(cleanPath)) {
             console.error(`[Main - get-file-as-base64] File not found at path: ${cleanPath}`);
-            throw new Error(`File not found at path: ${cleanPath}`);
+            return { error: `File not found at path: ${cleanPath}`, base64String: null };
         }
         
-        console.log(`[Main - get-file-as-base64] Reading file: ${cleanPath}`);
-        const fileBuffer = await fs.readFile(cleanPath);
-        const base64String = fileBuffer.toString('base64');
-        console.log(`[Main - get-file-as-base64] Successfully converted "${cleanPath}" to Base64, length: ${base64String.length}`);
-        return base64String;
+        let originalFileBuffer = await fs.readFile(cleanPath); // 读取原始文件
+        let processedFileBuffer = originalFileBuffer; // 默认使用原始buffer
+
+        const fileExtension = path.extname(cleanPath).toLowerCase();
+        const isImage = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.tiff', '.svg'].includes(fileExtension); // 扩展支持的图片类型
+
+        if (isImage) {
+            console.log(`[Main - get-file-as-base64] Processing image: ${cleanPath}`);
+            const MAX_DIMENSION = 800; // 进一步减小目标尺寸，例如800px
+            const JPEG_QUALITY = 70;   // 稍微降低JPEG质量以减小体积
+            const PNG_COMPRESSION_LEVEL = 7; // 增加PNG压缩级别
+
+            try {
+                let image = sharp(originalFileBuffer);
+                const metadata = await image.metadata();
+                console.log(`[Main Sharp] Original: ${metadata.format}, ${metadata.width}x${metadata.height}, size: ${originalFileBuffer.length} bytes`);
+
+                let needsResize = false;
+                if (metadata.width > MAX_DIMENSION || metadata.height > MAX_DIMENSION) {
+                    console.log(`[Main Sharp] Resizing image to fit within ${MAX_DIMENSION}x${MAX_DIMENSION}`);
+                    image = image.resize({
+                        width: MAX_DIMENSION,
+                        height: MAX_DIMENSION,
+                        fit: sharp.fit.inside,
+                        withoutEnlargement: true
+                    });
+                    needsResize = true;
+                }
+
+                // 目标格式：优先JPEG，除非是需要保留透明的PNG/GIF且VCP支持良好
+                // 考虑到503问题，目前所有图片都尝试转为JPEG以最大化压缩
+                let targetFormat = 'jpeg';
+                let encodeOptions = { quality: JPEG_QUALITY };
+
+                // 如果是GIF，sharp默认会处理第一帧。如果需要动画GIF，处理方式会更复杂。
+                // 目前简单处理，也转为静态JPEG。
+                if (metadata.format === 'gif') {
+                    console.log('[Main Sharp] GIF detected, will be converted to static JPEG.');
+                }
+                
+                // 如果原始是PNG且有透明通道，并且你确认VCP能处理且你需要保留透明度
+                // if (metadata.format === 'png' && metadata.hasAlpha) {
+                //    targetFormat = 'png';
+                //    encodeOptions = { compressionLevel: PNG_COMPRESSION_LEVEL, adaptiveFiltering: true };
+                //    console.log(`[Main Sharp] Encoding as PNG to preserve alpha.`);
+                // } else {
+                //    console.log(`[Main Sharp] Encoding as JPEG.`);
+                // }
+                // 为了解决503，我们先强制都转JPEG
+                console.log(`[Main Sharp] Forcing encoding to JPEG with quality ${JPEG_QUALITY}.`);
+
+
+                if (targetFormat === 'jpeg') {
+                    processedFileBuffer = await image.jpeg(encodeOptions).toBuffer();
+                } else if (targetFormat === 'png') {
+                    processedFileBuffer = await image.png(encodeOptions).toBuffer();
+                }
+                // 如果未来支持WEBP等其他格式，可以在这里添加 else if
+
+                const finalMetadata = await sharp(processedFileBuffer).metadata();
+                console.log(`[Main Sharp] Processed: ${finalMetadata.format}, ${finalMetadata.width}x${finalMetadata.height}, final buffer length: ${processedFileBuffer.length} bytes`);
+
+            } catch (sharpError) {
+                console.error(`[Main Sharp] Error processing image with sharp: ${sharpError.message}. Using original image buffer.`, sharpError);
+                // 如果sharp处理失败，回退到使用原始buffer（但仍然可能导致503）
+                // 或者你可以选择在这里返回一个错误
+                // return { error: `图片处理失败: ${sharpError.message}`, base64String: null };
+                // 为简单起见，我们先尝试用原始buffer，但这意味着优化未生效
+                processedFileBuffer = originalFileBuffer; // 回退
+                console.warn('[Main Sharp] Sharp processing failed. Will attempt to send original image data.');
+            }
+        } else {
+            console.log(`[Main - get-file-as-base64] Non-image file. Buffer length: ${originalFileBuffer.length}`);
+            // processedFileBuffer 已经是 originalFileBuffer
+        }
+
+        const base64String = processedFileBuffer.toString('base64');
+        console.log(`[Main - get-file-as-base64] Successfully converted "${cleanPath}" to Base64. Final Base64 length: ${base64String.length}`);
+        console.log(`[Main - get-file-as-base64] ===== REQUEST END (SUCCESS) =====`);
+        return base64String; // 成功时直接返回 base64 字符串
+
     } catch (error) {
-        console.error(`[Main - get-file-as-base64] Error processing path "${filePath}":`, error.message);
-        return { error: `获取文件Base64失败: ${error.message}` };
+        console.error(`[Main - get-file-as-base64] Outer catch: Error processing path "${filePath}":`, error.message, error.stack);
+        console.log(`[Main - get-file-as-base64] ===== REQUEST END (ERROR) =====`);
+        return { error: `获取/处理文件Base64失败: ${error.message}`, base64String: null };
     }
 });
 
-ipcMain.handle('get-text-content', async (event, filePath, fileType) => {
-    try {
-        console.log(`[Main - get-text-content] Received request for filePath: "${filePath}", type: "${fileType}"`);
-        if (!filePath || !filePath.startsWith('file://')) {
-            throw new Error('Invalid internal file path provided for text content extraction.');
-        }
-        const textContent = await fileManager.getTextContent(filePath, fileType);
-        if (textContent === null) {
-            return { error: `不支持的文件类型 (${fileType}) 或无法提取文本内容。` };
-        }
-        return { success: true, textContent: textContent };
-    } catch (error) {
-        console.error(`[Main - get-text-content] Error extracting text for path "${filePath}":`, error);
-        return { error: `提取文本内容失败: ${error.message}` };
-    }
-});
 
 ipcMain.handle('handle-text-paste-as-file', async (event, agentId, topicId, textContent) => {
     if (!agentId || !topicId) {
@@ -1551,12 +1623,21 @@ ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelCo
             const errorMessageToPropagate = `VCP请求失败: ${response.status} - ${errorData.message || errorData.error || (typeof errorData === 'string' ? errorData : '未知服务端错误')}`;
             
             if (modelConfig.stream === true && event && event.sender && !event.sender.isDestroyed()) {
-                const errorPayload = { type: 'error', error: errorMessageToPropagate, details: errorData, messageId: messageId };
+                // 构造更详细的错误信息
+                let detailedErrorMessage = `服务器返回状态 ${response.status}.`;
+                if (errorData && errorData.message) detailedErrorMessage += ` 错误: ${errorData.message}`;
+                else if (errorData && errorData.error && errorData.error.message) detailedErrorMessage += ` 错误: ${errorData.error.message}`;
+                else if (typeof errorData === 'string' && errorData.length < 200) detailedErrorMessage += ` 响应: ${errorData}`;
+                else if (errorData && errorData.details && typeof errorData.details === 'string' && errorData.details.length < 200) detailedErrorMessage += ` 详情: ${errorData.details}`;
+
+                const errorPayload = { type: 'error', error: `VCP请求失败: ${detailedErrorMessage}`, details: errorData, messageId: messageId }; // details 字段保持原始 errorData
                 if (isGroupCall && groupContext) {
                     Object.assign(errorPayload, groupContext); // Add agentId, agentName, groupId, topicId
                 }
                 event.sender.send(streamChannel, errorPayload);
-                return { streamError: true, errorDetail: errorData };
+                // 为函数返回值构造统一的 errorDetail.message
+                const finalErrorMessageForReturn = `VCP请求失败: ${response.status} - ${errorData.message || (errorData.error && errorData.error.message) || (typeof errorData === 'string' ? errorData : '详细错误请查看控制台')}`;
+                return { streamError: true, error: `VCP请求失败 (${response.status})`, errorDetail: { message: finalErrorMessageForReturn, originalData: errorData } };
             }
             const err = new Error(errorMessageToPropagate);
             err.details = errorData;
@@ -1641,7 +1722,7 @@ ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelCo
                 Object.assign(catchErrorPayload, groupContext);
             }
             event.sender.send(streamChannel, catchErrorPayload);
-            return { streamError: true, error: error.message };
+            return { streamError: true, error: `VCP客户端请求错误`, errorDetail: { message: error.message, stack: error.stack } };
         }
         return { error: `VCP请求错误: ${error.message}` };
     }
@@ -1809,6 +1890,14 @@ ipcMain.on('open-image-in-new-window', (event, imageUrl, imageTitle) => {
 
     imageViewerWindow.once('ready-to-show', () => {
         imageViewerWindow.show();
+    });
+
+    imageViewerWindow.on('closed', () => {
+        console.log('[Main Process] imageViewerWindow has been closed.');
+        openChildWindows = openChildWindows.filter(win => win !== imageViewerWindow); // Remove from track
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.focus(); // 聚焦主窗口
+        }
     });
 });
 
