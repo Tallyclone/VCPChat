@@ -225,6 +225,13 @@
             });
 
         });
+
+        // Add keyboard listener for Escape key to close the window
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                window.close();
+            }
+        });
     </script>
 </body>
 </html>

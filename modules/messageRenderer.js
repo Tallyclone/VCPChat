@@ -1494,11 +1494,12 @@ function showContextMenu(event, messageItem, message) {
         readModeOption.classList.add('context-menu-item', 'info-item'); // Added 'info-item' for blue color
         readModeOption.innerHTML = `<i class="fas fa-book-reader"></i> 阅读模式`;
         readModeOption.onclick = () => {
-            const plainTextContent = message.content.replace(/<img[^>]*>/gi, "[图片]").replace(/<audio[^>]*>.*?<\/audio>/gi, "[音频]").replace(/<video[^>]*>.*?<\/video>/gi, "[视频]");
+            // 将图片标签替换为空字符串，而不是 [图片]
+            const plainTextContent = message.content.replace(/<img[^>]*>/gi, "").replace(/<audio[^>]*>.*?<\/audio>/gi, "[音频]").replace(/<video[^>]*>.*?<\/video>/gi, "[视频]");
             const windowTitle = `阅读: ${message.id.substring(0,10)}...`;
             const currentTheme = document.body.classList.contains('light-theme') ? 'light' : 'dark';
             if (electronAPI && typeof electronAPI.openTextInNewWindow === 'function') {
-                electronAPI.openTextInNewWindow(plainTextContent, windowTitle, currentTheme); 
+                electronAPI.openTextInNewWindow(plainTextContent, windowTitle, currentTheme);
             } else {
                 console.error('electronAPI.openTextInNewWindow is not available!');
             }
