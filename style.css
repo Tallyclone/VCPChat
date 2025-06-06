@@ -2425,7 +2425,7 @@ body.light-theme .highlighted-tag {
 
 /*
  * =======================================================
- * 方案A：流式文字动态“流光”效果 (Text Shimmer Effect)
+ * 小吉的魔法时间：流式文字动态“流光”效果 (Text Shimmer Effect)
  * =======================================================
  */
 
@@ -2463,5 +2463,5 @@ body.light-theme .highlighted-tag {
   background-size: 200% auto;
   
   /* 应用我们之前定义的动画 */
-  animation: textShimmer 2.5s linear infinite; /* 减慢动画速度 */
+  animation: textShimmer 2.5s linear infinite; /* 设置动画速度 */
 }
