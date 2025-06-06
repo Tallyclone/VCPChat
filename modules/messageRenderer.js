@@ -1792,12 +1792,18 @@ async function handleRegenerateResponse(originalAssistantMessage) {
         avatarColor: currentSelectedItemVal.config?.avatarCalculatedColor,
     };
     
-    renderMessage(regenerationThinkingMessage, false); // This will add to history and render "thinking"
-    // Ensure the thinking message is in history for finalizeStreamedMessage to find
-    const historyIndex = currentChatHistoryArray.findIndex(m => m.id === regenerationThinkingMessage.id);
-    if (historyIndex === -1) { // Should have been added by renderMessage
-        console.warn('[MR handleRegenerateResponse] Thinking message not found in history immediately after renderMessage. This is unexpected.');
-        // If renderMessage didn't add it (e.g., due to an issue there), add it explicitly here.
+    // Render the "重新生成中..." message to the UI
+    const regenerationMessageItem = renderMessage(regenerationThinkingMessage, false);
+    if (!regenerationMessageItem) {
+        console.error("[MR handleRegenerateResponse] Failed to render regeneration thinking message. Aborting.");
+        return;
+    }
+
+    // Explicitly add the "重新生成中..." message to the history array.
+    // This is crucial because renderMessage normally doesn't add 'isThinking' messages.
+    if (!currentChatHistoryArray.find(m => m.id === regenerationThinkingMessage.id)) {
+        currentChatHistoryArray.push(regenerationThinkingMessage);
+        mainRendererReferences.currentChatHistoryRef.set([...currentChatHistoryArray]);
     }
 
     try {
