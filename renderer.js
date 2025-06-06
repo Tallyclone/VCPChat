@@ -268,7 +268,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (eventData.type === 'data') {
             window.messageRenderer.appendStreamChunk(streamMessageId, eventData.chunk);
         } else if (eventData.type === 'end') {
-            window.messageRenderer.finalizeStreamedMessage(streamMessageId, eventData.finish_reason || 'completed');
+            window.messageRenderer.finalizeStreamedMessage(streamMessageId, eventData.finish_reason || 'completed', eventData.fullResponse);
             if (currentSelectedItem.type === 'agent') { // Only summarize for agents
                 await attemptTopicSummarizationIfNeeded();
             }

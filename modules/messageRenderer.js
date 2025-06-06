@@ -1110,8 +1110,8 @@ function startStreamingMessage(message) { // message can now include agentName, 
     messageItem.classList.remove('thinking'); 
 
     const contentDiv = messageItem.querySelector('.md-content');
-    if (contentDiv) { // Clear "Thinking..." and prepare for stream
-        contentDiv.innerHTML = ''; 
+    if (contentDiv) { // Prepare for stream
+        // contentDiv.innerHTML = ''; // Let appendStreamChunk handle the replacement of thinking indicator
         // Optionally add a subtle "receiving" indicator if desired, but often just letting content flow is fine.
         // contentDiv.innerHTML = `<span class="streaming-indicator"></span>`;
     }
@@ -1119,17 +1119,17 @@ function startStreamingMessage(message) { // message can now include agentName, 
     const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
     const historyIndex = currentChatHistoryArray.findIndex(m => m.id === message.id);
     if (historyIndex === -1) { // New message for the stream
-        currentChatHistoryArray.push({ 
+        currentChatHistoryArray.push({
             ...message, // Includes role, name, agentId etc.
-            content: '', 
-            isThinking: false, 
+            content: '', // Ensure content is empty when stream starts
+            isThinking: false,
             timestamp: message.timestamp || Date.now(),
             isGroupMessage: message.isGroupMessage || false,
         });
     } else { // Update existing placeholder in history
         currentChatHistoryArray[historyIndex].isThinking = false;
-        currentChatHistoryArray[historyIndex].content = ""; 
-        currentChatHistoryArray[historyIndex].timestamp = message.timestamp || Date.now(); 
+        currentChatHistoryArray[historyIndex].content = ""; // Ensure content is empty when stream starts
+        currentChatHistoryArray[historyIndex].timestamp = message.timestamp || Date.now();
         currentChatHistoryArray[historyIndex].name = message.name || currentChatHistoryArray[historyIndex].name;
         currentChatHistoryArray[historyIndex].agentId = message.agentId || currentChatHistoryArray[historyIndex].agentId;
         currentChatHistoryArray[historyIndex].isGroupMessage = message.isGroupMessage || currentChatHistoryArray[historyIndex].isGroupMessage || false;
@@ -1278,9 +1278,11 @@ async function finalizeStreamedMessage(messageId, finishReason, fullResponseText
     if (messageIndex > -1) {
         const message = currentChatHistoryArray[messageIndex];
         message.finishReason = finishReason;
+        message.isThinking = false; // Ensure thinking state is cleared
         // If fullResponseText is provided (e.g., from group chat stream end), use it. Otherwise, content should be accumulated.
         if (typeof fullResponseText === 'string') {
-            message.content = fullResponseText;
+            // Remove "重新生成中..." prefix if it exists, as it's a transient UI indicator
+            message.content = fullResponseText.replace(/^重新生成中\.\.\./, '').trim();
         }
         finalFullText = message.content; // This is the fully accumulated/provided text
         
@@ -1784,7 +1786,7 @@ async function handleRegenerateResponse(originalAssistantMessage) {
     const regenerationThinkingMessage = {
         role: 'assistant', 
         name: currentSelectedItemVal.name || 'AI',
-        content: '重新生成中...',
+        content: '', // 设置为空字符串，避免污染后续文本
         timestamp: Date.now(),
         id: `regen_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
         isThinking: true,
