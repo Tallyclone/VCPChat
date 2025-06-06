@@ -257,6 +257,9 @@ app.whenReady().then(() => {
         textViewerWindow.on('closed', () => {
             console.log('[Main Process] textViewerWindow has been closed.');
             openChildWindows = openChildWindows.filter(win => win !== textViewerWindow); // Remove from track
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.focus(); // 聚焦主窗口
+            }
         });
     });
     // --- End of Moved IPC Handler Registration ---
@@ -412,6 +415,9 @@ function formatTimestampForFilename(timestamp) {
         notesWindow.on('closed', () => {
             console.log('[Main Process] notesWindow has been closed.');
             openChildWindows = openChildWindows.filter(win => win !== notesWindow);
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.focus(); // 聚焦主窗口
+            }
         });
     });
 
@@ -465,6 +471,9 @@ function formatTimestampForFilename(timestamp) {
         notesWindow.on('closed', () => {
             console.log('[Main Process] New notesWindow (from share) has been closed.');
             openChildWindows = openChildWindows.filter(win => win !== notesWindow);
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.focus(); // 聚焦主窗口
+            }
         });
     });
 
@@ -1809,6 +1818,14 @@ ipcMain.on('open-image-in-new-window', (event, imageUrl, imageTitle) => {
 
     imageViewerWindow.once('ready-to-show', () => {
         imageViewerWindow.show();
+    });
+
+    imageViewerWindow.on('closed', () => {
+        console.log('[Main Process] imageViewerWindow has been closed.');
+        openChildWindows = openChildWindows.filter(win => win !== imageViewerWindow); // Remove from track
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.focus(); // 聚焦主窗口
+        }
     });
 });
 
