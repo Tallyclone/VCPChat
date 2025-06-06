@@ -1254,7 +1254,7 @@ function appendStreamChunk(messageId, chunkData, agentNameForGroup, agentIdForGr
     uiHelper.scrollToBottom();
 }
 
-function finalizeStreamedMessage(messageId, finishReason, fullResponseText, agentNameForGroup, agentIdForGroup) {
+async function finalizeStreamedMessage(messageId, finishReason, fullResponseText, agentNameForGroup, agentIdForGroup) {
     // if (messageId !== mainRendererReferences.activeStreamingMessageId) { // REMOVED CHECK
     //    console.warn(`finalizeStreamedMessage: Received end for inactive/mismatched stream ${messageId}. Current: ${mainRendererReferences.activeStreamingMessageId}.`);
     //     return;
@@ -1307,14 +1307,34 @@ function finalizeStreamedMessage(messageId, finishReason, fullResponseText, agen
         }
         
         mainRendererReferences.currentChatHistoryRef.set([...currentChatHistoryArray]); // Update history
-
-        // if (currentSelectedItem.id && currentTopicIdVal) { // REMOVED: History saving is now handled by main process (groupchat.js) for group messages
-        //     if (currentSelectedItem.type === 'agent') {
-        //         electronAPI.saveChatHistory(currentSelectedItem.id, currentTopicIdVal, currentChatHistoryArray);
-        //     } else if (currentSelectedItem.type === 'group') {
-        //         // electronAPI.saveChatHistory(currentSelectedItem.id, currentTopicIdVal, currentChatHistoryArray);
-        //     }
-        // }
+ 
+        if (currentSelectedItem && currentSelectedItem.id && currentTopicIdVal) {
+            const historyToSave = currentChatHistoryArray.filter(msg => !msg.isThinking); // 确保不保存临时的 "思考中" 消息
+            if (currentSelectedItem.type === 'agent') {
+                try {
+                    // console.log(`[MR finalizeStreamedMessage] Saving AGENT history for ${currentSelectedItem.id}, topic ${currentTopicIdVal}. Length: ${historyToSave.length}`);
+                    await electronAPI.saveChatHistory(currentSelectedItem.id, currentTopicIdVal, historyToSave);
+                    // console.log(`[MR finalizeStreamedMessage] AGENT history SAVE SUCCEEDED for ${currentSelectedItem.id}, topic ${currentTopicIdVal}.`);
+                } catch (error) {
+                    console.error(`[MR finalizeStreamedMessage] FAILED to save AGENT history for ${currentSelectedItem.id}, topic ${currentTopicIdVal}:`, error);
+                }
+            } else if (currentSelectedItem.type === 'group') {
+                // 对于群组消息，也由渲染器发起保存其维护的 currentChatHistory 的最终状态。
+                // 主进程的 groupchat.js 模块内的保存逻辑主要针对其自身处理VCP响应时的即时保存，
+                // 此处的调用确保渲染器在流结束后，将包含最新AI回复的完整历史记录也提交一次保存。
+                if (electronAPI.saveGroupChatHistory) {
+                    try {
+                        // console.log(`[MR finalizeStreamedMessage] Saving GROUP history via IPC for ${currentSelectedItem.id}, topic ${currentTopicIdVal}. Length: ${historyToSave.length}`);
+                        await electronAPI.saveGroupChatHistory(currentSelectedItem.id, currentTopicIdVal, historyToSave);
+                        // console.log(`[MR finalizeStreamedMessage] GROUP history SAVE SUCCEEDED via IPC for ${currentSelectedItem.id}, topic ${currentTopicIdVal}.`);
+                    } catch (error) {
+                        console.error(`[MR finalizeStreamedMessage] FAILED to save GROUP history via IPC for ${currentSelectedItem.id}, topic ${currentTopicIdVal}:`, error);
+                    }
+                } else {
+                    console.warn("MessageRenderer: electronAPI.saveGroupChatHistory is not defined. Group chat history might not be saved correctly after stream finalization.");
+                }
+            }
+        }
     } else {
         console.warn(`finalizeStreamedMessage: Message ID ${messageId} not found in history at finalization.`);
         finalFullText = fullResponseText || ""; // Use provided full text if history entry is missing
