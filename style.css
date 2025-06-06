@@ -1969,7 +1969,7 @@ body.light-theme .notification-item {
     width: 100%;
     order: -1; /* To appear above the input field */
     margin-bottom: 8px;
-    padding: 5px 0; /* Add some padding if items get tall */
+    padding: 0; /* Keep padding at 0, as items themselves have padding */
 }
 
 .attachment-preview-item {
