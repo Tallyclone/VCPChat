@@ -1967,6 +1967,7 @@ function setupEventListeners() {
         });
     }
 
+    const openTranslatorBtn = document.getElementById('openTranslatorBtn');
     const openNotesBtn = document.getElementById('openNotesBtn');
     if (openAdminPanelBtn) {
         openAdminPanelBtn.style.display = 'inline-block'; // Should be visible by default
@@ -1993,6 +1994,22 @@ function setupEventListeners() {
             } else {
                 uiHelperFunctions.showToastNotification('请先在全局设置中配置VCP服务器URL！', 'error');
                 openModal('globalSettingsModal');
+            }
+        });
+    }
+
+    if (openTranslatorBtn) {
+        console.log('[Renderer] openTranslatorBtn found. Adding event listener.');
+        openTranslatorBtn.addEventListener('click', async () => {
+            console.log('[Renderer] openTranslatorBtn clicked!');
+            const currentTheme = document.body.classList.contains('light-theme') ? 'light' : 'dark';
+            if (window.electronAPI && window.electronAPI.openTranslatorWindow) {
+                console.log('[Renderer] Calling electronAPI.openTranslatorWindow with theme:', currentTheme);
+                await window.electronAPI.openTranslatorWindow(currentTheme);
+                console.log('[Renderer] electronAPI.openTranslatorWindow call completed.');
+            } else {
+                console.warn('[Renderer] electronAPI.openTranslatorWindow is not available.');
+                uiHelperFunctions.showToastNotification('无法打开翻译助手：功能不可用。', 'error');
             }
         });
     }

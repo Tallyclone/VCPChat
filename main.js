@@ -266,6 +266,87 @@ app.whenReady().then(() => {
     });
     // --- End of Moved IPC Handler Registration ---
 
+    // Translator IPC Handlers
+    const TRANSLATOR_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Translatormodules');
+    fs.ensureDirSync(TRANSLATOR_DIR); // Ensure the Translator directory exists
+
+    ipcMain.handle('open-translator-window', async (event, theme) => {
+        console.log(`[Main Process] Received open-translator-window. Theme: ${theme}`);
+        const translatorWindow = new BrowserWindow({
+            width: 1000,
+            height: 700,
+            minWidth: 800,
+            minHeight: 600,
+            title: '翻译',
+            parent: mainWindow,
+            modal: false,
+            webPreferences: {
+                preload: path.join(__dirname, 'preload.js'),
+                contextIsolation: true,
+                nodeIntegration: false,
+                devTools: true
+            },
+            icon: path.join(__dirname, 'assets', 'icon.png'),
+            show: false
+        });
+
+        let settings = {};
+        try {
+            if (await fs.pathExists(SETTINGS_FILE)) {
+                settings = await fs.readJson(SETTINGS_FILE);
+            }
+        } catch (readError) {
+            console.error('Failed to read settings file for translator window:', readError);
+        }
+
+        const vcpServerUrl = settings.vcpServerUrl || '';
+        const vcpApiKey = settings.vcpApiKey || '';
+
+        const translatorUrl = `file://${path.join(__dirname, 'Translatormodules', 'translator.html')}?theme=${encodeURIComponent(theme || 'dark')}&vcpServerUrl=${encodeURIComponent(vcpServerUrl)}&vcpApiKey=${encodeURIComponent(vcpApiKey)}`;
+        console.log(`[Main Process] Attempting to load URL in translator window: ${translatorUrl.substring(0, 200)}...`);
+        
+        translatorWindow.webContents.on('did-start-loading', () => {
+            console.log(`[Main Process] translatorWindow webContents did-start-loading for URL: ${translatorUrl.substring(0, 200)}`);
+        });
+
+        translatorWindow.webContents.on('dom-ready', () => {
+            console.log(`[Main Process] translatorWindow webContents dom-ready for URL: ${translatorWindow.webContents.getURL()}`);
+        });
+
+        translatorWindow.webContents.on('did-finish-load', () => {
+            console.log(`[Main Process] translatorWindow webContents did-finish-load for URL: ${translatorWindow.webContents.getURL()}`);
+        });
+
+        translatorWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+            console.error(`[Main Process] translatorWindow webContents did-fail-load: Code ${errorCode}, Desc: ${errorDescription}, URL: ${validatedURL}`);
+        });
+
+        translatorWindow.loadURL(translatorUrl)
+            .then(() => {
+                console.log(`[Main Process] translatorWindow successfully initiated URL loading (loadURL resolved): ${translatorUrl.substring(0, 200)}`);
+            })
+            .catch((err) => {
+                console.error(`[Main Process] translatorWindow FAILED to initiate URL loading (loadURL rejected): ${translatorUrl.substring(0, 200)}`, err);
+            });
+
+        openChildWindows.push(translatorWindow);
+        translatorWindow.setMenu(null);
+
+        translatorWindow.once('ready-to-show', () => {
+            console.log(`[Main Process] translatorWindow is ready-to-show. Window Title: "${translatorWindow.getTitle()}". Calling show().`);
+            translatorWindow.show();
+            console.log('[Main Process] translatorWindow show() called.');
+        });
+
+        translatorWindow.on('closed', () => {
+            console.log('[Main Process] translatorWindow has been closed.');
+            openChildWindows = openChildWindows.filter(win => win !== translatorWindow);
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.focus(); // 聚焦主窗口
+            }
+        });
+    });
+
     // Notes IPC Handlers
     const NOTES_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Notemodules');
     fs.ensureDirSync(NOTES_DIR); // Ensure the Notes directory exists

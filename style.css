@@ -1139,43 +1139,48 @@ body.light-theme #clearNotificationsBtn:hover, body.light-theme .notifications-h
     padding: 0 15px; 
 }
 
+.notes-section #openTranslatorBtn,
 .notes-section #openNotesBtn {
     background-color: var(--button-bg);
-    color: var(--secondary-text); 
+    color: var(--secondary-text);
     border: 1px solid var(--button-bg);
-    padding: 0 10px; 
-    height: 32px; 
+    padding: 0 10px;
+    height: 32px;
     border-radius: 8px;
     cursor: pointer;
-    font-size: 0.9em; 
+    font-size: 0.9em;
     transition: background-color 0.2s, border-color 0.2s;
-    display: inline-flex; 
-    align-items: center; 
-    justify-content: center; 
-    box-sizing: border-box; 
-    margin-left: 8px; 
-    width: auto; 
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    margin-left: 8px;
+    width: auto;
 }
 
+.notes-section #openTranslatorBtn:hover,
 .notes-section #openNotesBtn:hover {
     background-color: var(--button-hover-bg);
     border-color: var(--button-hover-bg);
-    color: var(--primary-text); 
+    color: var(--primary-text);
 }
 
+.notes-section #openTranslatorBtn svg,
 .notes-section #openNotesBtn svg {
     stroke: currentColor;
     width: 18px;
     height: 18px;
 }
 
+body.light-theme .notes-section #openTranslatorBtn,
 body.light-theme .notes-section #openNotesBtn {
-    color: #ffffff; 
+    color: #ffffff;
     border: 1px solid var(--button-bg-light);
 }
 
+body.light-theme .notes-section #openTranslatorBtn:hover,
 body.light-theme .notes-section #openNotesBtn:hover {
-    color: #ffffff; 
+    color: #ffffff;
     border-color: var(--button-hover-bg-light);
 }
 

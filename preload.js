@@ -45,6 +45,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     openNotesWindow: (theme) => ipcRenderer.invoke('open-notes-window', theme),
     // For sharing content to a new notes window
     openNotesWithContent: (data) => ipcRenderer.invoke('open-notes-with-content', data), // data: { title, content, theme }
+    // Open Translator Window
+    openTranslatorWindow: (theme) => ipcRenderer.invoke('open-translator-window', theme),
  
     // Agent and Topic Order
     saveAgentOrder: (orderedAgentIds) => ipcRenderer.invoke('save-agent-order', orderedAgentIds),
