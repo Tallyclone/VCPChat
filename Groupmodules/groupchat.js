@@ -832,15 +832,26 @@ function determineNatureRandomSpeakers(activeMembersConfigs, history, groupConfi
         }
     });
     
-    // 优先级3: 随机发言 (对于未被上述规则触发的)
+    // 优先级3: @所有人 (如果用户消息包含 "@所有人" 且未被前述规则触发)
+    if (userMessageText.includes('@所有人')) {
+        activeMembersConfigs.forEach(memberConfig => {
+            if (!spokenThisTurn.has(memberConfig.id)) {
+                speakers.push(memberConfig);
+                spokenThisTurn.add(memberConfig.id);
+                console.log(`[NatureRandom] @所有人 triggered for ${memberConfig.name}.`);
+            }
+        });
+    }
+
+    // 优先级4: 随机发言 (对于未被上述规则触发的)
     const nonTriggeredMembers = activeMembersConfigs.filter(member => !spokenThisTurn.has(member.id));
     // 简单随机：每个未触发的成员有一定概率发言，例如 1/N 或固定概率
-    const randomSpeakProbability = activeMembersConfigs.length > 0 ? (1 / Math.max(1, activeMembersConfigs.length - spokenThisTurn.size)) : 0.1; 
+    const randomSpeakProbability = activeMembersConfigs.length > 0 ? (1 / Math.max(1, activeMembersConfigs.length - spokenThisTurn.size)) : 0.1;
     // 或者，更复杂的：考虑最近发言情况，避免同一人连续随机发言等
     
     nonTriggeredMembers.forEach(memberConfig => {
         if (Math.random() < randomSpeakProbability) { // 举例：25%的概率发言
-            if (!spokenThisTurn.has(memberConfig.id)) { 
+            if (!spokenThisTurn.has(memberConfig.id)) {
                 speakers.push(memberConfig);
                 spokenThisTurn.add(memberConfig.id);
                 console.log(`[NatureRandom] Random speak triggered for ${memberConfig.name}.`);
