@@ -28,6 +28,7 @@
             --viewer-code-bg-hover: #2a2e36;
             --viewer-button-active-bg: #666a73;
             --viewer-top-light-effect-bg: rgba(250, 250, 210, 0.7);
+            --viewer-heading-color: #61afef; /* 新增：深色主题下的标题颜色 */
         }
 
         /* Define CSS variables for light theme */
@@ -42,6 +43,7 @@
             --viewer-code-bg-hover: #c8d4dd;
             --viewer-button-active-bg: #ced4da;
             --viewer-top-light-effect-bg: rgba(173, 216, 230, 0.7); /* Light blue for light theme */
+            --viewer-heading-color-light: #007bff; /* 新增：浅色主题下的标题颜色 */
         }
 
         .custom-quote-dark {
@@ -49,6 +51,20 @@
         }
         .custom-quote-light {
             color: #3B9EFF; /* 根据用户反馈调整的蓝色 */
+        }
+
+        /* Markdown headings */
+        h1, h2, h3, h4, h5, h6 {
+            color: var(--viewer-heading-color); /* Default blue for headings in dark theme */
+        }
+
+        .light-theme h1,
+        .light-theme h2,
+        .light-theme h3,
+        .light-theme h4,
+        .light-theme h5,
+        .light-theme h6 {
+            color: var(--viewer-heading-color-light); /* Blue for headings in light theme */
         }
 
         body {
