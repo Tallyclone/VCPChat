@@ -435,7 +435,12 @@ function injectEnhancedStyles() {
                color: var(--quoted-text) !important; /* Use CSS variable and !important */
                /* font-style: italic; */ /* Optional: if italics are desired */
            }
-    `;
+
+           /* AI 发送的链接样式 */
+           .md-content a {
+               color: #87CEEB !important; /* 柔和的天蓝色 */
+           }
+   `;
     try {
         const existingStyleElement = document.getElementById('vcp-enhanced-ui-styles');
         if (existingStyleElement) {
