@@ -74,6 +74,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onVCPGroupTopicUpdated: (callback) => ipcRenderer.on('vcp-group-topic-updated', (_event, eventData) => callback(eventData)), // Added for topic title updates
     saveGroupTopicOrder: (groupId, orderedTopicIds) => ipcRenderer.invoke('save-group-topic-order', groupId, orderedTopicIds), // Added for group topic order
     searchTopicsByContent: (itemId, itemType, searchTerm) => ipcRenderer.invoke('search-topics-by-content', itemId, itemType, searchTerm), // Added for content search
+    inviteAgentToSpeak: (groupId, topicId, invitedAgentId) => ipcRenderer.invoke('inviteAgentToSpeak', groupId, topicId, invitedAgentId), // 新增：邀请Agent发言
 
     // VCPLog Notifications
     connectVCPLog: (url, key) => ipcRenderer.send('connect-vcplog', { url, key }),

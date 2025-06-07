@@ -95,6 +95,7 @@ function injectEnhancedStyles() {
                 100% { background-position: 0% 50%; }
             }
 
+
             /* Loading dots animation */
             @keyframes vcp-loading-dots {
               0%, 20% {
@@ -318,8 +319,8 @@ function injectEnhancedStyles() {
 
             /* HTML5 音频播放器样式 */
             audio[controls] {
-                background: linear-gradient(145deg, #3a7bd5 0%, #00d2ff 100%) !important;
-                border: 1px solid #2980b9 !important;
+                background: transparent !important; /* 将背景设置为透明 */
+                border: none !important; /* 移除边框 */
                 border-radius: 10px !important;
                 padding: 10px 15px !important;
                 color: #ffffff !important;
@@ -327,6 +328,27 @@ function injectEnhancedStyles() {
                 margin-bottom: 10px !important;
                 display: block;
                 width: 350px;
+                position: relative; /* Added for pseudo-element positioning */
+                overflow: hidden; /* Added to contain the pseudo-element */
+                z-index: 1; /* Ensure audio player is above the pseudo-element */
+            }
+            /* Animated Border for Audio Player */
+            audio[controls]::after {
+                content: "";
+                position: absolute;
+                box-sizing: border-box;
+                top: 0; left: 0; width: 100%; height: 100%;
+                border-radius: inherit;
+                padding: 2px; /* Border thickness */
+                background: linear-gradient(60deg, #76c4f7, #00d2ff, #3a7bd5, #ffffff, #3a7bd5, #00d2ff, #76c4f7); /* Same gradient as VCP ToolUse bubble */
+                background-size: 300% 300%;
+                animation: vcp-bubble-border-flow-kf 7s linear infinite; /* Same animation as VCP ToolUse bubble */
+                -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+                mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+                -webkit-mask-composite: xor;
+                mask-composite: exclude;
+                z-index: 0; /* Place behind the actual audio controls */
+                pointer-events: none;
             }
             audio[controls]::-webkit-media-controls-panel {
                 background: #ffffff !important;
@@ -334,6 +356,8 @@ function injectEnhancedStyles() {
                 margin: 5px !important;
                 padding: 5px !important;
                 box-sizing: border-box !important;
+                position: relative; /* Ensure panel is above the pseudo-element */
+                z-index: 2; /* Increase z-index for the panel to be on top of the pseudo-element */
             }
             audio[controls]::-webkit-media-controls-play-button,
             audio[controls]::-webkit-media-controls-mute-button,

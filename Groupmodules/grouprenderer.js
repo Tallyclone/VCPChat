@@ -12,6 +12,7 @@ window.GroupRenderer = (() => {
     let agentSettingsContainerFromRenderer; // Specific variable for this element
     let selectedItemNameForSettingsElementFromRenderer; // 新增：用于存储 selectedItemNameForSettingsSpan 的引用
     let mainRendererFunctions;  // Reference to shared functions from renderer.js (loadItems, highlightActiveItem, etc.)
+    let inviteAgentButtonsContainerRef; // 新增：用于存储邀请发言按钮容器的引用
 
     // DOM Elements specific to Group functionality (some might be created dynamically)
     let groupSettingsContainer;
@@ -29,6 +30,7 @@ window.GroupRenderer = (() => {
     let availableAgentsForGroup = []; // To populate member selection
 
     function init(dependencies) {
+        console.log('[GroupRenderer] init function CALLED. Dependencies received:', Object.keys(dependencies));
         electronAPI = dependencies.electronAPI;
         globalSettings = dependencies.globalSettingsRef;
         currentSelectedItemRef = dependencies.currentSelectedItemRef;
@@ -36,10 +38,16 @@ window.GroupRenderer = (() => {
         messageRenderer = dependencies.messageRenderer;
         uiHelper = dependencies.uiHelper;
         mainRendererElements = dependencies.mainRendererElements; // Restore assignment
+        console.log('[GroupRenderer INIT] mainRendererElements assigned in init. Value:', mainRendererElements);
+        if (mainRendererElements) {
+            console.log('[GroupRenderer INIT] mainRendererElements.currentChatAgentNameH3 is:', mainRendererElements.currentChatAgentNameH3);
+            console.log('[GroupRenderer INIT] mainRendererElements.currentAgentSettingsBtn is:', mainRendererElements.currentItemActionBtn); // Note: renderer.js uses currentItemActionBtn for this
+        }
         mainRendererFunctions = dependencies.mainRendererFunctions;
+        inviteAgentButtonsContainerRef = dependencies.inviteAgentButtonsContainerRef; // 新增
 
         if (mainRendererElements) {
-            console.log('[GroupRenderer INIT] Received mainRendererElements:', mainRendererElements);
+            // console.log('[GroupRenderer INIT] Received mainRendererElements (already logged above):', mainRendererElements);
             // Still assign to specific vars for clarity in displayGroupSettingsPage and logging
             selectAgentPromptForSettingsElementFromRenderer = mainRendererElements.selectItemPromptForSettings;
             agentSettingsContainerFromRenderer = mainRendererElements.agentSettingsContainer;
@@ -65,6 +73,7 @@ window.GroupRenderer = (() => {
         // For now, we'll assume renderer.js makes them available or we query them here.
         ensureGroupSettingsDOM(); // Ensure DOM for group settings is ready
         console.log('[GroupRenderer] Initialized with dependencies.');
+        console.log('[GroupRenderer INIT] inviteAgentButtonsContainerRef received:', inviteAgentButtonsContainerRef ? 'Exists' : 'MISSING');
         setupGroupSpecificEventListeners();
     }
     
@@ -106,6 +115,7 @@ window.GroupRenderer = (() => {
                     <select id="groupChatMode">
                         <option value="sequential">顺序发言</option>
                         <option value="naturerandom">自然随机</option>
+                        <option value="invite_only">邀请发言</option>
                     </select>
                 </div>
                 <div class="form-group-inline">
@@ -221,10 +231,10 @@ window.GroupRenderer = (() => {
         messageRenderer.setCurrentItemAvatarColor(groupConfig?.avatarCalculatedColor || null); // CORRECTED FUNCTION NAME
 
 
-        mainRendererElements.currentChatAgentNameH3.textContent = `与群组 ${groupName} 聊天中`;
-        mainRendererElements.currentAgentSettingsBtn.textContent = '新建群聊话题';
-        mainRendererElements.currentAgentSettingsBtn.title = `为群组 ${groupName} 新建群聊话题`;
-        mainRendererElements.currentAgentSettingsBtn.style.display = 'inline-block';
+        mainRendererElements.currentChatNameH3.textContent = `与群组 ${groupName} 聊天中`;
+        mainRendererElements.currentItemActionBtn.textContent = '新建群聊话题';
+        mainRendererElements.currentItemActionBtn.title = `为群组 ${groupName} 新建群聊话题`;
+        mainRendererElements.currentItemActionBtn.style.display = 'inline-block';
         mainRendererElements.clearCurrentChatBtn.style.display = 'inline-block';
 
         mainRendererFunctions.highlightActiveItem(groupId, 'group');
@@ -264,6 +274,25 @@ window.GroupRenderer = (() => {
         mainRendererElements.sendMessageBtn.disabled = false;
         mainRendererElements.attachFileBtn.disabled = false;
         mainRendererElements.messageInput.focus();
+
+        // After selecting group and loading history, update invite buttons
+        console.log(`[GroupRenderer handleSelectGroup] Checking mode for group ${groupId}. Mode: ${groupConfig?.mode}`);
+        if (groupConfig && groupConfig.mode === 'invite_only') {
+            console.log(`[GroupRenderer handleSelectGroup] Group ${groupId} is in invite_only mode. Members:`, groupConfig.members);
+            const membersDetails = await Promise.all(
+                (groupConfig.members || []).map(async (id) => {
+                    const config = await electronAPI.getAgentConfig(id);
+                    console.log(`[GroupRenderer handleSelectGroup] Fetched config for member ${id}:`, config ? 'Exists' : 'Error/Null', config?.error);
+                    return config;
+                })
+            );
+            const validMembers = membersDetails.filter(m => m && !m.error);
+            console.log(`[GroupRenderer handleSelectGroup] membersDetails count: ${membersDetails.length}, validMembers count: ${validMembers.length}`);
+            displayInviteAgentButtons(groupId, currentTopicIdRef.get(), validMembers, groupConfig);
+        } else {
+            console.log(`[GroupRenderer handleSelectGroup] Group ${groupId} is NOT in invite_only mode or groupConfig is missing. Clearing buttons.`);
+            clearInviteAgentButtons();
+        }
     }
 
 
@@ -546,8 +575,8 @@ window.GroupRenderer = (() => {
                     } else {
                         console.warn('[GroupRenderer] mainRendererElements or mainRendererElements.currentChatAgentNameH3 is not available in handleSaveGroupSettings when trying to update chat name.');
                     }
-                    messageRenderer.setCurrentItemAvatar(result.agentGroup.avatarUrl); // CORRECTED FUNCTION NAME
-                    // Update avatar color if applicable
+                    messageRenderer.setCurrentItemAvatar(result.agentGroup.avatarUrl);
+                    messageRenderer.setCurrentItemAvatarColor(result.agentGroup.avatarCalculatedColor); // Update avatar color
                 }
                 // Use the specific module-level reference for selectedItemNameForSettingsElementFromRenderer
                 if (selectedItemNameForSettingsElementFromRenderer) {
@@ -567,6 +596,19 @@ window.GroupRenderer = (() => {
                if (saveButton) uiHelper.showSaveFeedback(saveButton, false, "保存失败", "保存群组设置");
                alert(`保存群组设置失败: ${result.error}`);
             }
+
+            // Update invite buttons based on new mode after saving
+            const updatedGroupConfig = result.agentGroup || newConfig; // Use result if available, else optimistic newConfig
+            if (updatedGroupConfig.mode === 'invite_only') {
+                const membersDetails = await Promise.all(
+                    (updatedGroupConfig.members || []).map(id => electronAPI.getAgentConfig(id))
+                );
+                const validMembers = membersDetails.filter(m => m && !m.error);
+                displayInviteAgentButtons(groupId, currentTopicIdRef.get(), validMembers, updatedGroupConfig);
+            } else {
+                clearInviteAgentButtons();
+            }
+
         } catch (error) {
             console.error("Error saving group settings:", error);
             // 使用 uiHelper.showToastNotification 替换 alert
@@ -608,6 +650,7 @@ window.GroupRenderer = (() => {
                             messageRenderer.setCurrentItemAvatar(null);
                             messageRenderer.setCurrentItemAvatarColor(null);
                         }
+                        clearInviteAgentButtons(); // Clear invite buttons on delete
 
                         // 显式重置设置区域的UI状态
                         if (groupSettingsContainer) { // 这是本模块管理的群组设置容器
@@ -902,9 +945,94 @@ window.GroupRenderer = (() => {
         if (groupId && topicId) {
             localStorage.setItem(`lastActiveTopic_${groupId}_group`, topicId);
         }
+}
+
+    function clearInviteAgentButtons() {
+        const container = inviteAgentButtonsContainerRef ? inviteAgentButtonsContainerRef.get() : null;
+        if (container) {
+            container.innerHTML = '';
+            container.style.display = 'none';
+        }
+    }
+
+    async function displayInviteAgentButtons(groupId, topicId, membersConfigs, groupConfig) {
+        const container = inviteAgentButtonsContainerRef ? inviteAgentButtonsContainerRef.get() : null;
+        if (!container) {
+            console.error("[GroupRenderer] Invite agent buttons container not found.");
+            return;
+        }
+        container.innerHTML = ''; // Clear previous buttons
+
+        if (!membersConfigs || membersConfigs.length === 0 || !groupConfig || groupConfig.mode !== 'invite_only') {
+            container.style.display = 'none';
+            return;
+        }
+
+        container.style.display = 'grid'; // Using grid for layout as suggested
+        // Example: container.style.gridTemplateColumns = 'repeat(3, 1fr)'; // Set by CSS later
+
+        for (const memberConfig of membersConfigs) {
+            if (!memberConfig || memberConfig.error) continue; // Skip invalid members
+
+            const button = document.createElement('button');
+            button.className = 'invite-agent-button';
+            button.title = `邀请 ${memberConfig.name} 发言`;
+
+            const avatarImg = document.createElement('img');
+            avatarImg.src = memberConfig.avatarUrl || 'assets/default_avatar.png';
+            avatarImg.alt = memberConfig.name;
+            // Styles for avatar in button (can be moved to CSS)
+            avatarImg.style.width = '24px';
+            avatarImg.style.height = '24px';
+            avatarImg.style.borderRadius = '50%';
+            avatarImg.style.marginRight = '8px';
+            avatarImg.style.objectFit = 'cover';
+
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = memberConfig.name;
+
+            button.appendChild(avatarImg);
+            button.appendChild(nameSpan);
+
+            button.addEventListener('click', () => {
+                handleInviteAgentButtonClick(groupId, topicId, memberConfig.id, memberConfig.name);
+            });
+            container.appendChild(button);
+        }
+    }
+
+    async function handleInviteAgentButtonClick(groupId, topicId, agentId, agentName) {
+        console.log(`[GroupRenderer] Invite button clicked for agent: ${agentName} (ID: ${agentId}) in group ${groupId}, topic ${topicId}`);
+        if (!topicId) {
+            uiHelper.showToastNotification('错误：无法邀请发言，当前话题ID未知。', 'error');
+            return;
+        }
+        try {
+            const currentGlobalSettings = globalSettings.get();
+            if (!currentGlobalSettings.vcpServerUrl) {
+                if (uiHelper && uiHelper.showToastNotification) uiHelper.showToastNotification('请先在全局设置中配置VCP服务器URL！', 'error'); else alert('请先在全局设置中配置VCP服务器URL！');
+                if (uiHelper && uiHelper.openModal) uiHelper.openModal('globalSettingsModal');
+                return;
+            }
+            // Renderer informs main process to trigger the invitation.
+            // Main process will then call groupchat.js's handleInviteAgentToSpeak.
+            // Responses (thinking, data, end, error) will come via 'vcp-group-stream-chunk'.
+            await electronAPI.inviteAgentToSpeak(groupId, topicId, agentId);
+            // Optionally, provide some immediate UI feedback, e.g., a small spinner on the button,
+            // or a toast "正在邀请 AgentName 发言..."
+            // The actual message rendering will be handled by the vcp-group-stream-chunk listener.
+        } catch (error) {
+            console.error(`[GroupRenderer] Error inviting agent ${agentName}:`, error);
+            if (uiHelper && uiHelper.showToastNotification) {
+                uiHelper.showToastNotification(`邀请 ${agentName} 发言失败: ${error.message}`, 'error');
+            } else {
+                alert(`邀请 ${agentName} 发言失败: ${error.message}`);
+            }
+        }
     }
 
     // Public API for GroupRenderer
+    console.log('[GroupRenderer] Preparing to return public API.');
     return {
         init,
         handleSelectGroup,
@@ -916,6 +1044,8 @@ window.GroupRenderer = (() => {
         handleGroupTopicSelection,
         handleRenameGroupTopic,
         handleDeleteGroupTopic,
+        displayInviteAgentButtons, // Export for potential external calls if needed
+        clearInviteAgentButtons,   // Export for potential external calls
         // Potentially other methods if renderer.js needs to interact more
     };
 })();

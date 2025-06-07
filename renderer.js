@@ -94,6 +94,7 @@ let croppedGroupAvatarFile = null; // For group avatar, to be managed by GroupRe
 const notificationTitleElement = document.getElementById('notificationTitle');
 const digitalClockElement = document.getElementById('digitalClock');
 const dateDisplayElement = document.getElementById('dateDisplay');
+let inviteAgentButtonsContainerElement; // 新增：邀请发言按钮容器的引用
 
 // UI Helper functions to be passed to modules
 const uiHelperFunctions = {
@@ -136,6 +137,7 @@ const uiHelperFunctions = {
 document.addEventListener('DOMContentLoaded', async () => {
     // 确保在GroupRenderer初始化之前，其容器已准备好
     prepareGroupSettingsDOM();
+    inviteAgentButtonsContainerElement = document.getElementById('inviteAgentButtonsContainer'); // 新增：获取容器引用
 
     if (window.GroupRenderer) {
         const mainRendererElementsForGroupRenderer = {
@@ -188,7 +190,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 initializeTopicSortable: initializeTopicSortable,
                 switchToTab: switchToTab,
                 saveItemOrder: saveItemOrder,
-            }
+            },
+            inviteAgentButtonsContainerRef: { get: () => inviteAgentButtonsContainerElement }, // 新增：传递引用
         });
         console.log('[Renderer POST-INIT GroupRenderer] window.GroupRenderer.init has been called.');
     } else {
@@ -701,6 +704,13 @@ async function selectItem(itemId, itemType, itemName, itemAvatarUrl, itemFullCon
         return;
     }
 
+    console.log(`[Renderer selectItem] Called for itemType: ${itemType}, itemId: ${itemId}. Checking window.GroupRenderer object.`);
+    if (window.GroupRenderer) {
+        console.log(`[Renderer selectItem] window.GroupRenderer exists. Typeof handleSelectGroup: ${typeof window.GroupRenderer.handleSelectGroup}`);
+    } else {
+        console.error(`[Renderer selectItem] window.GroupRenderer is UNDEFINED or NULL when trying to select ${itemType} ${itemId}.`);
+    }
+
     currentSelectedItem = { id: itemId, type: itemType, name: itemName, avatarUrl: itemAvatarUrl, config: itemFullConfig };
     currentTopicId = null; // Reset topic when selecting a new item
     currentChatHistory = [];
@@ -715,7 +725,26 @@ async function selectItem(itemId, itemType, itemName, itemAvatarUrl, itemFullCon
         messageRenderer.setCurrentItemAvatar(itemAvatarUrl); // Use item's avatar (generic)
         messageRenderer.setCurrentItemAvatarColor(itemFullConfig?.avatarCalculatedColor || null);
     }
-    
+
+    if (itemType === 'group' && window.GroupRenderer && typeof window.GroupRenderer.handleSelectGroup === 'function') {
+        console.log('[Renderer selectItem] Attempting to call window.GroupRenderer.handleSelectGroup...');
+        try {
+            await window.GroupRenderer.handleSelectGroup(itemId, itemName, itemAvatarUrl, itemFullConfig);
+            console.log('[Renderer selectItem] Call to window.GroupRenderer.handleSelectGroup completed.');
+        } catch (e) {
+            console.error('[Renderer selectItem] Error during call to window.GroupRenderer.handleSelectGroup:', e);
+        }
+    } else if (itemType === 'group') {
+        console.error('[Renderer selectItem] Condition to call window.GroupRenderer.handleSelectGroup was false. window.GroupRenderer:', window.GroupRenderer, 'typeof handleSelectGroup:', typeof window.GroupRenderer?.handleSelectGroup);
+    } else if (itemType === 'agent') {
+        // When an agent is selected, ensure group-specific invite buttons are cleared
+        if (window.GroupRenderer && typeof window.GroupRenderer.clearInviteAgentButtons === 'function') {
+            window.GroupRenderer.clearInviteAgentButtons();
+        }
+    }
+    // Agent specific logic would go into an else if (itemType === 'agent') block if needed here,
+    // but for now, the main concern is the group handling.
+ 
     currentChatNameH3.textContent = `与 ${itemName} ${itemType === 'group' ? '(群组)' : ''} 聊天中`;
     currentItemActionBtn.textContent = itemType === 'group' ? '新建群聊话题' : '新建聊天话题';
     currentItemActionBtn.title = `为 ${itemName} 新建${itemType === 'group' ? '群聊话题' : '聊天话题'}`;

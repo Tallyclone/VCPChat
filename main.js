@@ -194,6 +194,48 @@ app.whenReady().then(() => {
             return { success: false, error: error.message };
         }
     });
+
+    ipcMain.handle('inviteAgentToSpeak', async (event, groupId, topicId, invitedAgentId) => {
+        console.log(`[Main IPC] Received inviteAgentToSpeak for Group: ${groupId}, Topic: ${topicId}, Agent: ${invitedAgentId}`);
+        try {
+            const sendStreamChunkToRenderer = (channel, data) => {
+                if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+                    mainWindow.webContents.send(channel, data);
+                }
+            };
+
+            const getAgentConfigById = async (agentId) => {
+                const agentDir = path.join(AGENT_DIR, agentId);
+                const configPath = path.join(agentDir, 'config.json');
+                if (await fs.pathExists(configPath)) {
+                    const config = await fs.readJson(configPath);
+                    const avatarPathPng = path.join(agentDir, 'avatar.png');
+                    const avatarPathJpg = path.join(agentDir, 'avatar.jpg');
+                    const avatarPathJpeg = path.join(agentDir, 'avatar.jpeg');
+                    const avatarPathGif = path.join(agentDir, 'avatar.gif');
+                    config.avatarUrl = null;
+                    if (await fs.pathExists(avatarPathPng)) {
+                        config.avatarUrl = `file://${avatarPathPng}?t=${Date.now()}`;
+                    } else if (await fs.pathExists(avatarPathJpg)) {
+                        config.avatarUrl = `file://${avatarPathJpg}?t=${Date.now()}`;
+                    } else if (await fs.pathExists(avatarPathJpeg)) {
+                        config.avatarUrl = `file://${avatarPathJpeg}?t=${Date.now()}`;
+                    } else if (await fs.pathExists(avatarPathGif)) {
+                        config.avatarUrl = `file://${avatarPathGif}?t=${Date.now()}`;
+                    }
+                    config.id = agentId;
+                    return config;
+                }
+                return { error: `Agent config for ${agentId} not found.` };
+            };
+
+            await groupChat.handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendStreamChunkToRenderer, getAgentConfigById);
+            return { success: true, message: "Agent invitation processing started." };
+        } catch (error) {
+            console.error(`[Main IPC] Error in inviteAgentToSpeak handler for Group ${groupId}, Agent ${invitedAgentId}:`, error);
+            return { success: false, error: error.message };
+        }
+    });
     // --- End of Group Chat IPC Handlers ---
     // --- Moved IPC Handler Registration ---
     ipcMain.handle('display-text-content-in-viewer', async (event, textContent, windowTitle, theme) => { // Added theme parameter
