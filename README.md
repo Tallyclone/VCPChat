@@ -1,6 +1,6 @@
 # VCP 聊天客户端
 
-这是一个为 VCP (Visionary Companion Protocol) 服务器打造的 AI 聊天桌面客户端。
+这是一个为 VCP (Variable & Command Protocol) 服务器打造的 AI 聊天桌面客户端。
 
 *请立刻在全局设置里设置用户名，以避免众多依赖功能报错！*
 
