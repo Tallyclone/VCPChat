@@ -429,6 +429,12 @@ function injectEnhancedStyles() {
            .context-menu-item.regenerate-text:hover {
                background-color: rgba(67, 160, 71, 0.1) !important;
            }
+
+           /* Highlight for quoted text */
+           .md-content .highlighted-quote { /* Increased specificity */
+               color: var(--quoted-text) !important; /* Use CSS variable and !important */
+               /* font-style: italic; */ /* Optional: if italics are desired */
+           }
     `;
     try {
         const existingStyleElement = document.getElementById('vcp-enhanced-ui-styles');
@@ -691,6 +697,113 @@ function highlightTagsInMessage(messageElement) {
 
             currentNode.parentNode.insertBefore(span, textAfterMatch);
             currentNode.nodeValue = currentNode.nodeValue.substring(0, matchInfo.index);
+        }
+    }
+}
+
+
+/**
+ * Highlights text within double quotes in a given HTML element.
+ * This function should be called AFTER Markdown and LaTeX rendering.
+ * @param {HTMLElement} messageElement - The HTML element containing the message content.
+ */
+function highlightQuotesInMessage(messageElement) {
+    if (!messageElement) return;
+
+    const quoteRegex = /(?:"([^"]*)"|“([^”]*)”)/g; // Matches English "..." and Chinese “...”
+    const walker = document.createTreeWalker(
+        messageElement,
+        NodeFilter.SHOW_TEXT,
+        (node) => { // Filter to exclude nodes inside already highlighted quotes or tags, or style/script/pre/code/katex
+            let parent = node.parentElement;
+            while (parent && parent !== messageElement && parent !== document.body) {
+                if (parent.classList.contains('highlighted-quote') ||
+                    parent.classList.contains('highlighted-tag') ||
+                    parent.classList.contains('katex') || // Ensure KaTeX elements are skipped
+                    parent.tagName === 'STYLE' ||
+                    parent.tagName === 'SCRIPT' ||
+                    parent.tagName === 'PRE' ||
+                    parent.tagName === 'CODE') {
+                    return NodeFilter.FILTER_REJECT;
+                }
+                parent = parent.parentElement;
+            }
+            // Direct parent check (should be redundant if loop is correct, but safe)
+            if (node.parentElement && (
+                node.parentElement.classList.contains('highlighted-quote') ||
+                node.parentElement.classList.contains('highlighted-tag') ||
+                node.parentElement.classList.contains('katex') || // Ensure KaTeX elements are skipped
+                node.parentElement.tagName === 'STYLE' ||
+                node.parentElement.tagName === 'SCRIPT' ||
+                node.parentElement.tagName === 'PRE' ||
+                node.parentElement.tagName === 'CODE')) {
+                return NodeFilter.FILTER_REJECT;
+            }
+            return NodeFilter.FILTER_ACCEPT;
+        },
+        false
+    );
+
+    let node;
+    const nodesToProcess = [];
+
+    while (node = walker.nextNode()) {
+        const text = node.nodeValue;
+        let match;
+        const matches = [];
+        quoteRegex.lastIndex = 0; // Reset regex state for each node
+        while ((match = quoteRegex.exec(text)) !== null) {
+            // Check if any of the capturing groups (content inside quotes) have content
+            const contentGroup1 = match[1]; // Content for "..."
+            const contentGroup2 = match[2]; // Content for “...”
+            
+            if ((contentGroup1 && contentGroup1.length > 0) ||
+                (contentGroup2 && contentGroup2.length > 0)) {
+                matches.push({
+                    index: match.index,
+                    fullMatch: match[0], // The full quoted string, e.g., "text" or “text”
+                });
+            }
+        }
+
+        if (matches.length > 0) {
+            nodesToProcess.push({ node, matches });
+        }
+    }
+
+    for (let i = nodesToProcess.length - 1; i >= 0; i--) {
+        const { node, matches } = nodesToProcess[i];
+        
+        // Ensure matches are processed in the order they appear in the text
+        // The regex exec loop already provides them in order.
+
+        const fragment = document.createDocumentFragment();
+        let lastIndex = 0;
+        const originalText = node.nodeValue;
+
+        for (const matchInfo of matches) { // Iterate matches in the order they appeared
+            // Text before the current match
+            if (matchInfo.index > lastIndex) {
+                fragment.appendChild(document.createTextNode(originalText.substring(lastIndex, matchInfo.index)));
+            }
+            
+            // The highlighted match
+            const span = document.createElement('span');
+            span.className = 'highlighted-quote';
+            span.textContent = matchInfo.fullMatch; // matchInfo.fullMatch includes the quotes themselves
+            fragment.appendChild(span);
+
+            lastIndex = matchInfo.index + matchInfo.fullMatch.length;
+        }
+
+        // Text after the last match
+        if (lastIndex < originalText.length) {
+            fragment.appendChild(document.createTextNode(originalText.substring(lastIndex)));
+        }
+
+        // Replace the original text node with the fragment
+        if (node.parentNode) { // Ensure node is still in the DOM
+            node.parentNode.replaceChild(fragment, node);
         }
     }
 }
@@ -1090,8 +1203,8 @@ async function renderMessage(message, isInitialLoad = false) {
             throwOnError: false
         });
     }
-    processAllPreBlocksInContentDiv(contentDiv); // Placed before highlightTags for pre block integrity
-    highlightTagsInMessage(contentDiv); // Highlight @tags after all other rendering
+    processAllPreBlocksInContentDiv(contentDiv);
+    // Moved highlightTagsInMessage and highlightQuotesInMessage to be called after MathJax/KaTeX rendering
     
     if (!isInitialLoad && !message.isThinking) {
         const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
@@ -1119,6 +1232,10 @@ async function renderMessage(message, isInitialLoad = false) {
         messageItem.remove();
         return null;
     }
+
+    // Call highlighting functions AFTER all other DOM manipulations on contentDiv are done
+    highlightTagsInMessage(contentDiv);
+    highlightQuotesInMessage(contentDiv);
     
     uiHelper.scrollToBottom();
     return messageItem;
@@ -1301,7 +1418,9 @@ function processAndRenderSmoothChunk(messageId) {
                         });
                     }
                     processAllPreBlocksInContentDiv(targetContentDiv);
+                    // Call highlighting functions AFTER all other DOM manipulations on targetContentDiv
                     highlightTagsInMessage(targetContentDiv);
+                    highlightQuotesInMessage(targetContentDiv);
                 }
             }
             enhancedRenderDebounceTimers.delete(messageItem);
@@ -1427,10 +1546,12 @@ function appendStreamChunk(messageId, chunkData, agentNameForGroup, agentIdForGr
 
                             if (window.renderMathInElement) {
                                 window.renderMathInElement(finalContentDiv, { delimiters: [{left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}, {left: "\\(", right: "\\)", display: false}, {left: "\\[", right: "\\]", display: true}], throwOnError: false });
-                            }
-                            processAllPreBlocksInContentDiv(finalContentDiv);
-                            highlightTagsInMessage(finalContentDiv);
-                            mainRendererReferences.uiHelper.scrollToBottom();
+                           }
+                           processAllPreBlocksInContentDiv(finalContentDiv);
+                           // Call highlighting functions AFTER all other DOM manipulations on finalContentDiv
+                           highlightTagsInMessage(finalContentDiv);
+                           highlightQuotesInMessage(finalContentDiv);
+                           mainRendererReferences.uiHelper.scrollToBottom();
                         }
                     }
                     // Clean up maps after everything is done for this stream
@@ -1508,10 +1629,12 @@ function renderChunkDirectlyToDOM(messageId, textToAppend, agentNameForGroup, ag
                     targetContentDiv.innerHTML = markedInstance.parse(processedForDebounce);
                     if (window.renderMathInElement) {
                         window.renderMathInElement(targetContentDiv, { delimiters: [ {left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}, {left: "\\(", right: "\\)", display: false}, {left: "\\[", right: "\\]", display: true} ], throwOnError: false });
-                    }
-                    processAllPreBlocksInContentDiv(targetContentDiv);
-                    highlightTagsInMessage(targetContentDiv);
                 }
+                processAllPreBlocksInContentDiv(targetContentDiv);
+                // Call highlighting functions AFTER all other DOM manipulations on targetContentDiv
+                highlightTagsInMessage(targetContentDiv);
+                highlightQuotesInMessage(targetContentDiv);
+            }
             }
             enhancedRenderDebounceTimers.delete(messageItem);
         }, currentDelay));
@@ -1695,7 +1818,9 @@ async function finalizeStreamedMessage(messageId, finishReason, fullResponseText
                 delete pre.dataset.maidDiaryPrettified;
             });
             processAllPreBlocksInContentDiv(contentDiv);
+            // Call highlighting functions AFTER all other DOM manipulations on contentDiv
             highlightTagsInMessage(contentDiv);
+            highlightQuotesInMessage(contentDiv);
         }
     }
 
