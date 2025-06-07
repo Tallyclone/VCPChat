@@ -4,7 +4,7 @@
 
 *请立刻在全局设置里设置用户名，以避免众多依赖功能报错！*
 
-<span style="color:red;">警告:这是一个2.0群聊引擎添加的预览更新，可能包含许多潜在bug，请提前备份用户数据和版本信息</span>
+后端链接：https://github.com/lioensky/VCPToolBox
 
 ## 主要功能
 
