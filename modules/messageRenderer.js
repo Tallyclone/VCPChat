@@ -440,6 +440,55 @@ function injectEnhancedStyles() {
            .md-content a {
                color: #87CEEB !important; /* 柔和的天蓝色 */
            }
+
+          /* Markdown Table Styles (Theme Aware) */
+          /* Define light theme variables as defaults */
+          :root {
+              --table-border-color: #ddd;
+              --table-text-color: #333;
+              --table-bg-color: #fff;
+              --table-header-bg-color: #f2f2f2;
+              --table-header-text-color: #333;
+              --table-row-even-bg-color: #f9f9f9;
+              --table-row-hover-bg-color: #f0f0f0;
+          }
+
+          /* Define dark theme variables when .dark-theme (or lack of .light-theme) is active */
+          body:not(.light-theme) { /* Or just .dark-theme if that's how your theme switching works */
+              --table-border-color: #555;
+              --table-text-color: #e0e0e0;
+              --table-bg-color: #2c2c2c;
+              --table-header-bg-color: #383838;
+              --table-header-text-color: #f5f5f5;
+              --table-row-even-bg-color: #333; /* Optional: can re-enable if desired for dark theme */
+              --table-row-hover-bg-color: #4a4a4a;
+          }
+
+          .md-content table {
+              border-collapse: collapse;
+              margin: 1em 0;
+              width: auto;
+              border: 1px solid var(--table-border-color);
+              color: var(--table-text-color);
+              background-color: var(--table-bg-color);
+          }
+          .md-content th, .md-content td {
+              border: 1px solid var(--table-border-color);
+              padding: 10px 15px;
+              text-align: left;
+          }
+          .md-content th {
+              background-color: var(--table-header-bg-color);
+              font-weight: bold;
+              color: var(--table-header-text-color);
+          }
+           /* Optional: Re-enable for alternating rows if desired for both themes */
+          .md-content tr:nth-child(even) td {
+             /* background-color: var(--table-row-even-bg-color); */ /* Commented out for now, can be enabled */
+          }
+          .md-content tr:hover td {
+               background-color: var(--table-row-hover-bg-color);
+          }
    `;
     try {
         const existingStyleElement = document.getElementById('vcp-enhanced-ui-styles');
