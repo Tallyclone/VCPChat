@@ -64,7 +64,13 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
                         titleText += ` (${titleSuffix.trim()})`;
                     }
                     if (typeof parsedInnerContent.original_plugin_output !== 'undefined') {
-                        mainContent = String(parsedInnerContent.original_plugin_output);
+                        if (typeof parsedInnerContent.original_plugin_output === 'object' && parsedInnerContent.original_plugin_output !== null) {
+                            mainContent = JSON.stringify(parsedInnerContent.original_plugin_output, null, 2);
+                            // contentIsPreformatted is already true (from line 52) and should remain true for JSON display
+                        } else {
+                            mainContent = String(parsedInnerContent.original_plugin_output);
+                            contentIsPreformatted = false; // If it's not an object, treat as plain text
+                        }
                     }
                 } catch (e) {
                     // console.warn('VCP Notifier: Could not parse vcpData.content as JSON:', e, rawContentString);
@@ -76,6 +82,23 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
             titleText = 'VCP 日志条目:';
             mainContent = JSON.stringify(vcpData, null, 2);
             contentIsPreformatted = true;
+        }
+    } else if (logData && typeof logData === 'object' && logData.type === 'video_generation_status' && logData.data && typeof logData.data === 'object') {
+        titleText = '视频生成状态:';
+        if (logData.data.original_plugin_output && typeof logData.data.original_plugin_output.message === 'string') {
+            mainContent = logData.data.original_plugin_output.message;
+            contentIsPreformatted = false;
+        } else if (logData.data.original_plugin_output) { // If original_plugin_output exists but not its message, stringify it
+            mainContent = JSON.stringify(logData.data.original_plugin_output, null, 2);
+            contentIsPreformatted = true;
+        } else { // Fallback to stringify the whole data part
+            mainContent = JSON.stringify(logData.data, null, 2);
+            contentIsPreformatted = true;
+        }
+        // Attempt to add timestamp to title
+        if (logData.data.timestamp && typeof logData.data.timestamp === 'string' && logData.data.timestamp.length >= 16) {
+            const timePart = logData.data.timestamp.substring(11, 16);
+            titleText += ` (@ ${timePart})`;
         }
     } else if (logData && typeof logData === 'object' && logData.type === 'daily_note_created' && logData.data && typeof logData.data === 'object') {
         const noteData = logData.data;
@@ -114,10 +137,13 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
             if (contentIsPreformatted) {
                 const pre = document.createElement('pre');
                 pre.textContent = mainContent.substring(0, 300) + (mainContent.length > 300 ? '...' : '');
+                pre.style.overflowWrap = 'break-word'; //  处理长文本换行
+                pre.style.whiteSpace = 'pre-wrap'; //  确保<pre>标签也能自动换行
                 contentDiv.appendChild(pre);
             } else {
                 const p = document.createElement('p');
                 p.textContent = mainContent.substring(0, 300) + (mainContent.length > 300 ? '...' : '');
+                p.style.overflowWrap = 'break-word'; //  处理长文本换行
                 contentDiv.appendChild(p);
             }
         }
