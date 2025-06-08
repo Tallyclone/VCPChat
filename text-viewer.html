@@ -248,6 +248,32 @@
             outline: 2px solid var(--viewer-inline-code-text); /* Visual cue for editing */
             box-shadow: 0 0 10px var(--viewer-inline-code-text); /* Enhanced visual cue */
         }
+        /* Basic Table Styling for Markdown */
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 1em;
+            color: var(--viewer-primary-text); /* Ensure text color is inherited */
+        }
+        th, td {
+            border: 1px solid var(--viewer-code-bg-hover); /* Use a visible border color */
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: var(--viewer-code-bg); /* Slight background for headers */
+        }
+
+        /* Style for Mermaid diagrams */
+        .mermaid {
+            background-color: var(--viewer-code-bg);
+            padding: 1em;
+            border-radius: 5px;
+            margin-bottom: 1em;
+            display: flex; /* 新增：使其内容居中 */
+            justify-content: center; /* 新增：使其内容居中 */
+            align-items: center; /* 新增：使其内容居中 */
+        }
     </style>
 </head>
 <body>
@@ -277,10 +303,13 @@
         // Assuming it's in the root or accessible path.
         // In a real app, you'd bundle this or ensure correct pathing.
     </script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@latest/dist/mermaid.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            mermaid.initialize({ startOnLoad: false }); // 初始化 Mermaid，但不自动渲染
+
             function renderQuotedText(text, currentTheme) {
                 const className = currentTheme === 'light' ? 'custom-quote-light' : 'custom-quote-dark';
                 const quoteRegex = /(?:"([^"]*?)"|“([^”]*?)”)/g;
@@ -386,15 +415,37 @@
                 // 应用自定义引号渲染
                 decodedText = renderQuotedText(decodedText, theme);
 
+                // Prepare Mermaid diagrams before Markdown rendering
+                const mermaidRegex = /```mermaid\n([\s\S]*?)```/g;
+                let mermaidProcessedText = decodedText.replace(mermaidRegex, (match, mermaidContent) => {
+                    // Create a unique ID for each diagram to avoid conflicts if multiple diagrams exist
+                    const diagramId = `mermaid-diagram-${Math.random().toString(36).substring(2, 15)}`;
+                    return `<div class="mermaid" id="${diagramId}">${mermaidContent.trim()}</div>`;
+                });
+
                 // Render Markdown
                 if (window.marked) {
-                    contentDiv.innerHTML = marked.parse(decodedText);
+                    marked.setOptions({
+                        gfm: true, // Enable GFM (GitHub Flavored Markdown)
+                        tables: true, // Enable GFM tables
+                        breaks: false, // Do not interpret carriage returns as <br>
+                        pedantic: false,
+                        sanitize: false, // IMPORTANT: If you allow user-generated content, ensure proper sanitization.
+                        smartLists: true,
+                        smartypants: false
+                    });
+                    contentDiv.innerHTML = marked.parse(mermaidProcessedText); // Use mermaidProcessedText
+
                     // Apply syntax highlighting after Markdown is rendered
                     if (window.hljs) {
                         hljs.highlightAll();
-                        // Add copy buttons to code blocks
+                        // Add copy buttons to code blocks (excluding mermaid blocks)
                         document.querySelectorAll('pre code.hljs').forEach((block) => {
                             const preElement = block.parentElement;
+                            // Ensure we are not adding buttons to pre elements that might wrap mermaid divs
+                            if (preElement.querySelector('.mermaid')) {
+                                return;
+                            }
                             preElement.style.position = 'relative'; // Needed for absolute positioning of the button
 
                             // Create Edit Button
@@ -451,11 +502,32 @@
                             preElement.appendChild(copyButton);
                         });
                     }
+                    // Render Mermaid diagrams
+                    if (window.mermaid) {
+                        try {
+                            mermaid.run({
+                                nodes: document.querySelectorAll('.mermaid')
+                            });
+                        } catch (e) {
+                            console.error("Mermaid rendering error:", e);
+                        }
+                    }
+
                 } else {
                     // Fallback if marked is not loaded
                     const pre = document.createElement('pre');
-                    pre.textContent = decodedText;
+                    pre.textContent = mermaidProcessedText; // Use mermaidProcessedText
                     contentDiv.appendChild(pre);
+                     // Render Mermaid diagrams even in fallback
+                    if (window.mermaid) {
+                        try {
+                            mermaid.run({
+                                nodes: document.querySelectorAll('.mermaid')
+                            });
+                        } catch (e) {
+                            console.error("Mermaid rendering error (fallback):", e);
+                        }
+                    }
                 }
 
                 // Render LaTeX if KaTeX is available
