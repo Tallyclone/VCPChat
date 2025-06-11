@@ -19,8 +19,8 @@
   "author": "莱恩 (由小吉辅助生成)",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^36.0.0",
-    "electron-builder": "^26.0.15"
+    "electron": "^35.5.1",
+    "electron-builder": "^26.0.12"
   },
   "dependencies": {
     "fs-extra": "^11.2.0",
