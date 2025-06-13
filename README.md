@@ -98,8 +98,8 @@
 ![示例图2](assets/E2.jpg)
 ![示例图3](assets/E3.jpg)
 ![示例图4](assets/E4.jpg)
-![示例图5](assets/E5.jpg)
-![示例图6](assets/E6.jpg)
+![示例图5](assets/E6.jpg)
+![示例图6](assets/E5.jpg)
 
 ## 客户端职责
 
