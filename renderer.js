@@ -502,18 +502,23 @@ function updateDateTimeDisplay() {
 }
 
 function loadAndApplyThemePreference() {
-    const currentTheme = localStorage.getItem('theme');
+    // The initial theme is now set by main.js via nativeTheme.
+    // This function will now primarily listen for updates.
+    window.electronAPI.onThemeUpdated(applyTheme);
+}
+
+function applyTheme(theme) {
+    const isLightTheme = theme === 'light';
+    document.body.classList.toggle('light-theme', isLightTheme);
+    
     const sunIcon = document.getElementById('sun-icon');
     const moonIcon = document.getElementById('moon-icon');
-    if (currentTheme === 'light') {
-        document.body.classList.add('light-theme');
-        if (sunIcon) sunIcon.style.display = 'none';
-        if (moonIcon) moonIcon.style.display = 'inline-block';
-    } else { // Default to dark
-        document.body.classList.remove('light-theme');
-        if (sunIcon) sunIcon.style.display = 'inline-block';
-        if (moonIcon) moonIcon.style.display = 'none';
-    }
+
+    if (sunIcon) sunIcon.style.display = isLightTheme ? 'none' : 'inline-block';
+    if (moonIcon) moonIcon.style.display = isLightTheme ? 'inline-block' : 'none';
+    
+    // Persist the theme choice for the next session
+    localStorage.setItem('theme', theme);
 }
 
 async function loadAndApplyGlobalSettings() {
@@ -2003,19 +2008,9 @@ function setupEventListeners() {
 
     if (themeToggleBtn) {
         themeToggleBtn.addEventListener('click', () => {
-            const sunIcon = document.getElementById('sun-icon');
-            const moonIcon = document.getElementById('moon-icon');
-
-            document.body.classList.toggle('light-theme');
-            if (document.body.classList.contains('light-theme')) {
-                localStorage.setItem('theme', 'light');
-                if (sunIcon) sunIcon.style.display = 'none';
-                if (moonIcon) moonIcon.style.display = 'inline-block'; 
-            } else {
-                localStorage.setItem('theme', 'dark');
-                if (sunIcon) sunIcon.style.display = 'inline-block'; 
-                if (moonIcon) moonIcon.style.display = 'none';
-            }
+            const isCurrentlyLight = document.body.classList.contains('light-theme');
+            const newTheme = isCurrentlyLight ? 'dark' : 'light';
+            window.electronAPI.setTheme(newTheme); // Notify main process
         });
     }
 

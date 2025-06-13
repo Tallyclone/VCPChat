@@ -2338,6 +2338,13 @@ ipcMain.on('disconnect-vcplog', () => {
     console.log('VCPLog 已手动断开');
 });
 
+// Theme control
+ipcMain.on('set-theme', (event, theme) => {
+    if (theme === 'light' || theme === 'dark') {
+        nativeTheme.themeSource = theme;
+        console.log(`[Main] Theme source explicitly set to: ${theme}`);
+    }
+});
 // --- Window Control IPC Handlers ---
 ipcMain.on('minimize-window', () => {
     if (mainWindow) {

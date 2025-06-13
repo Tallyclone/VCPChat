@@ -155,6 +155,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onAssistantBarData: (callback) => ipcRenderer.on('assistant-bar-data', (_event, data) => callback(data)),
     onAssistantData: (callback) => ipcRenderer.on('assistant-data', (_event, data) => callback(data)),
     onThemeUpdated: (callback) => ipcRenderer.on('theme-updated', (_event, theme) => callback(theme)),
+    setTheme: (theme) => ipcRenderer.send('set-theme', theme),
     removeVcpStreamChunkListener: (callback) => ipcRenderer.removeListener('vcp-stream-chunk', callback),
 });
 
