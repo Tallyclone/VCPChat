@@ -19,106 +19,6 @@ document.addEventListener('DOMContentLoaded', () => {
         chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight;
     };
 
-    // --- Independent Rendering Logic for Assistant ---
-
-    const renderMessage = (message) => {
-        const messageItem = document.createElement('div');
-        messageItem.classList.add('message-item', message.role);
-        messageItem.dataset.messageId = message.id || `msg_${Date.now()}`;
-
-        const avatarImg = document.createElement('img');
-        avatarImg.classList.add('chat-avatar');
-        
-        const senderNameDiv = document.createElement('div');
-        senderNameDiv.classList.add('sender-name');
-
-        if (message.role === 'user') {
-            avatarImg.src = globalSettings.userAvatarUrl || '../assets/default_avatar.png';
-            senderNameDiv.textContent = globalSettings.userName || '你';
-        } else { // assistant
-            avatarImg.src = agentConfig.avatarUrl || '../assets/default_avatar.png';
-            senderNameDiv.textContent = agentConfig.name || 'AI';
-        }
-        
-        const contentDiv = document.createElement('div');
-        contentDiv.classList.add('md-content');
-        contentDiv.innerHTML = markedInstance.parse(message.content);
-
-        const nameTimeDiv = document.createElement('div');
-        nameTimeDiv.classList.add('name-time-block');
-        nameTimeDiv.appendChild(senderNameDiv);
-
-        const detailsAndBubbleWrapper = document.createElement('div');
-        detailsAndBubbleWrapper.classList.add('details-and-bubble-wrapper');
-        detailsAndBubbleWrapper.appendChild(nameTimeDiv);
-        detailsAndBubbleWrapper.appendChild(contentDiv);
-
-        messageItem.appendChild(avatarImg);
-        messageItem.appendChild(detailsAndBubbleWrapper);
-        
-        chatMessagesDiv.appendChild(messageItem);
-        scrollToBottom();
-        return messageItem;
-    };
-
-    const showThinkingIndicator = (messageId) => {
-        activeStreamingMessageId = messageId;
-        const thinkingMessage = {
-            id: messageId,
-            role: 'assistant',
-            content: '<span class="thinking-indicator">思考中<span class="thinking-indicator-dots">...</span></span>',
-        };
-        const messageItem = renderMessage(thinkingMessage);
-        messageItem.classList.add('streaming');
-    };
-
-    const appendStreamChunk = (messageId, chunk) => {
-        if (messageId !== activeStreamingMessageId) return;
-
-        const messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
-        if (!messageItem) return;
-
-        const contentDiv = messageItem.querySelector('.md-content');
-        const thinkingIndicator = contentDiv.querySelector('.thinking-indicator');
-        
-        let messageInHistory = currentChatHistory.find(m => m.id === messageId);
-        
-        if (!messageInHistory) {
-            messageInHistory = { id: messageId, role: 'assistant', content: '', timestamp: Date.now() };
-            currentChatHistory.push(messageInHistory);
-        }
-        
-        if (thinkingIndicator) {
-            contentDiv.innerHTML = ''; // Clear "Thinking..." on first chunk
-        }
-
-        let textToAppend = "";
-        if (chunk && chunk.choices && chunk.choices.length > 0 && chunk.choices[0].delta) {
-            textToAppend = chunk.choices[0].delta.content || "";
-        }
-        messageInHistory.content += textToAppend;
-        contentDiv.innerHTML = markedInstance.parse(messageInHistory.content);
-        
-        scrollToBottom();
-    };
-
-    const finalizeStreamedMessage = (messageId, type, error) => {
-        if (messageId !== activeStreamingMessageId) return;
-
-        const messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
-        if (messageItem) {
-            messageItem.classList.remove('streaming');
-            if (type === 'error') {
-                const contentDiv = messageItem.querySelector('.md-content');
-                contentDiv.innerHTML += `<p class="error-text" style="color: var(--danger-color);">错误: ${error}</p>`;
-            }
-        }
-        activeStreamingMessageId = null;
-        messageInput.disabled = false;
-        sendMessageBtn.disabled = false;
-        messageInput.focus();
-    };
-
     // --- Main Logic ---
 
     closeBtn.addEventListener('click', () => window.close());
@@ -142,6 +42,61 @@ document.addEventListener('DOMContentLoaded', () => {
         agentAvatarImg.src = agentConfig.avatarUrl || '../assets/default_avatar.png';
         agentNameSpan.textContent = agentConfig.name;
 
+        // --- Initialize Shared Renderer ---
+        if (window.messageRenderer) {
+            const chatHistoryRef = {
+                get: () => currentChatHistory,
+                set: (newHistory) => { currentChatHistory = newHistory; }
+            };
+            const selectedItemRef = {
+                get: () => ({
+                    id: agentId,
+                    type: 'agent',
+                    name: agentConfig.name,
+                    avatarUrl: agentConfig.avatarUrl,
+                    config: agentConfig
+                }),
+                set: () => {} // Not needed in assistant
+            };
+            const globalSettingsRef = {
+                get: () => globalSettings,
+                set: (newSettings) => { globalSettings = newSettings; }
+            };
+            const topicIdRef = {
+                get: () => 'assistant_chat', // Assistant has a single, non-persistent topic
+                set: () => {}
+            };
+            const uiHelper = {
+                scrollToBottom: scrollToBottom,
+                openModal: () => {},
+                autoResizeTextarea: (el) => {
+                    if(el) {
+                        el.style.height = 'auto';
+                        el.style.height = (el.scrollHeight) + 'px';
+                    }
+                },
+            };
+
+            window.messageRenderer.initializeMessageRenderer({
+                currentChatHistoryRef: chatHistoryRef,
+                currentSelectedItemRef: selectedItemRef,
+                currentTopicIdRef: topicIdRef,
+                globalSettingsRef: globalSettingsRef,
+                chatMessagesDiv: chatMessagesDiv,
+                electronAPI: window.electronAPI,
+                markedInstance: markedInstance,
+                uiHelper: uiHelper,
+                summarizeTopicFromMessages: async () => "", // Stub
+                handleCreateBranch: () => {} // Stub
+            });
+            console.log('[Assistant] Shared messageRenderer initialized.');
+        } else {
+            console.error('[Assistant] window.messageRenderer is not available. Cannot initialize shared renderer.');
+            agentNameSpan.textContent = "错误";
+            chatMessagesDiv.innerHTML = `<div class="message-item system"><p style="color: var(--danger-color);">加载渲染模块失败，请重启应用。</p></div>`;
+            return;
+        }
+
         const prompts = {
             translate: '请将上方文本翻译为简体中文；若原文为中文，则翻译为英文。',
             summarize: '请提取上方文本的核心要点，若含有数据内容可以MD列表等形式呈现。',
@@ -164,23 +119,30 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     const sendMessage = async (messageContent) => {
-        if (!messageContent.trim() || !agentConfig) return;
+        if (!messageContent.trim() || !agentConfig || !window.messageRenderer) return;
 
-        // 1. Add user message to history and render it
-        const userMessage = { role: 'user', content: messageContent, timestamp: Date.now() };
-        currentChatHistory.push(userMessage);
-        renderMessage(userMessage);
-        
+        const userMessage = { role: 'user', content: messageContent, timestamp: Date.now(), id: `user_msg_${Date.now()}` };
+        window.messageRenderer.renderMessage(userMessage, false);
+
         messageInput.value = '';
         messageInput.disabled = true;
         sendMessageBtn.disabled = true;
 
-        // 2. Show "thinking" bubble in UI (without adding to history)
         const thinkingMessageId = `assistant_msg_${Date.now()}`;
-        showThinkingIndicator(thinkingMessageId);
+        activeStreamingMessageId = thinkingMessageId; // Set active stream ID
+
+        const assistantMessagePlaceholder = {
+            id: thinkingMessageId,
+            role: 'assistant',
+            content: '思考中',
+            timestamp: Date.now(),
+            isThinking: true,
+            name: agentConfig.name,
+            avatarUrl: agentConfig.avatarUrl
+        };
+        window.messageRenderer.renderMessage(assistantMessagePlaceholder, false);
 
         try {
-            // 3. Prepare and send the request to VCP
             const latestAgentConfig = await window.electronAPI.getAgentConfig(agentId);
             if (!latestAgentConfig || latestAgentConfig.error) throw new Error(`无法获取最新的助手配置: ${latestAgentConfig?.error || '未知错误'}`);
             agentConfig = latestAgentConfig;
@@ -189,7 +151,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const messagesForVCP = [];
             if (systemPrompt) messagesForVCP.push({ role: 'system', content: systemPrompt });
             
-            // Build from the clean history which only contains actual conversation
             const historyForVCP = currentChatHistory.map(msg => ({ role: msg.role, content: msg.content }));
             messagesForVCP.push(...historyForVCP);
 
@@ -204,17 +165,48 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } catch (error) {
             console.error('Error sending message to VCP:', error);
-            finalizeStreamedMessage(thinkingMessageId, 'error', `请求失败: ${error.message}`);
+            if (window.messageRenderer) {
+                window.messageRenderer.finalizeStreamedMessage(thinkingMessageId, 'error', `请求失败: ${error.message}`);
+            }
+            activeStreamingMessageId = null;
+            messageInput.disabled = false;
+            sendMessageBtn.disabled = false;
+            messageInput.focus();
         }
     };
 
+    const activeStreams = new Set();
     window.electronAPI.onVCPStreamChunk((chunkData) => {
-        if (chunkData.messageId !== activeStreamingMessageId) return;
+        if (!window.messageRenderer || chunkData.messageId !== activeStreamingMessageId) return;
 
-        if (chunkData.type === 'data') {
-            appendStreamChunk(chunkData.messageId, chunkData.chunk);
-        } else if (chunkData.type === 'end' || chunkData.type === 'error') {
-            finalizeStreamedMessage(chunkData.messageId, chunkData.type, chunkData.error || 'completed');
+        const { messageId, type, chunk, error, fullText } = chunkData;
+
+        if (!activeStreams.has(messageId) && (type === 'data' || type === 'start')) {
+            window.messageRenderer.startStreamingMessage({
+                id: messageId,
+                role: 'assistant',
+                name: agentConfig.name,
+                avatarUrl: agentConfig.avatarUrl,
+            });
+            activeStreams.add(messageId);
+        }
+
+        if (type === 'data') {
+            window.messageRenderer.appendStreamChunk(messageId, chunk);
+        } else if (type === 'end') {
+            window.messageRenderer.finalizeStreamedMessage(messageId, 'completed', fullText);
+            activeStreams.delete(messageId);
+            activeStreamingMessageId = null;
+            messageInput.disabled = false;
+            sendMessageBtn.disabled = false;
+            messageInput.focus();
+        } else if (type === 'error') {
+            window.messageRenderer.finalizeStreamedMessage(messageId, 'error', error);
+            activeStreams.delete(messageId);
+            activeStreamingMessageId = null;
+            messageInput.disabled = false;
+            sendMessageBtn.disabled = false;
+            messageInput.focus();
         }
     });
 
