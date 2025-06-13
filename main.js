@@ -94,7 +94,7 @@ function processSelectedText(selectionData) {
     const dipPoint = screen.screenToDipPoint(refPoint);
 
     // Get the bar's width (which is in DIPs) to center it.
-    const barWidth = 290; // The width is fixed at creation.
+    const barWidth = 330; // The width is fixed at creation.
     const finalX = Math.round(dipPoint.x - (barWidth / 2));
     const finalY = Math.round(dipPoint.y);
 
@@ -214,7 +214,7 @@ function createAssistantBarWindow() {
     // This function is now an initializer for a reusable, hidden window.
     // It's called once at startup.
     assistantBarWindow = new BrowserWindow({
-        width: 320,
+        width: 360,
         height: 40,
         show: false, // Create hidden
         frame: false,
