@@ -979,6 +979,11 @@ app.on('window-all-closed', () => {
 app.on('will-quit', () => {
     // 优先停止底层IO监听，防止它阻塞退出
     stopSelectionListener();
+    if (mouseListener) {
+        mouseListener.kill();
+        mouseListener = null;
+        console.log('[Main] Global mouse listener stopped on quit.');
+    }
 
     // 注销所有全局快捷键
     globalShortcut.unregisterAll();
