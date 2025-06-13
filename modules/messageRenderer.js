@@ -1946,7 +1946,14 @@ function showContextMenu(event, messageItem, message) {
         copyOption.classList.add('context-menu-item');
         copyOption.innerHTML = `<i class="fas fa-copy"></i> 复制文本`;
         copyOption.onclick = () => {
-            const textToCopy = message.content.replace(/<img[^>]*>/g, '').trim(); // Basic strip of img tags
+            let contentToProcess = message.content;
+            if (typeof message.content === 'object' && message.content !== null && typeof message.content.text === 'string') {
+                contentToProcess = message.content.text;
+            } else if (typeof message.content !== 'string') {
+                console.warn('[ContextMenu Copy] message.content is not a string or expected object:', message.content);
+                contentToProcess = ''; // Fallback to empty string if unexpected structure
+            }
+            const textToCopy = contentToProcess.replace(/<img[^>]*>/g, '').trim();
             navigator.clipboard.writeText(textToCopy)
                 .then(() => console.log('Message content (text only) copied to clipboard.'))
                 .catch(err => console.error('Failed to copy message content: ', err));
@@ -1994,8 +2001,8 @@ function showContextMenu(event, messageItem, message) {
                     console.error("handleCreateBranch function is not available.");
                 }
                 closeContextMenu();
-            }; 
-            menu.appendChild(createBranchOption); 
+            };
+            menu.appendChild(createBranchOption);
         }
 
 
@@ -2003,8 +2010,14 @@ function showContextMenu(event, messageItem, message) {
         readModeOption.classList.add('context-menu-item', 'info-item'); // Added 'info-item' for blue color
         readModeOption.innerHTML = `<i class="fas fa-book-reader"></i> 阅读模式`;
         readModeOption.onclick = () => {
-            // 将图片标签替换为空字符串，而不是 [图片]
-            const plainTextContent = message.content.replace(/<img[^>]*>/gi, "").replace(/<audio[^>]*>.*?<\/audio>/gi, "[音频]").replace(/<video[^>]*>.*?<\/video>/gi, "[视频]");
+            let contentToProcess = message.content;
+            if (typeof message.content === 'object' && message.content !== null && typeof message.content.text === 'string') {
+                contentToProcess = message.content.text;
+            } else if (typeof message.content !== 'string') {
+                console.warn('[ContextMenu ReadMode] message.content is not a string or expected object:', message.content);
+                contentToProcess = ''; // Fallback to empty string
+            }
+            const plainTextContent = contentToProcess.replace(/<img[^>]*>/gi, "").replace(/<audio[^>]*>.*?<\/audio>/gi, "[音频]").replace(/<video[^>]*>.*?<\/video>/gi, "[视频]");
             const windowTitle = `阅读: ${message.id.substring(0,10)}...`;
             const currentTheme = document.body.classList.contains('light-theme') ? 'light' : 'dark';
             if (electronAPI && typeof electronAPI.openTextInNewWindow === 'function') {

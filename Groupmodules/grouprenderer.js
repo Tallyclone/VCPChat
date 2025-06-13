@@ -763,6 +763,27 @@ window.GroupRenderer = (() => {
         messageRenderer.setCurrentTopicId(topicId);
         await loadGroupChatHistory(groupId, topicId);
         localStorage.setItem(`lastActiveTopic_${groupId}_group`, topicId);
+
+        // Bug 1 Fix: Refresh invite buttons if in invite_only mode
+        const currentSelected = currentSelectedItemRef.get();
+        if (currentSelected && currentSelected.type === 'group' && currentSelected.config) {
+            const groupConfig = currentSelected.config;
+            if (groupConfig.mode === 'invite_only') {
+                console.log(`[GroupRenderer handleGroupTopicSelection] InviteOnly mode detected for group ${groupId}, topic ${topicId}. Refreshing invite buttons.`);
+                const membersDetails = await Promise.all(
+                    (groupConfig.members || []).map(async (id) => {
+                        const config = await electronAPI.getAgentConfig(id);
+                        if (!config || config.error) {
+                            console.warn(`[GroupRenderer handleGroupTopicSelection] Failed to fetch config for member ${id}: ${config?.error}`);
+                            return null;
+                        }
+                        return config;
+                    })
+                );
+                const validMembers = membersDetails.filter(m => m);
+                displayInviteAgentButtons(groupId, topicId, validMembers, groupConfig);
+            }
+        }
     }
 
     async function handleRenameGroupTopic(groupId, topicId, oldName) {
@@ -1001,7 +1022,8 @@ window.GroupRenderer = (() => {
         }
     }
 
-    async function handleInviteAgentButtonClick(groupId, topicId, agentId, agentName) {
+    async function handleInviteAgentButtonClick(groupId, _topicId, agentId, agentName) { // _topicId is ignored
+        const topicId = currentTopicIdRef.get(); // Always use the current topic ID
         console.log(`[GroupRenderer] Invite button clicked for agent: ${agentName} (ID: ${agentId}) in group ${groupId}, topic ${topicId}`);
         if (!topicId) {
             uiHelper.showToastNotification('错误：无法邀请发言，当前话题ID未知。', 'error');
@@ -1017,7 +1039,7 @@ window.GroupRenderer = (() => {
             // Renderer informs main process to trigger the invitation.
             // Main process will then call groupchat.js's handleInviteAgentToSpeak.
             // Responses (thinking, data, end, error) will come via 'vcp-group-stream-chunk'.
-            await electronAPI.inviteAgentToSpeak(groupId, topicId, agentId);
+            await electronAPI.inviteAgentToSpeak(groupId, topicId, agentId); // Use the fresh topicId
             // Optionally, provide some immediate UI feedback, e.g., a small spinner on the button,
             // or a toast "正在邀请 AgentName 发言..."
             // The actual message rendering will be handled by the vcp-group-stream-chunk listener.
