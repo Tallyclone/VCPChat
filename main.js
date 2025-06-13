@@ -2370,9 +2370,9 @@ ipcMain.on('unmaximize-window', () => {
 });
 
 ipcMain.on('close-window', () => {
-    if (mainWindow) {
-        mainWindow.close();
-    }
+    // Directly quit the app. This will trigger the 'will-quit' event
+    // which handles closing all windows and cleaning up resources.
+    app.quit();
 });
 
 ipcMain.on('toggle-notifications-sidebar', () => {
