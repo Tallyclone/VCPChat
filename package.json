@@ -4,10 +4,10 @@
   "description": "一个为VCP服务器打造的AI聊天桌面客户端",
   "main": "main.js",
   "scripts": {
-    "postinstall": "electron-rebuild",
+    "postinstall": "electron-rebuild -f -w selection-hook",
     "start": "electron .",
-    "pack": "electron-rebuild && electron-builder --dir",
-    "dist": "electron-rebuild && electron-builder"
+    "pack": "electron-rebuild -f -w selection-hook && electron-builder --dir",
+    "dist": "electron-rebuild -f -w selection-hook && electron-builder"
   },
   "keywords": [
     "VCP",
@@ -19,14 +19,18 @@
   "author": "莱恩 (由小吉辅助生成)",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^35.5.1",
+    "@electron/rebuild": "^3.7.2",
+    "electron": "^36.0.0",
     "electron-builder": "^26.0.12"
   },
   "dependencies": {
+    "clipboard-event": "^1.6.0",
     "fs-extra": "^11.2.0",
     "mammoth": "^1.7.0",
     "marked": "^12.0.0",
+    "node-global-key-listener": "^0.3.0",
     "pdf-parse": "^1.1.1",
+    "selection-hook": "^0.9.23",
     "sharp": "^0.34.2",
     "ws": "^8.14.2"
   },

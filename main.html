@@ -264,6 +264,22 @@
                 </div>
                 <div>
                 </div>
+
+                <hr style="border: none; border-top: 1px solid var(--border-color); margin: 20px 0;">
+
+                <div>
+                    <label for="assistantEnabled" style="display: flex; align-items: center; gap: 8px;">划词助手
+                        <input type="checkbox" id="assistantEnabled" name="assistantEnabled" style="vertical-align: -2px; margin-left: 5px; transform: scale(1.2);">
+                    </label>
+                </div>
+                <div id="assistantAgentContainer" style="margin-top: 15px; display: none;">
+                    <label for="assistantAgent">划词助手 Agent:</label>
+                    <select id="assistantAgent" name="assistantAgent" required>
+                        <option value="">请选择一个Agent</option>
+                        <!-- Agent list will be populated by JS -->
+                    </select>
+                </div>
+
                 <button type="submit">保存全局设置</button>
             </form>
         </div>

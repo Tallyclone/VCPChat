@@ -2,11 +2,24 @@
 
 const sharp = require('sharp'); // 确保在文件顶部引入
 
-const { app, BrowserWindow, ipcMain, dialog, nativeTheme, Menu, shell, clipboard, net, nativeImage, globalShortcut } = require('electron'); // Added net, nativeImage, and globalShortcut
+const { app, BrowserWindow, ipcMain, dialog, nativeTheme, Menu, shell, clipboard, net, nativeImage, globalShortcut, screen } = require('electron'); // Added screen
+// selection-hook for non-clipboard text capture on Windows
+let SelectionHook = null;
+try {
+    if (process.platform === 'win32') {
+        SelectionHook = require('selection-hook');
+        console.log('selection-hook loaded successfully.');
+    } else {
+        console.log('selection-hook is only available on Windows, text selection feature will be disabled.');
+    }
+} catch (error) {
+    console.error('Failed to load selection-hook:', error);
+}
 const path = require('path');
 const fs = require('fs-extra'); // Using fs-extra for convenience
 const os = require('os');
 const WebSocket = require('ws'); // For VCPLog notifications
+const { GlobalKeyboardListener } = require('node-global-key-listener');
 const fileManager = require('./modules/fileManager'); // Import the new file manager
 const groupChat = require('./Groupmodules/groupchat'); // Import the group chat module
 
@@ -27,6 +40,271 @@ let mainWindow;
 let vcpLogWebSocket;
 let vcpLogReconnectInterval;
 let openChildWindows = [];
+let assistantWindow = null; // Keep track of the assistant window
+let assistantBarWindow = null; // Keep track of the assistant bar window
+let lastProcessedSelection = ''; // To avoid re-triggering on the same text
+let selectionListenerActive = false;
+let selectionHookInstance = null; // To hold the instance of SelectionHook
+let mouseListener = null; // To hold the global mouse listener instance
+let hideBarTimeout = null; // Timer for delayed hiding of the assistant bar
+
+
+function processSelectedText(selectionData) {
+    const selectedText = selectionData.text;
+    // If selection is cleared (empty text), hide the bar and stop.
+    if (!selectedText || selectedText.trim() === '') {
+        if (assistantBarWindow && !assistantBarWindow.isDestroyed() && assistantBarWindow.isVisible()) {
+            assistantBarWindow.hide();
+        }
+        lastProcessedSelection = ''; // Also clear the last processed text
+        return;
+    }
+
+    // If the same text is selected again and the bar is already visible, do nothing.
+    if (selectedText === lastProcessedSelection && assistantBarWindow && assistantBarWindow.isVisible()) {
+        return;
+    }
+    lastProcessedSelection = selectedText;
+    console.log('[Main] New text captured:', selectedText);
+
+    if (!assistantBarWindow || assistantBarWindow.isDestroyed()) {
+        console.error('[Main] Assistant bar window is not available.');
+        return;
+    }
+
+    let refPoint;
+
+    // Prioritize mouse position from the hook if it's valid (not 0,0)
+    if (selectionData.mousePosEnd && (selectionData.mousePosEnd.x > 0 || selectionData.mousePosEnd.y > 0)) {
+        refPoint = { x: selectionData.mousePosEnd.x, y: selectionData.mousePosEnd.y + 15 };
+        console.log('[Main] Using mousePosEnd for positioning:', refPoint);
+    // Fallback to the selection rectangle's bottom corner if valid
+    } else if (selectionData.endBottom && (selectionData.endBottom.x > 0 || selectionData.endBottom.y > 0)) {
+        refPoint = { x: selectionData.endBottom.x, y: selectionData.endBottom.y + 15 };
+        console.log('[Main] Using endBottom for positioning:', refPoint);
+    // If hook data is invalid or unavailable, use the global cursor position as the most reliable fallback.
+    } else {
+        const cursorPos = screen.getCursorScreenPoint();
+        refPoint = { x: cursorPos.x, y: cursorPos.y + 15 };
+        console.log('[Main] Hook position invalid, falling back to cursor position:', refPoint);
+    }
+    
+    // Ensure the point is scaled correctly for the display
+    // Ensure the point is scaled correctly for the display
+    const dipPoint = screen.screenToDipPoint(refPoint);
+
+    // Get the bar's width (which is in DIPs) to center it.
+    const barWidth = 270; // The width is fixed at creation.
+    const finalX = Math.round(dipPoint.x - (barWidth / 2));
+    const finalY = Math.round(dipPoint.y);
+
+    setImmediate(() => {
+        assistantBarWindow.setPosition(finalX, finalY);
+        assistantBarWindow.showInactive(); // Show the window without activating/focusing it
+
+        // Start listening for a global click to hide the bar
+        startGlobalMouseListener();
+
+        (async () => {
+            try {
+                const settings = await fs.readJson(SETTINGS_FILE);
+                if (settings.assistantEnabled && settings.assistantAgent) {
+                    const agentConfig = await getAgentConfigById(settings.assistantAgent);
+                    assistantBarWindow.webContents.send('assistant-bar-data', {
+                        agentAvatarUrl: agentConfig.avatarUrl,
+                        theme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
+                    });
+                }
+            } catch (error) {
+                console.error('[Main] Error sending data to assistant bar:', error);
+            }
+        })();
+    });
+}
+
+// --- Global Mouse Listener for Assistant Bar ---
+function startGlobalMouseListener() {
+    if (mouseListener) {
+        return;
+    }
+    mouseListener = new GlobalKeyboardListener();
+
+    mouseListener.addListener((e, down) => {
+        if (e.state === 'DOWN') {
+            // Instead of immediate hide, set a timeout.
+            // This gives the 'assistant-action' a chance to cancel it if the click was inside.
+            if (hideBarTimeout) clearTimeout(hideBarTimeout); // Clear previous timeout if any
+            hideBarTimeout = setTimeout(() => {
+                console.log(`[Main] Global mouse down triggered hide after timeout. Button: ${e.name}`);
+                hideAssistantBarAndStopListener();
+            }, 150); // A short delay (e.g., 150ms)
+        }
+    });
+}
+
+function hideAssistantBarAndStopListener() {
+    // Clear any pending hide timeout
+    if (hideBarTimeout) {
+        clearTimeout(hideBarTimeout);
+        hideBarTimeout = null;
+    }
+
+    // Hide the window
+    if (assistantBarWindow && !assistantBarWindow.isDestroyed() && assistantBarWindow.isVisible()) {
+        assistantBarWindow.hide();
+    }
+    // Stop and kill the listener
+    if (mouseListener) {
+        mouseListener.kill();
+        mouseListener = null;
+        console.log('[Main] Global mouse listener stopped.');
+    }
+}
+
+// --- Selection Listener ---
+function startSelectionListener() {
+    if (selectionListenerActive || !SelectionHook) {
+        if (!SelectionHook) {
+            console.log('[Main] SelectionHook not available on this platform. Listener not started.');
+        } else {
+            console.log('[Main] Selection listener is already running.');
+        }
+        return;
+    }
+
+    try {
+        selectionHookInstance = new SelectionHook();
+        selectionHookInstance.on('text-selection', processSelectedText);
+        
+        selectionHookInstance.on('error', (error) => {
+            console.error('Error in SelectionHook:', error);
+        });
+
+        if (selectionHookInstance.start({ debug: false })) { // Set debug to true for verbose logging
+            selectionListenerActive = true;
+            console.log('[Main] selection-hook listener started.');
+        } else {
+            console.error('[Main] Failed to start selection-hook listener.');
+            selectionHookInstance = null;
+        }
+    } catch (e) {
+        console.error('[Main] Failed to instantiate or start selection-hook listener:', e);
+        selectionHookInstance = null;
+    }
+}
+
+function stopSelectionListener() {
+    if (!selectionListenerActive || !selectionHookInstance) {
+        return;
+    }
+    try {
+        selectionHookInstance.stop();
+        console.log('[Main] selection-hook listener stopped.');
+    } catch (e) {
+        console.error('[Main] Failed to stop selection-hook listener:', e);
+    } finally {
+        selectionHookInstance = null;
+        selectionListenerActive = false;
+    }
+}
+
+
+// --- Assistant Bar Window Creation ---
+function createAssistantBarWindow() {
+    // This function is now an initializer for a reusable, hidden window.
+    // It's called once at startup.
+    assistantBarWindow = new BrowserWindow({
+        width: 270,
+        height: 40,
+        show: false, // Create hidden
+        frame: false,
+        transparent: true,
+        hasShadow: false,
+        alwaysOnTop: true,
+        resizable: false,
+        movable: true,
+        skipTaskbar: true,
+        focusable: false, // Prevent the window from taking focus
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            contextIsolation: true,
+        }
+    });
+
+    assistantBarWindow.loadFile(path.join(__dirname, 'Assistantmodules/assistant-bar.html'));
+
+    assistantBarWindow.once('ready-to-show', async () => {
+        // Don't show on ready, just load initial data
+        try {
+            const settings = await fs.readJson(SETTINGS_FILE);
+            if (settings.assistantEnabled && settings.assistantAgent) {
+                const agentConfig = await getAgentConfigById(settings.assistantAgent);
+                assistantBarWindow.webContents.send('assistant-bar-data', {
+                    agentAvatarUrl: agentConfig.avatarUrl,
+                    theme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
+                });
+            }
+        } catch (error) {
+            console.error('[Main] Error sending initial data to assistant bar:', error);
+        }
+    });
+
+    assistantBarWindow.on('blur', () => {
+        // Hide the window on blur so it can be reused, instead of closing it.
+        if (assistantBarWindow && !assistantBarWindow.isDestroyed() && assistantBarWindow.isVisible()) {
+            assistantBarWindow.hide();
+        }
+    });
+
+    assistantBarWindow.on('closed', () => {
+        // If it's actually closed (e.g., app quit), nullify the variable.
+        assistantBarWindow = null;
+    });
+}
+
+
+// --- Assistant Window Creation ---
+function createAssistantWindow(data) {
+    if (assistantWindow && !assistantWindow.isDestroyed()) {
+        assistantWindow.focus();
+        // Optionally, send new data to the existing window
+        assistantWindow.webContents.send('assistant-data', data);
+        return;
+    }
+
+    assistantWindow = new BrowserWindow({
+        width: 450,
+        height: 600,
+        minWidth: 350,
+        minHeight: 400,
+        title: '划词助手',
+        parent: mainWindow,
+        modal: false,
+        frame: false,
+        titleBarStyle: 'hidden',
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            contextIsolation: true,
+            nodeIntegration: false,
+        },
+        icon: path.join(__dirname, 'assets', 'icon.png'),
+        show: false,
+        resizable: true,
+        alwaysOnTop: false, // Keep assistant on top
+    });
+
+    assistantWindow.loadFile(path.join(__dirname, 'Assistantmodules/assistant.html'));
+    
+    assistantWindow.once('ready-to-show', () => {
+        assistantWindow.show();
+        // Send initial data to the window
+        assistantWindow.webContents.send('assistant-data', data);
+    });
+
+    assistantWindow.on('closed', () => {
+        assistantWindow = null;
+    });
+}
 
 // --- Main Window Creation ---
 function createWindow() {
@@ -71,11 +349,36 @@ function createWindow() {
             mainWindow.webContents.send('window-unmaximized');
         }
     });
+
+    // Listen for theme changes and notify all relevant windows
+    nativeTheme.on('updated', () => {
+        const theme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+        console.log(`[Main] Theme updated to: ${theme}. Notifying windows.`);
+        
+        // Notify main window
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('theme-updated', theme);
+        }
+        // Notify assistant bar
+        if (assistantBarWindow && !assistantBarWindow.isDestroyed()) {
+            assistantBarWindow.webContents.send('theme-updated', theme);
+        }
+        // Notify assistant window
+        if (assistantWindow && !assistantWindow.isDestroyed()) {
+            assistantWindow.webContents.send('theme-updated', theme);
+        }
+        // Notify any other open child windows that might need theme updates
+        openChildWindows.forEach(win => {
+            if (win && !win.isDestroyed()) {
+                win.webContents.send('theme-updated', theme);
+            }
+        });
+    });
 }
 
 // --- App Lifecycle ---
 app.whenReady().then(() => {
-    fs.ensureDirSync(APP_DATA_ROOT_IN_PROJECT); // Ensure the main AppData directory in project exists
+        fs.ensureDirSync(APP_DATA_ROOT_IN_PROJECT); // Ensure the main AppData directory in project exists
     fs.ensureDirSync(AGENT_DIR);
     fs.ensureDirSync(USER_DATA_DIR);
     fileManager.initializeFileManager(USER_DATA_DIR, AGENT_DIR); // Initialize FileManager
@@ -603,6 +906,7 @@ function formatTimestampForFilename(timestamp) {
     });
 
     createWindow();
+    createAssistantBarWindow(); // Pre-create the assistant bar window for performance
 
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {
@@ -616,6 +920,54 @@ function formatTimestampForFilename(timestamp) {
             focusedWindow.webContents.toggleDevTools();
         }
     });
+
+    globalShortcut.register('Control+Shift+A', () => {
+        console.log('[Main] Assistant shortcut (Ctrl+Shift+A) pressed.');
+        // Reset lastProcessedSelection to allow shortcut to work after a mouse selection
+        // lastProcessedSelection = '';
+        // grabSelectedText(); // grabSelectedText is removed.
+        console.log('[Main] Assistant shortcut (Ctrl+Shift+A) is currently disabled as it relied on clipboard grabbing.');
+    });
+
+    // --- Assistant IPC Handlers ---
+    ipcMain.on('toggle-clipboard-listener', (event, enable) => {
+        if (enable) {
+            startSelectionListener();
+        } else {
+            stopSelectionListener();
+        }
+        });
+
+    ipcMain.on('assistant-action', async (event, action) => {
+        // IMPORTANT: The click on the bar has happened.
+        // First, cancel any pending hide operation from the global listener.
+        if (hideBarTimeout) {
+            clearTimeout(hideBarTimeout);
+            hideBarTimeout = null;
+            console.log('[Main] Assistant action cancelled pending hide.');
+        }
+    
+        // When an action is taken, hide the bar and stop the listener
+        hideAssistantBarAndStopListener();
+        
+        try {
+            const settings = await fs.readJson(SETTINGS_FILE);
+            // No longer pass the full agent config. Just the ID.
+            createAssistantWindow({
+                selectedText: lastProcessedSelection,
+                action: action,
+                agentId: settings.assistantAgent, // Pass only the ID
+                theme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
+            });
+        } catch (error) {
+            console.error('[Main] Error creating assistant window from action:', error);
+        }
+    });
+
+    ipcMain.on('close-assistant-bar', () => {
+        // This is triggered by mouseleave on the bar, which is a good reason to hide it.
+        hideAssistantBarAndStopListener();
+    });
 });
 
 app.on('window-all-closed', () => {
@@ -625,13 +977,32 @@ app.on('window-all-closed', () => {
 });
 
 app.on('will-quit', () => {
+    // 优先停止底层IO监听，防止它阻塞退出
+    stopSelectionListener();
+
+    // 注销所有全局快捷键
     globalShortcut.unregisterAll();
+
+    // 关闭WebSocket连接
     if (vcpLogWebSocket && vcpLogWebSocket.readyState === WebSocket.OPEN) {
         vcpLogWebSocket.close();
     }
     if (vcpLogReconnectInterval) {
         clearInterval(vcpLogReconnectInterval);
     }
+
+    // 确保所有子窗口都被关闭
+    if (assistantWindow && !assistantWindow.isDestroyed()) {
+        assistantWindow.close();
+    }
+    if (assistantBarWindow && !assistantBarWindow.isDestroyed()) {
+        assistantBarWindow.close();
+    }
+    openChildWindows.forEach(win => {
+        if (win && !win.isDestroyed()) {
+            win.close();
+        }
+    });
 });
 
 // --- IPC Handlers ---
@@ -1086,6 +1457,33 @@ ipcMain.handle('get-agent-config', async (event, agentId) => {
         return { error: error.message };
     }
 });
+
+// Helper function to get agent config, needed by assistant bar
+async function getAgentConfigById(agentId) {
+    const agentDir = path.join(AGENT_DIR, agentId);
+    const configPath = path.join(agentDir, 'config.json');
+    if (await fs.pathExists(configPath)) {
+        const config = await fs.readJson(configPath);
+        const avatarPathPng = path.join(agentDir, 'avatar.png');
+        const avatarPathJpg = path.join(agentDir, 'avatar.jpg');
+        const avatarPathJpeg = path.join(agentDir, 'avatar.jpeg');
+        const avatarPathGif = path.join(agentDir, 'avatar.gif');
+        config.avatarUrl = null;
+        if (await fs.pathExists(avatarPathPng)) {
+            config.avatarUrl = `file://${avatarPathPng}?t=${Date.now()}`;
+        } else if (await fs.pathExists(avatarPathJpg)) {
+            config.avatarUrl = `file://${avatarPathJpg}?t=${Date.now()}`;
+        } else if (await fs.pathExists(avatarPathJpeg)) {
+            config.avatarUrl = `file://${avatarPathJpeg}?t=${Date.now()}`;
+        } else if (await fs.pathExists(avatarPathGif)) {
+            config.avatarUrl = `file://${avatarPathGif}?t=${Date.now()}`;
+        }
+        config.id = agentId;
+        return config;
+    }
+    return { error: `Agent config for ${agentId} not found.` };
+}
+
 
 ipcMain.handle('save-agent-config', async (event, agentId, config) => {
     try {

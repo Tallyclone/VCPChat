@@ -96,6 +96,11 @@ const digitalClockElement = document.getElementById('digitalClock');
 const dateDisplayElement = document.getElementById('dateDisplay');
 let inviteAgentButtonsContainerElement; // 新增：邀请发言按钮容器的引用
 
+// Assistant settings elements
+const assistantEnabledCheckbox = document.getElementById('assistantEnabled');
+const assistantAgentContainer = document.getElementById('assistantAgentContainer');
+const assistantAgentSelect = document.getElementById('assistantAgent');
+
 // UI Helper functions to be passed to modules
 const uiHelperFunctions = {
     openModal: openModal,
@@ -555,6 +560,22 @@ async function loadAndApplyGlobalSettings() {
         } else {
             if (window.notificationRenderer) window.notificationRenderer.updateVCPLogStatus({ status: 'error', message: 'VCPLog未配置' }, vcpLogConnectionStatusDiv);
         }
+        
+        // Load assistant settings
+        assistantEnabledCheckbox.checked = globalSettings.assistantEnabled === true;
+        if (globalSettings.assistantEnabled) {
+            assistantAgentContainer.style.display = 'block';
+        } else {
+            assistantAgentContainer.style.display = 'none';
+        }
+        await populateAssistantAgentSelect();
+        if (globalSettings.assistantAgent) {
+            assistantAgentSelect.value = globalSettings.assistantAgent;
+        }
+        
+        // Initial toggle based on settings
+        window.electronAPI.toggleClipboardListener(globalSettings.assistantEnabled);
+
     } else {
         console.warn('加载全局设置失败或无设置:', settings?.error);
         if (window.notificationRenderer) window.notificationRenderer.updateVCPLogStatus({ status: 'error', message: 'VCPLog未配置' }, vcpLogConnectionStatusDiv);
@@ -1796,6 +1817,8 @@ function setupEventListeners() {
             enableSmoothStreaming: document.getElementById('enableSmoothStreaming').checked,
             minChunkBufferSize: parseInt(document.getElementById('minChunkBufferSize').value, 10) || 1,
             smoothStreamIntervalMs: parseInt(document.getElementById('smoothStreamIntervalMs').value, 10) || 25,
+            assistantEnabled: assistantEnabledCheckbox.checked,
+            assistantAgent: assistantAgentSelect.value,
         };
 
         const userAvatarCropped = getCroppedFile('user'); // Use central getter
@@ -2070,6 +2093,30 @@ function setupEventListeners() {
             if (isActive && globalSettings.notificationsSidebarWidth) {
                  notificationsSidebar.style.width = `${globalSettings.notificationsSidebarWidth}px`;
             }
+        });
+    }
+
+    if (assistantEnabledCheckbox) {
+        assistantEnabledCheckbox.addEventListener('change', (event) => {
+            const isEnabled = event.target.checked;
+            assistantAgentContainer.style.display = isEnabled ? 'block' : 'none';
+            window.electronAPI.toggleClipboardListener(isEnabled);
+            if (isEnabled) {
+                populateAssistantAgentSelect(); // Refresh agent list when enabled
+            }
+        });
+    }
+}
+
+async function populateAssistantAgentSelect() {
+    const agents = await window.electronAPI.getAgents();
+    if (agents && !agents.error) {
+        assistantAgentSelect.innerHTML = '<option value="">请选择一个Agent</option>'; // Clear and add placeholder
+        agents.forEach(agent => {
+            const option = document.createElement('option');
+            option.value = agent.id;
+            option.textContent = agent.name;
+            assistantAgentSelect.appendChild(option);
         });
     }
 }

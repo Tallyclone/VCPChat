@@ -146,7 +146,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
 
     // Open External Link
-    sendOpenExternalLink: (url) => ipcRenderer.send('open-external-link', url)
+    sendOpenExternalLink: (url) => ipcRenderer.send('open-external-link', url),
+
+    // Assistant specific
+    toggleClipboardListener: (enable) => ipcRenderer.send('toggle-clipboard-listener', enable),
+    assistantAction: (action) => ipcRenderer.send('assistant-action', action),
+    closeAssistantBar: () => ipcRenderer.send('close-assistant-bar'),
+    onAssistantBarData: (callback) => ipcRenderer.on('assistant-bar-data', (_event, data) => callback(data)),
+    onAssistantData: (callback) => ipcRenderer.on('assistant-data', (_event, data) => callback(data)),
+    onThemeUpdated: (callback) => ipcRenderer.on('theme-updated', (_event, theme) => callback(theme)),
+    removeVcpStreamChunkListener: (callback) => ipcRenderer.removeListener('vcp-stream-chunk', callback),
 });
 
 // Log the electronAPI object as it's defined in preload.js right after exposing it
