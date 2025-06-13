@@ -101,7 +101,8 @@ document.addEventListener('DOMContentLoaded', () => {
             translate: '请将上方文本翻译为简体中文；若原文为中文，则翻译为英文。',
             summarize: '请提取上方文本的核心要点，若含有数据内容可以MD列表等形式呈现。',
             explain: '请通俗易懂地解释上方文本中的关键概念或术语。',
-            search: '请从上方文本中获取相关核心关键词进行Tavily网络搜索，并返回最相关的结果摘要。'
+            search: '请从上方文本中获取相关核心关键词进行Tavily网络搜索，并返回最相关的结果摘要。',
+            image:'请根据引用文本内容，调用已有生图工具生成一张配图。'
         };
         const actionPrompt = prompts[action] || '';
         const initialPrompt = `[引用文本：${selectedText}]\n\n${actionPrompt}`;

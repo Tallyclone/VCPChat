@@ -179,7 +179,7 @@ body.light-theme #sendMessageBtn svg {
     padding: 5px;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 5px;
     z-index: 2147483647; /* 确保在最顶层 */
     transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
     opacity: 0;
@@ -214,4 +214,15 @@ body.light-theme #sendMessageBtn svg {
 #selection-assistant-bar .assistant-button:hover {
     background-color: var(--accent-bg);
     color: var(--primary-text);
+}
+
+/* 浅色主题下悬浮按钮的特定样式 */
+body.light-theme #selection-assistant-bar .assistant-button {
+    color: var(--highlight-text);
+    border-color: var(--highlight-text);
+}
+
+body.light-theme #selection-assistant-bar .assistant-button:hover {
+    background-color: var(--highlight-text);
+    color: #ffffff;
 }
