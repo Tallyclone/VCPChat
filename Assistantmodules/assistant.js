@@ -122,7 +122,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!messageContent.trim() || !agentConfig || !window.messageRenderer) return;
 
         const userMessage = { role: 'user', content: messageContent, timestamp: Date.now(), id: `user_msg_${Date.now()}` };
-        window.messageRenderer.renderMessage(userMessage, false);
+        await window.messageRenderer.renderMessage(userMessage, false);
 
         messageInput.value = '';
         messageInput.disabled = true;
@@ -140,7 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
             name: agentConfig.name,
             avatarUrl: agentConfig.avatarUrl
         };
-        window.messageRenderer.renderMessage(assistantMessagePlaceholder, false);
+        await window.messageRenderer.renderMessage(assistantMessagePlaceholder, false);
 
         try {
             const latestAgentConfig = await window.electronAPI.getAgentConfig(agentId);
