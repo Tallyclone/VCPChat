@@ -2294,10 +2294,10 @@ function connectVcpLog(wsUrl, wsKey) {
         console.log('VCPLog 收到消息:', event.data);
         try {
             const data = JSON.parse(event.data.toString()); 
-            if (mainWindow) mainWindow.webContents.send('vcp-log-message', data);
+            if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('vcp-log-message', data);
         } catch (e) {
             console.error('VCPLog 解析消息失败:', e);
-            if (mainWindow) mainWindow.webContents.send('vcp-log-message', { type: 'error', data: `收到无法解析的消息: ${event.data.toString().substring(0,100)}...` });
+            if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('vcp-log-message', { type: 'error', data: `收到无法解析的消息: ${event.data.toString().substring(0,100)}...` });
         }
     };
 
