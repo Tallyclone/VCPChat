@@ -13,11 +13,13 @@ class DistributedServer {
         this.vcpKey = config.vcpKey;
         this.serverName = config.serverName || 'Unnamed-Distributed-Server';
         this.debugMode = config.debugMode || false;
+        this.rendererProcess = config.rendererProcess; // To communicate with the renderer
         this.ws = null;
         this.reconnectInterval = 5000;
         this.maxReconnectInterval = 60000;
         this.reconnectTimeoutId = null; // To keep track of the reconnect timeout
         this.stopped = false; // Flag to prevent reconnection when stopped manually
+        this.initialConnection = true; // Flag to handle one-time actions on first connect
     }
 
     async initialize() {
@@ -82,6 +84,28 @@ class DistributedServer {
 
     registerTools() {
         const manifests = pluginManager.getAllPluginManifests();
+
+        // On the very first successful connection, send a notification about loaded plugins.
+        if (this.initialConnection && manifests.length > 0) {
+            const pluginCount = manifests.length;
+            // Directly send a structured message to the renderer process for notification
+            if (this.rendererProcess && !this.rendererProcess.isDestroyed()) {
+                // Add a delay to give the renderer process time to set up its listeners
+                setTimeout(() => {
+                    if (this.rendererProcess && !this.rendererProcess.isDestroyed()) {
+                        this.rendererProcess.send('vcp-log-message', {
+                            type: 'vcp_log',
+                            data: {
+                                source: 'DistPluginManager',
+                                content: `分布式服务器已启动，已推送 ${pluginCount} 个本地插件。`
+                            }
+                        });
+                    }
+                }, 2000); // 2-second delay
+            }
+            this.initialConnection = false; // Ensure this only runs once
+        }
+
         if (manifests.length > 0) {
             const payload = {
                 type: 'register_tools',
