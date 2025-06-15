@@ -2,8 +2,8 @@
   "name": "FileOperator",
   "displayName": "文件操作器",
   "pluginType": "synchronous",
-  "version": "1.1.0",
-  "description": "一个强大的文件系统操作插件。它采用双轨权限系统：对于探索性的目录操作(如ListDirectory)会严格限制在配置好的安全目录内；对于已获得明确绝对路径的精确文件操作(如ReadFile, WriteFile)，则允许执行，从而能与LocalSearchController等工具无缝协作。",
+  "version": "1.2.0",
+  "description": "一个强大的文件系统操作插件，采用分级权限模型：1.在配置的安全目录内，拥有完整的读、写、删除等权限。2.在安全目录之外，仅拥有只读权限(ReadFile, FileInfo)，且必须提供绝对路径。这使得插件能安全地读取由LocalSearchController等工具在全盘搜索到的文件，同时防止任何意外的写入或删除操作。",
   "author": "VCPToolBox",
   "license": "MIT",
   "entryPoint": {
@@ -47,11 +47,11 @@
       },
       {
         "command": "ReadFile",
-        "description": "功能: 读取指定绝对路径下文件的内容。此命令被授予特权，可以读取任意绝对路径的文件，非常适合用于读取由 LocalSearchController 插件搜索到的文件。\n参数:\n- filePath (字符串, 必需): 要读取的文件的绝对路径。\n- encoding (字符串, 可选, 默认'utf8'): 文件编码格式 (例如: 'utf8', 'ascii', 'base64')。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」ReadFile「末」,\nfilePath:「始」C:\\path\\to\\your\\file.txt「末」,\nencoding:「始」utf8「末」\n<<<[END_TOOL_REQUEST]>>>"
+        "description": "功能: 读取指定绝对路径下文件的内容。此命令拥有全局只读特权，可以读取任意绝对路径的文件，非常适合用于读取由 LocalSearchController 插件搜索到的文件。\n参数:\n- filePath (字符串, 必需): 要读取的文件的绝对路径。\n- encoding (字符串, 可选, 默认'utf8'): 文件编码格式 (例如: 'utf8', 'ascii', 'base64')。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」ReadFile「末」,\nfilePath:「始」C:\\path\\to\\your\\file.txt「末」,\nencoding:「始」utf8「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
         "command": "WriteFile",
-        "description": "功能: 将内容写入指定文件。如果文件已存在，其内容将被完全覆盖。\n参数:\n- filePath (字符串, 必需): 要写入的文件的绝对路径。\n- content (字符串, 必需): 要写入文件的内容，支持多行。\n- encoding (字符串, 可选, 默认'utf8'): 写入时使用的文件编码。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」WriteFile「末」,\nfilePath:「始」/path/to/your/file.txt「末」,\ncontent:「始」这是要写入的新内容。\n这是第二行。\n「末」\n<<<[END_TOOL_REQUEST]>>>"
+        "description": "功能: 将内容写入指定文件。此命令严格受限于.env文件中配置的ALLOWED_DIRECTORIES安全目录。\n参数:\n- filePath (字符串, 必需): 要写入的文件的绝对路径。\n- content (字符串, 必需): 要写入文件的内容，支持多行。\n- encoding (字符串, 可选, 默认'utf8'): 写入时使用的文件编码。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」WriteFile「末」,\nfilePath:「始」H:\\MCP\\some_safe_file.txt「末」,\ncontent:「始」这是要写入的新内容。\n这是第二行。\n「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
         "command": "AppendFile",
