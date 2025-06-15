@@ -26,17 +26,19 @@
   },
   "dependencies": {
     "clipboard-event": "^1.6.0",
+    "exceljs": "^4.4.0",
     "fs-extra": "^11.2.0",
-    "mammoth": "^1.7.0",
+    "glob": "^10.0.0",
+    "iconv-lite": "^0.6.3",
+    "mammoth": "^1.9.1",
     "marked": "^12.0.0",
+    "minimatch": "^9.0.0",
     "node-global-key-listener": "^0.3.0",
+    "node-schedule": "^2.1.1",
     "pdf-parse": "^1.1.1",
     "selection-hook": "^0.9.23",
     "sharp": "^0.34.2",
-    "ws": "^8.17.0",
-    "glob": "^10.0.0",
-    "minimatch": "^9.0.0",
-    "node-schedule": "^2.1.1"
+    "ws": "^8.17.0"
   },
   "build": {
     "appId": "com.vcp.chatdesktop",
