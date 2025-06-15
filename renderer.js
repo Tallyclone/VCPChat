@@ -581,6 +581,10 @@ async function loadAndApplyGlobalSettings() {
         // Initial toggle based on settings
         window.electronAPI.toggleSelectionListener(globalSettings.assistantEnabled);
 
+        // Load distributed server setting
+        document.getElementById('enableDistributedServer').checked = globalSettings.enableDistributedServer === true;
+
+
     } else {
         console.warn('加载全局设置失败或无设置:', settings?.error);
         if (window.notificationRenderer) window.notificationRenderer.updateVCPLogStatus({ status: 'error', message: 'VCPLog未配置' }, vcpLogConnectionStatusDiv);
@@ -1824,6 +1828,7 @@ function setupEventListeners() {
             smoothStreamIntervalMs: parseInt(document.getElementById('smoothStreamIntervalMs').value, 10) || 25,
             assistantEnabled: assistantEnabledCheckbox.checked,
             assistantAgent: assistantAgentSelect.value,
+            enableDistributedServer: document.getElementById('enableDistributedServer').checked,
         };
 
         const userAvatarCropped = getCroppedFile('user'); // Use central getter

@@ -33,7 +33,10 @@
     "pdf-parse": "^1.1.1",
     "selection-hook": "^0.9.23",
     "sharp": "^0.34.2",
-    "ws": "^8.14.2"
+    "ws": "^8.17.0",
+    "glob": "^10.0.0",
+    "minimatch": "^9.0.0",
+    "node-schedule": "^2.1.1"
   },
   "build": {
     "appId": "com.vcp.chatdesktop",

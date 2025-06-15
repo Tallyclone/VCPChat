@@ -22,6 +22,7 @@ const WebSocket = require('ws'); // For VCPLog notifications
 const { GlobalKeyboardListener } = require('node-global-key-listener');
 const fileManager = require('./modules/fileManager'); // Import the new file manager
 const groupChat = require('./Groupmodules/groupchat'); // Import the group chat module
+const DistributedServer = require('./VCPDistributedServer/VCPDistributedServer.js'); // Import the new distributed server
 
 // --- Configuration Paths ---
 // Data storage will be within the project's 'AppData' directory
@@ -47,6 +48,7 @@ let selectionListenerActive = false;
 let selectionHookInstance = null; // To hold the instance of SelectionHook
 let mouseListener = null; // To hold the global mouse listener instance
 let hideBarTimeout = null; // Timer for delayed hiding of the assistant bar
+let distributedServer = null; // To hold the distributed server instance
 
 
 function processSelectedText(selectionData) {
@@ -377,14 +379,35 @@ function createWindow() {
 }
 
 // --- App Lifecycle ---
-app.whenReady().then(() => {
-        fs.ensureDirSync(APP_DATA_ROOT_IN_PROJECT); // Ensure the main AppData directory in project exists
+app.whenReady().then(async () => { // Make the function async
+    fs.ensureDirSync(APP_DATA_ROOT_IN_PROJECT); // Ensure the main AppData directory in project exists
     fs.ensureDirSync(AGENT_DIR);
     fs.ensureDirSync(USER_DATA_DIR);
     fileManager.initializeFileManager(USER_DATA_DIR, AGENT_DIR); // Initialize FileManager
     groupChat.initializePaths({ APP_DATA_ROOT_IN_PROJECT, AGENT_DIR, USER_DATA_DIR, SETTINGS_FILE }); // Initialize GroupChat paths
 
-// --- Group Chat IPC Handlers ---
+    // --- Distributed Server Initialization ---
+    try {
+        const settings = await fs.readJson(SETTINGS_FILE);
+        if (settings.enableDistributedServer) {
+            console.log('[Main] Distributed server is enabled. Initializing...');
+            const config = {
+                mainServerUrl: settings.vcpLogUrl, // Assuming the distributed server connects to the same base URL as VCPLog
+                vcpKey: settings.vcpLogKey,
+                serverName: 'VCP-Desktop-Client-Distributed-Server',
+                debugMode: true // Or read from settings if you add this option
+            };
+            distributedServer = new DistributedServer(config);
+            distributedServer.initialize();
+        } else {
+            console.log('[Main] Distributed server is disabled in settings.');
+        }
+    } catch (error) {
+        console.error('[Main] Failed to read settings or initialize distributed server:', error);
+    }
+    // --- End of Distributed Server Initialization ---
+
+    // --- Group Chat IPC Handlers ---
     ipcMain.handle('create-agent-group', async (event, groupName, initialConfig) => {
         return await groupChat.createAgentGroup(groupName, initialConfig);
     });
@@ -1002,8 +1025,15 @@ app.on('will-quit', () => {
     if (vcpLogReconnectInterval) {
         clearInterval(vcpLogReconnectInterval);
     }
+    
+    // 4. Stop the distributed server
+    if (distributedServer) {
+        console.log('[Main] Stopping distributed server...');
+        distributedServer.stop();
+        distributedServer = null;
+    }
 
-    // 4. 强制销毁所有窗口
+    // 5. 强制销毁所有窗口
     console.log('[Main] Destroying all open windows...');
     BrowserWindow.getAllWindows().forEach(win => {
         if (win && !win.isDestroyed()) {
