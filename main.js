@@ -386,26 +386,6 @@ app.whenReady().then(async () => { // Make the function async
     fileManager.initializeFileManager(USER_DATA_DIR, AGENT_DIR); // Initialize FileManager
     groupChat.initializePaths({ APP_DATA_ROOT_IN_PROJECT, AGENT_DIR, USER_DATA_DIR, SETTINGS_FILE }); // Initialize GroupChat paths
 
-    // --- Distributed Server Initialization ---
-    try {
-        const settings = await fs.readJson(SETTINGS_FILE);
-        if (settings.enableDistributedServer) {
-            console.log('[Main] Distributed server is enabled. Initializing...');
-            const config = {
-                mainServerUrl: settings.vcpLogUrl, // Assuming the distributed server connects to the same base URL as VCPLog
-                vcpKey: settings.vcpLogKey,
-                serverName: 'VCP-Desktop-Client-Distributed-Server',
-                debugMode: true // Or read from settings if you add this option
-            };
-            distributedServer = new DistributedServer(config);
-            distributedServer.initialize();
-        } else {
-            console.log('[Main] Distributed server is disabled in settings.');
-        }
-    } catch (error) {
-        console.error('[Main] Failed to read settings or initialize distributed server:', error);
-    }
-    // --- End of Distributed Server Initialization ---
 
     // --- Group Chat IPC Handlers ---
     ipcMain.handle('create-agent-group', async (event, groupName, initialConfig) => {
@@ -930,6 +910,30 @@ function formatTimestampForFilename(timestamp) {
 
     createWindow();
     createAssistantBarWindow(); // Pre-create the assistant bar window for performance
+
+    // --- Distributed Server Initialization ---
+    (async () => {
+        try {
+            const settings = await fs.readJson(SETTINGS_FILE);
+            if (settings.enableDistributedServer) {
+                console.log('[Main] Distributed server is enabled. Initializing...');
+                const config = {
+                    mainServerUrl: settings.vcpLogUrl, // Assuming the distributed server connects to the same base URL as VCPLog
+                    vcpKey: settings.vcpLogKey,
+                    serverName: 'VCP-Desktop-Client-Distributed-Server',
+                    debugMode: true, // Or read from settings if you add this option
+                    rendererProcess: mainWindow.webContents // Pass the renderer process object
+                };
+                distributedServer = new DistributedServer(config);
+                distributedServer.initialize();
+            } else {
+                console.log('[Main] Distributed server is disabled in settings.');
+            }
+        } catch (error) {
+            console.error('[Main] Failed to read settings or initialize distributed server:', error);
+        }
+    })();
+    // --- End of Distributed Server Initialization ---
 
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {

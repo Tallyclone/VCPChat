@@ -32,6 +32,11 @@ function updateVCPLogStatus(statusUpdate, vcpLogConnectionStatusDiv) {
  * @param {Object} themeColors - An object containing theme colors (largely unused now with CSS variables).
  */
 function renderVCPLogNotification(logData, originalRawMessage = null, notificationsListUl, themeColors = {}) {
+    // Suppress the generic English connection success message for VCPLog
+    if (logData && typeof logData === 'object' && logData.type === 'connection_ack' && logData.message === 'WebSocket connection successful for VCPLog.') {
+        return; // Do not render this notification
+    }
+
     const toastContainer = document.getElementById('floating-toast-notifications-container');
 
     const textToCopy = originalRawMessage !== null ? originalRawMessage :
@@ -78,6 +83,10 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
             } else {
                 mainContent = '(无内容)';
             }
+        } else if (vcpData.source === 'DistPluginManager' && vcpData.content) {
+            titleText = '分布式服务器:';
+            mainContent = vcpData.content;
+            contentIsPreformatted = false;
         } else {
             titleText = 'VCP 日志条目:';
             mainContent = JSON.stringify(vcpData, null, 2);

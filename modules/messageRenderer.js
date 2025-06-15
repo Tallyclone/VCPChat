@@ -954,7 +954,7 @@ function initializeMessageRenderer(refs) {
     mainRendererReferences.handleCreateBranch = refs.handleCreateBranch;
     
     injectEnhancedStyles();
-    console.log("[MessageRenderer] Initialized. Current selected item type on init:", mainRendererReferences.currentSelectedItemRef.get().type);
+    console.log("[MessageRenderer] Initialized. Current selected item type on init:", mainRendererReferences.currentSelectedItemRef.get()?.type);
 }
 
 
