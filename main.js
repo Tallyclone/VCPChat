@@ -930,13 +930,13 @@ function formatTimestampForFilename(timestamp) {
     });
 
     // --- Assistant IPC Handlers ---
-    ipcMain.on('toggle-clipboard-listener', (event, enable) => {
+    ipcMain.on('toggle-selection-listener', (event, enable) => {
         if (enable) {
             startSelectionListener();
         } else {
             stopSelectionListener();
         }
-        });
+    });
 
     ipcMain.on('assistant-action', async (event, action) => {
         // IMPORTANT: The click on the bar has happened.
@@ -977,18 +977,25 @@ app.on('window-all-closed', () => {
 });
 
 app.on('will-quit', () => {
-    // 优先停止底层IO监听，防止它阻塞退出
+    // 1. 停止所有底层监听器
+    console.log('[Main] App is quitting. Stopping all listeners...');
     stopSelectionListener();
     if (mouseListener) {
-        mouseListener.kill();
-        mouseListener = null;
-        console.log('[Main] Global mouse listener stopped on quit.');
+        try {
+            mouseListener.kill();
+            console.log('[Main] Global mouse listener killed.');
+        } catch (e) {
+            console.error('[Main] Error killing mouse listener on quit:', e);
+        } finally {
+            mouseListener = null;
+        }
     }
 
-    // 注销所有全局快捷键
+    // 2. 注销所有全局快捷键
     globalShortcut.unregisterAll();
+    console.log('[Main] All global shortcuts unregistered.');
 
-    // 关闭WebSocket连接
+    // 3. 关闭WebSocket连接
     if (vcpLogWebSocket && vcpLogWebSocket.readyState === WebSocket.OPEN) {
         vcpLogWebSocket.close();
     }
@@ -996,16 +1003,11 @@ app.on('will-quit', () => {
         clearInterval(vcpLogReconnectInterval);
     }
 
-    // 确保所有子窗口都被关闭
-    if (assistantWindow && !assistantWindow.isDestroyed()) {
-        assistantWindow.close();
-    }
-    if (assistantBarWindow && !assistantBarWindow.isDestroyed()) {
-        assistantBarWindow.close();
-    }
-    openChildWindows.forEach(win => {
+    // 4. 强制销毁所有窗口
+    console.log('[Main] Destroying all open windows...');
+    BrowserWindow.getAllWindows().forEach(win => {
         if (win && !win.isDestroyed()) {
-            win.close();
+            win.destroy();
         }
     });
 });

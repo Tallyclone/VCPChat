@@ -579,7 +579,7 @@ async function loadAndApplyGlobalSettings() {
         }
         
         // Initial toggle based on settings
-        window.electronAPI.toggleClipboardListener(globalSettings.assistantEnabled);
+        window.electronAPI.toggleSelectionListener(globalSettings.assistantEnabled);
 
     } else {
         console.warn('加载全局设置失败或无设置:', settings?.error);
@@ -2095,7 +2095,7 @@ function setupEventListeners() {
         assistantEnabledCheckbox.addEventListener('change', (event) => {
             const isEnabled = event.target.checked;
             assistantAgentContainer.style.display = isEnabled ? 'block' : 'none';
-            window.electronAPI.toggleClipboardListener(isEnabled);
+            window.electronAPI.toggleSelectionListener(isEnabled);
             if (isEnabled) {
                 populateAssistantAgentSelect(); // Refresh agent list when enabled
             }

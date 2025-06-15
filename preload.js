@@ -149,7 +149,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     sendOpenExternalLink: (url) => ipcRenderer.send('open-external-link', url),
 
     // Assistant specific
-    toggleClipboardListener: (enable) => ipcRenderer.send('toggle-clipboard-listener', enable),
+    toggleSelectionListener: (enable) => ipcRenderer.send('toggle-selection-listener', enable),
     assistantAction: (action) => ipcRenderer.send('assistant-action', action),
     closeAssistantBar: () => ipcRenderer.send('close-assistant-bar'),
     onAssistantBarData: (callback) => ipcRenderer.on('assistant-bar-data', (_event, data) => callback(data)),
