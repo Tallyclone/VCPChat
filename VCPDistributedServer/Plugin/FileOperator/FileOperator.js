@@ -28,7 +28,16 @@ function debugLog(message, data = null) {
   }
 }
 
-function isPathAllowed(targetPath) {
+function isPathAllowed(targetPath, operationType = 'generic') {
+  // For precise, single-file operations initiated with a full absolute path,
+  // we can bypass the directory restriction. This allows reading files found via search.
+  const bypassOperations = ['ReadFile', 'FileInfo', 'CopyFile', 'MoveFile', 'DeleteFile'];
+  if (bypassOperations.includes(operationType) && path.isAbsolute(targetPath)) {
+      debugLog(`Bypassing directory check for ${operationType} on absolute path`, { targetPath });
+      return true;
+  }
+
+  // For directory-level or potentially ambiguous operations, enforce the check.
   const resolvedPath = path.resolve(targetPath);
 
   if (ALLOWED_DIRECTORIES.length === 0) {
@@ -53,7 +62,7 @@ async function readFile(filePath, encoding = 'utf8') {
   try {
     debugLog('Reading file', { filePath, encoding });
 
-    if (!isPathAllowed(filePath)) {
+    if (!isPathAllowed(filePath, 'ReadFile')) {
       throw new Error(`Access denied: Path '${filePath}' is not in allowed directories`);
     }
 
@@ -89,7 +98,7 @@ async function writeFile(filePath, content, encoding = 'utf8') {
   try {
     debugLog('Writing file', { filePath, contentLength: content.length, encoding });
 
-    if (!isPathAllowed(filePath)) {
+    if (!isPathAllowed(filePath, 'WriteFile')) {
       throw new Error(`Access denied: Path '${filePath}' is not in allowed directories`);
     }
 
@@ -122,7 +131,7 @@ async function appendFile(filePath, content, encoding = 'utf8') {
   try {
     debugLog('Appending to file', { filePath, contentLength: content.length, encoding });
 
-    if (!isPathAllowed(filePath)) {
+    if (!isPathAllowed(filePath, 'AppendFile')) {
       throw new Error(`Access denied: Path '${filePath}' is not in allowed directories`);
     }
 
@@ -165,7 +174,7 @@ async function listDirectory(dirPath, showHidden = ENABLE_HIDDEN_FILES) {
   try {
     debugLog('Listing directory', { dirPath, showHidden });
 
-    if (!isPathAllowed(dirPath)) {
+    if (!isPathAllowed(dirPath, 'ListDirectory')) {
       throw new Error(`Access denied: Path '${dirPath}' is not in allowed directories`);
     }
 
@@ -218,7 +227,7 @@ async function getFileInfo(filePath) {
   try {
     debugLog('Getting file info', { filePath });
 
-    if (!isPathAllowed(filePath)) {
+    if (!isPathAllowed(filePath, 'FileInfo')) {
       throw new Error(`Access denied: Path '${filePath}' is not in allowed directories`);
     }
 
@@ -256,7 +265,7 @@ async function copyFile(sourcePath, destinationPath) {
   try {
     debugLog('Copying file', { sourcePath, destinationPath });
 
-    if (!isPathAllowed(sourcePath) || !isPathAllowed(destinationPath)) {
+    if (!isPathAllowed(sourcePath, 'CopyFile') || !isPathAllowed(destinationPath, 'CopyFile')) {
       throw new Error('Access denied: One or both paths are not in allowed directories');
     }
 
@@ -293,7 +302,7 @@ async function moveFile(sourcePath, destinationPath) {
   try {
     debugLog('Moving file', { sourcePath, destinationPath });
 
-    if (!isPathAllowed(sourcePath) || !isPathAllowed(destinationPath)) {
+    if (!isPathAllowed(sourcePath, 'MoveFile') || !isPathAllowed(destinationPath, 'MoveFile')) {
       throw new Error('Access denied: One or both paths are not in allowed directories');
     }
 
@@ -323,7 +332,7 @@ async function deleteFile(filePath) {
   try {
     debugLog('Deleting file', { filePath });
 
-    if (!isPathAllowed(filePath)) {
+    if (!isPathAllowed(filePath, 'DeleteFile')) {
       throw new Error(`Access denied: Path '${filePath}' is not in allowed directories`);
     }
 
@@ -361,7 +370,7 @@ async function createDirectory(dirPath) {
   try {
     debugLog('Creating directory', { dirPath });
 
-    if (!isPathAllowed(dirPath)) {
+    if (!isPathAllowed(dirPath, 'CreateDirectory')) {
       throw new Error(`Access denied: Path '${dirPath}' is not in allowed directories`);
     }
 
@@ -389,7 +398,7 @@ async function searchFiles(searchPath, pattern, options = {}) {
   try {
     debugLog('Searching files', { searchPath, pattern, options });
 
-    if (!isPathAllowed(searchPath)) {
+    if (!isPathAllowed(searchPath, 'SearchFiles')) {
       throw new Error(`Access denied: Path '${searchPath}' is not in allowed directories`);
     }
 
