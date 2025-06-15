@@ -1543,6 +1543,12 @@ ipcMain.handle('save-agent-topic-title', async (event, agentId, topicId, newTitl
 });
 
 ipcMain.handle('select-avatar', async () => {
+    const listenerWasActive = selectionListenerActive;
+    if (listenerWasActive) {
+        stopSelectionListener();
+        console.log('[Main] Temporarily stopped selection listener for avatar dialog.');
+    }
+
     const result = await dialog.showOpenDialog(mainWindow, {
         title: '选择头像文件',
         properties: ['openFile'],
@@ -1550,6 +1556,12 @@ ipcMain.handle('select-avatar', async () => {
             { name: '图片', extensions: ['png', 'jpg', 'jpeg', 'gif'] }
         ]
     });
+
+    if (listenerWasActive) {
+        startSelectionListener();
+        console.log('[Main] Restarted selection listener after avatar dialog.');
+    }
+
     if (!result.canceled && result.filePaths.length > 0) {
         return result.filePaths[0];
     }
@@ -1915,15 +1927,27 @@ ipcMain.handle('handle-file-paste', async (event, agentId, topicId, fileData) =>
     }
 });
 
-ipcMain.handle('select-files-to-send', async (event, agentId, topicId) => { 
+ipcMain.handle('select-files-to-send', async (event, agentId, topicId) => {
     if (!agentId || !topicId) {
         console.error('[Main - select-files-to-send] Agent ID or Topic ID not provided.');
         return { error: "Agent ID and Topic ID are required to select files." };
     }
+
+    const listenerWasActive = selectionListenerActive;
+    if (listenerWasActive) {
+        stopSelectionListener();
+        console.log('[Main] Temporarily stopped selection listener for file dialog.');
+    }
+
     const result = await dialog.showOpenDialog(mainWindow, {
         title: '选择要发送的文件',
         properties: ['openFile', 'multiSelections']
     });
+
+    if (listenerWasActive) {
+        startSelectionListener();
+        console.log('[Main] Restarted selection listener after file dialog.');
+    }
 
     if (!result.canceled && result.filePaths.length > 0) {
         const storedFilesInfo = [];
@@ -1944,7 +1968,7 @@ ipcMain.handle('select-files-to-send', async (event, agentId, topicId) => {
         }
         return { success: true, attachments: storedFilesInfo };
     }
-    return { success: false, attachments: [] }; 
+    return { success: false, attachments: [] };
 });
 
 ipcMain.handle('get-file-as-base64', async (event, filePath) => {
