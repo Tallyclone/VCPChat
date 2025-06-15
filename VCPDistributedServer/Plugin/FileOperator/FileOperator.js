@@ -29,25 +29,34 @@ function debugLog(message, data = null) {
 }
 
 function isPathAllowed(targetPath, operationType = 'generic') {
-  // For precise, single-file operations initiated with a full absolute path,
-  // we can bypass the directory restriction. This allows reading files found via search.
-  const bypassOperations = ['ReadFile', 'FileInfo', 'CopyFile', 'MoveFile', 'DeleteFile'];
-  if (bypassOperations.includes(operationType) && path.isAbsolute(targetPath)) {
-      debugLog(`Bypassing directory check for ${operationType} on absolute path`, { targetPath });
-      return true;
-  }
-
-  // For directory-level or potentially ambiguous operations, enforce the check.
   const resolvedPath = path.resolve(targetPath);
 
-  if (ALLOWED_DIRECTORIES.length === 0) {
-    return true; // No restrictions if no directories specified
+  // 1. 如果在允许的目录内，则授予所有权限。
+  if (ALLOWED_DIRECTORIES.length > 0) {
+    const isInAllowedDir = ALLOWED_DIRECTORIES.some(allowedDir => {
+      const resolvedAllowedDir = path.resolve(allowedDir);
+      return resolvedPath.startsWith(resolvedAllowedDir);
+    });
+    if (isInAllowedDir) {
+      debugLog(`Path is within allowed directories. Access granted.`, { targetPath, operationType });
+      return true;
+    }
+  } else {
+    // 如果没有配置允许的目录，则允许所有操作（保持原有灵活性）。
+    debugLog('No ALLOWED_DIRECTORIES configured, allowing access to all paths.');
+    return true;
   }
 
-  return ALLOWED_DIRECTORIES.some(allowedDir => {
-    const resolvedAllowedDir = path.resolve(allowedDir);
-    return resolvedPath.startsWith(resolvedAllowedDir);
-  });
+  // 2. 如果路径在允许的目录之外，则只对只读操作开绿灯。
+  const readOnlyBypassOperations = ['ReadFile', 'FileInfo'];
+  if (readOnlyBypassOperations.includes(operationType) && path.isAbsolute(targetPath)) {
+    debugLog(`Path is outside allowed directories, but operation is a read-only bypass. Access granted.`, { targetPath, operationType });
+    return true;
+  }
+  
+  // 3. 对于所有其他情况（例如，在沙箱外的写/删除操作），一律拒绝。
+  debugLog(`Access denied. Path is outside allowed directories and operation is not a read-only bypass.`, { targetPath, operationType });
+  return false;
 }
 
 function formatFileSize(bytes) {
