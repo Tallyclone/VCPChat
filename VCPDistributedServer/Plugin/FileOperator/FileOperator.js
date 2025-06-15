@@ -3,6 +3,9 @@ const fsSync = require('fs');
 const path = require('path');
 const glob = require('glob');
 const { minimatch } = require('minimatch');
+const pdf = require('pdf-parse');
+const mammoth = require('mammoth');
+const ExcelJS = require('exceljs');
 
 // Load environment variables
 require('dotenv').config();
@@ -82,7 +85,50 @@ async function readFile(filePath, encoding = 'utf8') {
       );
     }
 
-    const content = await fs.readFile(filePath, encoding);
+    const extension = path.extname(filePath).toLowerCase();
+    let content;
+    let isExtracted = false;
+
+    // Read file as buffer for parsers
+    const fileBuffer = await fs.readFile(filePath);
+
+    if (extension === '.pdf') {
+      const data = await pdf(fileBuffer);
+      content = data.text;
+      isExtracted = true;
+    } else if (extension === '.docx') {
+      const { value } = await mammoth.extractRawText({ buffer: fileBuffer });
+      content = value;
+      isExtracted = true;
+    } else if (['.xlsx', '.xls', '.csv'].includes(extension)) {
+      const workbook = new ExcelJS.Workbook();
+      if (extension === '.csv') {
+        // For CSV, we need to read it into a worksheet
+        const worksheet = await workbook.csv.read(new (require('stream').Readable)({
+          read() {
+            this.push(fileBuffer);
+            this.push(null);
+          }
+        }));
+      } else {
+        // For XLSX/XLS
+        await workbook.xlsx.load(fileBuffer);
+      }
+      
+      let sheetContent = '';
+      workbook.eachSheet((worksheet, sheetId) => {
+        sheetContent += `--- Sheet: ${worksheet.name} ---\n`;
+        worksheet.eachRow({ includeEmpty: true }, (row, rowNumber) => {
+          // Convert row values to a tab-separated string
+          sheetContent += row.values.slice(1).join('\t') + '\n';
+        });
+      });
+      content = sheetContent;
+      isExtracted = true;
+    } else {
+      // Fallback for plain text files
+      content = fileBuffer.toString(encoding);
+    }
 
     return {
       success: true,
@@ -91,14 +137,15 @@ async function readFile(filePath, encoding = 'utf8') {
         size: stats.size,
         sizeFormatted: formatFileSize(stats.size),
         lastModified: stats.mtime.toISOString(),
-        encoding: encoding,
+        encoding: isExtracted ? 'utf8' : encoding, // Extracted content is always utf8 text
+        isExtracted: isExtracted,
       },
     };
   } catch (error) {
     debugLog('Error reading file', { filePath, error: error.message });
     return {
       success: false,
-      error: error.message,
+      error: `Failed to read or process file: ${error.message}`,
     };
   }
 }
