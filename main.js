@@ -409,7 +409,20 @@ app.whenReady().then(async () => { // Make the function async
     });
     
     ipcMain.handle('save-agent-group-avatar', async (event, groupId, avatarData) => {
-        return await groupChat.saveAgentGroupAvatar(groupId, avatarData);
+        const listenerWasActive = selectionListenerActive;
+        if (listenerWasActive) {
+            stopSelectionListener();
+            console.log('[Main] Temporarily stopped selection listener for group avatar dialog.');
+        }
+        try {
+            const result = await groupChat.saveAgentGroupAvatar(groupId, avatarData);
+            return result;
+        } finally {
+            if (listenerWasActive) {
+                startSelectionListener();
+                console.log('[Main] Restarted selection listener after group avatar dialog.');
+            }
+        }
     });
     
     ipcMain.handle('get-group-topics', async (event, groupId, searchTerm) => {
@@ -1131,6 +1144,11 @@ ipcMain.handle('save-avatar-color', async (event, { type, id, color }) => {
 
 // User Avatar Management
 ipcMain.handle('save-user-avatar', async (event, avatarData) => {
+    const listenerWasActive = selectionListenerActive;
+    if (listenerWasActive) {
+        stopSelectionListener();
+        console.log('[Main] Temporarily stopped selection listener for user avatar dialog.');
+    }
     try {
         if (!avatarData || !avatarData.buffer) {
             return { error: '保存用户头像失败：未提供有效的头像数据。' };
@@ -1143,6 +1161,11 @@ ipcMain.handle('save-user-avatar', async (event, avatarData) => {
     } catch (error) {
         console.error(`保存用户头像失败:`, error);
         return { error: `保存用户头像失败: ${error.message}` };
+    } finally {
+        if (listenerWasActive) {
+            startSelectionListener();
+            console.log('[Main] Restarted selection listener after user avatar dialog.');
+        }
     }
 });
 
@@ -1605,6 +1628,11 @@ ipcMain.handle('select-avatar', async () => {
 });
 
 ipcMain.handle('save-avatar', async (event, agentId, avatarData) => { 
+    const listenerWasActive = selectionListenerActive;
+    if (listenerWasActive) {
+        stopSelectionListener();
+        console.log('[Main] Temporarily stopped selection listener for agent avatar dialog.');
+    }
     try {
         if (!avatarData || !avatarData.name || !avatarData.type || !avatarData.buffer) {
             console.error(`保存Agent ${agentId} 头像失败: avatarData 无效 (值为: ${JSON.stringify(avatarData)})`);
@@ -1615,7 +1643,7 @@ ipcMain.handle('save-avatar', async (event, agentId, avatarData) => {
         await fs.ensureDir(agentDir);
 
         let ext = path.extname(avatarData.name).toLowerCase();
-        if (!ext) { 
+        if (!ext) {
             if (avatarData.type === 'image/png') ext = '.png';
             else if (avatarData.type === 'image/jpeg') ext = '.jpg';
             else if (avatarData.type === 'image/gif') ext = '.gif';
@@ -1645,7 +1673,7 @@ ipcMain.handle('save-avatar', async (event, agentId, avatarData) => {
         }
 
         const newAvatarPath = path.join(agentDir, `avatar${ext}`);
-        const nodeBuffer = Buffer.from(avatarData.buffer); 
+        const nodeBuffer = Buffer.from(avatarData.buffer);
 
         await fs.writeFile(newAvatarPath, nodeBuffer);
         console.log(`Agent ${agentId} 的头像已保存到: ${newAvatarPath}`);
@@ -1654,6 +1682,11 @@ ipcMain.handle('save-avatar', async (event, agentId, avatarData) => {
     } catch (error) {
         console.error(`保存Agent ${agentId} 头像失败:`, error);
         return { error: `保存头像失败: ${error.message}` };
+    } finally {
+        if (listenerWasActive) {
+            startSelectionListener();
+            console.log('[Main] Restarted selection listener after agent avatar dialog.');
+        }
     }
 });
 
