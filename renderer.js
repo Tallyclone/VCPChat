@@ -570,8 +570,10 @@ async function loadAndApplyGlobalSettings() {
         assistantEnabledCheckbox.checked = globalSettings.assistantEnabled === true;
         if (globalSettings.assistantEnabled) {
             assistantAgentContainer.style.display = 'block';
+            if (assistantAgentSelect) assistantAgentSelect.required = true;
         } else {
             assistantAgentContainer.style.display = 'none';
+            if (assistantAgentSelect) assistantAgentSelect.required = false;
         }
         await populateAssistantAgentSelect();
         if (globalSettings.assistantAgent) {
@@ -2101,6 +2103,12 @@ function setupEventListeners() {
             const isEnabled = event.target.checked;
             assistantAgentContainer.style.display = isEnabled ? 'block' : 'none';
             window.electronAPI.toggleSelectionListener(isEnabled);
+
+            // Dynamically set the required attribute on the select element
+            if (assistantAgentSelect) {
+                assistantAgentSelect.required = isEnabled;
+            }
+
             if (isEnabled) {
                 populateAssistantAgentSelect(); // Refresh agent list when enabled
             }
