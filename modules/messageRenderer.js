@@ -1903,8 +1903,6 @@ function showContextMenu(event, messageItem, message) {
     const menu = document.createElement('div');
     menu.id = 'chatContextMenu';
     menu.classList.add('context-menu');
-    menu.style.top = `${event.clientY}px`;
-    menu.style.left = `${event.clientX}px`;
 
     if (message.isThinking || messageItem.classList.contains('streaming')) {
         const cancelOption = document.createElement('div');
@@ -2085,7 +2083,41 @@ function showContextMenu(event, messageItem, message) {
         menu.appendChild(deleteOption); 
     }
 
+    // Add to body to measure, but keep it invisible initially
+    menu.style.visibility = 'hidden';
+    menu.style.position = 'absolute';
     document.body.appendChild(menu);
+
+    const menuWidth = menu.offsetWidth;
+    const menuHeight = menu.offsetHeight;
+    const windowWidth = window.innerWidth;
+    const windowHeight = window.innerHeight;
+
+    let top = event.clientY;
+    let left = event.clientX;
+
+    // Adjust vertical position if it overflows the bottom
+    if (top + menuHeight > windowHeight) {
+        top = event.clientY - menuHeight;
+        // Further adjust if it overflows the top after repositioning
+        if (top < 0) {
+            top = 5; // Small margin from the top
+        }
+    }
+
+    // Adjust horizontal position if it overflows the right
+    if (left + menuWidth > windowWidth) {
+        left = event.clientX - menuWidth;
+        // Further adjust if it overflows the left after repositioning
+        if (left < 0) {
+            left = 5; // Small margin from the left
+        }
+    }
+
+    menu.style.top = `${top}px`;
+    menu.style.left = `${left}px`;
+    menu.style.visibility = 'visible'; // Make it visible at the correct position
+
     document.addEventListener('click', closeContextMenuOnClickOutside, true);
 }
 
