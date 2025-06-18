@@ -2185,9 +2185,16 @@ ipcMain.handle('handle-file-drop', async (event, agentId, topicId, droppedFilesD
                 continue;
             }
             
-            const fileTypeHint = fileData.type; 
+            let fileTypeHint = fileData.type;
+            const fileExtension = path.extname(fileData.name).toLowerCase();
+
+            // 如果文件类型未知，但扩展名是 .md，则将其视为纯文本
+            if (!fileTypeHint && fileExtension === '.md') {
+                fileTypeHint = 'text/plain';
+                console.log(`[Main - handle-file-drop] Markdown file detected. Overriding fileTypeHint to 'text/plain'.`);
+            }
             
-            console.log(`[Main - handle-file-drop] Attempting to store dropped file: ${fileData.name} (Type: ${fileData.type}, Size: ${fileData.size}) for Agent: ${agentId}, Topic: ${topicId}`);
+            console.log(`[Main - handle-file-drop] Attempting to store dropped file: ${fileData.name} (Type: ${fileTypeHint}, Size: ${fileData.size}) for Agent: ${agentId}, Topic: ${topicId}`);
             const fileBuffer = Buffer.isBuffer(fileData.data) ? fileData.data : Buffer.from(fileData.data);
             
             console.log(`[Main - handle-file-drop] Calling fileManager.storeFile with buffer for ${fileData.name}, size: ${fileBuffer.length}`);

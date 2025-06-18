@@ -390,6 +390,8 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
                             textForAIContext += `\n\n[附加文件: ${att.name || '未知文件'}]\n${att._fileManagerData.extractedText}\n[/附加文件结束: ${att.name || '未知文件'}]`;
                         } else if (att._fileManagerData && att.type && !att.type.startsWith('image/')) {
                             textForAIContext += `\n\n[附加文件: ${att.name || '未知文件'} (无法预览文本内容)]`;
+                        } else if (!att._fileManagerData) {
+                            console.warn(`[GroupChat Context] Historical message attachment for "${att.name}" is missing _fileManagerData. Text content cannot be appended.`);
                         }
                     }
                 }
@@ -721,6 +723,8 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
                     textForAIContext += `\n\n[附加文件: ${att.name || '未知文件'}]\n${att._fileManagerData.extractedText}\n[/附加文件结束: ${att.name || '未知文件'}]`;
                 } else if (att._fileManagerData && att.type && !att.type.startsWith('image/')) {
                     textForAIContext += `\n\n[附加文件: ${att.name || '未知文件'} (无法预览文本内容)]`;
+                } else if (!att._fileManagerData) {
+                    console.warn(`[GroupChat Invite Context] Historical message attachment for "${att.name}" is missing _fileManagerData. Text content cannot be appended.`);
                 }
             }
         }

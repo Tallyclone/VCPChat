@@ -993,6 +993,56 @@ function setUserAvatarColor(color) { // For the user's global avatar
 }
 
 
+async function renderAttachments(message, contentDiv) {
+    const { electronAPI } = mainRendererReferences;
+    if (message.attachments && message.attachments.length > 0) {
+        const attachmentsContainer = document.createElement('div');
+        attachmentsContainer.classList.add('message-attachments');
+        message.attachments.forEach(att => {
+            let attachmentElement;
+            if (att.type.startsWith('image/')) {
+                attachmentElement = document.createElement('img');
+                attachmentElement.src = att.src; // This src should be usable (e.g., file:// or data:)
+                attachmentElement.alt = `附件图片: ${att.name}`;
+                attachmentElement.title = `点击在新窗口预览: ${att.name}`;
+                attachmentElement.classList.add('message-attachment-image-thumbnail');
+                attachmentElement.onclick = (e) => {
+                    e.stopPropagation();
+                    electronAPI.openImageInNewWindow(att.src, att.name);
+                };
+                 attachmentElement.addEventListener('contextmenu', (e) => { // Use attachmentElement here
+                    e.preventDefault(); e.stopPropagation();
+                    electronAPI.showImageContextMenu(att.src);
+                });
+            } else if (att.type.startsWith('audio/')) {
+                attachmentElement = document.createElement('audio');
+                attachmentElement.src = att.src;
+                attachmentElement.controls = true;
+            } else if (att.type.startsWith('video/')) {
+                attachmentElement = document.createElement('video');
+                attachmentElement.src = att.src;
+                attachmentElement.controls = true;
+                attachmentElement.style.maxWidth = '300px';
+            } else { // Generic file
+                attachmentElement = document.createElement('a');
+                attachmentElement.href = att.src;
+                attachmentElement.textContent = `📄 ${att.name}`;
+                attachmentElement.title = `点击打开文件: ${att.name}`;
+                attachmentElement.onclick = (e) => {
+                    e.preventDefault();
+                    if (electronAPI.sendOpenExternalLink && att.src.startsWith('file://')) {
+                         electronAPI.sendOpenExternalLink(att.src);
+                    } else {
+                        console.warn("Cannot open local file attachment, API missing or path not a file URI:", att.src);
+                    }
+                };
+            }
+            if (attachmentElement) attachmentsContainer.appendChild(attachmentElement);
+        });
+        contentDiv.appendChild(attachmentsContainer);
+    }
+}
+
 async function renderMessage(message, isInitialLoad = false) {
     console.log('[MessageRenderer renderMessage] Received message:', JSON.parse(JSON.stringify(message))); // Log incoming message
     const { chatMessagesDiv, electronAPI, markedInstance, uiHelper } = mainRendererReferences;
@@ -1200,53 +1250,8 @@ async function renderMessage(message, isInitialLoad = false) {
     }
 
 
-    // Attachments (ensure contentDiv is the bubble's content div)
-    if (message.attachments && message.attachments.length > 0) {
-        const attachmentsContainer = document.createElement('div');
-        attachmentsContainer.classList.add('message-attachments');
-        message.attachments.forEach(att => {
-            let attachmentElement;
-            if (att.type.startsWith('image/')) {
-                attachmentElement = document.createElement('img');
-                attachmentElement.src = att.src; // This src should be usable (e.g., file:// or data:)
-                attachmentElement.alt = `附件图片: ${att.name}`;
-                attachmentElement.title = `点击在新窗口预览: ${att.name}`;
-                attachmentElement.classList.add('message-attachment-image-thumbnail');
-                attachmentElement.onclick = (e) => {
-                    e.stopPropagation();
-                    electronAPI.openImageInNewWindow(att.src, att.name);
-                };
-                 attachmentElement.addEventListener('contextmenu', (e) => { // Use attachmentElement here
-                    e.preventDefault(); e.stopPropagation();
-                    electronAPI.showImageContextMenu(att.src);
-                });
-            } else if (att.type.startsWith('audio/')) {
-                attachmentElement = document.createElement('audio');
-                attachmentElement.src = att.src;
-                attachmentElement.controls = true;
-            } else if (att.type.startsWith('video/')) {
-                attachmentElement = document.createElement('video');
-                attachmentElement.src = att.src;
-                attachmentElement.controls = true;
-                attachmentElement.style.maxWidth = '300px';
-            } else { // Generic file
-                attachmentElement = document.createElement('a');
-                attachmentElement.href = att.src;
-                attachmentElement.textContent = `📄 ${att.name}`;
-                attachmentElement.title = `点击打开文件: ${att.name}`;
-                attachmentElement.onclick = (e) => {
-                    e.preventDefault();
-                    if (electronAPI.sendOpenExternalLink && att.src.startsWith('file://')) {
-                         electronAPI.sendOpenExternalLink(att.src);
-                    } else {
-                        console.warn("Cannot open local file attachment, API missing or path not a file URI:", att.src);
-                    }
-                };
-            }
-            if (attachmentElement) attachmentsContainer.appendChild(attachmentElement);
-        });
-        contentDiv.appendChild(attachmentsContainer);
-    }
+    // Render attachments using the new helper function
+    renderAttachments(message, contentDiv);
     
     if (!message.isThinking && window.renderMathInElement) {
         window.renderMathInElement(contentDiv, {
@@ -2161,9 +2166,15 @@ function toggleEditMode(messageItem, message) {
 
     if (existingTextarea) { // Revert to display mode (Cancel was clicked)
         // message.content should be a string (original user input or AI reply)
-        let textToDisplay = (typeof message.content === 'string') ? message.content :
-                            (message.content && typeof message.content.text === 'string') ? message.content.text :
-                            '[内容错误]';
+        let textToDisplay = "";
+        if (typeof message.content === 'string') {
+            textToDisplay = message.content;
+        } else if (message.content && typeof message.content.text === 'string') {
+            textToDisplay = message.content.text;
+        } else {
+            textToDisplay = '[内容错误]';
+        }
+        
         if (typeof message.content !== 'string' && !(message.content && typeof message.content.text === 'string')) {
             console.warn('[MessageRenderer EditRevert] message.content is not a string or {text: string}:', message.content);
         }
@@ -2258,7 +2269,8 @@ function toggleEditMode(messageItem, message) {
                 if (window.renderMathInElement) {
                     window.renderMathInElement(contentDiv, { delimiters: [{left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}, {left: "\\(", right: "\\)", display: false}, {left: "\\[", right: "\\]", display: true}], throwOnError: false });
                 }
-                processAllPreBlocksInContentDiv(contentDiv); 
+                processAllPreBlocksInContentDiv(contentDiv);
+                renderAttachments(message, contentDiv); // Re-render attachments
             }
             toggleEditMode(messageItem, message);
         };
@@ -2367,23 +2379,57 @@ async function handleRegenerateResponse(originalAssistantMessage) {
         const agentConfig = await electronAPI.getAgentConfig(currentSelectedItemVal.id); // Fetch fresh config
         
         let messagesForVCP = await Promise.all(historyForRegeneration.map(async msg => {
-            // Simplified attachment processing for regeneration context
-            let vcpAttachments = [];
+            // Full attachment processing for regeneration context, mirroring handleSendMessage
+            let vcpImageAttachmentsPayload = [];
+            let currentMessageTextContent = (typeof msg.content === 'string') ? msg.content : (msg.content?.text || '');
+
             if (msg.attachments && msg.attachments.length > 0) {
-                 vcpAttachments = await Promise.all(msg.attachments.map(async att => {
-                    if (att.type.startsWith('image/')) {
-                        const base64Result = await electronAPI.getFileAsBase64(att.src);
-                        return base64Result && !base64Result.error ? { type: 'image_url', image_url: { url: `data:${att.type};base64,${base64Result}` } } : null;
+                // Process text-based attachments first
+                for (const att of msg.attachments) {
+                    if (att._fileManagerData && typeof att._fileManagerData.extractedText === 'string' && att._fileManagerData.extractedText.trim() !== '') {
+                        currentMessageTextContent += `\n\n[附加文件: ${att.name || '未知文件'}]\n${att._fileManagerData.extractedText}\n[/附加文件结束: ${att.name || '未知文件'}]`;
+                    } else if (att._fileManagerData && att.type && !att.type.startsWith('image/')) {
+                        currentMessageTextContent += `\n\n[附加文件: ${att.name || '未知文件'} (无法预览文本内容)]`;
+                    } else if (!att._fileManagerData) {
+                        console.warn(`[Regen Context] Historical message attachment for "${att.name}" is missing _fileManagerData. Text content cannot be appended.`);
                     }
-                    return null; // Only handle images for simplicity in regen, or expand as needed
-                }));
+                }
+
+                // Process image attachments
+                const imageAttachmentsPromises = msg.attachments
+                    .filter(att => att.type.startsWith('image/'))
+                    .map(async att => {
+                        try {
+                            const base64Data = await electronAPI.getFileAsBase64(att.src);
+                            if (base64Data && !base64Data.error) {
+                                return {
+                                    type: 'image_url',
+                                    image_url: { url: `data:${att.type};base64,${base64Data}` }
+                                };
+                            }
+                            return null;
+                        } catch (e) {
+                            console.error(`[Regen Context] Error getting base64 for image ${att.name}:`, e);
+                            return null;
+                        }
+                    });
+                vcpImageAttachmentsPayload = (await Promise.all(imageAttachmentsPromises)).filter(Boolean);
             }
-            let finalContentForVCP = [];
-            if (typeof msg.content === 'string' && msg.content.trim() !== '') {
-                finalContentForVCP.push({ type: 'text', text: msg.content });
+
+            const finalContentForVCP = [];
+            if (currentMessageTextContent.trim() !== '') {
+                finalContentForVCP.push({ type: 'text', text: currentMessageTextContent });
             }
-            finalContentForVCP.push(...vcpAttachments.filter(Boolean));
-            return { role: msg.role, content: finalContentForVCP.length > 0 ? finalContentForVCP : msg.content };
+            finalContentForVCP.push(...vcpImageAttachmentsPayload);
+
+            if (finalContentForVCP.length === 0 && msg.role === 'user') {
+                finalContentForVCP.push({ type: 'text', text: '(用户发送了附件，但无文本或图片内容)' });
+            }
+
+            return {
+                role: msg.role,
+                content: finalContentForVCP.length > 0 ? finalContentForVCP : msg.content
+            };
         }));
 
         if (agentConfig.systemPrompt) {

@@ -1080,6 +1080,7 @@ async function handleSendMessage() {
                 src: af.localPath,
                 name: af.originalName,
                 size: af.file.size,
+                _fileManagerData: af._fileManagerData // 保存完整的文件管理器数据
             });
             // Append extracted text to contentForVCP
             if (af._fileManagerData && af._fileManagerData.extractedText) {
@@ -1146,11 +1147,15 @@ async function handleSendMessage() {
                 let historicalAppendedText = "";
                 for (const att of msg.attachments) {
                     // Ensure _fileManagerData exists and has extractedText
+                    // 从历史记录加载的消息，其 attachments 数组现在应该包含 _fileManagerData
                     if (att._fileManagerData && typeof att._fileManagerData.extractedText === 'string' && att._fileManagerData.extractedText.trim() !== '') {
                         historicalAppendedText += `\n\n[附加文件: ${att.name || '未知文件'}]\n${att._fileManagerData.extractedText}\n[/附加文件结束: ${att.name || '未知文件'}]`;
                     } else if (att._fileManagerData && att.type && !att.type.startsWith('image/')) {
                         // If it's not an image and no text was extracted, note it.
                         historicalAppendedText += `\n\n[附加文件: ${att.name || '未知文件'} (无法预览文本内容)]`;
+                    } else if (!att._fileManagerData) {
+                        // 兼容旧的历史记录，这些记录没有 _fileManagerData
+                        console.warn(`[VCP Context] Historical message attachment for "${att.name}" is missing _fileManagerData. Text content cannot be appended.`);
                     }
                 }
                 currentMessageTextContent += historicalAppendedText; // Append to the original historical content
