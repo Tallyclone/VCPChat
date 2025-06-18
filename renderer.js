@@ -361,6 +361,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             window.messageRenderer.finalizeStreamedMessage(streamMessageId, 'completed', fullResponse, agentName, agentId);
             // The history saving logic is now handled by groupchat.js in the main process.
             // The renderer's responsibility is to finalize the UI display.
+        } else if (type === 'full_response') {
+            // New handler for non-streaming full responses
+            console.log(`[Renderer onVCPGroupStreamChunk FULL_RESPONSE] Received for ${agentName} (msgId: ${streamMessageId})`);
+            window.messageRenderer.renderFullMessage(streamMessageId, fullResponse, agentName, agentId);
         } else if (type === 'error') {
             console.error('VCP Group Stream Error on ID', streamMessageId, 'for agent', agentName, ':', error);
             window.messageRenderer.finalizeStreamedMessage(streamMessageId, 'error', `[错误] ${error}`, agentName, agentId);

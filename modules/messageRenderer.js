@@ -62,6 +62,13 @@ function hslToRgb(h, s, l) {
     return `rgb(${r},${g},${b})`;
 }
 
+// --- Image Loading State Management ---
+// This map holds the loading state for images within each message,
+// preventing re-loading and solving the placeholder flicker issue during streaming.
+// Structure: Map<messageId, Map<src, { status: 'loading'|'loaded'|'error', element?: HTMLImageElement }>>
+const messageImageStates = new Map();
+
+
 // --- Enhanced Rendering Styles (from UserScript) ---
 function injectEnhancedStyles() {
     const css = `
@@ -489,6 +496,32 @@ function injectEnhancedStyles() {
           .md-content tr:hover td {
                background-color: var(--table-row-hover-bg-color);
           }
+          
+           /* NEW STYLES FOR IMAGE PLACEHOLDERS */
+           .image-placeholder {
+               background-color: rgba(128, 128, 128, 0.1);
+               border: 1px dashed rgba(128, 128, 128, 0.3);
+               border-radius: 8px;
+               display: flex;
+               align-items: center;
+               justify-content: center;
+               font-size: 13px;
+               color: #888;
+               /* 过渡效果，让替换更平滑 */
+               transition: all 0.3s ease;
+           }
+
+           .image-placeholder::before {
+               /* content: "正在加载图片..."; */
+               content: '';
+               display: block;
+               width: 24px;
+               height: 24px;
+               border: 3px solid rgba(128, 128, 128, 0.3);
+               border-top-color: #888;
+               border-radius: 50%;
+               animation: vcp-icon-rotate 1s linear infinite;
+           }
    `;
     try {
         const existingStyleElement = document.getElementById('vcp-enhanced-ui-styles');
@@ -504,6 +537,109 @@ function injectEnhancedStyles() {
     } catch (error) {
         console.error('VCPSub Enhanced UI: Failed to inject styles:', error);
     }
+}
+
+/**
+ * 将内容设置到DOM元素，并处理其中的图片。
+ * 此函数现在管理一个持久化的图片加载状态，以防止在流式渲染中重复加载和闪烁。
+ * @param {HTMLElement} contentDiv - 要设置内容的DOM元素。
+ * @param {string} rawHtml - 经过marked.parse()处理的原始HTML。
+ * @param {string} messageId - 消息ID。
+ */
+function setContentAndProcessImages(contentDiv, rawHtml, messageId) {
+    // 确保该消息有一个图片状态Map
+    if (!messageImageStates.has(messageId)) {
+        messageImageStates.set(messageId, new Map());
+    }
+    const imageStates = messageImageStates.get(messageId);
+    let imageCounter = 0;
+
+    // 1. 替换HTML中的<img>标签，并启动新图片的加载过程
+    const processedHtml = rawHtml.replace(/<img[^>]+>/g, (imgTagString) => {
+        const srcMatch = imgTagString.match(/src="([^"]+)"/);
+        if (!srcMatch) return ''; // 忽略没有src的标签
+        const src = srcMatch[1];
+
+        const state = imageStates.get(src);
+
+        // 如果图片已经加载成功，直接返回最终的<img>元素字符串
+        if (state && state.status === 'loaded' && state.element) {
+            return state.element.outerHTML;
+        }
+        
+        // 如果图片加载失败，返回错误占位符
+        if (state && state.status === 'error') {
+             return `<div class="image-placeholder" style="min-height: 50px; display: flex; align-items: center; justify-content: center;">图片加载失败</div>`;
+        }
+
+        const placeholderId = `img-placeholder-${messageId}-${imageCounter++}`;
+        const widthMatch = imgTagString.match(/width="([^"]+)"/);
+        const displayWidth = widthMatch ? parseInt(widthMatch[1], 10) : 200;
+
+        // 如果是新图片，则启动加载
+        if (!state) {
+            imageStates.set(src, { status: 'loading' });
+
+            const imageLoader = new Image();
+            imageLoader.src = src;
+
+            imageLoader.onload = () => {
+                const aspectRatio = imageLoader.naturalHeight / imageLoader.naturalWidth;
+                const displayHeight = displayWidth * aspectRatio;
+
+                const finalImage = document.createElement('img');
+                finalImage.src = src;
+                finalImage.width = displayWidth;
+                finalImage.style.height = `${displayHeight}px`;
+                finalImage.style.cursor = 'pointer';
+                finalImage.title = `点击在新窗口预览: ${finalImage.alt || src}\n右键可复制图片`;
+                finalImage.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    mainRendererReferences.electronAPI.openImageInNewWindow(src, finalImage.alt || src.split('/').pop() || 'AI 图片');
+                });
+                finalImage.addEventListener('contextmenu', (e) => {
+                    e.preventDefault(); e.stopPropagation();
+                    mainRendererReferences.electronAPI.showImageContextMenu(src);
+                });
+
+                // 更新状态
+                const currentState = imageStates.get(src);
+                if (currentState) {
+                    currentState.status = 'loaded';
+                    currentState.element = finalImage;
+                }
+
+                // 替换DOM中的占位符
+                const placeholder = document.getElementById(placeholderId);
+                if (placeholder && document.body.contains(placeholder)) {
+                    placeholder.replaceWith(finalImage);
+                    const chatContainer = mainRendererReferences.chatMessagesDiv;
+                    const isScrolledToBottom = chatContainer.scrollHeight - chatContainer.clientHeight <= chatContainer.scrollTop + 150;
+                    if (isScrolledToBottom) {
+                        mainRendererReferences.uiHelper.scrollToBottom();
+                    }
+                }
+            };
+
+            imageLoader.onerror = () => {
+                const currentState = imageStates.get(src);
+                if (currentState) {
+                    currentState.status = 'error';
+                }
+                const placeholder = document.getElementById(placeholderId);
+                if (placeholder && document.body.contains(placeholder)) {
+                    placeholder.textContent = '图片加载失败';
+                    placeholder.style.minHeight = 'auto';
+                }
+            };
+        }
+
+        // 返回占位符
+        return `<div id="${placeholderId}" class="image-placeholder" style="width: ${displayWidth}px; min-height: 100px;"></div>`;
+    });
+
+    // 2. 将处理过的HTML（包含占位符或已加载的图片）渲染到DOM
+    contentDiv.innerHTML = processedHtml;
 }
 
 function shouldEnableSmoothStreaming(/* messageId */) {
@@ -1168,38 +1304,9 @@ async function renderMessage(message, isInitialLoad = false) {
         processedContent = ensureSpaceAfterTilde(processedContent);
         processedContent = removeIndentationFromCodeBlockMarkers(processedContent);
         processedContent = removeSpeakerTags(processedContent); // Remove speaker tags before parsing
-        contentDiv.innerHTML = markedInstance.parse(processedContent);
+        const rawHtml = markedInstance.parse(processedContent);
+        setContentAndProcessImages(contentDiv, rawHtml, message.id);
         processAllPreBlocksInContentDiv(contentDiv);
-
-        const imagesInContent = contentDiv.querySelectorAll('img');
-        imagesInContent.forEach(img => {
-            // Add an onload event listener to each image.
-            // This helps prevent the "flicker" or "jump" when an image loads
-            // by ensuring the chat scrolls to the bottom *after* the image has
-            // taken up its space in the layout.
-            img.addEventListener('load', () => {
-                const chatContainer = mainRendererReferences.chatMessagesDiv;
-                // Only scroll if the user is already near the bottom, to avoid interrupting them
-                // if they have scrolled up to read previous messages.
-                const isScrolledToBottom = chatContainer.scrollHeight - chatContainer.clientHeight <= chatContainer.scrollTop + 150; // 150px tolerance
-                if (isScrolledToBottom) {
-                    uiHelper.scrollToBottom();
-                }
-            });
-
-            if (!img.classList.contains('message-attachment-image-thumbnail')) { // Avoid re-adding listeners to attachment thumbs
-                img.style.cursor = 'pointer';
-                img.title = `点击在新窗口预览: ${img.alt || img.src}\n右键可复制图片`;
-                img.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    electronAPI.openImageInNewWindow(img.src, img.alt || img.src.split('/').pop() || 'AI 图片');
-                });
-                img.addEventListener('contextmenu', (e) => {
-                    e.preventDefault(); e.stopPropagation();
-                    electronAPI.showImageContextMenu(img.src);
-                });
-            }
-        });
     }
     
     // Avatar Color Application (after messageItem is in DOM)
@@ -1440,7 +1547,8 @@ function processAndRenderSmoothChunk(messageId) {
     processedTextForParse = ensureNewlineAfterCodeBlock(processedTextForParse);
     processedTextForParse = ensureSpaceAfterTilde(processedTextForParse);
     processedTextForParse = removeIndentationFromCodeBlockMarkers(processedTextForParse);
-    contentDiv.innerHTML = markedInstance.parse(processedTextForParse);
+    const rawHtml = markedInstance.parse(processedTextForParse);
+    setContentAndProcessImages(contentDiv, rawHtml, messageId);
 
     // Debounced enhanced rendering (VCP Tool, Diary) - uses accumulatedStreamText for detection
     const fullAccumulatedText = accumulatedStreamText.get(messageId) || ""; // Get the most up-to-date raw text
@@ -1468,7 +1576,9 @@ function processAndRenderSmoothChunk(messageId) {
                     processedForDebounce = ensureNewlineAfterCodeBlock(processedForDebounce);
                     processedForDebounce = ensureSpaceAfterTilde(processedForDebounce);
                     processedForDebounce = removeIndentationFromCodeBlockMarkers(processedForDebounce);
-                    targetContentDiv.innerHTML = markedInstance.parse(processedForDebounce);
+                    const rawHtml = markedInstance.parse(processedForDebounce);
+                    const messageId = messageItem.dataset.messageId;
+                    setContentAndProcessImages(targetContentDiv, rawHtml, messageId);
 
                     if (window.renderMathInElement) {
                         window.renderMathInElement(targetContentDiv, {
@@ -1662,7 +1772,8 @@ function renderChunkDirectlyToDOM(messageId, textToAppend, agentNameForGroup, ag
     processedFullCurrentTextForParse = ensureNewlineAfterCodeBlock(processedFullCurrentTextForParse);
     processedFullCurrentTextForParse = ensureSpaceAfterTilde(processedFullCurrentTextForParse);
     processedFullCurrentTextForParse = removeIndentationFromCodeBlockMarkers(processedFullCurrentTextForParse);
-    contentDiv.innerHTML = markedInstance.parse(processedFullCurrentTextForParse);
+    const rawHtml = markedInstance.parse(processedFullCurrentTextForParse);
+    setContentAndProcessImages(contentDiv, rawHtml, messageId);
 
     // Debounced enhanced rendering
     if (messageItem) {
@@ -1685,7 +1796,9 @@ function renderChunkDirectlyToDOM(messageId, textToAppend, agentNameForGroup, ag
                     processedForDebounce = ensureNewlineAfterCodeBlock(processedForDebounce);
                     processedForDebounce = ensureSpaceAfterTilde(processedForDebounce);
                     processedForDebounce = removeIndentationFromCodeBlockMarkers(processedForDebounce);
-                    targetContentDiv.innerHTML = markedInstance.parse(processedForDebounce);
+                    const rawHtml = markedInstance.parse(processedForDebounce);
+                    const messageId = messageItem.dataset.messageId;
+                    setContentAndProcessImages(targetContentDiv, rawHtml, messageId);
                     if (window.renderMathInElement) {
                         window.renderMathInElement(targetContentDiv, { delimiters: [ {left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}, {left: "\\(", right: "\\)", display: false}, {left: "\\[", right: "\\]", display: true} ], throwOnError: false });
                 }
@@ -1738,7 +1851,7 @@ async function finalizeStreamedMessage(messageId, finishReason, fullResponseText
     // Only remove 'streaming' class here if smooth streaming is NOT enabled.
     // For smooth streaming, it's removed when the timer finishes and queue is empty.
     if (!shouldEnableSmoothStreaming(messageId)) {
-        messageItem.classList.remove('streaming');
+        messageItem.classList.remove('streaming', 'thinking');
     }
     
     // --- Smooth Streaming Finalization ---
@@ -1840,7 +1953,8 @@ async function finalizeStreamedMessage(messageId, finishReason, fullResponseText
                                : accumulatedStreamText.get(messageId) || `(消息 ${messageId} 历史记录未找到，结束: ${finishReason})`;
         const directContentDiv = messageItem.querySelector('.md-content');
         if(directContentDiv && (finishReason === 'error' || !fullResponseText || !shouldEnableSmoothStreaming(messageId))) {
-             directContentDiv.innerHTML = markedInstance.parse(finalFullTextForRender);
+             const rawHtml = markedInstance.parse(finalFullTextForRender);
+             setContentAndProcessImages(directContentDiv, rawHtml, messageId);
         }
     }
     
@@ -1862,7 +1976,8 @@ async function finalizeStreamedMessage(messageId, finishReason, fullResponseText
             processedFinalText = ensureNewlineAfterCodeBlock(processedFinalText);
             processedFinalText = ensureSpaceAfterTilde(processedFinalText);
             processedFinalText = removeIndentationFromCodeBlockMarkers(processedFinalText);
-            contentDiv.innerHTML = markedInstance.parse(processedFinalText);
+            const rawHtml = markedInstance.parse(processedFinalText);
+            setContentAndProcessImages(contentDiv, rawHtml, messageId);
 
             if (window.renderMathInElement) {
                  window.renderMathInElement(contentDiv, { delimiters: [{left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}, {left: "\\(", right: "\\)", display: false}, {left: "\\[", right: "\\]", display: true}], throwOnError: false });
@@ -1887,6 +2002,9 @@ async function finalizeStreamedMessage(messageId, finishReason, fullResponseText
     // The timer itself will delete streamingTimers.
     // No longer clearing streamingChunkQueues or accumulatedStreamText here for smooth streaming.
 
+    // Clean up the image state for this message once it's finalized.
+    messageImageStates.delete(messageId);
+
     // scrollToBottom is called by the timer's final render for smooth streaming.
     // For non-smooth, call it here.
     if (!shouldEnableSmoothStreaming(messageId)) {
@@ -1894,6 +2012,89 @@ async function finalizeStreamedMessage(messageId, finishReason, fullResponseText
     }
 }
 
+/**
+ * Renders a full, non-streamed message, replacing a 'thinking' placeholder.
+ * @param {string} messageId - The ID of the message to update.
+ * @param {string} fullContent - The full HTML or text content of the message.
+ * @param {string} agentName - The name of the agent sending the message.
+ * @param {string} agentId - The ID of the agent sending the message.
+ */
+async function renderFullMessage(messageId, fullContent, agentName, agentId) {
+    console.log(`[MessageRenderer renderFullMessage] Rendering full message for ID: ${messageId}`);
+    const { chatMessagesDiv, electronAPI, uiHelper, markedInstance } = mainRendererReferences;
+    const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
+    const currentSelectedItem = mainRendererReferences.currentSelectedItemRef.get();
+    const currentTopicIdVal = mainRendererReferences.currentTopicIdRef.get();
+
+    const messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
+    if (!messageItem) {
+        console.error(`[renderFullMessage] Could not find message item with ID ${messageId} to render full content.`);
+        // As a fallback, we could try to render it as a new message, but it might appear out of order.
+        // For now, we'll log the error and return.
+        return;
+    }
+
+    messageItem.classList.remove('thinking', 'streaming');
+
+    const contentDiv = messageItem.querySelector('.md-content');
+    if (!contentDiv) {
+        console.error(`[renderFullMessage] Could not find .md-content div for message ID ${messageId}.`);
+        return;
+    }
+
+    // --- Update History ---
+    const messageIndex = currentChatHistoryArray.findIndex(msg => msg.id === messageId);
+    if (messageIndex > -1) {
+        const message = currentChatHistoryArray[messageIndex];
+        message.content = fullContent;
+        message.isThinking = false;
+        message.finishReason = 'completed_non_streamed';
+        message.name = agentName || message.name;
+        message.agentId = agentId || message.agentId;
+        
+        // Update timestamp display if it was missing
+        const nameTimeBlock = messageItem.querySelector('.name-time-block');
+        if (nameTimeBlock && !nameTimeBlock.querySelector('.message-timestamp')) {
+            const timestampDiv = document.createElement('div');
+            timestampDiv.classList.add('message-timestamp');
+            timestampDiv.textContent = new Date(message.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            nameTimeBlock.appendChild(timestampDiv);
+        }
+        
+        mainRendererReferences.currentChatHistoryRef.set([...currentChatHistoryArray]);
+
+        // Save history
+        if (currentSelectedItem && currentSelectedItem.id && currentTopicIdVal && currentSelectedItem.type === 'group') {
+            if (electronAPI.saveGroupChatHistory) {
+                try {
+                    await electronAPI.saveGroupChatHistory(currentSelectedItem.id, currentTopicIdVal, currentChatHistoryArray.filter(m => !m.isThinking));
+                } catch (error) {
+                    console.error(`[MR renderFullMessage] FAILED to save GROUP history for ${currentSelectedItem.id}, topic ${currentTopicIdVal}:`, error);
+                }
+            }
+        }
+    } else {
+        console.warn(`[renderFullMessage] Message ID ${messageId} not found in history. UI will be updated, but history may be inconsistent.`);
+    }
+
+    // --- Update DOM ---
+    let processedFinalText = removeSpeakerTags(fullContent);
+    processedFinalText = ensureNewlineAfterCodeBlock(processedFinalText);
+    processedFinalText = ensureSpaceAfterTilde(processedFinalText);
+    processedFinalText = removeIndentationFromCodeBlockMarkers(processedFinalText);
+    const rawHtml = markedInstance.parse(processedFinalText);
+    setContentAndProcessImages(contentDiv, rawHtml, messageId);
+
+    // Apply post-processing (MathJax, special blocks, highlights)
+    if (window.renderMathInElement) {
+        window.renderMathInElement(contentDiv, { delimiters: [{left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}, {left: "\\(", right: "\\)", display: false}, {left: "\\[", right: "\\]", display: true}], throwOnError: false });
+    }
+    processAllPreBlocksInContentDiv(contentDiv);
+    highlightTagsInMessage(contentDiv);
+    highlightQuotesInMessage(contentDiv);
+
+    uiHelper.scrollToBottom();
+}
 
 function showContextMenu(event, messageItem, message) {
     closeContextMenu(); 
@@ -2182,7 +2383,8 @@ function toggleEditMode(messageItem, message) {
         let originalContentProcessed = removeSpeakerTags(textToDisplay);
         originalContentProcessed = ensureNewlineAfterCodeBlock(originalContentProcessed);
         originalContentProcessed = ensureSpaceAfterTilde(originalContentProcessed);
-        contentDiv.innerHTML = markedInstance.parse(originalContentProcessed);
+        const rawHtml = markedInstance.parse(originalContentProcessed);
+        setContentAndProcessImages(contentDiv, rawHtml, message.id);
         if (window.renderMathInElement) {
              window.renderMathInElement(contentDiv, { delimiters: [{left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}, {left: "\\(", right: "\\)", display: false}, {left: "\\[", right: "\\]", display: true}], throwOnError: false });
         }
@@ -2265,7 +2467,8 @@ function toggleEditMode(messageItem, message) {
                 let newContentProcessed = removeSpeakerTags(newContent);
                 newContentProcessed = ensureNewlineAfterCodeBlock(newContentProcessed);
                 newContentProcessed = ensureSpaceAfterTilde(newContentProcessed);
-                contentDiv.innerHTML = markedInstance.parse(newContentProcessed);
+                const rawHtml = markedInstance.parse(newContentProcessed);
+                setContentAndProcessImages(contentDiv, rawHtml, message.id);
                 if (window.renderMathInElement) {
                     window.renderMathInElement(contentDiv, { delimiters: [{left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}, {left: "\\(", right: "\\)", display: false}, {left: "\\[", right: "\\]", display: true}], throwOnError: false });
                 }
@@ -2522,10 +2725,12 @@ window.messageRenderer = {
     startStreamingMessage,
     appendStreamChunk,
     finalizeStreamedMessage,
+    renderFullMessage,
     // Helper functions that renderer might need if they were previously here, e.g., clearChat
     clearChat: () => {
         if (mainRendererReferences.chatMessagesDiv) mainRendererReferences.chatMessagesDiv.innerHTML = '';
         mainRendererReferences.currentChatHistoryRef.set([]); // Clear the history array via its ref
+        messageImageStates.clear(); // Clear all image loading states
     },
     removeMessageById: (messageId) => {
         const item = mainRendererReferences.chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
@@ -2536,6 +2741,7 @@ window.messageRenderer = {
             currentChatHistoryArray.splice(index, 1);
             mainRendererReferences.currentChatHistoryRef.set([...currentChatHistoryArray]);
         }
+        messageImageStates.delete(messageId); // Clean up image state for the deleted message
     },
     summarizeTopicFromMessages: async (history, agentName) => { // Example: Keep this if it's generic enough
         // This function was passed in, so it's likely defined in renderer.js or another module.

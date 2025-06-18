@@ -20,7 +20,6 @@ window.GroupRenderer = (() => {
     let groupNameInput, groupAvatarInput, groupAvatarPreview;
     let groupMembersListDiv, addRemoveMembersBtn;
     let groupChatModeSelect;
-    let groupStreamOutputCheckbox; // 新增：流式输出复选框
     let memberTagsContainer, memberTagsInputsDiv;
     let groupPromptTextarea, invitePromptTextarea;
     let deleteGroupBtn;
@@ -118,10 +117,6 @@ window.GroupRenderer = (() => {
                         <option value="invite_only">邀请发言</option>
                     </select>
                 </div>
-                <div class="form-group-inline">
-                    <input type="checkbox" id="groupStreamOutputCheckbox">
-                    <label for="groupStreamOutputCheckbox">启用流式输出</label>
-                </div>
                 <div id="memberTagsContainer" class="form-group" style="display: none;">
                     <label>成员 Tags (用于自然随机模式):</label>
                     <div id="memberTagsInputs"></div>
@@ -159,7 +154,6 @@ window.GroupRenderer = (() => {
         groupAvatarPreview = document.getElementById('groupAvatarPreview');
         groupMembersListDiv = document.getElementById('groupMembersList');
         groupChatModeSelect = document.getElementById('groupChatMode');
-        groupStreamOutputCheckbox = document.getElementById('groupStreamOutputCheckbox'); // 获取新元素
         memberTagsContainer = document.getElementById('memberTagsContainer');
         memberTagsInputsDiv = document.getElementById('memberTagsInputs');
         groupPromptTextarea = document.getElementById('groupPrompt');
@@ -375,7 +369,6 @@ window.GroupRenderer = (() => {
         groupAvatarInput.value = ''; // Clear file input
 
         groupChatModeSelect.value = groupConfig.mode || 'sequential';
-        groupStreamOutputCheckbox.checked = groupConfig.streamOutput === true; // 设置流式输出复选框状态
         groupPromptTextarea.value = groupConfig.groupPrompt || '';
         invitePromptTextarea.value = groupConfig.invitePrompt || '现在轮到你{{VCPChatAgentName}}发言了。';
 
@@ -525,7 +518,6 @@ window.GroupRenderer = (() => {
             name: groupNameInput.value.trim(),
             members: selectedMemberIds,
             mode: groupChatModeSelect.value,
-            streamOutput: groupStreamOutputCheckbox.checked, // 保存流式输出设置
             memberTags: memberTags,
             groupPrompt: groupPromptTextarea.value.trim(),
             invitePrompt: invitePromptTextarea.value.trim()
