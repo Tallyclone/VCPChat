@@ -337,8 +337,8 @@ function createWindow() {
 
     mainWindow.setMenu(null); // 移除应用程序菜单栏
 
-    // Set dark mode based on system preference, or allow user to toggle
-    nativeTheme.themeSource = 'dark'; // Or 'light' or 'system'
+    // Set theme source to 'system' by default. The renderer will send the saved preference on launch.
+    nativeTheme.themeSource = 'system';
 
     // Listen for window events to notify renderer
     mainWindow.on('maximize', () => {

@@ -502,9 +502,20 @@ function updateDateTimeDisplay() {
 }
 
 function loadAndApplyThemePreference() {
-    // The initial theme is now set by main.js via nativeTheme.
-    // This function will now primarily listen for updates.
+    // 1. Listen for live theme changes from the main process (e.g., OS theme change)
     window.electronAPI.onThemeUpdated(applyTheme);
+
+    // 2. On startup, check for a user-saved theme preference in localStorage
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme) {
+        console.log(`[Theme] Found saved theme: ${savedTheme}. Applying and notifying main process.`);
+        // Apply the theme to the renderer
+        applyTheme(savedTheme);
+        // Notify the main process to set its nativeTheme.themeSource accordingly
+        window.electronAPI.setTheme(savedTheme);
+    } else {
+        console.log("[Theme] No saved theme found. Will follow system theme.");
+    }
 }
 
 function applyTheme(theme) {
@@ -516,9 +527,6 @@ function applyTheme(theme) {
 
     if (sunIcon) sunIcon.style.display = isLightTheme ? 'none' : 'inline-block';
     if (moonIcon) moonIcon.style.display = isLightTheme ? 'inline-block' : 'none';
-    
-    // Persist the theme choice for the next session
-    localStorage.setItem('theme', theme);
 }
 
 async function loadAndApplyGlobalSettings() {
@@ -2022,7 +2030,10 @@ function setupEventListeners() {
         themeToggleBtn.addEventListener('click', () => {
             const isCurrentlyLight = document.body.classList.contains('light-theme');
             const newTheme = isCurrentlyLight ? 'dark' : 'light';
-            window.electronAPI.setTheme(newTheme); // Notify main process
+            // Persist the choice in localStorage on manual toggle
+            localStorage.setItem('theme', newTheme);
+            // Notify main process to change the nativeTheme.themeSource
+            window.electronAPI.setTheme(newTheme);
         });
     }
 
