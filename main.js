@@ -379,7 +379,20 @@ function createWindow() {
 }
 
 // --- App Lifecycle ---
-app.whenReady().then(async () => { // Make the function async
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (event, commandLine, workingDirectory) => {
+    // 有人试图运行第二个实例，我们应该聚焦于我们的窗口
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+
+  app.whenReady().then(async () => { // Make the function async
     fs.ensureDirSync(APP_DATA_ROOT_IN_PROJECT); // Ensure the main AppData directory in project exists
     fs.ensureDirSync(AGENT_DIR);
     fs.ensureDirSync(USER_DATA_DIR);
@@ -962,13 +975,6 @@ function formatTimestampForFilename(timestamp) {
         }
     });
 
-    globalShortcut.register('Control+Shift+A', () => {
-        console.log('[Main] Assistant shortcut (Ctrl+Shift+A) pressed.');
-        // Reset lastProcessedSelection to allow shortcut to work after a mouse selection
-        // lastProcessedSelection = '';
-        // grabSelectedText(); // grabSelectedText is removed.
-        console.log('[Main] Assistant shortcut (Ctrl+Shift+A) is currently disabled as it relied on clipboard grabbing.');
-    });
 
     // --- Assistant IPC Handlers ---
     ipcMain.on('toggle-selection-listener', (event, enable) => {
@@ -2615,3 +2621,4 @@ ipcMain.on('show-image-context-menu', (event, imageUrl) => {
         console.error("[Main Process] Cannot popup image context menu, mainWindow is not available.");
     }
 });
+}
