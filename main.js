@@ -577,7 +577,8 @@ app.whenReady().then(async () => { // Make the function async
             show: false
         });
 
-        const viewerUrl = `file://${path.join(__dirname, 'text-viewer.html')}?text=${encodeURIComponent(textContent)}&title=${encodeURIComponent(windowTitle || '阅读模式')}&theme=${encodeURIComponent(theme || 'dark')}`; // Pass theme parameter
+        const base64Text = Buffer.from(textContent).toString('base64');
+        const viewerUrl = `file://${path.join(__dirname, 'text-viewer.html')}?text=${encodeURIComponent(base64Text)}&title=${encodeURIComponent(windowTitle || '阅读模式')}&theme=${encodeURIComponent(theme || 'dark')}&encoding=base64`; // Pass theme and encoding
         console.log(`[Main Process] Attempting to load URL in text viewer window: ${viewerUrl.substring(0, 200)}...`);
         
         textViewerWindow.webContents.on('did-start-loading', () => {

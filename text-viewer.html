@@ -10,9 +10,9 @@
         // If you have these locally, adjust the paths.
         // For simplicity, using CDN here. In a real app, bundle them.
     </script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.0/dist/katex.min.css" integrity="sha384-Xi8rHCmBmhbuyyhbI88391ZKP2dmfnOl4rT9ZfN75gOKfDRLUEAGtDsNxKggEPJ8" crossorigin="anonymous">
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.0/dist/katex.min.js" integrity="sha384-X/XCfMm41VSsqRNwNEgmSMAXLsEuOdkUOlMVfYOTWpUperformEnA/SMoYSvRaXJ_t" crossorigin="anonymous"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.0/dist/contrib/auto-render.min.js" integrity="sha384-+XBljXPPiv+OzfbB3cVmLHfLdhbWKgLoS_YlHVF_M2wL_N_H_w_S_p_hH+G1R_w_b" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.0/dist/katex.min.css" integrity="sha384-Xi8rHCmBmhbuyyhbI88391ZKP2dmfnOl4rT9ZfRI7mLTdk1wblIUnrIq35nqwEvC" crossorigin="anonymous">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.0/dist/katex.min.js" integrity="sha384-X/XCfMm41VSsqRNQgDerQczD69XqmjOOOwYQvr/uuC+j4OPoNhVgjdGFwhvN02Ja" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.0/dist/contrib/auto-render.min.js" integrity="sha384-+XBljXPPiv+OzfbB3cVmLHf4hdUFHlWNZN5spNQ7rmHTXpd7WvJum6fIACpNNfIR" crossorigin="anonymous"></script>
     <!-- Highlight.js for syntax highlighting -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
     <style>
@@ -332,8 +332,9 @@
 
             const params = new URLSearchParams(window.location.search);
             const textContent = params.get('text');
-            const windowTitle = params.get('title') || '文本阅读模式';
-            const theme = params.get('theme') || 'dark'; // Get theme from URL, default to dark
+           const windowTitle = params.get('title') || '文本阅读模式';
+           const theme = params.get('theme') || 'dark'; // Get theme from URL, default to dark
+           const encoding = params.get('encoding');
 
             document.title = decodeURIComponent(windowTitle);
             const contentDiv = document.getElementById('textContent');
@@ -410,141 +411,166 @@
             }
 
             if (textContent) {
-                let decodedText = decodeURIComponent(textContent); // Changed const to let
+                try {
+                    let decodedText;
+                    if (encoding === 'base64') {
+                        // Decode Base64 and then decode the UTF-8 characters
+                        const rawDecoded = atob(textContent);
+                        decodedText = decodeURIComponent(rawDecoded.split('').map(function(c) {
+                            return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+                        }).join(''));
+                    } else {
+                        decodedText = decodeURIComponent(textContent); // Fallback for old method
+                    }
 
-                // 应用自定义引号渲染
-                decodedText = renderQuotedText(decodedText, theme);
+                    // Pre-process to add a newline after a code block fence if it's followed by a Chinese character.
+                    const codeBlockRegex = /(```)([\u4e00-\u9fa5])/g;
+                    decodedText = decodedText.replace(codeBlockRegex, '$1\n$2');
 
-                // Prepare Mermaid diagrams before Markdown rendering
-                const mermaidRegex = /```mermaid\n([\s\S]*?)```/g;
-                let mermaidProcessedText = decodedText.replace(mermaidRegex, (match, mermaidContent) => {
-                    // Create a unique ID for each diagram to avoid conflicts if multiple diagrams exist
-                    const diagramId = `mermaid-diagram-${Math.random().toString(36).substring(2, 15)}`;
-                    return `<div class="mermaid" id="${diagramId}">${mermaidContent.trim()}</div>`;
-                });
+                    // 应用自定义引号渲染
+                    decodedText = renderQuotedText(decodedText, theme);
 
-                // Render Markdown
-                if (window.marked) {
-                    marked.setOptions({
-                        gfm: true, // Enable GFM (GitHub Flavored Markdown)
-                        tables: true, // Enable GFM tables
-                        breaks: false, // Do not interpret carriage returns as <br>
-                        pedantic: false,
-                        sanitize: false, // IMPORTANT: If you allow user-generated content, ensure proper sanitization.
-                        smartLists: true,
-                        smartypants: false
+                    // Prepare Mermaid diagrams before Markdown rendering
+                    const mermaidRegex = /```mermaid\n([\s\S]*?)```/g;
+                    let mermaidProcessedText = decodedText.replace(mermaidRegex, (match, mermaidContent) => {
+                        // Create a unique ID for each diagram to avoid conflicts if multiple diagrams exist
+                        const diagramId = `mermaid-diagram-${Math.random().toString(36).substring(2, 15)}`;
+                        return `<div class="mermaid" id="${diagramId}">${mermaidContent.trim()}</div>`;
                     });
-                    contentDiv.innerHTML = marked.parse(mermaidProcessedText); // Use mermaidProcessedText
 
-                    // Apply syntax highlighting after Markdown is rendered
-                    if (window.hljs) {
-                        hljs.highlightAll();
-                        // Add copy buttons to code blocks (excluding mermaid blocks)
-                        document.querySelectorAll('pre code.hljs').forEach((block) => {
-                            const preElement = block.parentElement;
-                            // Ensure we are not adding buttons to pre elements that might wrap mermaid divs
-                            if (preElement.querySelector('.mermaid')) {
-                                return;
-                            }
-                            preElement.style.position = 'relative'; // Needed for absolute positioning of the button
+                    // Render Markdown
+                    if (window.marked) {
+                        marked.setOptions({
+                            gfm: true, // Enable GFM (GitHub Flavored Markdown)
+                            tables: true, // Enable GFM tables
+                            breaks: false, // Do not interpret carriage returns as <br>
+                            pedantic: false,
+                            sanitize: false, // IMPORTANT: If you allow user-generated content, ensure proper sanitization.
+                            smartLists: true,
+                            smartypants: false
+                        });
+                        contentDiv.innerHTML = marked.parse(mermaidProcessedText); // Use mermaidProcessedText
 
-                            // Create Edit Button
-                            const editButton = document.createElement('button');
-                            const editIconSVG = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>`;
-                            const doneIconSVG = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>`;
-
-                            editButton.innerHTML = editIconSVG;
-                            editButton.className = 'edit-button';
-                            editButton.setAttribute('title', '编辑');
-
-                            editButton.addEventListener('click', (e) => {
-                                e.stopPropagation();
-                                const isEditing = block.isContentEditable;
-                                block.contentEditable = !isEditing; // Toggle contentEditable on the code block itself
-                                if (!isEditing) {
-                                    block.focus(); // Focus the block for editing
-                                    editButton.innerHTML = doneIconSVG;
-                                    editButton.setAttribute('title', '完成编辑');
-                                } else {
-                                    editButton.innerHTML = editIconSVG;
-                                    editButton.setAttribute('title', '编辑');
-                                    // After editing, syntax highlighting might be lost or incorrect.
-                                    // Re-highlight the block if hljs is available.
-                                    if (window.hljs && typeof hljs.highlightElement === 'function') {
-                                        hljs.highlightElement(block);
-                                    }
+                        // Apply syntax highlighting after Markdown is rendered
+                        if (window.hljs) {
+                            hljs.highlightAll();
+                            // Add copy buttons to code blocks (excluding mermaid blocks)
+                            document.querySelectorAll('pre code.hljs').forEach((block) => {
+                                const preElement = block.parentElement;
+                                // Ensure we are not adding buttons to pre elements that might wrap mermaid divs
+                                if (preElement.querySelector('.mermaid')) {
+                                    return;
                                 }
-                            });
-                            preElement.appendChild(editButton);
+                                preElement.style.position = 'relative'; // Needed for absolute positioning of the button
 
-                            // Create Copy Button (renamed 'button' to 'copyButton')
-                            const copyButton = document.createElement('button');
-                            copyButton.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>`;
-                            copyButton.className = 'copy-button';
-                            copyButton.setAttribute('title', '复制');
+                                // Create Edit Button
+                                const editButton = document.createElement('button');
+                                const editIconSVG = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>`;
+                                const doneIconSVG = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>`;
 
-                            copyButton.addEventListener('click', (e) => {
-                                e.stopPropagation();
-                                const codeToCopy = block.innerText;
-                                navigator.clipboard.writeText(codeToCopy).then(() => {
-                                    copyButton.style.borderColor = 'var(--success-color, #4CAF50)'; // Visual feedback
-                                    setTimeout(() => {
-                                        copyButton.style.borderColor = 'var(--button-border-color, #4f535c)';
-                                    }, 1500);
-                                }).catch(err => {
-                                    console.error('无法复制到剪贴板:', err);
-                                    copyButton.style.borderColor = 'var(--error-color, #F44336)'; // Visual feedback
-                                    setTimeout(() => {
-                                        copyButton.style.borderColor = 'var(--button-border-color, #4f535c)';
-                                    }, 1500);
+                                editButton.innerHTML = editIconSVG;
+                                editButton.className = 'edit-button';
+                                editButton.setAttribute('title', '编辑');
+
+                                editButton.addEventListener('click', (e) => {
+                                    e.stopPropagation();
+                                    const isEditing = block.isContentEditable;
+                                    block.contentEditable = !isEditing; // Toggle contentEditable on the code block itself
+                                    if (!isEditing) {
+                                        block.focus(); // Focus the block for editing
+                                        editButton.innerHTML = doneIconSVG;
+                                        editButton.setAttribute('title', '完成编辑');
+                                    } else {
+                                        editButton.innerHTML = editIconSVG;
+                                        editButton.setAttribute('title', '编辑');
+                                        // After editing, syntax highlighting might be lost or incorrect.
+                                        // Re-highlight the block if hljs is available.
+                                        if (window.hljs && typeof hljs.highlightElement === 'function') {
+                                            hljs.highlightElement(block);
+                                        }
+                                    }
                                 });
+                                preElement.appendChild(editButton);
+
+                                // Create Copy Button (renamed 'button' to 'copyButton')
+                                const copyButton = document.createElement('button');
+                                copyButton.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>`;
+                                copyButton.className = 'copy-button';
+                                copyButton.setAttribute('title', '复制');
+
+                                copyButton.addEventListener('click', (e) => {
+                                    e.stopPropagation();
+                                    const codeToCopy = block.innerText;
+                                    navigator.clipboard.writeText(codeToCopy).then(() => {
+                                        copyButton.style.borderColor = 'var(--success-color, #4CAF50)'; // Visual feedback
+                                        setTimeout(() => {
+                                            copyButton.style.borderColor = 'var(--button-border-color, #4f535c)';
+                                        }, 1500);
+                                    }).catch(err => {
+                                        console.error('无法复制到剪贴板:', err);
+                                        copyButton.style.borderColor = 'var(--error-color, #F44336)'; // Visual feedback
+                                        setTimeout(() => {
+                                            copyButton.style.borderColor = 'var(--button-border-color, #4f535c)';
+                                        }, 1500);
+                                    });
+                                });
+                                preElement.appendChild(copyButton);
                             });
-                            preElement.appendChild(copyButton);
-                        });
-                    }
-                    // Render Mermaid diagrams
-                    if (window.mermaid) {
-                        try {
-                            mermaid.run({
-                                nodes: document.querySelectorAll('.mermaid')
-                            });
-                        } catch (e) {
-                            console.error("Mermaid rendering error:", e);
+                        }
+                        // Render Mermaid diagrams
+                        if (window.mermaid) {
+                            try {
+                                mermaid.run({
+                                    nodes: document.querySelectorAll('.mermaid')
+                                });
+                            } catch (e) {
+                                console.error("Mermaid rendering error:", e);
+                            }
+                        }
+
+                    } else {
+                        // Fallback if marked is not loaded
+                        const pre = document.createElement('pre');
+                        pre.textContent = mermaidProcessedText; // Use mermaidProcessedText
+                        contentDiv.appendChild(pre);
+                         // Render Mermaid diagrams even in fallback
+                        if (window.mermaid) {
+                            try {
+                                mermaid.run({
+                                    nodes: document.querySelectorAll('.mermaid')
+                                });
+                            } catch (e) {
+                                console.error("Mermaid rendering error (fallback):", e);
+                            }
                         }
                     }
 
-                } else {
-                    // Fallback if marked is not loaded
-                    const pre = document.createElement('pre');
-                    pre.textContent = mermaidProcessedText; // Use mermaidProcessedText
-                    contentDiv.appendChild(pre);
-                     // Render Mermaid diagrams even in fallback
-                    if (window.mermaid) {
+                    // Render LaTeX if KaTeX is available
+                    if (window.renderMathInElement) {
                         try {
-                            mermaid.run({
-                                nodes: document.querySelectorAll('.mermaid')
+                            renderMathInElement(contentDiv, {
+                                delimiters: [
+                                    {left: "$$", right: "$$", display: true},
+                                    {left: "$", right: "$", display: false},
+                                    {left: "\\(", right: "\\)", display: false},
+                                    {left: "\\[", right: "\\]", display: true}
+                                ],
+                                throwOnError: false
                             });
                         } catch (e) {
-                            console.error("Mermaid rendering error (fallback):", e);
+                            console.error("KaTeX rendering error:", e);
                         }
                     }
-                }
-
-                // Render LaTeX if KaTeX is available
-                if (window.renderMathInElement) {
-                    try {
-                        renderMathInElement(contentDiv, {
-                            delimiters: [
-                                {left: "$$", right: "$$", display: true},
-                                {left: "$", right: "$", display: false},
-                                {left: "\\(", right: "\\)", display: false},
-                                {left: "\\[", right: "\\]", display: true}
-                            ],
-                            throwOnError: false
-                        });
-                    } catch (e) {
-                        console.error("KaTeX rendering error:", e);
-                    }
+                } catch (error) {
+                    console.error("Error rendering content:", error);
+                    contentDiv.innerHTML = `
+                        <h3 style="color: #e06c75;">内容渲染失败</h3>
+                        <p>在处理文本时发生错误，这可能是由于文本包含了格式不正确的编码字符。</p>
+                        <p><strong>错误详情:</strong></p>
+                        <pre style="white-space: pre-wrap; word-wrap: break-word;">${error.toString()}</pre>
+                        <p><strong>原始文本内容:</strong></p>
+                        <pre style="white-space: pre-wrap; word-wrap: break-word;">${textContent}</pre>
+                    `;
                 }
             } else {
                 contentDiv.textContent = '没有提供文本内容。';
