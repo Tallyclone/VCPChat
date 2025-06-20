@@ -235,21 +235,8 @@ function createAssistantBarWindow() {
 
     assistantBarWindow.loadFile(path.join(__dirname, 'Assistantmodules/assistant-bar.html'));
 
-    assistantBarWindow.once('ready-to-show', async () => {
-        // Don't show on ready, just load initial data
-        try {
-            const settings = await fs.readJson(SETTINGS_FILE);
-            if (settings.assistantEnabled && settings.assistantAgent) {
-                const agentConfig = await getAgentConfigById(settings.assistantAgent);
-                assistantBarWindow.webContents.send('assistant-bar-data', {
-                    agentAvatarUrl: agentConfig.avatarUrl,
-                    theme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
-                });
-            }
-        } catch (error) {
-            console.error('[Main] Error sending initial data to assistant bar:', error);
-        }
-    });
+    // The 'ready-to-show' logic that sent data prematurely has been removed.
+    // The renderer will now request this data when it's ready.
 
     assistantBarWindow.on('blur', () => {
         // Hide the window on blur so it can be reused, instead of closing it.
@@ -329,7 +316,6 @@ function createWindow() {
     });
 
     mainWindow.loadFile('main.html');
-    //mainWindow.webContents.openDevTools(); // Uncomment for debugging
 
     mainWindow.once('ready-to-show', () => {
         mainWindow.show();
@@ -977,6 +963,27 @@ function formatTimestampForFilename(timestamp) {
 
 
     // --- Assistant IPC Handlers ---
+    ipcMain.handle('get-assistant-bar-initial-data', async () => {
+        try {
+            const settings = await fs.readJson(SETTINGS_FILE);
+            if (settings.assistantEnabled && settings.assistantAgent) {
+                const agentConfig = await getAgentConfigById(settings.assistantAgent);
+                return {
+                    agentAvatarUrl: agentConfig.avatarUrl,
+                    theme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
+                };
+            }
+        } catch (error) {
+            console.error('[Main] Error getting initial data for assistant bar:', error);
+            return { error: error.message };
+        }
+        // Return default/empty data if not enabled
+        return {
+            agentAvatarUrl: null,
+            theme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
+        };
+    });
+
     ipcMain.on('toggle-selection-listener', (event, enable) => {
         if (enable) {
             startSelectionListener();
@@ -1011,10 +1018,6 @@ function formatTimestampForFilename(timestamp) {
         }
     });
 
-    ipcMain.on('close-assistant-bar', () => {
-        // This is triggered by mouseleave on the bar, which is a good reason to hide it.
-        hideAssistantBarAndStopListener();
-    });
 });
 
 app.on('window-all-closed', () => {
@@ -2103,14 +2106,6 @@ ipcMain.handle('get-file-as-base64', async (event, filePath) => {
                     console.log('[Main Sharp] GIF detected, will be converted to static JPEG.');
                 }
                 
-                // 如果原始是PNG且有透明通道，并且你确认VCP能处理且你需要保留透明度
-                // if (metadata.format === 'png' && metadata.hasAlpha) {
-                //    targetFormat = 'png';
-                //    encodeOptions = { compressionLevel: PNG_COMPRESSION_LEVEL, adaptiveFiltering: true };
-                //    console.log(`[Main Sharp] Encoding as PNG to preserve alpha.`);
-                // } else {
-                //    console.log(`[Main Sharp] Encoding as JPEG.`);
-                // }
                 // 为了解决503，我们先强制都转JPEG
                 console.log(`[Main Sharp] Forcing encoding to JPEG with quality ${JPEG_QUALITY}.`);
 
@@ -2120,17 +2115,13 @@ ipcMain.handle('get-file-as-base64', async (event, filePath) => {
                 } else if (targetFormat === 'png') {
                     processedFileBuffer = await image.png(encodeOptions).toBuffer();
                 }
-                // 如果未来支持WEBP等其他格式，可以在这里添加 else if
 
                 const finalMetadata = await sharp(processedFileBuffer).metadata();
                 console.log(`[Main Sharp] Processed: ${finalMetadata.format}, ${finalMetadata.width}x${finalMetadata.height}, final buffer length: ${processedFileBuffer.length} bytes`);
 
             } catch (sharpError) {
                 console.error(`[Main Sharp] Error processing image with sharp: ${sharpError.message}. Using original image buffer.`, sharpError);
-                // 如果sharp处理失败，回退到使用原始buffer（但仍然可能导致503）
-                // 或者你可以选择在这里返回一个错误
-                // return { error: `图片处理失败: ${sharpError.message}`, base64String: null };
-                // 为简单起见，我们先尝试用原始buffer，但这意味着优化未生效
+                // 如果sharp处理失败，回退到使用原始buffer
                 processedFileBuffer = originalFileBuffer; // 回退
                 console.warn('[Main Sharp] Sharp processing failed. Will attempt to send original image data.');
             }
@@ -2224,7 +2215,6 @@ ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelCo
     try {
         console.log(`发送到VCP服务器: ${vcpUrl} for messageId: ${messageId}`);
         console.log('VCP API Key:', vcpApiKey ? '已设置' : '未设置');
-        // console.log('发送到VCP的消息 (messagesForVCP):', JSON.stringify(messages, null, 2)); // 完整日志
         console.log('模型配置:', modelConfig);
         if (isGroupCall) console.log('群聊上下文:', groupContext);
 

@@ -153,6 +153,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     assistantAction: (action) => ipcRenderer.send('assistant-action', action),
     closeAssistantBar: () => ipcRenderer.send('close-assistant-bar'),
     onAssistantBarData: (callback) => ipcRenderer.on('assistant-bar-data', (_event, data) => callback(data)),
+    getAssistantBarInitialData: () => ipcRenderer.invoke('get-assistant-bar-initial-data'), // New: For renderer to request data
     onAssistantData: (callback) => ipcRenderer.on('assistant-data', (_event, data) => callback(data)),
     onThemeUpdated: (callback) => ipcRenderer.on('theme-updated', (_event, theme) => callback(theme)),
     setTheme: (theme) => ipcRenderer.send('set-theme', theme),
