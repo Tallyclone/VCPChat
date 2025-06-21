@@ -393,22 +393,28 @@
 
             function renderQuotedText(text, currentTheme) {
                 const className = currentTheme === 'light' ? 'custom-quote-light' : 'custom-quote-dark';
-                const quoteRegex = /(?:"([^"]*?)"|“([^”]*?)”)/g;
-                const codeBlockRegex = /(```[\s\S]*?```)/g; // 匹配 Markdown 代码块
-
-                let parts = text.split(codeBlockRegex); // 分割文本，保留代码块
-                let result = [];
-
-                for (let i = 0; i < parts.length; i++) {
-                    if (i % 2 === 1) { // 奇数索引是代码块内容
-                        result.push(parts[i]);
-                    } else { // 偶数索引是非代码块内容
-                        result.push(parts[i].replace(quoteRegex, (match) => {
-                            return `<span class="${className}">${match}</span>`;
-                        }));
+                // This regex uses alternation. It first tries to match a whole code block.
+                // If it matches, the code block is returned unmodified.
+                // Otherwise, it tries to match a quoted string and wraps it.
+                // This is much more robust than splitting the string.
+                return text.replace(/(```[\s\S]*?```)|("([^"]*?)"|“([^”]*?)”)/g, (match, codeBlock, fullQuote) => {
+                    // If a code block is matched (group 1), return it as is.
+                    if (codeBlock) {
+                        return codeBlock;
                     }
-                }
-                return result.join('');
+                    // If a quote is matched (group 2), wrap it in a span.
+                    if (fullQuote) {
+                        return `<span class="${className}">${fullQuote}</span>`;
+                    }
+                    // Fallback, should not happen with this regex structure
+                    return match;
+                });
+            }
+
+            function decodeHtmlEntities(text) {
+                const textarea = document.createElement('textarea');
+                textarea.innerHTML = text;
+                return textarea.value;
             }
 
             const params = new URLSearchParams(window.location.search);
@@ -508,13 +514,25 @@
                     const codeBlockRegex = /(```)([\u4e00-\u9fa5])/g;
                     decodedText = decodedText.replace(codeBlockRegex, '$1\n$2');
 
-                    // 应用自定义引号渲染
-                    decodedText = removeBoldMarkersAroundQuotes(decodedText);
-                    decodedText = renderQuotedText(decodedText, theme);
+                    // Isolate HTML code blocks to prevent quote rendering from corrupting them.
+                    const htmlBlocks = [];
+                    let processedText = decodedText.replace(/(```html\n[\s\S]*?```)/g, (match) => {
+                        htmlBlocks.push(match);
+                        return `__HTML_BLOCK_PLACEHOLDER_${htmlBlocks.length - 1}__`;
+                    });
+
+                    // Apply custom quote rendering only to non-HTML-block content
+                    processedText = removeBoldMarkersAroundQuotes(processedText);
+                    processedText = renderQuotedText(processedText, theme);
+
+                    // Restore the HTML blocks
+                    processedText = processedText.replace(/__HTML_BLOCK_PLACEHOLDER_(\d+)__/g, (match, index) => {
+                        return htmlBlocks[parseInt(index, 10)];
+                    });
 
                     // Prepare Mermaid diagrams before Markdown rendering
                     const mermaidRegex = /```mermaid\n([\s\S]*?)```/g;
-                    let mermaidProcessedText = decodedText.replace(mermaidRegex, (match, mermaidContent) => {
+                    let mermaidProcessedText = processedText.replace(mermaidRegex, (match, mermaidContent) => {
                         // Create a unique ID for each diagram to avoid conflicts if multiple diagrams exist
                         const diagramId = `mermaid-diagram-${Math.random().toString(36).substring(2, 15)}`;
                         return `<div class="mermaid" id="${diagramId}">${mermaidContent.trim()}</div>`;
@@ -545,8 +563,9 @@
                                 }
                                 preElement.style.position = 'relative'; // Needed for absolute positioning of the button
 
-                                const codeContent = block.innerText;
-                                const isHtml = /^\s*<!DOCTYPE html>/i.test(codeContent) || /^\s*<html/i.test(codeContent);
+                                const codeContent = decodeHtmlEntities(block.innerText);
+                                // More robust check: Only identify as HTML if explicitly marked with ```html
+                                const isHtml = block.classList.contains('language-html');
 
                                 // Create Play Button for HTML content
                                 if (isHtml) {
@@ -575,7 +594,6 @@
                                         previewContainer.className = 'html-preview-container';
 
                                         const iframe = document.createElement('iframe');
-                                        iframe.srcdoc = codeContent;
                                         iframe.sandbox = 'allow-scripts allow-same-origin';
 
                                         const exitButton = document.createElement('button');
@@ -588,9 +606,48 @@
                                             preElement.style.display = 'block';
                                         });
 
+                                        // Append elements to the DOM first
                                         previewContainer.appendChild(iframe);
                                         previewContainer.appendChild(exitButton);
                                         preElement.parentNode.insertBefore(previewContainer, preElement.nextSibling);
+
+                                        // Then write content to the iframe. This is more robust for scripts.
+                                        const iframeDoc = iframe.contentWindow.document;
+                                        iframeDoc.open();
+                                        
+                                        let finalHtml = codeContent;
+                                        const trimmedCode = codeContent.trim().toLowerCase();
+                                        // 如果代码片段不是一个完整的HTML文档，就为其包裹一个基本的HTML结构。
+                                        // 这样可以确保浏览器正确处理片段中的脚本和样式。
+                                        if (!trimmedCode.startsWith('<!doctype') && !trimmedCode.startsWith('<html>')) {
+                                            const bodyStyles = theme === 'light'
+                                                ? 'color: #2c3e50; background-color: #ffffff;'
+                                                : 'color: #abb2bf; background-color: #282c34;';
+                                            
+                                            finalHtml = `
+                                                <!DOCTYPE html>
+                                                <html>
+                                                <head>
+                                                    <meta charset="UTF-8">
+                                                    <title>HTML Preview</title>
+                                                    <style>
+                                                        body {
+                                                            font-family: sans-serif;
+                                                            padding: 15px;
+                                                            margin: 0;
+                                                            ${bodyStyles}
+                                                        }
+                                                    </style>
+                                                </head>
+                                                <body>
+                                                    ${codeContent}
+                                                </body>
+                                                </html>
+                                            `;
+                                        }
+                                        
+                                        iframeDoc.write(finalHtml);
+                                        iframeDoc.close();
                                     });
                                 }
 
