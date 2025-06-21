@@ -1,0 +1,149 @@
+/* styles/layout.css */
+
+/* --- Custom Title Bar --- */
+.title-bar {
+    height: 30px; /* Adjust as needed */
+    background-color: var(--secondary-bg);
+    color: var(--primary-text);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 5px 0 10px; /* Reduced right padding slightly */
+    /* border-bottom: 1px solid var(--border-color); */
+    -webkit-app-region: drag;
+    flex-shrink: 0;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1001;
+    box-sizing: border-box; /* Added */
+}
+
+.title-bar-text {
+    font-size: 0.9em;
+    margin-left: 0px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-grow: 1;
+    min-width: 0; /* Allow shrinking */
+    margin-right: 10px; /* Add some space between text and controls */
+}
+
+.title-bar-logo {
+   height: 20px; /* Adjust based on title bar height */
+   margin-right: 8px;
+   vertical-align: middle; /* Align with text */
+}
+
+.title-bar-controls {
+    display: flex;
+    align-items: center;
+    -webkit-app-region: no-drag;
+    flex-shrink: 0; /* Crucial: Do not allow this container to shrink */
+    height: 100%; /* Ensure controls container fills title bar height */
+    min-width: 120px; /* Ensure enough space for 4 buttons (4 * 30px) */
+    flex-wrap: nowrap; /* Force buttons to stay on one line */
+}
+
+.container {
+    display: flex;
+    width: 100%;
+    height: calc(100vh - 30px); /* Adjust based on title-bar height */
+    margin-top: 30px; /* Offset for the fixed title bar */
+    overflow: hidden; /* Prevent scrollbars on body due to resizers */
+}
+
+/* --- Resizers --- */
+.resizer {
+    background-color: var(--secondary-bg); 
+    width: 5px;
+    cursor: col-resize;
+    flex-shrink: 0;
+    z-index: 100; 
+    transition: background-color 0.2s ease; 
+    pointer-events: auto; 
+}
+.resizer:hover {
+    background-color: var(--user-bubble-bg);
+}
+
+/* --- Sidebar (Agent List) --- */
+.sidebar {
+    width: 260px; /* Default width */
+    min-width: 180px; 
+    max-width: 600px; 
+    background-color: var(--secondary-bg);
+    padding: 15px 15px 15px 17px; 
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    transition: width 0.3s cubic-bezier(0.25, 0.1, 0.25, 1); 
+    overflow-x: hidden; 
+    flex-shrink: 0; 
+}
+
+/* --- Main Content (Chat Area) --- */
+.main-content {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--tertiary-bg); 
+    background-image: url('../assets/dark.jpg'); /* Adjusted path */
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    overflow: hidden; 
+}
+
+/* --- Notifications Sidebar --- */
+.notifications-sidebar {
+    width: 300px; /* Default width */
+    min-width: 220px; /* Adjusted min-width */
+    max-width: 600px; /* Added max-width */
+    background-color: var(--secondary-bg);
+    border-left: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    padding: 0; 
+    transition: width 0.3s cubic-bezier(0.25, 0.1, 0.25, 1), 
+                min-width 0.3s cubic-bezier(0.25, 0.1, 0.25, 1), 
+                padding 0.3s cubic-bezier(0.25, 0.1, 0.25, 1),
+                opacity 0.3s ease-out, 
+                transform 0.3s ease-out;
+    overflow: hidden; 
+    flex-shrink: 0; /* Prevent shrinking */
+}
+
+.notifications-sidebar:not(.active) {
+    width: 0 !important; 
+    min-width: 0 !important; 
+    padding-left: 0 !important; 
+    padding-right: 0 !important; 
+    border-left-width: 0 !important; 
+    opacity: 0;
+    transform: translateX(100%); /* Slide out to the right */
+}
+
+@media (max-width: 768px) {
+    .sidebar {
+        width: 100%;
+        height: auto;
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+        position: absolute; 
+        z-index: 100;
+        transform: translateX(-100%); 
+        transition: transform 0.3s ease-in-out;
+    }
+    .sidebar.open {
+        transform: translateX(0);
+    }
+    .main-content {
+        width: 100%;
+    }
+    .notifications-sidebar {
+        display: none; 
+    }
+}
