@@ -780,6 +780,20 @@ function ensureSeparatorBetweenImgAndCode(text) {
 }
 
 /**
+ * Removes markdown bold markers (**) from around quoted text to fix rendering issues.
+ * @param {string} text The input string.
+ * @returns {string} The processed string.
+ */
+function removeBoldMarkersAroundQuotes(text) {
+    if (typeof text !== 'string') return text;
+    // Replace **" with " and **“ with “
+    let processedText = text.replace(/\*\*(["“])/g, '$1');
+    // Replace "** with " and ”** with ”
+    processedText = processedText.replace(/(["”])\*\*/g, '$1');
+    return processedText;
+}
+
+/**
  * Parses VCP tool_name from content.
  * Example: tool_name:「始」SciCalculator「末」
  * @param {string} toolContent - The raw string content of the tool request (text between <<<TOOL_REQUEST>>> and <<<END_TOOL_REQUEST>>>).
@@ -1320,6 +1334,7 @@ async function renderMessage(message, isInitialLoad = false) {
         processedContent = removeIndentationFromCodeBlockMarkers(processedContent);
         processedContent = removeSpeakerTags(processedContent); // Remove speaker tags before parsing
         processedContent = ensureSeparatorBetweenImgAndCode(processedContent);
+        processedContent = removeBoldMarkersAroundQuotes(processedContent);
         const rawHtml = markedInstance.parse(processedContent);
         setContentAndProcessImages(contentDiv, rawHtml, message.id);
         processAllPreBlocksInContentDiv(contentDiv);
@@ -1564,6 +1579,7 @@ function processAndRenderSmoothChunk(messageId) {
     processedTextForParse = ensureSpaceAfterTilde(processedTextForParse);
     processedTextForParse = removeIndentationFromCodeBlockMarkers(processedTextForParse);
     processedTextForParse = ensureSeparatorBetweenImgAndCode(processedTextForParse);
+    processedTextForParse = removeBoldMarkersAroundQuotes(processedTextForParse);
     const rawHtml = markedInstance.parse(processedTextForParse);
     setContentAndProcessImages(contentDiv, rawHtml, messageId);
 
@@ -1594,6 +1610,7 @@ function processAndRenderSmoothChunk(messageId) {
                     processedForDebounce = ensureSpaceAfterTilde(processedForDebounce);
                     processedForDebounce = removeIndentationFromCodeBlockMarkers(processedForDebounce);
                     processedForDebounce = ensureSeparatorBetweenImgAndCode(processedForDebounce);
+                    processedForDebounce = removeBoldMarkersAroundQuotes(processedForDebounce);
                     const rawHtml = markedInstance.parse(processedForDebounce);
                     const messageId = messageItem.dataset.messageId;
                     setContentAndProcessImages(targetContentDiv, rawHtml, messageId);
@@ -1730,6 +1747,7 @@ function appendStreamChunk(messageId, chunkData, agentNameForGroup, agentIdForGr
                             processedText = ensureSpaceAfterTilde(processedText);
                             processedText = removeIndentationFromCodeBlockMarkers(processedText);
                             processedText = ensureSeparatorBetweenImgAndCode(processedText);
+                            processedText = removeBoldMarkersAroundQuotes(processedText);
                             finalContentDiv.innerHTML = mainRendererReferences.markedInstance.parse(processedText);
 
                             if (window.renderMathInElement) {
@@ -1792,6 +1810,7 @@ function renderChunkDirectlyToDOM(messageId, textToAppend, agentNameForGroup, ag
     processedFullCurrentTextForParse = ensureSpaceAfterTilde(processedFullCurrentTextForParse);
     processedFullCurrentTextForParse = removeIndentationFromCodeBlockMarkers(processedFullCurrentTextForParse);
     processedFullCurrentTextForParse = ensureSeparatorBetweenImgAndCode(processedFullCurrentTextForParse);
+    processedFullCurrentTextForParse = removeBoldMarkersAroundQuotes(processedFullCurrentTextForParse);
     const rawHtml = markedInstance.parse(processedFullCurrentTextForParse);
     setContentAndProcessImages(contentDiv, rawHtml, messageId);
 
@@ -1817,6 +1836,7 @@ function renderChunkDirectlyToDOM(messageId, textToAppend, agentNameForGroup, ag
                     processedForDebounce = ensureSpaceAfterTilde(processedForDebounce);
                     processedForDebounce = removeIndentationFromCodeBlockMarkers(processedForDebounce);
                     processedForDebounce = ensureSeparatorBetweenImgAndCode(processedForDebounce);
+                    processedForDebounce = removeBoldMarkersAroundQuotes(processedForDebounce);
                     const rawHtml = markedInstance.parse(processedForDebounce);
                     const messageId = messageItem.dataset.messageId;
                     setContentAndProcessImages(targetContentDiv, rawHtml, messageId);
@@ -1998,6 +2018,7 @@ async function finalizeStreamedMessage(messageId, finishReason, fullResponseText
             processedFinalText = ensureSpaceAfterTilde(processedFinalText);
             processedFinalText = removeIndentationFromCodeBlockMarkers(processedFinalText);
             processedFinalText = ensureSeparatorBetweenImgAndCode(processedFinalText);
+            processedFinalText = removeBoldMarkersAroundQuotes(processedFinalText);
             const rawHtml = markedInstance.parse(processedFinalText);
             setContentAndProcessImages(contentDiv, rawHtml, messageId);
 
@@ -2105,6 +2126,7 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId) {
     processedFinalText = ensureSpaceAfterTilde(processedFinalText);
     processedFinalText = removeIndentationFromCodeBlockMarkers(processedFinalText);
     processedFinalText = ensureSeparatorBetweenImgAndCode(processedFinalText);
+    processedFinalText = removeBoldMarkersAroundQuotes(processedFinalText);
     const rawHtml = markedInstance.parse(processedFinalText);
     setContentAndProcessImages(contentDiv, rawHtml, messageId);
 
@@ -2408,6 +2430,7 @@ function toggleEditMode(messageItem, message) {
         originalContentProcessed = ensureSpaceAfterTilde(originalContentProcessed);
         originalContentProcessed = removeIndentationFromCodeBlockMarkers(originalContentProcessed);
         originalContentProcessed = ensureSeparatorBetweenImgAndCode(originalContentProcessed);
+        originalContentProcessed = removeBoldMarkersAroundQuotes(originalContentProcessed);
         const rawHtml = markedInstance.parse(originalContentProcessed);
         setContentAndProcessImages(contentDiv, rawHtml, message.id);
         if (window.renderMathInElement) {
@@ -2494,6 +2517,7 @@ function toggleEditMode(messageItem, message) {
                 newContentProcessed = ensureSpaceAfterTilde(newContentProcessed);
                 newContentProcessed = removeIndentationFromCodeBlockMarkers(newContentProcessed);
                 newContentProcessed = ensureSeparatorBetweenImgAndCode(newContentProcessed);
+                newContentProcessed = removeBoldMarkersAroundQuotes(newContentProcessed);
                 const rawHtml = markedInstance.parse(newContentProcessed);
                 setContentAndProcessImages(contentDiv, rawHtml, message.id);
                 if (window.renderMathInElement) {
