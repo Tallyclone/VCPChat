@@ -71,471 +71,24 @@ const messageImageStates = new Map();
 
 // --- Enhanced Rendering Styles (from UserScript) ---
 function injectEnhancedStyles() {
-    const css = `
-            /* Keyframes for animations */
-            @keyframes vcp-bubble-background-flow-kf {
-                0% { background-position: 0% 50%; }
-                50% { background-position: 100% 50%; }
-                100% { background-position: 0% 50%; }
-            }
-
-            @keyframes vcp-bubble-border-flow-kf {
-                0% { background-position: 0% 50%; }
-                50% { background-position: 200% 50%; } /* Adjusted for more color travel */
-                100% { background-position: 0% 50%; }
-            }
-
-            @keyframes vcp-icon-rotate {
-                0% { transform: rotate(0deg); }
-                100% { transform: rotate(360deg); }
-            }
-
-            @keyframes vcp-icon-heartbeat {
-                0% { transform: scale(1); opacity: 0.6; }
-                50% { transform: scale(1.15); opacity: 0.9; }
-                100% { transform: scale(1); opacity: 0.6; }
-            }
-
-            @keyframes vcp-toolname-color-flow-kf {
-                0% { background-position: 0% 50%; }
-                50% { background-position: 150% 50%; } /* Adjusted for smoother flow with 300% background-size */
-                100% { background-position: 0% 50%; }
-            }
-
-
-            /* Loading dots animation */
-            @keyframes vcp-loading-dots {
-              0%, 20% {
-                color: rgba(0,0,0,0);
-                text-shadow:
-                  .25em 0 0 rgba(0,0,0,0),
-                  .5em 0 0 rgba(0,0,0,0);
-              }
-              40% {
-                color: currentColor; /* Or a specific color */
-                text-shadow:
-                  .25em 0 0 rgba(0,0,0,0),
-                  .5em 0 0 rgba(0,0,0,0);
-              }
-              60% {
-                text-shadow:
-                  .25em 0 0 currentColor, /* Or a specific color */
-                  .5em 0 0 rgba(0,0,0,0);
-              }
-              80%, 100% {
-                text-shadow:
-                  .25em 0 0 currentColor, /* Or a specific color */
-                  .5em 0 0 currentColor; /* Or a specific color */
-              }
-            }
-
-            .thinking-indicator-dots {
-              display: inline-block;
-              font-size: 1em; /* Match parent font-size by default */
-              line-height: 1; /* Ensure it doesn't add extra height */
-              vertical-align: baseline; /* Align with the text */
-              animation: vcp-loading-dots 1.4s infinite;
-            }
-
-            /* 主气泡样式 - VCP ToolUse */
-            .vcp-tool-use-bubble {
-                background: linear-gradient(145deg, #3a7bd5 0%, #00d2ff 100%) !important;
-                background-size: 200% 200% !important; 
-                animation: vcp-bubble-background-flow-kf 20s ease-in-out infinite;
-                border-radius: 10px !important;
-                padding: 8px 15px 8px 35px !important; 
-                color: #ffffff !important;
-                box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
-                margin-bottom: 10px !important;
-                position: relative;
-                overflow: hidden; 
-                line-height: 1.5;
-                display: inline-block !important; /* Allow bubble to shrink to content width */
-            }
-
-            /* Animated Border for VCP ToolUse */
-            .vcp-tool-use-bubble::after {
-                content: "";
-                position: absolute;
-                box-sizing: border-box; 
-                top: 0; left: 0; width: 100%; height: 100%;
-                border-radius: inherit;
-                padding: 2px; /* Border thickness */
-                background: linear-gradient(60deg, #76c4f7, #00d2ff, #3a7bd5, #ffffff, #3a7bd5, #00d2ff, #76c4f7);
-                background-size: 300% 300%;
-                animation: vcp-bubble-border-flow-kf 7s linear infinite;
-                -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-                mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-                -webkit-mask-composite: xor;
-                mask-composite: exclude;
-                z-index: 0; 
-                pointer-events: none;
-            }
-
-
-            /* 内部 code 和 span 的重置 - VCP ToolUse */
-            .vcp-tool-use-bubble code,
-            .vcp-tool-use-bubble code span,
-            .vcp-tool-use-bubble .vcp-tool-label, 
-            .vcp-tool-use-bubble .vcp-tool-name-highlight 
-             {
-                background: none !important; border: none !important;
-                padding: 0 !important; margin: 0 !important;
-                box-shadow: none !important; color: inherit !important;
-                display: inline !important;
-                font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
-                font-size: 0.95em !important;
-                vertical-align: baseline;
-                position: relative; 
-                z-index: 1;
-            }
-
-            /* "VCP-ToolUse:" 标签 */
-            .vcp-tool-use-bubble .vcp-tool-label {
-                font-weight: bold; color: #f1c40f; margin-right: 6px;
-            }
-
-            /* 工具名高亮 - VCP ToolUse */
-            .vcp-tool-use-bubble .vcp-tool-name-highlight {
-                background: linear-gradient(90deg, #f1c40f, #ffffff, #00d2ff, #f1c40f) !important; 
-                background-size: 300% 100% !important; 
-                -webkit-background-clip: text !important;
-                background-clip: text !important;
-                -webkit-text-fill-color: transparent !important;
-                text-fill-color: transparent !important;
-                font-style: normal !important;
-                font-weight: bold !important;
-                padding: 1px 3px !important; 
-                border-radius: 4px !important;
-                animation: vcp-toolname-color-flow-kf 4s linear infinite; 
-                margin-left: 2px; 
-            }
-
-            /* 左上角齿轮图标 - VCP ToolUse */
-            .vcp-tool-use-bubble::before {
-                content: "⚙️";
-                position: absolute;
-                top: 8px;
-                left: 10px;
-                font-size: 14px;
-                color: rgba(255, 255, 255, 0.75); 
-                z-index: 2; 
-                animation: vcp-icon-rotate 4s linear infinite;
-                transform-origin: center center; 
-            }
-
-            /* 隐藏 VCP 气泡内的复制按钮 */
-            .vcp-tool-use-bubble code .code-copy { /* This might target <code> inside <pre class="vcp-tool-use-bubble"> */
-                display: none !important;
-            }
-             /* Also hide if copy button is direct child of the bubble (if no inner code element) */
-            .vcp-tool-use-bubble > .code-copy {
-                display: none !important;
-            }
-            .vcp-tool-request-bubble > strong { display: none !important; } /* Hide "VCP工具调用:" strong tag if it was ever added */
-
-
-            /* 女仆日记气泡样式 */
-            .maid-diary-bubble {
-                background: linear-gradient(145deg, #fdeff2 0%, #fce4ec 100%) !important; 
-                background-size: 200% 200% !important; 
-                animation: vcp-bubble-background-flow-kf 14s ease-in-out infinite; 
-                border-radius: 10px !important;
-                padding: 8px 15px 8px 35px !important; 
-                color: #5d4037 !important; 
-                box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
-                margin-bottom: 10px !important;
-                position: relative;
-                overflow: hidden; /* Keep for safety, though wrapping should prevent overflow */
-                line-height: 1.5;
-                /* Styles for the <pre> tag itself to ensure wrapping */
-                display: block; /* Or inline-block if shrink-to-fit is desired */
-                white-space: normal !important; /* Crucial: Override <pre> default */
-                word-break: break-word !important; /* Crucial: Allow long words to break */
-                font-family: 'Georgia', 'Times New Roman', serif !important; /* Match inner content font */
-            }
-
-            /* Animated Border for Maid Diary */
-            .maid-diary-bubble::after {
-                content: "";
-                position: absolute;
-                box-sizing: border-box; 
-                top: 0; left: 0; width: 100%; height: 100%;
-                border-radius: inherit;
-                padding: 2px; /* Border thickness */
-                background: linear-gradient(60deg, #f8bbd0, #fce4ec, #e91e63, #ffffff, #e91e63, #fce4ec, #f8bbd0);
-                background-size: 300% 300%;
-                animation: vcp-bubble-border-flow-kf 20s linear infinite; 
-                -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-                mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-                -webkit-mask-composite: xor;
-                mask-composite: exclude;
-                z-index: 0; 
-                pointer-events: none;
-            }
-
-            /* 女仆日记气泡内部 code 和 span 的重置 */
-            .maid-diary-bubble code, /* If there's an inner <code> */
-            .maid-diary-bubble code span,
-            .maid-diary-bubble .maid-label 
-            {
-                background: none !important; border: none !important;
-                padding: 0 !important; margin: 0 !important;
-                box-shadow: none !important; color: inherit !important;
-                display: block !important; /* Changed for proper wrapping */
-                white-space: normal !important; /* Allow text to wrap normally */
-                word-break: break-word !important; /* Break words if they are too long */
-                font-family: 'Georgia', 'Times New Roman', serif !important; 
-                font-size: 0.98em !important;
-                vertical-align: baseline;
-                position: relative; 
-                z-index: 1;
-            }
-             .maid-diary-bubble .maid-label {
-                display: block !important; 
-                margin-bottom: 5px !important; 
-            }
-
-
-            /* 女仆日记气泡 "Maid" 标签 */
-            .maid-diary-bubble .maid-label {
-                font-weight: bold; color: #c2185b; margin-right: 6px; 
-                font-family: 'Georgia', 'Times New Roman', serif !important; 
-            }
-
-            /* 女仆日记气泡左上角图标 */
-            .maid-diary-bubble::before {
-                content: "🎀"; 
-                position: absolute;
-                top: 8px;
-                left: 10px;
-                font-size: 16px;
-                color: rgba(227, 96, 140, 0.85); 
-                z-index: 2; 
-                animation: vcp-icon-heartbeat 2.5s ease-in-out infinite;
-                transform-origin: center center; 
-            }
-
-            /* 隐藏女仆日记气泡内的复制按钮 */
-            .maid-diary-bubble code .code-copy { /* If copy is inside <code> */
-                display: none !important;
-            }
-            .maid-diary-bubble > .code-copy { /* If copy is direct child of <pre> */
-                 display: none !important;
-            }
-
-            /* HTML5 音频播放器样式 */
-            audio[controls] {
-                background: transparent !important; /* 将背景设置为透明 */
-                border: none !important; /* 移除边框 */
-                border-radius: 10px !important;
-                padding: 10px 15px !important;
-                color: #ffffff !important;
-                box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
-                margin-bottom: 10px !important;
-                display: block;
-                width: 350px;
-                position: relative; /* Added for pseudo-element positioning */
-                overflow: hidden; /* Added to contain the pseudo-element */
-                z-index: 1; /* Ensure audio player is above the pseudo-element */
-            }
-            /* Animated Border for Audio Player */
-            audio[controls]::after {
-                content: "";
-                position: absolute;
-                box-sizing: border-box;
-                top: 0; left: 0; width: 100%; height: 100%;
-                border-radius: inherit;
-                padding: 2px; /* Border thickness */
-                background: linear-gradient(60deg, #76c4f7, #00d2ff, #3a7bd5, #ffffff, #3a7bd5, #00d2ff, #76c4f7); /* Same gradient as VCP ToolUse bubble */
-                background-size: 300% 300%;
-                animation: vcp-bubble-border-flow-kf 7s linear infinite; /* Same animation as VCP ToolUse bubble */
-                -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-                mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-                -webkit-mask-composite: xor;
-                mask-composite: exclude;
-                z-index: 0; /* Place behind the actual audio controls */
-                pointer-events: none;
-            }
-            audio[controls]::-webkit-media-controls-panel {
-                background: #ffffff !important;
-                border-radius: 9px !important;
-                margin: 5px !important;
-                padding: 5px !important;
-                box-sizing: border-box !important;
-                position: relative; /* Ensure panel is above the pseudo-element */
-                z-index: 2; /* Increase z-index for the panel to be on top of the pseudo-element */
-            }
-            audio[controls]::-webkit-media-controls-play-button,
-            audio[controls]::-webkit-media-controls-mute-button,
-            audio[controls]::-webkit-media-controls-fullscreen-button,
-            audio[controls]::-webkit-media-controls-overflow-button {
-                filter: brightness(0.3) contrast(1.5) !important;
-            }
-            audio[controls]::-webkit-media-controls-current-time-display,
-            audio[controls]::-webkit-media-controls-time-remaining-display {
-                color: #181818 !important;
-                text-shadow: none !important;
-            }
-            audio[controls]::-webkit-media-controls-timeline {
-                background-color:rgb(255, 255, 255) !important;
-                border-radius: 4px !important;
-                height: 6px !important;
-                margin: 0 5px !important;
-            }
-            audio[controls]::-webkit-media-controls-timeline::-webkit-slider-thumb {
-                background-color: #555555 !important;
-                border: 1px solid rgba(0, 0, 0, 0.3) !important;
-                box-shadow: 0 0 2px rgba(0,0,0,0.3) !important;
-                height: 12px !important;
-                width: 12px !important;
-                border-radius: 50% !important;
-            }
-            audio[controls]::-webkit-media-controls-timeline::-moz-range-thumb {
-                background-color: #555555 !important;
-                border: 1px solid rgba(0, 0, 0, 0.3) !important;
-                height: 12px !important;
-                width: 12px !important;
-                border-radius: 50% !important;
-            }
-            audio[controls]::-webkit-media-controls-timeline::-moz-range-track {
-                background-color:rgb(255, 255, 255) !important;
-                border-radius: 4px !important;
-                height: 6px !important;
-            }
-            audio[controls]::-webkit-media-controls-volume-slider {
-                background-color:rgb(255, 255, 255) !important;
-                border-radius: 3px !important;
-                height: 4px !important;
-                margin: 0 5px !important;
-            }
-            audio[controls]::-webkit-media-controls-volume-slider::-webkit-slider-thumb {
-                background-color: #555555 !important;
-                border: 1px solid rgba(0,0,0,0.3) !important;
-                height: 10px !important;
-                width: 10px !important;
-                border-radius: 50% !important;
-            }
-
-           /* Context Menu Item Colors */
-           .context-menu-item.danger-item {
-               color:hsl(1, 83.80%, 61.20%) !important; /* Red */
-           }
-           .context-menu-item.danger-item:hover {
-               background-color: rgba(229, 57, 53, 0.1) !important;
-           }
-           .context-menu-item.info-item {
-               color:rgb(90, 171, 238) !important; /* Lighter Blue */
-           }
-           .context-menu-item.info-item:hover {
-               background-color: rgba(30, 136, 229, 0.1) !important;
-           }
-           .context-menu-item.regenerate-text {
-               color: #43A047 !important; /* Green for regenerate */
-           }
-           .context-menu-item.regenerate-text:hover {
-               background-color: rgba(67, 160, 71, 0.1) !important;
-           }
-
-           /* Highlight for quoted text */
-           .md-content .highlighted-quote { /* Increased specificity */
-               color: var(--quoted-text) !important; /* Use CSS variable and !important */
-               /* font-style: italic; */ /* Optional: if italics are desired */
-           }
-
-           /* AI 发送的链接样式 */
-           .md-content a {
-               color: #87CEEB !important; /* 柔和的天蓝色 */
-           }
-
-          /* Markdown Table Styles (Theme Aware) */
-          /* Define light theme variables as defaults */
-          :root {
-              --table-border-color: #ddd;
-              --table-text-color: #333;
-              --table-bg-color: #fff;
-              --table-header-bg-color: #f2f2f2;
-              --table-header-text-color: #333;
-              --table-row-even-bg-color: #f9f9f9;
-              --table-row-hover-bg-color: #f0f0f0;
-          }
-
-          /* Define dark theme variables when .dark-theme (or lack of .light-theme) is active */
-          body:not(.light-theme) { /* Or just .dark-theme if that's how your theme switching works */
-              --table-border-color: #555;
-              --table-text-color: #e0e0e0;
-              --table-bg-color: #2c2c2c;
-              --table-header-bg-color: #383838;
-              --table-header-text-color: #f5f5f5;
-              --table-row-even-bg-color: #333; /* Optional: can re-enable if desired for dark theme */
-              --table-row-hover-bg-color: #4a4a4a;
-          }
-
-          .md-content table {
-              border-collapse: collapse;
-              margin: 1em 0;
-              width: auto;
-              border: 1px solid var(--table-border-color);
-              color: var(--table-text-color);
-              background-color: var(--table-bg-color);
-          }
-          .md-content th, .md-content td {
-              border: 1px solid var(--table-border-color);
-              padding: 10px 15px;
-              text-align: left;
-          }
-          .md-content th {
-              background-color: var(--table-header-bg-color);
-              font-weight: bold;
-              color: var(--table-header-text-color);
-          }
-           /* Optional: Re-enable for alternating rows if desired for both themes */
-          .md-content tr:nth-child(even) td {
-             /* background-color: var(--table-row-even-bg-color); */ /* Commented out for now, can be enabled */
-          }
-          .md-content tr:hover td {
-               background-color: var(--table-row-hover-bg-color);
-          }
-          
-           /* NEW STYLES FOR IMAGE PLACEHOLDERS */
-           .image-placeholder {
-               background-color: rgba(128, 128, 128, 0.1);
-               border: 1px dashed rgba(128, 128, 128, 0.3);
-               border-radius: 8px;
-               display: flex;
-               align-items: center;
-               justify-content: center;
-               font-size: 13px;
-               color: #888;
-               /* 过渡效果，让替换更平滑 */
-               transition: all 0.3s ease;
-           }
-
-           .image-placeholder::before {
-               /* content: "正在加载图片..."; */
-               content: '';
-               display: block;
-               width: 24px;
-               height: 24px;
-               border: 3px solid rgba(128, 128, 128, 0.3);
-               border-top-color: #888;
-               border-radius: 50%;
-               animation: vcp-icon-rotate 1s linear infinite;
-           }
-   `;
     try {
         const existingStyleElement = document.getElementById('vcp-enhanced-ui-styles');
         if (existingStyleElement) {
-            existingStyleElement.textContent = css; 
-        } else {
-            const styleElement = document.createElement('style');
-            styleElement.id = 'vcp-enhanced-ui-styles';
-            styleElement.textContent = css;
-            document.head.appendChild(styleElement);
+            // Style element already exists, no need to recreate
+            return;
         }
-        // console.log('VCPSub Enhanced UI: Styles injected/updated.'); // Reduced logging
+
+        // Create link element to load external CSS
+        const linkElement = document.createElement('link');
+        linkElement.id = 'vcp-enhanced-ui-styles';
+        linkElement.rel = 'stylesheet';
+        linkElement.type = 'text/css';
+        linkElement.href = 'styles/messageRenderer.css';
+        document.head.appendChild(linkElement);
+
+        // console.log('VCPSub Enhanced UI: External styles loaded.'); // Reduced logging
     } catch (error) {
-        console.error('VCPSub Enhanced UI: Failed to inject styles:', error);
+        console.error('VCPSub Enhanced UI: Failed to load external styles:', error);
     }
 }
 
@@ -566,7 +119,7 @@ function setContentAndProcessImages(contentDiv, rawHtml, messageId) {
         if (state && state.status === 'loaded' && state.element) {
             return state.element.outerHTML;
         }
-        
+
         // 如果图片加载失败，返回错误占位符
         if (state && state.status === 'error') {
              return `<div class="image-placeholder" style="min-height: 50px; display: flex; align-items: center; justify-content: center;">图片加载失败</div>`;
@@ -609,14 +162,18 @@ function setContentAndProcessImages(contentDiv, rawHtml, messageId) {
                     currentState.element = finalImage;
                 }
 
-                // 替换DOM中的占位符
+                // 替换DOM中的占位符 - 使用更智能的替换策略
                 const placeholder = document.getElementById(placeholderId);
                 if (placeholder && document.body.contains(placeholder)) {
-                    placeholder.replaceWith(finalImage);
-                    const chatContainer = mainRendererReferences.chatMessagesDiv;
-                    const isScrolledToBottom = chatContainer.scrollHeight - chatContainer.clientHeight <= chatContainer.scrollTop + 150;
-                    if (isScrolledToBottom) {
-                        mainRendererReferences.uiHelper.scrollToBottom();
+                    // 检查占位符是否仍在正确的消息容器中
+                    const messageContainer = placeholder.closest('.message-item');
+                    if (messageContainer && messageContainer.dataset.messageId === messageId) {
+                        placeholder.replaceWith(finalImage);
+                        const chatContainer = mainRendererReferences.chatMessagesDiv;
+                        const isScrolledToBottom = chatContainer.scrollHeight - chatContainer.clientHeight <= chatContainer.scrollTop + 150;
+                        if (isScrolledToBottom) {
+                            mainRendererReferences.uiHelper.scrollToBottom();
+                        }
                     }
                 }
             };
@@ -628,8 +185,11 @@ function setContentAndProcessImages(contentDiv, rawHtml, messageId) {
                 }
                 const placeholder = document.getElementById(placeholderId);
                 if (placeholder && document.body.contains(placeholder)) {
-                    placeholder.textContent = '图片加载失败';
-                    placeholder.style.minHeight = 'auto';
+                    const messageContainer = placeholder.closest('.message-item');
+                    if (messageContainer && messageContainer.dataset.messageId === messageId) {
+                        placeholder.textContent = '图片加载失败';
+                        placeholder.style.minHeight = 'auto';
+                    }
                 }
             };
         }
@@ -638,8 +198,35 @@ function setContentAndProcessImages(contentDiv, rawHtml, messageId) {
         return `<div id="${placeholderId}" class="image-placeholder" style="width: ${displayWidth}px; min-height: 100px;"></div>`;
     });
 
-    // 2. 将处理过的HTML（包含占位符或已加载的图片）渲染到DOM
-    contentDiv.innerHTML = processedHtml;
+    // 2. 智能更新DOM内容，避免不必要的重新渲染
+    const currentHtml = contentDiv.innerHTML;
+
+    // 如果内容完全相同，跳过更新
+    if (currentHtml === processedHtml) {
+        return;
+    }
+
+    // 检查是否只是图片状态的变化（从占位符到实际图片）
+    const currentHasPlaceholders = currentHtml.includes('class="image-placeholder"');
+    const newHasLoadedImages = processedHtml.includes('<img') && !processedHtml.includes('class="image-placeholder"');
+
+    // 如果当前有占位符且新内容有已加载的图片，说明图片加载完成，需要更新
+    // 或者内容确实发生了变化，也需要更新
+    if (currentHtml !== processedHtml) {
+        // 在流式渲染中，尽量保持已加载的图片不被重新渲染
+        if (currentHasPlaceholders && newHasLoadedImages) {
+            // 这种情况下，图片应该通过onload回调直接替换占位符，而不是重新设置innerHTML
+            // 但如果有其他内容变化，仍需要更新
+            const currentWithoutImages = currentHtml.replace(/<img[^>]*>/g, '').replace(/<div[^>]*class="image-placeholder"[^>]*>.*?<\/div>/g, '');
+            const newWithoutImages = processedHtml.replace(/<img[^>]*>/g, '').replace(/<div[^>]*class="image-placeholder"[^>]*>.*?<\/div>/g, '');
+
+            if (currentWithoutImages !== newWithoutImages) {
+                contentDiv.innerHTML = processedHtml;
+            }
+        } else {
+            contentDiv.innerHTML = processedHtml;
+        }
+    }
 }
 
 function shouldEnableSmoothStreaming(/* messageId */) {
@@ -2595,10 +2182,15 @@ async function handleRegenerateResponse(originalAssistantMessage) {
         }
     }
 
-    // Remove message items from DOM
+    // Remove message items from DOM and clean up image states
     let elementToRemove = mainRendererReferences.chatMessagesDiv.querySelector(`.message-item[data-message-id="${originalAssistantMessage.id}"]`);
     while (elementToRemove) {
         const nextSibling = elementToRemove.nextElementSibling;
+        const messageId = elementToRemove.dataset.messageId;
+        if (messageId) {
+            // Clean up image states for the removed message to prevent stale cache
+            messageImageStates.delete(messageId);
+        }
         elementToRemove.remove();
         elementToRemove = nextSibling;
     }

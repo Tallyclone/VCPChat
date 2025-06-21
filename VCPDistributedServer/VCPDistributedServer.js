@@ -101,7 +101,7 @@ class DistributedServer {
                             }
                         });
                     }
-                }, 1000); // 1-second delay
+                }, 1000); // 2-second delay
             }
             this.initialConnection = false; // Ensure this only runs once
         }
