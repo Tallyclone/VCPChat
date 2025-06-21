@@ -3,717 +3,348 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>文本阅读模式</title>
-    <link rel="stylesheet" href="style.css"> <!-- 复用主项目的样式 -->
-    <script>
-        // KaTeX (LaTeX rendering) - Ensure these are correctly pathed if not using CDN
-        // If you have these locally, adjust the paths.
-        // For simplicity, using CDN here. In a real app, bundle them.
-    </script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.0/dist/katex.min.css" integrity="sha384-Xi8rHCmBmhbuyyhbI88391ZKP2dmfnOl4rT9ZfRI7mLTdk1wblIUnrIq35nqwEvC" crossorigin="anonymous">
-<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.0/dist/katex.min.js" integrity="sha384-X/XCfMm41VSsqRNQgDerQczD69XqmjOOOwYQvr/uuC+j4OPoNhVgjdGFwhvN02Ja" crossorigin="anonymous"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.0/dist/contrib/auto-render.min.js" integrity="sha384-+XBljXPPiv+OzfbB3cVmLHf4hdUFHlWNZN5spNQ7rmHTXpd7WvJum6fIACpNNfIR" crossorigin="anonymous"></script>
-    <!-- Highlight.js for syntax highlighting -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+    <title>图片预览</title>
     <style>
-        /* Define CSS variables for dark theme (default) */
-        :root {
-            --viewer-bg-color: #282c34;
-            --viewer-primary-text: #abb2bf;
-            --viewer-message-bg-assistant: #32363e;
-            --viewer-code-bg: #21252b;
-            --viewer-code-text: #c8ccd4;
-            --viewer-inline-code-text: #e06c75;
-            --viewer-button-text: #abb2bf;
-            --viewer-code-bg-hover: #2a2e36;
-            --viewer-button-active-bg: #666a73;
-            --viewer-top-light-effect-bg: rgba(250, 250, 210, 0.7);
-            --viewer-heading-color: #61afef; /* 新增：深色主题下的标题颜色 */
+        body { 
+            margin: 0; 
+            background-color: #2c2c2e; /* Dark background for better contrast */
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            height: 100vh; 
+            overflow: hidden; 
+            font-family: sans-serif;
+            color: #f0f0f0;
         }
-
-        /* Define CSS variables for light theme */
-        .light-theme {
-            --viewer-bg-color: #ffffff;
-            --viewer-primary-text: #2c3e50;
-            --viewer-message-bg-assistant: #f4f4f4e3;
-            --viewer-code-bg: #f1f3f5;
-            --viewer-code-text: #343a40;
-            --viewer-inline-code-text: #d6336c;
-            --viewer-button-text: #495057;
-            --viewer-code-bg-hover: #c8d4dd;
-            --viewer-button-active-bg: #ced4da;
-            --viewer-top-light-effect-bg: rgba(173, 216, 230, 0.7); /* Light blue for light theme */
-            --viewer-heading-color-light: #007bff; /* 新增：浅色主题下的标题颜色 */
+        img {
+            max-width: 98vw; /* Slightly less than 100 to avoid scrollbars due to potential padding/border */
+            max-height: 90vh; /* Adjusted to make space for buttons */
+            object-fit: contain;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            border-radius: 4px;
+            display: block; /* Helps with centering and layout */
+            margin-bottom: 15px; /* Space between image and buttons */
+            transition: transform 0.1s ease-out; /* Smooth scaling */
+            cursor: grab; /* Indicate draggable when zoomed */
         }
-
-        .custom-quote-dark {
-            color: #FFBF75; /* 米橙色 */
-        }
-        .custom-quote-light {
-            color: #3B9EFF; /* 根据用户反馈调整的蓝色 */
-        }
-
-        /* Markdown headings */
-        h1, h2, h3, h4, h5, h6 {
-            color: var(--viewer-heading-color); /* Default blue for headings in dark theme */
-        }
-
-        .light-theme h1,
-        .light-theme h2,
-        .light-theme h3,
-        .light-theme h4,
-        .light-theme h5,
-        .light-theme h6 {
-            color: var(--viewer-heading-color-light); /* Blue for headings in light theme */
-        }
-
-        body {
-            font-family: var(--font-family-sans-serif, sans-serif);
-            background-color: var(--viewer-bg-color);
-            color: var(--viewer-primary-text);
+        .error-message {
             padding: 20px;
-            margin: 0;
-            overflow-y: auto;
-            line-height: 1.6;
+            background-color: #444;
+            border-radius: 5px;
+            font-size: 1.2em;
         }
-        .top-light-effect {
+        .controls {
             position: absolute;
-            top: 0;
+            bottom: 20px; /* Position at the bottom */
             left: 50%;
             transform: translateX(-50%);
-            width: 200px; /* 根据用户圈图调整宽度 */
-            max-width: 300px;
-            height: 25px; /* 略微增加高度以获得更好的椭圆感 */
-            background-color: var(--viewer-top-light-effect-bg);
-            border-radius: 0 0 50% 50% / 0 0 100% 100%; /* 底部椭圆角 */
-            z-index: -1; /* 确保在内容下方 */
-        }
-        .content-container {
-            background-color: var(--viewer-message-bg-assistant);
-            color: var(--viewer-primary-text); /* Ensure text inside container is also readable */
-            padding: 15px;
+            /* display: flex; will be set by JS after image load */
+            gap: 15px; /* Space between buttons */
+            padding: 10px;
+            background-color: rgba(44, 44, 46, 0.8); /* Semi-transparent background */
             border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            margin-top: 15px; /* 调整向下移动的距离 */
-        }
-        /* Ensure pre/code blocks are styled similarly to the main app if possible */
-        pre {
-            background-color: var(--viewer-code-bg);
-            color: var(--viewer-code-text);
-            padding: 1em;
-            border-radius: 5px;
-            overflow-x: auto;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-        }
-        code {
-            font-family: var(--font-family-monospace, monospace);
-            background-color: transparent; /* Background for inline code */
-            color: var(--viewer-inline-code-text);
-            padding: 0.2em 0.4em;
-            border-radius: 3px;
-        }
-        img { /* Ensure images are hidden if any slip through the stripping process */
-            display: none !important;
-        }
-        /* Style for the copy button */
-        .copy-button {
-            position: absolute;
-            top: 5px;
-            right: 5px;
-            padding: 5px;
-            background-color: var(--viewer-code-bg);
-            color: var(--viewer-button-text);
-            border: none; /* 移除边框 */
-            border-radius: 6px; /* 稍微增加圆角 */
-            cursor: pointer;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
             opacity: 0;
-            transition: opacity 0.3s, background-color 0.3s, border-color 0.3s;
-            width: 26px;
-            height: 26px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2); /* 添加轻微阴影 */
+            visibility: hidden;
+            transition: opacity 0.3s ease-in-out, visibility 0.3s ease-in-out;
+            pointer-events: none; /* Prevent interaction when hidden */
         }
-        .copy-button:hover {
-            background-color: var(--viewer-code-bg-hover);
+        .controls.active {
+            opacity: 1;
+            visibility: visible;
+            pointer-events: auto; /* Allow interaction when visible */
         }
-        .copy-button svg {
-            width: 16px; /* SVG 图标大小 */
-            height: 16px; /* SVG 图标大小 */
-        }
-        pre:hover .copy-button {
-            opacity: 1; /* Show on hover */
-        }
-        .copy-button:active {
-            background-color: var(--viewer-button-active-bg);
-        }
-        /* Style for the edit button */
-        .edit-button {
-            position: absolute;
-            top: 5px;
-            right: 35px; /* Positioned to the left of the copy button (5px + 26px + 4px) */
-            padding: 5px;
-            background-color: var(--viewer-code-bg);
-            color: var(--viewer-button-text);
+        .control-button {
+            background-color: #555;
+            color: #fff;
             border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            opacity: 0;
-            transition: opacity 0.3s, background-color 0.3s, border-color 0.3s;
-            width: 26px;
-            height: 26px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-        }
-        .edit-button:hover {
-            background-color: var(--viewer-code-bg-hover);
-        }
-        .edit-button svg {
-            width: 16px;
-            height: 16px;
-        }
-        pre:hover .edit-button {
-            opacity: 1; /* Show on hover */
-        }
-        .edit-button:active {
-            background-color: var(--viewer-button-active-bg);
-        }
-        /* Styles for custom context menu */
-        .custom-context-menu {
-            position: absolute;
-            background-color: var(--viewer-message-bg-assistant);
-            border: 1px solid var(--viewer-code-bg-hover);
+            padding: 10px 15px;
             border-radius: 5px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-            padding: 5px 0;
-            z-index: 1000; /* Ensure it's on top */
-            display: none; /* Hidden by default */
-            min-width: 150px;
-        }
-        .custom-context-menu button {
-            display: block;
-            width: 100%;
-            padding: 8px 15px;
-            text-align: left;
-            background-color: transparent;
-            color: var(--viewer-primary-text);
-            border: none;
             cursor: pointer;
-            font-size: 14px;
-        }
-        .custom-context-menu button:hover {
-            background-color: var(--viewer-code-bg-hover);
-        }
-        /* Container for global action buttons */
-        .global-actions-container {
-            display: flex;
-            justify-content: center;
-            gap: 10px; /* Space between buttons */
-            margin: 20px auto; /* Margin for the container */
-        }
-
-        /* Common style for global action buttons */
-        .global-action-button {
             display: flex;
             align-items: center;
-            justify-content: center;
-            padding: 8px 18px; /* Adjusted padding for better width consistency */
-            background-color: var(--viewer-code-bg);
-            color: var(--viewer-button-text);
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: background-color 0.3s;
-            font-size: 14px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-            min-width: 130px; /* Ensure a minimum width for consistency */
-            text-align: center;
+            gap: 8px;
+            font-size: 0.9em;
+            transition: background-color 0.2s ease;
         }
-        .global-action-button:hover {
-            background-color: var(--viewer-code-bg-hover);
+        .control-button:hover {
+            background-color: #666;
         }
-        .global-action-button:active {
-            background-color: var(--viewer-button-active-bg);
-        }
-        .global-action-button svg {
-            width: 16px;
-            height: 16px;
-            margin-right: 8px;
-        }
-        .content-container.editing-all {
-            outline: 2px solid var(--viewer-inline-code-text); /* Visual cue for editing */
-            box-shadow: 0 0 10px var(--viewer-inline-code-text); /* Enhanced visual cue */
-        }
-        /* Basic Table Styling for Markdown */
-        table {
-            border-collapse: collapse;
-            width: 100%;
-            margin-bottom: 1em;
-            color: var(--viewer-primary-text); /* Ensure text color is inherited */
-        }
-        th, td {
-            border: 1px solid var(--viewer-code-bg-hover); /* Use a visible border color */
-            padding: 8px;
-            text-align: left;
-        }
-        th {
-            background-color: var(--viewer-code-bg); /* Slight background for headers */
-        }
-
-        /* Style for Mermaid diagrams */
-        .mermaid {
-            background-color: var(--viewer-code-bg);
-            padding: 1em;
-            border-radius: 5px;
-            margin-bottom: 1em;
-            display: flex; /* 新增：使其内容居中 */
-            justify-content: center; /* 新增：使其内容居中 */
-            align-items: center; /* 新增：使其内容居中 */
+        .control-button svg {
+            width: 18px;
+            height: 18px;
+            fill: currentColor;
         }
     </style>
 </head>
 <body>
-    <div class="top-light-effect"></div> <!-- 新增的半椭圆形元素 -->
-    <div class="content-container" id="textContent">
-        <!-- 文本内容将在这里被渲染 -->
-    </div>
-    <div id="customContextMenu" class="custom-context-menu">
-        <button id="contextMenuCopy">复制</button>
-        <button id="contextMenuCut">剪切</button>
-        <button id="contextMenuDelete">删除</button>
-        <button id="contextMenuEditAll" style="display: none;">编辑全文</button>
-        <button id="contextMenuCopyAll" style="display: none;">复制全文</button>
-    </div>
-    <div class="global-actions-container">
-        <button id="editAllButton" class="global-action-button" title="编辑全文">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
-            <span>编辑全文</span>
+    <img id="viewerImage" src="" alt="图片加载中或加载失败..." style="display:none;"/>
+    <div class="controls" id="imageControls" style="display:none;">
+        <button id="copyButton" class="control-button">
+            <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"></path></svg>
+            复制
         </button>
-        <button id="shareToNotesButton" class="global-action-button" title="分享笔记">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92-1.31-2.92-2.92-2.92z"/></svg>
-            <span>分享笔记</span>
+        <button id="downloadButton" class="control-button">
+            <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"></path></svg>
+            下载
         </button>
     </div>
-    <script>
-        // Marked (Markdown rendering) - Ensure marked.min.js is available
-        // Assuming it's in the root or accessible path.
-        // In a real app, you'd bundle this or ensure correct pathing.
-    </script>
-<script src="https://cdn.jsdelivr.net/npm/mermaid@latest/dist/mermaid.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <div id="errorMessage" class="error-message" style="display:none;">无法加载图片。</div>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            mermaid.initialize({ startOnLoad: false }); // 初始化 Mermaid，但不自动渲染
-
-            function removeBoldMarkersAroundQuotes(text) {
-                if (typeof text !== 'string') return text;
-                // Replace **" with " and **“ with “
-                let processedText = text.replace(/\*\*(["“])/g, '$1');
-                // Replace "** with " and ”** with ”
-                processedText = processedText.replace(/(["”])\*\*/g, '$1');
-                return processedText;
-            }
-
-            function renderQuotedText(text, currentTheme) {
-                const className = currentTheme === 'light' ? 'custom-quote-light' : 'custom-quote-dark';
-                const quoteRegex = /(?:"([^"]*?)"|“([^”]*?)”)/g;
-                const codeBlockRegex = /(```[\s\S]*?```)/g; // 匹配 Markdown 代码块
-
-                let parts = text.split(codeBlockRegex); // 分割文本，保留代码块
-                let result = [];
-
-                for (let i = 0; i < parts.length; i++) {
-                    if (i % 2 === 1) { // 奇数索引是代码块内容
-                        result.push(parts[i]);
-                    } else { // 偶数索引是非代码块内容
-                        result.push(parts[i].replace(quoteRegex, (match) => {
-                            return `<span class="${className}">${match}</span>`;
-                        }));
-                    }
-                }
-                return result.join('');
-            }
-
             const params = new URLSearchParams(window.location.search);
-            const textContent = params.get('text');
-           const windowTitle = params.get('title') || '文本阅读模式';
-           const theme = params.get('theme') || 'dark'; // Get theme from URL, default to dark
-           const encoding = params.get('encoding');
+            const imageUrl = params.get('src');
+            const imageTitle = params.get('title') || '图片预览';
+            
+            document.title = decodeURIComponent(imageTitle);
+            const imgElement = document.getElementById('viewerImage');
+            const errorDiv = document.getElementById('errorMessage');
+            const imageControls = document.getElementById('imageControls');
+            const copyButton = document.getElementById('copyButton');
+            const downloadButton = document.getElementById('downloadButton');
 
-            document.title = decodeURIComponent(windowTitle);
-            const contentDiv = document.getElementById('textContent');
-            const editAllButton = document.getElementById('editAllButton'); // Get the new button
-            const shareToNotesButton = document.getElementById('shareToNotesButton');
+            let currentScale = 1;
+            const minScale = 0.2;
+            const maxScale = 5;
+            let isDragging = false;
+            let startX, startY, initialX, initialY;
+            let imgInitialX = 0; // To store image's current translation
+            let imgInitialY = 0;
 
-            // Apply theme
-            if (theme === 'light') {
-                document.body.classList.add('light-theme');
-            } else {
-                document.body.classList.remove('light-theme');
-            }
+            if (imageUrl) {
+                const decodedImageUrl = decodeURIComponent(imageUrl);
+                console.log('Image Viewer: Loading image -', decodedImageUrl);
+                imgElement.src = decodedImageUrl;
+                imgElement.alt = decodeURIComponent(imageTitle);
+                // imgElement.style.display = 'block'; // Visibility handled by onload/onerror
 
-            // Global edit button logic
-            if (editAllButton && contentDiv) {
-                // Store references to the button's icon and text elements
-                let currentEditAllButtonIcon = editAllButton.querySelector('svg');
-                const editAllButtonText = editAllButton.querySelector('span');
+                imgElement.onload = () => {
+                    console.log('Image Viewer: Image loaded successfully.');
+                    imgElement.style.display = 'block';
+                    imageControls.style.display = 'flex'; // Set display so it can become visible
+                    errorDiv.style.display = 'none';
 
-                const globalEditIconSVGString = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>`;
-                const globalDoneIconSVGString = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>`;
-
-                editAllButton.addEventListener('click', () => {
-                    const isEditing = contentDiv.isContentEditable;
-                    contentDiv.contentEditable = !isEditing;
-
-                    // Re-query the icon element in case it was replaced
-                    currentEditAllButtonIcon = editAllButton.querySelector('svg');
-
-                    if (!isEditing) { // Entering edit mode
-                        contentDiv.focus();
-                        if(currentEditAllButtonIcon) currentEditAllButtonIcon.outerHTML = globalDoneIconSVGString;
-                        if(editAllButtonText) editAllButtonText.textContent = '完成编辑';
-                        editAllButton.setAttribute('title', '完成编辑');
-                        contentDiv.classList.add('editing-all');
-                    } else { // Exiting edit mode
-                        if(currentEditAllButtonIcon) currentEditAllButtonIcon.outerHTML = globalEditIconSVGString;
-                        if(editAllButtonText) editAllButtonText.textContent = '编辑全文';
-                        editAllButton.setAttribute('title', '编辑全文');
-                        contentDiv.classList.remove('editing-all');
-                        // Note: The content is now raw HTML. If Markdown re-rendering is desired,
-                        // it would need to be implemented here (e.g., by taking contentDiv.innerText,
-                        // re-parsing with marked, and re-applying syntax highlighting).
-                    }
-                });
-            }
-
-            if (shareToNotesButton && contentDiv) {
-                shareToNotesButton.addEventListener('click', () => {
-                    const currentText = contentDiv.innerText; // 获取纯文本内容
-                    const noteTitle = document.title || '来自阅读模式的分享'; // 使用页面标题或默认标题
-                    
-                    // 构建传递给 notes.html 的参数
-                    const notesAppUrl = `Notes/notes.html?action=newFromShare&title=${encodeURIComponent(noteTitle)}&content=${encodeURIComponent(currentText)}&theme=${theme}`;
-                    
-                    // 尝试通过 electronAPI 打开新窗口或通知主进程处理
-                    if (window.electronAPI && window.electronAPI.openNotesWithContent) {
-                        console.log('[text-viewer] Attempting to share via electronAPI.openNotesWithContent');
-                        window.electronAPI.openNotesWithContent({
-                            title: noteTitle,
-                            content: currentText,
-                            theme: theme
-                        }).catch(err => {
-                            console.error('[text-viewer] Error calling electronAPI.openNotesWithContent:', err);
-                            // Fallback if the API call itself fails
-                            console.warn('[text-viewer] Fallback to window.open due to API call error.');
-                            window.open(notesAppUrl, '_blank');
-                        });
-                    } else {
-                        console.warn('[text-viewer] electronAPI.openNotesWithContent 未找到，回退到 window.open。');
-                        window.open(notesAppUrl, '_blank');
-                    }
-                });
-            }
-
-            if (textContent) {
-                try {
-                    let decodedText;
-                    if (encoding === 'base64') {
-                        // Decode Base64 and then decode the UTF-8 characters
-                        const rawDecoded = atob(textContent);
-                        decodedText = decodeURIComponent(rawDecoded.split('').map(function(c) {
-                            return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-                        }).join(''));
-                    } else {
-                        decodedText = decodeURIComponent(textContent); // Fallback for old method
-                    }
-
-                    // Pre-process to add a newline after a code block fence if it's followed by a Chinese character.
-                    const codeBlockRegex = /(```)([\u4e00-\u9fa5])/g;
-                    decodedText = decodedText.replace(codeBlockRegex, '$1\n$2');
-
-                    // 应用自定义引号渲染
-                    decodedText = removeBoldMarkersAroundQuotes(decodedText);
-                    decodedText = renderQuotedText(decodedText, theme);
-
-                    // Prepare Mermaid diagrams before Markdown rendering
-                    const mermaidRegex = /```mermaid\n([\s\S]*?)```/g;
-                    let mermaidProcessedText = decodedText.replace(mermaidRegex, (match, mermaidContent) => {
-                        // Create a unique ID for each diagram to avoid conflicts if multiple diagrams exist
-                        const diagramId = `mermaid-diagram-${Math.random().toString(36).substring(2, 15)}`;
-                        return `<div class="mermaid" id="${diagramId}">${mermaidContent.trim()}</div>`;
+                    // Add hover listeners for showing/hiding controls
+                    imgElement.addEventListener('mouseenter', () => {
+                        imageControls.classList.add('active');
+                    });
+                    imgElement.addEventListener('mouseleave', () => {
+                        // Check if mouse is over the controls themselves before hiding
+                        setTimeout(() => { // Timeout to allow moving to controls
+                            if (!imageControls.matches(':hover')) {
+                                imageControls.classList.remove('active');
+                            }
+                        }, 50); // Small delay
+                    });
+                    // Keep controls visible if mouse moves onto them
+                    imageControls.addEventListener('mouseenter', () => {
+                        imageControls.classList.add('active');
+                    });
+                    imageControls.addEventListener('mouseleave', () => {
+                        imageControls.classList.remove('active');
                     });
 
-                    // Render Markdown
-                    if (window.marked) {
-                        marked.setOptions({
-                            gfm: true, // Enable GFM (GitHub Flavored Markdown)
-                            tables: true, // Enable GFM tables
-                            breaks: false, // Do not interpret carriage returns as <br>
-                            pedantic: false,
-                            sanitize: false, // IMPORTANT: If you allow user-generated content, ensure proper sanitization.
-                            smartLists: true,
-                            smartypants: false
-                        });
-                        contentDiv.innerHTML = marked.parse(mermaidProcessedText); // Use mermaidProcessedText
+                    // Zoom functionality
+                    imgElement.addEventListener('wheel', (event) => {
+                        if (event.ctrlKey) {
+                            event.preventDefault(); // Prevent page zoom
 
-                        // Apply syntax highlighting after Markdown is rendered
-                        if (window.hljs) {
-                            hljs.highlightAll();
-                            // Add copy buttons to code blocks (excluding mermaid blocks)
-                            document.querySelectorAll('pre code.hljs').forEach((block) => {
-                                const preElement = block.parentElement;
-                                // Ensure we are not adding buttons to pre elements that might wrap mermaid divs
-                                if (preElement.querySelector('.mermaid')) {
-                                    return;
-                                }
-                                preElement.style.position = 'relative'; // Needed for absolute positioning of the button
+                            const rect = imgElement.getBoundingClientRect();
+                            const mouseX = event.clientX - rect.left; // Mouse X relative to image
+                            const mouseY = event.clientY - rect.top;  // Mouse Y relative to image
 
-                                // Create Edit Button
-                                const editButton = document.createElement('button');
-                                const editIconSVG = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>`;
-                                const doneIconSVG = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>`;
+                            // Set transform origin to mouse position
+                            imgElement.style.transformOrigin = `${mouseX}px ${mouseY}px`;
 
-                                editButton.innerHTML = editIconSVG;
-                                editButton.className = 'edit-button';
-                                editButton.setAttribute('title', '编辑');
+                            const scaleAmount = 0.1;
+                            if (event.deltaY < 0) { // Zoom in
+                                currentScale = Math.min(maxScale, currentScale + scaleAmount);
+                            } else { // Zoom out
+                                currentScale = Math.max(minScale, currentScale - scaleAmount);
+                            }
+                            
+                            // Apply scale and keep current translation
+                            imgElement.style.transform = `translate(${imgInitialX}px, ${imgInitialY}px) scale(${currentScale})`;
 
-                                editButton.addEventListener('click', (e) => {
-                                    e.stopPropagation();
-                                    const isEditing = block.isContentEditable;
-                                    block.contentEditable = !isEditing; // Toggle contentEditable on the code block itself
-                                    if (!isEditing) {
-                                        block.focus(); // Focus the block for editing
-                                        editButton.innerHTML = doneIconSVG;
-                                        editButton.setAttribute('title', '完成编辑');
-                                    } else {
-                                        editButton.innerHTML = editIconSVG;
-                                        editButton.setAttribute('title', '编辑');
-                                        // After editing, syntax highlighting might be lost or incorrect.
-                                        // Re-highlight the block if hljs is available.
-                                        if (window.hljs && typeof hljs.highlightElement === 'function') {
-                                            hljs.highlightElement(block);
-                                        }
-                                    }
-                                });
-                                preElement.appendChild(editButton);
-
-                                // Create Copy Button (renamed 'button' to 'copyButton')
-                                const copyButton = document.createElement('button');
-                                copyButton.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>`;
-                                copyButton.className = 'copy-button';
-                                copyButton.setAttribute('title', '复制');
-
-                                copyButton.addEventListener('click', (e) => {
-                                    e.stopPropagation();
-                                    const codeToCopy = block.innerText;
-                                    navigator.clipboard.writeText(codeToCopy).then(() => {
-                                        copyButton.style.borderColor = 'var(--success-color, #4CAF50)'; // Visual feedback
-                                        setTimeout(() => {
-                                            copyButton.style.borderColor = 'var(--button-border-color, #4f535c)';
-                                        }, 1500);
-                                    }).catch(err => {
-                                        console.error('无法复制到剪贴板:', err);
-                                        copyButton.style.borderColor = 'var(--error-color, #F44336)'; // Visual feedback
-                                        setTimeout(() => {
-                                            copyButton.style.borderColor = 'var(--button-border-color, #4f535c)';
-                                        }, 1500);
-                                    });
-                                });
-                                preElement.appendChild(copyButton);
-                            });
-                        }
-                        // Render Mermaid diagrams
-                        if (window.mermaid) {
-                            try {
-                                mermaid.run({
-                                    nodes: document.querySelectorAll('.mermaid')
-                                });
-                            } catch (e) {
-                                console.error("Mermaid rendering error:", e);
+                            if (currentScale > 1) {
+                                imgElement.style.cursor = 'grab';
+                            } else {
+                                imgElement.style.cursor = 'default';
+                                // Reset translation if scaled back to 1 or less
+                                imgInitialX = 0;
+                                imgInitialY = 0;
+                                imgElement.style.transform = `translate(0px, 0px) scale(${currentScale})`;
                             }
                         }
+                    }, { passive: false }); // passive: false to allow preventDefault
 
-                    } else {
-                        // Fallback if marked is not loaded
-                        const pre = document.createElement('pre');
-                        pre.textContent = mermaidProcessedText; // Use mermaidProcessedText
-                        contentDiv.appendChild(pre);
-                         // Render Mermaid diagrams even in fallback
-                        if (window.mermaid) {
-                            try {
-                                mermaid.run({
-                                    nodes: document.querySelectorAll('.mermaid')
-                                });
-                            } catch (e) {
-                                console.error("Mermaid rendering error (fallback):", e);
+                    // Drag functionality
+                    imgElement.addEventListener('mousedown', (event) => {
+                        if (event.button === 0 && currentScale > 1) { // Only on left click and when zoomed
+                            isDragging = true;
+                            startX = event.clientX;
+                            startY = event.clientY;
+                            // No need to store initial translation here, as imgInitialX/Y are already current
+                            imgElement.style.cursor = 'grabbing';
+                            event.preventDefault(); // Prevent text selection or other default drag behaviors
+                        }
+                    });
+
+                    document.addEventListener('mousemove', (event) => {
+                        if (isDragging) {
+                            const dx = event.clientX - startX;
+                            const dy = event.clientY - startY;
+                            
+                            // Update the image's translation based on drag
+                            // The new translation is the initial translation plus the drag distance
+                            const newTranslateX = imgInitialX + dx;
+                            const newTranslateY = imgInitialY + dy;
+                            
+                            imgElement.style.transform = `translate(${newTranslateX}px, ${newTranslateY}px) scale(${currentScale})`;
+                        }
+                    });
+
+                    document.addEventListener('mouseup', (event) => {
+                        if (event.button === 0 && isDragging) {
+                            isDragging = false;
+                            if (currentScale > 1) {
+                                imgElement.style.cursor = 'grab';
+                            } else {
+                                imgElement.style.cursor = 'default';
                             }
+                            // Persist the new translation
+                            const currentTransform = new WebKitCSSMatrix(window.getComputedStyle(imgElement).transform);
+                            imgInitialX = currentTransform.m41; // e value for X translation
+                            imgInitialY = currentTransform.m42; // f value for Y translation
                         }
-                    }
+                    });
+                     // Also stop dragging if mouse leaves the window
+                    document.addEventListener('mouseleave', () => {
+                       if (isDragging) {
+                           isDragging = false;
+                           if (currentScale > 1) {
+                               imgElement.style.cursor = 'grab';
+                           } else {
+                               imgElement.style.cursor = 'default';
+                           }
+                           const currentTransform = new WebKitCSSMatrix(window.getComputedStyle(imgElement).transform);
+                           imgInitialX = currentTransform.m41;
+                           imgInitialY = currentTransform.m42;
+                       }
+                   });
 
-                    // Render LaTeX if KaTeX is available
-                    if (window.renderMathInElement) {
-                        try {
-                            renderMathInElement(contentDiv, {
-                                delimiters: [
-                                    {left: "$$", right: "$$", display: true},
-                                    {left: "$", right: "$", display: false},
-                                    {left: "\\(", right: "\\)", display: false},
-                                    {left: "\\[", right: "\\]", display: true}
-                                ],
-                                throwOnError: false
-                            });
-                        } catch (e) {
-                            console.error("KaTeX rendering error:", e);
-                        }
-                    }
-                } catch (error) {
-                    console.error("Error rendering content:", error);
-                    contentDiv.innerHTML = `
-                        <h3 style="color: #e06c75;">内容渲染失败</h3>
-                        <p>在处理文本时发生错误，这可能是由于文本包含了格式不正确的编码字符。</p>
-                        <p><strong>错误详情:</strong></p>
-                        <pre style="white-space: pre-wrap; word-wrap: break-word;">${error.toString()}</pre>
-                        <p><strong>原始文本内容:</strong></p>
-                        <pre style="white-space: pre-wrap; word-wrap: break-word;">${textContent}</pre>
-                    `;
-                }
+                };
+                imgElement.onerror = () => {
+                    console.error('Image Viewer: Error loading image -', decodedImageUrl);
+                    imgElement.style.display = 'none';
+                    imageControls.style.display = 'none'; // Keep controls hidden on error
+                    errorDiv.textContent = `无法加载图片: ${decodeURIComponent(imageTitle)}`;
+                    errorDiv.style.display = 'block';
+                };
+
             } else {
-                contentDiv.textContent = '没有提供文本内容。';
+                console.error('Image Viewer: No image URL provided.');
+                imgElement.style.display = 'none';
+                imageControls.style.display = 'none';
+                errorDiv.textContent = '未提供图片URL。';
+                errorDiv.style.display = 'block';
             }
+
+            copyButton.addEventListener('click', async () => {
+                if (!imgElement.src || imgElement.src === window.location.href) {
+                    console.warn('Image Viewer: No valid image to copy.');
+                    // Optionally, briefly change button text to indicate issue
+                    const originalText = copyButton.innerHTML;
+                    copyButton.innerHTML = '<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"></path></svg> 无效图片';
+                    setTimeout(() => {
+                        copyButton.innerHTML = originalText;
+                    }, 2000);
+                    return;
+                }
+                const originalButtonText = copyButton.innerHTML; // Store original content with SVG
+                try {
+                    const response = await fetch(imgElement.src);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    let blob = await response.blob();
+                    let finalBlobType = blob.type || 'image/png';
+
+                    if (blob.type === 'image/jpeg' || blob.type === 'image/jpg') {
+                        console.log('Image Viewer: Converting JPEG to PNG for clipboard.');
+                        try {
+                            const imageBitmap = await createImageBitmap(blob);
+                            const canvas = document.createElement('canvas');
+                            canvas.width = imageBitmap.width;
+                            canvas.height = imageBitmap.height;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(imageBitmap, 0, 0);
+                            blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+                            finalBlobType = 'image/png';
+                            console.log('Image Viewer: Conversion to PNG successful.');
+                        } catch (conversionError) {
+                            console.error('Image Viewer: Failed to convert JPEG to PNG -', conversionError);
+                            // Fallback to original blob if conversion fails, though it might still fail on write
+                        }
+                    }
+
+                    const item = new ClipboardItem({ [finalBlobType]: blob });
+                    await navigator.clipboard.write([item]);
+                    console.log('Image copied to clipboard as', finalBlobType);
+                    copyButton.innerHTML = '<svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:currentColor;"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"></path></svg> 已复制'; // Checkmark SVG + Text
+                    setTimeout(() => {
+                        copyButton.innerHTML = originalButtonText;
+                    }, 2000);
+                } catch (err) {
+                    console.error('Image Viewer: Failed to copy image -', err);
+                    copyButton.innerHTML = '<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"></path></svg> 复制失败';
+                     setTimeout(() => {
+                        copyButton.innerHTML = originalButtonText;
+                    }, 2000);
+                }
+            });
+
+            downloadButton.addEventListener('click', () => {
+                if (!imgElement.src || imgElement.src === window.location.href) {
+                    console.warn('Image Viewer: No valid image to download.');
+                    return;
+                }
+                try {
+                    const link = document.createElement('a');
+                    link.href = imgElement.src;
+                    
+                    let filename = decodeURIComponent(imageTitle) || 'downloaded_image';
+                    const urlFilename = imgElement.src.substring(imgElement.src.lastIndexOf('/') + 1).split('?')[0]; // Remove query params
+                    const urlExtensionMatch = urlFilename.match(/\.(jpe?g|png|gif|webp|svg)$/i);
+                    const titleExtensionMatch = filename.match(/\.(jpe?g|png|gif|webp|svg)$/i);
+
+                    if (!titleExtensionMatch && urlExtensionMatch) {
+                        // Ensure filename doesn't already somehow end with the extension from URL (e.g. title was "image.jpg" and url is "other.jpg")
+                        const baseFilename = filename.replace(/\.[^/.]+$/, ""); // remove existing extension if any
+                        if (baseFilename + urlExtensionMatch[0] !== filename) {
+                           filename = baseFilename + urlExtensionMatch[0];
+                        } else if (!filename.endsWith(urlExtensionMatch[0])) {
+                           filename += urlExtensionMatch[0];
+                        }
+                    } else if (!titleExtensionMatch && !urlExtensionMatch) {
+                         if (!/\.[a-z0-9]{3,4}$/i.test(filename)) { // check for 3 or 4 char extension
+                            filename += '.png'; // Default extension
+                         }
+                    }
+                    
+                    link.download = filename.replace(/[<>:"/\\|?*]+/g, '_').replace(/\s+/g, '_'); // Sanitize and replace spaces
+
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    console.log('Image download initiated for:', link.download);
+                } catch (err) {
+                    console.error('Image Viewer: Failed to initiate download -', err);
+                }
+            });
+
         });
 
-        // Custom Context Menu Logic
-        const contextMenu = document.getElementById('customContextMenu');
-        const contextMenuCopyButton = document.getElementById('contextMenuCopy');
-        const contextMenuCutButton = document.getElementById('contextMenuCut');
-        const contextMenuDeleteButton = document.getElementById('contextMenuDelete');
-        const contextMenuEditAllButton = document.getElementById('contextMenuEditAll');
-        const contextMenuCopyAllButton = document.getElementById('contextMenuCopyAll');
-        const mainContentDiv = document.getElementById('textContent'); // Renamed for clarity from previous contentDiv
-
-        if (contextMenu && contextMenuCopyButton && contextMenuCutButton && contextMenuDeleteButton && contextMenuEditAllButton && contextMenuCopyAllButton && mainContentDiv) {
-            document.addEventListener('contextmenu', (event) => {
-                const selection = window.getSelection();
-                const selectedText = selection.toString().trim();
-
-                event.preventDefault(); // Always prevent default to show custom menu
-
-                contextMenu.style.top = `${event.pageY}px`;
-                contextMenu.style.left = `${event.pageX}px`;
-                contextMenu.style.display = 'block';
-
-                if (selectedText) {
-                    // Show standard copy, cut, delete if text is selected
-                    contextMenuCopyButton.style.display = 'block';
-                    contextMenuCutButton.style.display = 'block';
-                    contextMenuDeleteButton.style.display = 'block';
-                    contextMenuEditAllButton.style.display = 'none';
-                    contextMenuCopyAllButton.style.display = 'none';
-                } else {
-                    // Show "Edit All" and "Copy All" if no text is selected
-                    contextMenuCopyButton.style.display = 'none';
-                    contextMenuCutButton.style.display = 'none';
-                    contextMenuDeleteButton.style.display = 'none';
-                    contextMenuEditAllButton.style.display = 'block';
-                    contextMenuCopyAllButton.style.display = 'block';
-                }
-
-                // Determine if Cut and Delete should be shown (based on editability)
-                let isAnyEditableContext = mainContentDiv.isContentEditable; // Check global edit mode
-                const targetElement = event.target;
-                const closestCodeBlock = targetElement.closest('code.hljs');
-
-                if (!isAnyEditableContext && closestCodeBlock && closestCodeBlock.isContentEditable) {
-                    isAnyEditableContext = true;
-                }
-
-                // If text is selected, adjust cut/delete visibility based on editability
-                if (selectedText) {
-                    contextMenuCutButton.style.display = isAnyEditableContext ? 'block' : 'none';
-                    contextMenuDeleteButton.style.display = isAnyEditableContext ? 'block' : 'none';
-                }
-            });
-
-            document.addEventListener('click', (event) => {
-                if (contextMenu.style.display === 'block' && !contextMenu.contains(event.target)) {
-                    contextMenu.style.display = 'none';
-                }
-            });
-
-            document.addEventListener('keydown', (event) => {
-                if (event.key === 'Escape') {
-                    contextMenu.style.display = 'none';
-                }
-            });
-
-            contextMenuCopyButton.addEventListener('click', () => {
-                const selectedText = window.getSelection().toString();
-                if (selectedText) {
-                    navigator.clipboard.writeText(selectedText).then(() => {
-                        console.log('文本已复制到剪贴板');
-                    }).catch(err => {
-                        console.error('无法复制文本: ', err);
-                    });
-                }
-                contextMenu.style.display = 'none';
-            });
-
-            contextMenuCutButton.addEventListener('click', () => {
-                const selection = window.getSelection();
-                const selectedText = selection.toString();
-                
-                let canPerformEdit = mainContentDiv.isContentEditable;
-                const activeCodeBlock = document.activeElement && document.activeElement.closest('code.hljs') && document.activeElement.isContentEditable;
-                if(!canPerformEdit && activeCodeBlock){
-                    canPerformEdit = true;
-                }
-
-                if (selectedText && canPerformEdit) {
-                    navigator.clipboard.writeText(selectedText).then(() => {
-                        document.execCommand('delete', false, null);
-                        console.log('文本已剪切到剪贴板');
-                    }).catch(err => {
-                        console.error('无法剪切文本: ', err);
-                    });
-                }
-                contextMenu.style.display = 'none';
-            });
-
-            contextMenuDeleteButton.addEventListener('click', () => {
-                const selection = window.getSelection();
-                let canPerformEdit = mainContentDiv.isContentEditable;
-                const activeCodeBlock = document.activeElement && document.activeElement.closest('code.hljs') && document.activeElement.isContentEditable;
-                 if(!canPerformEdit && activeCodeBlock){
-                    canPerformEdit = true;
-                }
-
-                if (selection.toString() && canPerformEdit) {
-                    document.execCommand('delete', false, null);
-                    console.log('选中文本已删除');
-                }
-                contextMenu.style.display = 'none';
-            });
-            contextMenuEditAllButton.addEventListener('click', () => {
-                editAllButton.click(); // Trigger the global edit button's click event
-                contextMenu.style.display = 'none';
-            });
-
-            contextMenuCopyAllButton.addEventListener('click', () => {
-                const fullText = mainContentDiv.innerText;
-                navigator.clipboard.writeText(fullText).then(() => {
-                    console.log('全文已复制到剪贴板');
-                }).catch(err => {
-                    console.error('无法复制全文: ', err);
-                });
-                contextMenu.style.display = 'none';
-            });
-        }
-		
         // Add keyboard listener for Escape key to close the window
         document.addEventListener('keydown', (event) => {
             if (event.key === 'Escape') {

@@ -310,6 +310,15 @@
         document.addEventListener('DOMContentLoaded', () => {
             mermaid.initialize({ startOnLoad: false }); // 初始化 Mermaid，但不自动渲染
 
+            function removeBoldMarkersAroundQuotes(text) {
+                if (typeof text !== 'string') return text;
+                // Replace **" with " and **“ with “
+                let processedText = text.replace(/\*\*(["“])/g, '$1');
+                // Replace "** with " and ”** with ”
+                processedText = processedText.replace(/(["”])\*\*/g, '$1');
+                return processedText;
+            }
+
             function renderQuotedText(text, currentTheme) {
                 const className = currentTheme === 'light' ? 'custom-quote-light' : 'custom-quote-dark';
                 const quoteRegex = /(?:"([^"]*?)"|“([^”]*?)”)/g;
@@ -428,6 +437,7 @@
                     decodedText = decodedText.replace(codeBlockRegex, '$1\n$2');
 
                     // 应用自定义引号渲染
+                    decodedText = removeBoldMarkersAroundQuotes(decodedText);
                     decodedText = renderQuotedText(decodedText, theme);
 
                     // Prepare Mermaid diagrams before Markdown rendering
