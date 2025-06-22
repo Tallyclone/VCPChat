@@ -115,6 +115,7 @@
 ![示例图4](assets/E4.jpg)
 ![示例图5](assets/E6.jpg)
 ![示例图6](assets/E5.jpg)
+![示例图7](assets/E7.png)
 
 ## 客户端职责
 
