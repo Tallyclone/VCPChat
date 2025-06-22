@@ -554,9 +554,6 @@
                     const currentText = contentDiv.innerText; // 获取纯文本内容
                     const noteTitle = document.title || '来自阅读模式的分享'; // 使用页面标题或默认标题
                     
-                    // 构建传递给 notes.html 的参数
-                    const notesAppUrl = `Notes/notes.html?action=newFromShare&title=${encodeURIComponent(noteTitle)}&content=${encodeURIComponent(currentText)}&theme=${theme}`;
-                    
                     // 尝试通过 electronAPI 打开新窗口或通知主进程处理
                     if (window.electronAPI && window.electronAPI.openNotesWithContent) {
                         console.log('[text-viewer] Attempting to share via electronAPI.openNotesWithContent');
@@ -566,13 +563,12 @@
                             theme: theme
                         }).catch(err => {
                             console.error('[text-viewer] Error calling electronAPI.openNotesWithContent:', err);
-                            // Fallback if the API call itself fails
-                            console.warn('[text-viewer] Fallback to window.open due to API call error.');
-                            window.open(notesAppUrl, '_blank');
+                            // 如果API调用失败，可以在这里给用户一些提示
+                            alert('分享到笔记失败，请检查控制台获取更多信息。');
                         });
                     } else {
-                        console.warn('[text-viewer] electronAPI.openNotesWithContent 未找到，回退到 window.open。');
-                        window.open(notesAppUrl, '_blank');
+                        console.error('[text-viewer] electronAPI.openNotesWithContent is not available.');
+                        alert('分享功能不可用，无法连接到主进程。');
                     }
                 });
             }

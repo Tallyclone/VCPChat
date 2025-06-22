@@ -55,6 +55,7 @@ let selectionHookInstance = null; // To hold the instance of SelectionHook
 let mouseListener = null; // To hold the global mouse listener instance
 let hideBarTimeout = null; // Timer for delayed hiding of the assistant bar
 let distributedServer = null; // To hold the distributed server instance
+let notesWindow = null; // To hold the single instance of the notes window
 
 
 function processSelectedText(selectionData) {
@@ -585,10 +586,18 @@ function formatTimestampForFilename(timestamp) {
         }
     });
 
-    ipcMain.handle('open-notes-window', async (event) => {
+    // --- Singleton Notes Window Creation Function ---
+    function createOrFocusNotesWindow() {
+        if (notesWindow && !notesWindow.isDestroyed()) {
+            console.log('[Main Process] Notes window already exists. Focusing it.');
+            notesWindow.focus();
+            return notesWindow;
+        }
+
+        console.log('[Main Process] Creating new notes window instance.');
         const currentTheme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
-        console.log(`[Main Process] Received open-notes-window. Current theme is: ${currentTheme}`);
-        const notesWindow = new BrowserWindow({
+        
+        notesWindow = new BrowserWindow({
             width: 1000,
             height: 700,
             minWidth: 800,
@@ -607,86 +616,44 @@ function formatTimestampForFilename(timestamp) {
         });
 
         const notesUrl = `file://${path.join(__dirname, 'Notemodules', 'notes.html')}?theme=${encodeURIComponent(currentTheme)}`;
-        console.log(`[Main Process] Attempting to load URL in notes window: ${notesUrl.substring(0, 200)}...`);
+        notesWindow.loadURL(notesUrl);
         
-        notesWindow.loadURL(notesUrl)
-            .then(() => {
-                console.log(`[Main Process] notesWindow successfully initiated URL loading: ${notesUrl.substring(0, 200)}`);
-            })
-            .catch((err) => {
-                console.error(`[Main Process] notesWindow FAILED to initiate URL loading: ${notesUrl.substring(0, 200)}`, err);
-            });
-
-        openChildWindows.push(notesWindow);
         notesWindow.setMenu(null);
 
         notesWindow.once('ready-to-show', () => {
-            console.log(`[Main Process] notesWindow is ready-to-show. Window Title: "${notesWindow.getTitle()}". Calling show().`);
             notesWindow.show();
-            console.log('[Main Process] notesWindow show() called.');
         });
 
         notesWindow.on('closed', () => {
-            console.log('[Main Process] notesWindow has been closed.');
-            openChildWindows = openChildWindows.filter(win => win !== notesWindow);
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.focus(); // 聚焦主窗口
-            }
+            console.log('[Main Process] Notes window has been closed.');
+            notesWindow = null; // Clear the reference
         });
+        
+        return notesWindow;
+    }
+
+    ipcMain.handle('open-notes-window', () => {
+        createOrFocusNotesWindow();
     });
 
     ipcMain.handle('open-notes-with-content', async (event, data) => {
-        const { title, content, theme } = data;
-        console.log(`[Main Process] Received open-notes-with-content. Title: ${title}, Theme: ${theme}, Content Length: ${content ? content.length : 0}`);
-        const notesWindow = new BrowserWindow({
-            width: 1000,
-            height: 700,
-            minWidth: 800,
-            minHeight: 600,
-            title: title || '我的笔记 (分享)',
-            parent: mainWindow, 
-            modal: false,
-            webPreferences: {
-                preload: path.join(__dirname, 'preload.js'), 
-                contextIsolation: true,
-                nodeIntegration: false,
-                devTools: true 
-            },
-            icon: path.join(__dirname, 'assets', 'icon.png'),
-            show: false
-        });
+        const targetWindow = createOrFocusNotesWindow();
+        const wc = targetWindow.webContents;
 
-        const queryParams = new URLSearchParams({
-            action: 'newFromShare',
-            title: encodeURIComponent(title || '来自分享的笔记'),
-            content: encodeURIComponent(content || ''),
-            theme: encodeURIComponent(nativeTheme.shouldUseDarkColors ? 'dark' : 'light')
-        });
-        const notesUrl = `file://${path.join(__dirname, 'Notemodules', 'notes.html')}?${queryParams.toString()}`;
-        
-        console.log(`[Main Process] Attempting to load URL in new notes window: ${notesUrl.substring(0, 250)}...`);
-        
-        notesWindow.loadURL(notesUrl)
-            .then(() => {
-                console.log(`[Main Process] New notesWindow successfully initiated URL loading: ${notesUrl.substring(0, 200)}`);
-            })
-            .catch((err) => {
-                console.error(`[Main Process] New notesWindow FAILED to initiate URL loading: ${notesUrl.substring(0, 200)}`, err);
-            });
+        // If the window is already loaded (not new), send the data immediately.
+        if (!wc.isLoading()) {
+            console.log(`[Main Process] Notes window already loaded. Sending shared content immediately.`);
+            wc.send('shared-note-data', data);
+            return;
+        }
 
-        openChildWindows.push(notesWindow);
-        notesWindow.setMenu(null);
-
-        notesWindow.once('ready-to-show', () => {
-            console.log(`[Main Process] New notesWindow is ready-to-show. Window Title: "${notesWindow.getTitle()}". Calling show().`);
-            notesWindow.show();
-        });
-
-        notesWindow.on('closed', () => {
-            console.log('[Main Process] New notesWindow (from share) has been closed.');
-            openChildWindows = openChildWindows.filter(win => win !== notesWindow);
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.focus(); // 聚焦主窗口
+        // If the window is new and loading, wait for our custom 'ready' signal.
+        console.log(`[Main Process] Notes window is new. Waiting for 'notes-window-ready' signal...`);
+        ipcMain.once('notes-window-ready', (e) => {
+            // Ensure the signal came from the window we just created.
+            if (e.sender === wc) {
+                console.log(`[Main Process] Received 'notes-window-ready' signal. Sending shared content.`);
+                wc.send('shared-note-data', data);
             }
         });
     });

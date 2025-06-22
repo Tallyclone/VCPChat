@@ -804,45 +804,30 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Initial theme application
         applyTheme();
 
-        const params = new URLSearchParams(window.location.search);
-        const action = params.get('action');
-        let isHandlingShare = false;
+        // Load all existing notes. Don't auto-select one yet.
+        await loadNotes();
 
-        if (action === 'newFromShare') {
-            isHandlingShare = true;
+        // NEW: Set up listener for shared data from main process
+        window.electronAPI.onSharedNoteData(async (data) => {
+            const { title, content } = data;
+            console.log(`[Notes App] Received shared data via IPC. Title: ${title}, Content Length: ${content ? content.length : 0}`);
+            
+            clearNoteEditor(); // Clear current editor to prepare for new shared note
+            
+            noteTitleInput.value = title || '来自分享的笔记';
+            noteContentInput.value = content || '';
+            renderMarkdown(noteContentInput.value); // Render preview of shared content
+            
+            // Automatically save the shared content as a new note
+            console.log('[Notes App] Automatically saving shared content as a new note.');
+            await saveCurrentNote(false); // false indicates a manual save, which is appropriate here
+        });
+
+        // Signal to the main process that the window is fully initialized and ready.
+        if (window.electronAPI && window.electronAPI.sendNotesWindowReady) {
+            console.log('[Notes App] Sending notes-window-ready signal to main process.');
+            window.electronAPI.sendNotesWindowReady();
         }
-
-        await loadNotes(isHandlingShare); // Pass the flag to loadNotes
-
-        if (isHandlingShare) {
-            const sharedTitleParam = params.get('title');
-            const sharedContentParam = params.get('content');
-
-            // Check if at least title or content is present in params for a share action
-            if (params.has('title') || params.has('content')) {
-                console.log('[Notes App] Handling shared content. URL Title:', sharedTitleParam, 'URL Content Length:', sharedContentParam ? sharedContentParam.length : 0);
-                clearNoteEditor(); // Clear current editor to prepare for new shared note
-                
-                noteTitleInput.value = decodeURIComponent(sharedTitleParam || '来自分享的笔记');
-                noteContentInput.value = decodeURIComponent(sharedContentParam || '');
-                renderMarkdown(noteContentInput.value); // Render preview of shared content
-                
-                // Prompt user to save, do not save automatically
-                showButtonFeedback(saveNoteBtn, "保存", "已载入分享, 请保存", true, 600);
-                
-                // Clear the URL parameters to prevent re-creating the note on refresh
-                const newUrl = new URL(window.location.pathname, window.location.origin); // Create clean URL without query params
-                if(window.location.hash) newUrl.hash = window.location.hash; // Preserve hash if present
-                window.history.replaceState({}, document.title, newUrl.toString());
-                console.log('[Notes App] Shared content loaded into editor and URL cleaned.');
-            } else {
-                console.warn('[Notes App] "newFromShare" action without title or content parameters.');
-                // If action is newFromShare but no content, loadNotes would have already cleared or selected a note.
-                // If notes list is empty, clearNoteEditor is called by loadNotes.
-                // If notes list is not empty, loadNotes would have selected the first/last active note.
-            }
-        }
-        // If not isHandlingShare, loadNotes already handles selecting the last active/first note or clearing the editor.
     }
 
     await initializeApp();

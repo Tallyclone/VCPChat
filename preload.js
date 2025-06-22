@@ -45,6 +45,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     openNotesWindow: (theme) => ipcRenderer.invoke('open-notes-window', theme),
     // For sharing content to a new notes window
     openNotesWithContent: (data) => ipcRenderer.invoke('open-notes-with-content', data), // data: { title, content, theme }
+    onSharedNoteData: (callback) => ipcRenderer.on('shared-note-data', (_event, data) => callback(data)), // New listener for shared data
+    sendNotesWindowReady: () => ipcRenderer.send('notes-window-ready'), // Signal that the notes window is ready
     // Open Translator Window
     openTranslatorWindow: (theme) => ipcRenderer.invoke('open-translator-window', theme),
  
