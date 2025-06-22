@@ -231,7 +231,7 @@ const settingsManager = (() => {
      * Populates the assistant agent select dropdown with available agents.
      */
     async function populateAssistantAgentSelect() {
-        const assistantAgentSelect = document.getElementById('assistantAgentSelect');
+        const assistantAgentSelect = document.getElementById('assistantAgent');
         if (!assistantAgentSelect) {
             console.warn('[SettingsManager] populateAssistantAgentSelect: assistantAgentSelect element not found');
             return;

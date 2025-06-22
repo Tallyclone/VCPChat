@@ -51,18 +51,35 @@
      * @param {string} message The message to display.
      * @param {number} [duration=3000] The duration in milliseconds.
      */
-    uiHelperFunctions.showToastNotification = function(message, duration = 3000) {
-        const toast = document.getElementById('toastNotification');
-        if (toast) {
-            toast.textContent = message;
-            toast.classList.add('show');
-            setTimeout(() => {
-                toast.classList.remove('show');
-            }, duration);
-        } else {
-            console.warn("Toast notification element not found.");
+    uiHelperFunctions.showToastNotification = function(message, type = 'info', duration = 3000) {
+        const container = document.getElementById('floating-toast-notifications-container');
+        if (!container) {
+            console.warn("Toast notification container not found.");
             alert(message); // Fallback
+            return;
         }
+
+        const toast = document.createElement('div');
+        toast.className = `toast-notification-item ${type}`; // e.g., 'info', 'success', 'error'
+        toast.textContent = message;
+
+        container.appendChild(toast);
+
+        // Animate in
+        requestAnimationFrame(() => {
+            toast.classList.add('show');
+        });
+
+        // Set timer to animate out and remove
+        setTimeout(() => {
+            toast.classList.remove('show');
+            // Remove the element from the DOM after the fade-out transition
+            toast.addEventListener('transitionend', () => {
+                if (toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+            });
+        }, duration);
     };
 
     /**

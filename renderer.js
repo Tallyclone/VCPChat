@@ -789,7 +789,7 @@ function setupEventListeners() {
     });
     
  
-    globalSettingsBtn.addEventListener('click', () => openModal('globalSettingsModal'));
+    globalSettingsBtn.addEventListener('click', () => uiHelperFunctions.openModal('globalSettingsModal'));
     globalSettingsForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const newSettings = { // Read directly from globalSettings for widths
@@ -854,7 +854,7 @@ function setupEventListeners() {
         if (result.success) {
             globalSettings = {...globalSettings, ...newSettings }; // Update local globalSettings
             uiHelperFunctions.showToastNotification('全局设置已保存！部分设置（如通知URL/Key）可能需要重新连接生效。');
-            closeModal('globalSettingsModal');
+            uiHelperFunctions.closeModal('globalSettingsModal');
             if (globalSettings.vcpLogUrl && globalSettings.vcpLogKey) {
                  window.electronAPI.connectVCPLog(globalSettings.vcpLogUrl, globalSettings.vcpLogKey);
             } else {

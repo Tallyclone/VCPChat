@@ -66,17 +66,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 get: () => 'assistant_chat', // Assistant has a single, non-persistent topic
                 set: () => {}
             };
-            const uiHelper = {
-                scrollToBottom: scrollToBottom,
-                openModal: () => {},
-                autoResizeTextarea: (el) => {
-                    if(el) {
-                        el.style.height = 'auto';
-                        el.style.height = (el.scrollHeight) + 'px';
-                    }
-                },
-            };
-
             window.messageRenderer.initializeMessageRenderer({
                 currentChatHistoryRef: chatHistoryRef,
                 currentSelectedItemRef: selectedItemRef,
@@ -85,7 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 chatMessagesDiv: chatMessagesDiv,
                 electronAPI: window.electronAPI,
                 markedInstance: markedInstance,
-                uiHelper: uiHelper,
+                uiHelper: window.uiHelperFunctions,
                 summarizeTopicFromMessages: async () => "", // Stub
                 handleCreateBranch: () => {} // Stub
             });
