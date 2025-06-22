@@ -399,8 +399,9 @@ if (!gotTheLock) {
     const TRANSLATOR_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Translatormodules');
     fs.ensureDirSync(TRANSLATOR_DIR); // Ensure the Translator directory exists
 
-    ipcMain.handle('open-translator-window', async (event, theme) => {
-        console.log(`[Main Process] Received open-translator-window. Theme: ${theme}`);
+    ipcMain.handle('open-translator-window', async (event) => {
+        const currentTheme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+        console.log(`[Main Process] Received open-translator-window. Current theme is: ${currentTheme}`);
         const translatorWindow = new BrowserWindow({
             width: 1000,
             height: 700,
@@ -431,7 +432,7 @@ if (!gotTheLock) {
         const vcpServerUrl = settings.vcpServerUrl || '';
         const vcpApiKey = settings.vcpApiKey || '';
 
-        const translatorUrl = `file://${path.join(__dirname, 'Translatormodules', 'translator.html')}?theme=${encodeURIComponent(theme || 'dark')}&vcpServerUrl=${encodeURIComponent(vcpServerUrl)}&vcpApiKey=${encodeURIComponent(vcpApiKey)}`;
+        const translatorUrl = `file://${path.join(__dirname, 'Translatormodules', 'translator.html')}?theme=${encodeURIComponent(currentTheme)}&vcpServerUrl=${encodeURIComponent(vcpServerUrl)}&vcpApiKey=${encodeURIComponent(vcpApiKey)}`;
         console.log(`[Main Process] Attempting to load URL in translator window: ${translatorUrl.substring(0, 200)}...`);
         
         translatorWindow.webContents.on('did-start-loading', () => {
@@ -584,8 +585,9 @@ function formatTimestampForFilename(timestamp) {
         }
     });
 
-    ipcMain.handle('open-notes-window', async (event, theme) => {
-        console.log(`[Main Process] Received open-notes-window (handle inside whenReady). Theme: ${theme}`);
+    ipcMain.handle('open-notes-window', async (event) => {
+        const currentTheme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+        console.log(`[Main Process] Received open-notes-window. Current theme is: ${currentTheme}`);
         const notesWindow = new BrowserWindow({
             width: 1000,
             height: 700,
@@ -604,7 +606,7 @@ function formatTimestampForFilename(timestamp) {
             show: false
         });
 
-        const notesUrl = `file://${path.join(__dirname, 'Notemodules', 'notes.html')}?theme=${encodeURIComponent(theme || 'dark')}`;
+        const notesUrl = `file://${path.join(__dirname, 'Notemodules', 'notes.html')}?theme=${encodeURIComponent(currentTheme)}`;
         console.log(`[Main Process] Attempting to load URL in notes window: ${notesUrl.substring(0, 200)}...`);
         
         notesWindow.loadURL(notesUrl)
@@ -658,7 +660,7 @@ function formatTimestampForFilename(timestamp) {
             action: 'newFromShare',
             title: encodeURIComponent(title || '来自分享的笔记'),
             content: encodeURIComponent(content || ''),
-            theme: encodeURIComponent(theme || 'dark')
+            theme: encodeURIComponent(nativeTheme.shouldUseDarkColors ? 'dark' : 'light')
         });
         const notesUrl = `file://${path.join(__dirname, 'Notemodules', 'notes.html')}?${queryParams.toString()}`;
         

@@ -34,28 +34,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Helper function to show button feedback
     function showButtonFeedback(button, originalText, feedbackText, isSuccess = true, duration = 2000) {
-        const originalBg = button.style.backgroundColor;
-        const originalColor = button.style.color;
-        const originalBorder = button.style.borderColor;
-
+        const feedbackClass = isSuccess ? 'button-success' : 'button-error';
+        
         button.textContent = feedbackText;
-        if (isSuccess) {
-            button.style.backgroundColor = 'var(--success-color, #4CAF50)';
-            button.style.borderColor = 'var(--success-color, #4CAF50)';
-            button.style.color = 'white';
-        } else {
-            button.style.backgroundColor = 'var(--error-color, #F44336)';
-            button.style.borderColor = 'var(--error-color, #F44336)';
-            button.style.color = 'white';
-        }
-        button.disabled = true; // Disable button to prevent multiple clicks
+        button.classList.add(feedbackClass);
+        button.disabled = true;
 
         setTimeout(() => {
             button.textContent = originalText;
-            button.style.backgroundColor = originalBg;
-            button.style.color = originalColor;
-            button.style.borderColor = originalBorder;
+            button.classList.remove(feedbackClass);
             button.disabled = false;
+            // Force style re-evaluation by blurring the element after feedback.
+            button.blur();
         }, duration);
     }
 
@@ -77,8 +67,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    // Initial theme application
-    applyTheme();
+    // Listen for theme updates from the main process
+    window.electronAPI.onThemeUpdated((theme) => {
+        console.log(`[Notes App] Theme updated to: ${theme}`);
+        applyTheme(theme);
+    });
 
     // Load username from settings
     try {
@@ -662,6 +655,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (deleteTimer) {
             clearTimeout(deleteTimer);
             deleteTimer = null;
+            deleteNoteBtn.classList.remove('button-confirm-delete');
             
             const noteToDelete = notes.find(n => n.id === activeNoteId);
             if (!noteToDelete) {
@@ -681,14 +675,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         } else {
             deleteNoteBtn.textContent = '确认删除';
-            deleteNoteBtn.style.backgroundColor = 'var(--button-danger-hover-bg-color)';
-            deleteNoteBtn.style.borderColor = 'var(--button-danger-hover-bg-color)';
+            deleteNoteBtn.classList.add('button-confirm-delete');
             deleteTimer = setTimeout(() => {
                 deleteNoteBtn.textContent = '删除';
-                deleteNoteBtn.style.backgroundColor = ''; 
-                deleteNoteBtn.style.borderColor = ''; 
+                deleteNoteBtn.classList.remove('button-confirm-delete');
                 deleteTimer = null;
-            }, 3000); 
+                // Force style re-evaluation by blurring the element
+                deleteNoteBtn.blur();
+            }, 3000);
         }
     });
 
@@ -806,6 +800,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (error) {
             console.error('加载用户设置失败:', error);
         }
+
+        // Initial theme application
+        applyTheme();
 
         const params = new URLSearchParams(window.location.search);
         const action = params.get('action');

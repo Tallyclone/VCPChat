@@ -5,59 +5,78 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>图片预览</title>
     <style>
+        /* Theme variables are defined directly here to make the component self-contained */
+        :root {
+            --secondary-bg: #28282c;
+            --primary-text: #e0e0e0;
+            --tool-bubble-bg: #3a3a3e;
+            --button-bg: #48484c;
+            --button-hover-bg: #58585e;
+            --border-color: #3a3a3e;
+        }
+
+        html.light-theme {
+            --secondary-bg: #ffffff;
+            --primary-text: #2c3e50;
+            --tool-bubble-bg: #e0e6eb;
+            --button-bg: #3498db;
+            --button-hover-bg: #2980b9;
+            --border-color: #e0e6eb;
+        }
+
         body { 
             margin: 0; 
-            background-color: #2c2c2e; /* Dark background for better contrast */
-            display: flex; 
-            justify-content: center; 
-            align-items: center; 
-            height: 100vh; 
-            overflow: hidden; 
+            background-color: var(--secondary-bg);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
             font-family: sans-serif;
-            color: #f0f0f0;
+            color: var(--primary-text);
+            transition: background-color 0.3s ease, color 0.3s ease;
         }
         img {
-            max-width: 98vw; /* Slightly less than 100 to avoid scrollbars due to potential padding/border */
-            max-height: 90vh; /* Adjusted to make space for buttons */
+            max-width: 98vw;
+            max-height: 90vh;
             object-fit: contain;
             box-shadow: 0 0 20px rgba(0,0,0,0.5);
             border-radius: 4px;
-            display: block; /* Helps with centering and layout */
-            margin-bottom: 15px; /* Space between image and buttons */
-            transition: transform 0.1s ease-out; /* Smooth scaling */
-            cursor: grab; /* Indicate draggable when zoomed */
+            display: block;
+            margin-bottom: 15px;
+            transition: transform 0.1s ease-out;
+            cursor: grab;
         }
         .error-message {
             padding: 20px;
-            background-color: #444;
+            background-color: var(--tool-bubble-bg);
             border-radius: 5px;
             font-size: 1.2em;
         }
         .controls {
             position: absolute;
-            bottom: 20px; /* Position at the bottom */
+            bottom: 20px;
             left: 50%;
             transform: translateX(-50%);
-            /* display: flex; will be set by JS after image load */
-            gap: 15px; /* Space between buttons */
+            gap: 15px;
             padding: 10px;
-            background-color: rgba(44, 44, 46, 0.8); /* Semi-transparent background */
+            background-color: var(--tool-bubble-bg);
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.3);
             opacity: 0;
             visibility: hidden;
-            transition: opacity 0.3s ease-in-out, visibility 0.3s ease-in-out;
-            pointer-events: none; /* Prevent interaction when hidden */
+            transition: opacity 0.3s ease-in-out, visibility 0.3s ease-in-out, background-color 0.3s ease;
+            pointer-events: none;
         }
         .controls.active {
             opacity: 1;
             visibility: visible;
-            pointer-events: auto; /* Allow interaction when visible */
+            pointer-events: auto;
         }
         .control-button {
-            background-color: #555;
-            color: #fff;
-            border: none;
+            background-color: var(--button-bg);
+            color: var(--primary-text);
+            border: 1px solid var(--border-color);
             padding: 10px 15px;
             border-radius: 5px;
             cursor: pointer;
@@ -65,10 +84,10 @@
             align-items: center;
             gap: 8px;
             font-size: 0.9em;
-            transition: background-color 0.2s ease;
+            transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
         }
         .control-button:hover {
-            background-color: #666;
+            background-color: var(--button-hover-bg);
         }
         .control-button svg {
             width: 18px;
@@ -78,6 +97,13 @@
     </style>
 </head>
 <body>
+    <script>
+        // Apply theme class to HTML element based on URL param
+        const theme = new URLSearchParams(window.location.search).get('theme');
+        if (theme === 'light') {
+            document.documentElement.classList.add('light-theme');
+        }
+    </script>
     <img id="viewerImage" src="" alt="图片加载中或加载失败..." style="display:none;"/>
     <div class="controls" id="imageControls" style="display:none;">
         <button id="copyButton" class="control-button">
@@ -116,7 +142,6 @@
                 console.log('Image Viewer: Loading image -', decodedImageUrl);
                 imgElement.src = decodedImageUrl;
                 imgElement.alt = decodeURIComponent(imageTitle);
-                // imgElement.style.display = 'block'; // Visibility handled by onload/onerror
 
                 imgElement.onload = () => {
                     console.log('Image Viewer: Image loaded successfully.');
@@ -184,9 +209,8 @@
                             isDragging = true;
                             startX = event.clientX;
                             startY = event.clientY;
-                            // No need to store initial translation here, as imgInitialX/Y are already current
                             imgElement.style.cursor = 'grabbing';
-                            event.preventDefault(); // Prevent text selection or other default drag behaviors
+                            event.preventDefault();
                         }
                     });
 
@@ -195,8 +219,6 @@
                             const dx = event.clientX - startX;
                             const dy = event.clientY - startY;
                             
-                            // Update the image's translation based on drag
-                            // The new translation is the initial translation plus the drag distance
                             const newTranslateX = imgInitialX + dx;
                             const newTranslateY = imgInitialY + dy;
                             
@@ -214,8 +236,8 @@
                             }
                             // Persist the new translation
                             const currentTransform = new WebKitCSSMatrix(window.getComputedStyle(imgElement).transform);
-                            imgInitialX = currentTransform.m41; // e value for X translation
-                            imgInitialY = currentTransform.m42; // f value for Y translation
+                            imgInitialX = currentTransform.m41;
+                            imgInitialY = currentTransform.m42;
                         }
                     });
                      // Also stop dragging if mouse leaves the window
@@ -237,7 +259,7 @@
                 imgElement.onerror = () => {
                     console.error('Image Viewer: Error loading image -', decodedImageUrl);
                     imgElement.style.display = 'none';
-                    imageControls.style.display = 'none'; // Keep controls hidden on error
+                    imageControls.style.display = 'none';
                     errorDiv.textContent = `无法加载图片: ${decodeURIComponent(imageTitle)}`;
                     errorDiv.style.display = 'block';
                 };
@@ -253,7 +275,6 @@
             copyButton.addEventListener('click', async () => {
                 if (!imgElement.src || imgElement.src === window.location.href) {
                     console.warn('Image Viewer: No valid image to copy.');
-                    // Optionally, briefly change button text to indicate issue
                     const originalText = copyButton.innerHTML;
                     copyButton.innerHTML = '<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"></path></svg> 无效图片';
                     setTimeout(() => {
@@ -261,7 +282,7 @@
                     }, 2000);
                     return;
                 }
-                const originalButtonText = copyButton.innerHTML; // Store original content with SVG
+                const originalButtonText = copyButton.innerHTML;
                 try {
                     const response = await fetch(imgElement.src);
                     if (!response.ok) {
@@ -284,14 +305,13 @@
                             console.log('Image Viewer: Conversion to PNG successful.');
                         } catch (conversionError) {
                             console.error('Image Viewer: Failed to convert JPEG to PNG -', conversionError);
-                            // Fallback to original blob if conversion fails, though it might still fail on write
                         }
                     }
 
                     const item = new ClipboardItem({ [finalBlobType]: blob });
                     await navigator.clipboard.write([item]);
                     console.log('Image copied to clipboard as', finalBlobType);
-                    copyButton.innerHTML = '<svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:currentColor;"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"></path></svg> 已复制'; // Checkmark SVG + Text
+                    copyButton.innerHTML = '<svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:currentColor;"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"></path></svg> 已复制';
                     setTimeout(() => {
                         copyButton.innerHTML = originalButtonText;
                     }, 2000);
@@ -314,25 +334,24 @@
                     link.href = imgElement.src;
                     
                     let filename = decodeURIComponent(imageTitle) || 'downloaded_image';
-                    const urlFilename = imgElement.src.substring(imgElement.src.lastIndexOf('/') + 1).split('?')[0]; // Remove query params
+                    const urlFilename = imgElement.src.substring(imgElement.src.lastIndexOf('/') + 1).split('?')[0];
                     const urlExtensionMatch = urlFilename.match(/\.(jpe?g|png|gif|webp|svg)$/i);
                     const titleExtensionMatch = filename.match(/\.(jpe?g|png|gif|webp|svg)$/i);
 
                     if (!titleExtensionMatch && urlExtensionMatch) {
-                        // Ensure filename doesn't already somehow end with the extension from URL (e.g. title was "image.jpg" and url is "other.jpg")
-                        const baseFilename = filename.replace(/\.[^/.]+$/, ""); // remove existing extension if any
+                        const baseFilename = filename.replace(/\.[^/.]+$/, "");
                         if (baseFilename + urlExtensionMatch[0] !== filename) {
                            filename = baseFilename + urlExtensionMatch[0];
                         } else if (!filename.endsWith(urlExtensionMatch[0])) {
                            filename += urlExtensionMatch[0];
                         }
                     } else if (!titleExtensionMatch && !urlExtensionMatch) {
-                         if (!/\.[a-z0-9]{3,4}$/i.test(filename)) { // check for 3 or 4 char extension
-                            filename += '.png'; // Default extension
+                         if (!/\.[a-z0-9]{3,4}$/i.test(filename)) {
+                            filename += '.png';
                          }
                     }
                     
-                    link.download = filename.replace(/[<>:"/\\|?*]+/g, '_').replace(/\s+/g, '_'); // Sanitize and replace spaces
+                    link.download = filename.replace(/[<>:"/\\|?*]+/g, '_').replace(/\s+/g, '_');
 
                     document.body.appendChild(link);
                     link.click();

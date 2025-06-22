@@ -78,7 +78,7 @@ html, body {
 }
 
 .close-button-assistant:hover {
-    background-color: #e81123;
+    background-color: var(--danger-hover-bg);
 }
 
 .title-bar-button-assistant svg {
@@ -88,7 +88,7 @@ html, body {
 }
 
 .close-button-assistant:hover svg {
-    fill: #fff;
+    fill: var(--text-on-accent);
 }
 
 /* 聊天消息区域，直接沿用主样式 */
@@ -156,7 +156,7 @@ html, body {
 }
 
 body.light-theme #sendMessageBtn svg {
-    fill: #ffffff; 
+    fill: var(--text-on-accent);
 }
 
 #sendMessageBtn:hover {
@@ -224,5 +224,5 @@ body.light-theme #selection-assistant-bar .assistant-button {
 
 body.light-theme #selection-assistant-bar .assistant-button:hover {
     background-color: var(--highlight-text);
-    color: #ffffff;
+    color: var(--text-on-accent);
 }

@@ -133,7 +133,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Image Context Menu
     showImageContextMenu: (imageUrl) => ipcRenderer.send('show-image-context-menu', imageUrl),
     // Open Image in New Window
-    openImageInNewWindow: (imageUrl, imageTitle) => ipcRenderer.send('open-image-in-new-window', imageUrl, imageTitle),
+    openImageInNewWindow: (imageUrl, imageTitle, theme) => ipcRenderer.send('open-image-in-new-window', imageUrl, imageTitle, theme),
     // Open Text in New Window (Read Mode)
     openTextInNewWindow: async (textContent, windowTitle, theme) => { 
         console.log('[Preload] openTextInNewWindow called (invoke with new channel). Title:', windowTitle, 'Content length:', textContent.length, 'Theme:', theme);

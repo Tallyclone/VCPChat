@@ -225,11 +225,23 @@ function initialize(mainWindow, context) {
         }
     });
 
-    ipcMain.on('open-image-in-new-window', (event, imageUrl, imageTitle) => {
+    ipcMain.on('open-image-in-new-window', async (event, imageUrl, imageTitle) => {
+        // Directly get the theme from the main window's renderer process
+        let theme = 'dark'; // Default theme
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            try {
+                theme = await mainWindow.webContents.executeJavaScript('document.body.classList.contains("light-theme") ? "light" : "dark"');
+            } catch (e) {
+                console.error('[Main Process] Failed to get theme from main window, defaulting to dark.', e);
+            }
+        }
+
+        const isLightTheme = theme === 'light';
         const imageViewerWindow = new BrowserWindow({
             width: 800, height: 600, minWidth: 400, minHeight: 300,
             title: imageTitle || '图片预览',
             parent: mainWindow, modal: false, show: false,
+            backgroundColor: isLightTheme ? '#ffffff' : '#28282c', // Match the viewer's actual bg color
             icon: path.join(__dirname, '..', 'assets', 'icon.png'),
             webPreferences: {
                 preload: path.join(__dirname, '..', 'preload.js'),
@@ -237,7 +249,7 @@ function initialize(mainWindow, context) {
             }
         });
 
-        const viewerUrl = `file://${path.join(__dirname, '..', 'image-viewer.html')}?src=${encodeURIComponent(imageUrl)}&title=${encodeURIComponent(imageTitle || '图片预览')}`;
+        const viewerUrl = `file://${path.join(__dirname, '..', 'image-viewer.html')}?src=${encodeURIComponent(imageUrl)}&title=${encodeURIComponent(imageTitle || '图片预览')}&theme=${encodeURIComponent(theme)}`;
         imageViewerWindow.loadURL(viewerUrl);
         openChildWindows.push(imageViewerWindow);
         

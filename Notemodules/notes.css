@@ -1,67 +1,10 @@
 /* notes.css */
 
-/* Define CSS variables for dark theme (default) */
-:root {
-    --bg-color: #282c34; /* Overall background */
-    --primary-text-color: #abb2bf; /* Main text color */
-    --secondary-bg-color: #32363e; /* Background for elements like sidebar, main content panels */
-    --tertiary-bg-color: #21252b; /* Background for code blocks, inputs */
-    --border-color: #444; /* Borders */
-    --input-text-color: #abb2bf; /* Text color for inputs */
-    --button-text-color: #abb2bf; /* Text color for buttons */
-    --button-bg-color: #4f535c; /* Default button background */
-    --button-hover-bg-color: #5a5e67; /* Button background on hover */
-    --button-active-bg-color: #666a73; /* Button background when active/selected */
-    --button-primary-bg-color: #61afef; /* Primary button background (e.g., Save) */
-    --button-primary-hover-bg-color: #5295cc;
-    --button-danger-bg-color: #e06c75; /* Danger button background (e.g., Delete) */
-    --button-danger-hover-bg-color: #c95f69;
-    --accent-color: #61afef; /* Accent color for links, highlights */
-    --code-text-color: #c8ccd4; /* Text color inside code blocks */
-    --inline-code-text-color: #e06c75; /* Text color for inline code */
-    --top-light-effect-bg: rgba(250, 250, 210, 0.5); /* Lighter for dark theme */
-    --shadow-color: rgba(0, 0, 0, 0.2);
-    --font-family-sans-serif: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
-    --font-family-monospace: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
-    --border-radius: 6px; /* Consistent border radius */
-    --success-color: #4CAF50; /* Success message color */
-    --error-color: #F44336; /* Error message color */
-    --bubble-bg-color: rgba(79, 83, 92, 0.7); /* Default bubble background (slightly transparent) */
-    --bubble-text-color: #abb2bf; /* Default bubble text color */
-}
-
-/* Define CSS variables for light theme */
-.light-theme {
-    --bg-color: #f8f9fa;
-    --primary-text-color: #212529;
-    --secondary-bg-color: #ffffff;
-    --tertiary-bg-color: #e9ecef;
-    --border-color: #dee2e6;
-    --input-text-color: #495057;
-    --button-text-color: #212529;
-    --button-bg-color: #e9ecef;
-    --button-hover-bg-color: #d3d9df;
-    --button-active-bg-color: #ced4da;
-    --button-primary-bg-color: #007bff;
-    --button-primary-hover-bg-color: #0069d9;
-    --button-danger-bg-color: #dc3545;
-    --button-danger-hover-bg-color: #c82333;
-    --accent-color: #007bff;
-    --code-text-color: #212529;
-    --inline-code-text-color: #d6336c;
-    --top-light-effect-bg: rgba(100, 150, 230, 0.3); /* Darker for light theme */
-    --shadow-color: rgba(0, 0, 0, 0.1);
-    --success-color: #28a745; /* Light theme success */
-    --error-color: #dc3545; /* Light theme error */
-    --bubble-bg-color: rgba(233, 236, 239, 0.85); /* Light theme bubble background */
-    --bubble-text-color: #495057; /* Light theme bubble text color */
-}
-
 /* General body styling */
 body {
-    font-family: var(--font-family-sans-serif);
-    background-color: var(--bg-color);
-    color: var(--primary-text-color);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    background-color: var(--primary-bg);
+    color: var(--primary-text);
     margin: 0;
     padding: 0;
     overflow: hidden; /* Prevent body scroll, containers will scroll */
@@ -74,16 +17,7 @@ body {
 
 /* Decorative top light effect */
 .top-light-effect {
-    position: absolute;
-    top: 0;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 200px;
-    max-width: 300px;
-    height: 20px;
-    background-color: var(--top-light-effect-bg);
-    border-radius: 0 0 50% 50% / 0 0 100% 100%;
-    z-index: 0; /* Ensure it's behind content if needed */
+    display: none; /* Disabled for now to rely on main theme */
 }
 
 /* Main container for sidebar and content */
@@ -101,9 +35,9 @@ body {
 .sidebar {
     width: 260px; /* Fixed width for the sidebar */
     min-width: 220px; /* Prevent it from becoming too small */
-    background-color: var(--secondary-bg-color);
-    border-radius: var(--border-radius);
-    box-shadow: 0 1px 3px var(--shadow-color);
+    background-color: var(--secondary-bg);
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     display: flex;
     flex-direction: column;
     overflow: hidden; /* Important for internal scrolling */
@@ -124,9 +58,9 @@ textarea {
     width: 100%; /* Full width within parent */
     padding: 10px 12px;
     border: 1px solid var(--border-color);
-    border-radius: var(--border-radius);
-    background-color: var(--tertiary-bg-color);
-    color: var(--input-text-color);
+    border-radius: 6px;
+    background-color: var(--input-bg);
+    color: var(--primary-text);
     font-size: 1em; /* Relative to body font size */
     box-sizing: border-box; /* Include padding and border in element's total width and height */
     transition: border-color 0.2s, box-shadow 0.2s;
@@ -135,17 +69,17 @@ textarea {
 input[type="text"]:focus,
 textarea:focus {
     outline: none;
-    border-color: var(--accent-color);
-    box-shadow: 0 0 0 2px rgba(var(--accent-color), 0.25); /* Use a more subtle focus ring */
+    border-color: var(--highlight-text);
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.3); /* Fallback color, ideally use a rgb variable */
 }
 
 /* Common button styling */
 .button {
     padding: 10px 15px;
-    background-color: var(--button-bg-color);
-    color: var(--button-text-color);
+    background-color: var(--button-bg);
+    color: var(--primary-text);
     border: 1px solid var(--border-color);
-    border-radius: var(--border-radius);
+    border-radius: 6px;
     cursor: pointer;
     font-size: 1em;
     font-weight: 500;
@@ -156,37 +90,33 @@ textarea:focus {
 }
 
 .button:hover {
-    background-color: var(--button-hover-bg-color);
+    background-color: var(--button-hover-bg);
 }
 
 .button:active {
-    background-color: var(--button-active-bg-color);
+    background-color: var(--accent-bg);
 }
 
 .button-primary {
-    background-color: var(--button-primary-bg-color);
-    border-color: var(--button-primary-bg-color);
-    color: white; /* Ensure contrast */
+    background-color: var(--button-bg);
+    border-color: var(--border-color);
+    color: var(--primary-text);
 }
-.light-theme .button-primary {
-    color: white;
-}
+
 .button-primary:hover {
-    background-color: var(--button-primary-hover-bg-color);
-    border-color: var(--button-primary-hover-bg-color);
+    background-color: var(--button-hover-bg);
+    border-color: var(--border-color);
 }
 
 .button-danger {
-    background-color: var(--button-danger-bg-color);
-    border-color: var(--button-danger-bg-color);
-    color: white; /* Ensure contrast */
+    background-color: var(--danger-color);
+    border-color: var(--danger-color);
+    color: var(--text-on-accent);
 }
-.light-theme .button-danger {
-    color: white;
-}
+
 .button-danger:hover {
-    background-color: var(--button-danger-hover-bg-color);
-    border-color: var(--button-danger-hover-bg-color);
+    background-color: var(--danger-hover-bg);
+    border-color: var(--danger-hover-bg);
 }
 
 /* Note list panel in the sidebar */
@@ -221,7 +151,7 @@ textarea:focus {
 .note-list-panel li .note-timestamp-display {
     flex-shrink: 0; /* 防止时间戳收缩 */
     font-size: 0.85em; /* 时间戳字体小一点 */
-    color: var(--primary-text-color); /* 时间戳颜色 */
+    color: var(--secondary-text); /* 时间戳颜色 */
     opacity: 0.7; /* 时间戳透明度 */
 }
 
@@ -230,36 +160,32 @@ textarea:focus {
 }
 
 .note-list-panel li:hover {
-    background-color: var(--button-hover-bg-color);
+    background-color: var(--accent-bg);
 }
 
 .note-list-panel li.active {
-    background-color: var(--button-active-bg-color);
-    color: var(--bg-color); /* Ensure text is readable on active background */
+    background-color: var(--user-bubble-bg);
+    color: var(--text-on-accent);
     font-weight: 600;
-}
-.light-theme .note-list-panel li.active {
-    color: var(--primary-text-color); /* Or white if the active bg is dark enough */
 }
 
 /* Styles for drag and drop */
 .note-list-panel li.dragging {
     opacity: 0.5; /* Make the dragged item semi-transparent */
-    background-color: var(--accent-color); /* Optional: change background while dragging */
+    background-color: var(--accent-bg); /* Optional: change background while dragging */
 }
 
 .note-list-panel li.drag-over-target {
-    border-top: 2px dashed var(--accent-color); /* Highlight potential drop target */
-    /* Or use background-color: var(--button-hover-bg-color); */
+    border-top: 2px dashed var(--highlight-text); /* Highlight potential drop target */
 }
 
 
 /* Main content area styling */
 .main-content {
     flex: 1; /* Take up remaining horizontal space */
-    background-color: var(--secondary-bg-color);
-    border-radius: var(--border-radius);
-    box-shadow: 0 1px 3px var(--shadow-color);
+    background-color: var(--secondary-bg);
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     display: flex;
     flex-direction: column;
     overflow: hidden; /* Crucial for internal scrolling of note body */
@@ -295,7 +221,6 @@ textarea:focus {
 .note-body {
     flex: 1; /* This makes the body take up all available vertical space */
     display: flex; /* Use flex to arrange editor and preview side-by-side or stacked */
-    /* flex-direction: row; /* Default to side-by-side, can be changed to column if needed */
     overflow: hidden; /* Important: Prevents this container from scrolling */
     padding: 12px;
     gap: 12px;
@@ -309,9 +234,9 @@ textarea:focus {
     flex-direction: column; /* Stack content and bubble vertically */
     position: relative; /* For positioning the bubble */
     overflow: hidden; /* Prevent internal content from overflowing this container */
-    background-color: var(--tertiary-bg-color); /* Give them a distinct background */
+    background-color: var(--tertiary-bg); /* Give them a distinct background */
     border: 1px solid var(--border-color);
-    border-radius: var(--border-radius);
+    border-radius: 6px;
 }
 
 #noteContent,
@@ -330,12 +255,12 @@ textarea:focus {
 
 #noteContent {
     resize: none; /* Disable manual resize, rely on flex */
-    color: var(--input-text-color);
-    font-family: var(--font-family-monospace); /* Monospace for editing */
+    color: var(--primary-text);
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
 }
 
 #previewContent {
-    color: var(--primary-text-color);
+    color: var(--primary-text);
 }
 
 /* Styling for the content bubbles */
@@ -343,24 +268,22 @@ textarea:focus {
     position: absolute;
     bottom: 10px; /* Adjusted for better placement */
     right: 10px;  /* Adjusted for better placement */
-    background-color: var(--bubble-bg-color);
-    color: var(--bubble-text-color);
+    background-color: var(--tool-bubble-bg);
+    color: var(--primary-text);
     padding: 5px 10px; /* Slightly larger padding */
-    border-radius: var(--border-radius);
+    border-radius: 6px;
     font-size: 0.8em; /* Slightly larger font */
     opacity: 0.9; /* Slightly more opaque */
     pointer-events: none;
     z-index: 2;
     white-space: nowrap;
-    box-shadow: 0 1px 2px var(--shadow-color); /* Add a subtle shadow */
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1); /* Add a subtle shadow */
 }
-
-/* No specific styles needed for .editor-bubble and .preview-bubble if they share .content-bubble style */
 
 /* Markdown specific styles */
 .markdown-preview h1, .markdown-preview h2, .markdown-preview h3,
 .markdown-preview h4, .markdown-preview h5, .markdown-preview h6 {
-    color: var(--primary-text-color);
+    color: var(--primary-text);
     border-bottom: 1px solid var(--border-color);
     padding-bottom: 0.3em;
     margin-top: 1.2em;
@@ -371,7 +294,7 @@ textarea:focus {
 .markdown-preview h3 { font-size: 1.3em; }
 
 .markdown-preview a {
-    color: var(--accent-color);
+    color: var(--highlight-text);
     text-decoration: none;
 }
 
@@ -396,19 +319,18 @@ textarea:focus {
 }
 
 .markdown-preview blockquote {
-    border-left: 4px solid var(--accent-color);
+    border-left: 4px solid var(--highlight-text);
     padding-left: 1em;
     margin: 1.2em 0;
-    color: var(--primary-text-color);
-    opacity: 0.9;
+    color: var(--secondary-text);
     font-style: italic;
 }
 
 .markdown-preview pre {
-    background-color: var(--bg-color); /* Slightly different from tertiary for contrast */
-    color: var(--code-text-color);
+    background-color: var(--tertiary-bg);
+    color: var(--primary-text);
     padding: 1em;
-    border-radius: var(--border-radius);
+    border-radius: 6px;
     overflow-x: auto;
     white-space: pre-wrap; /* Allow wrapping of long lines */
     word-wrap: break-word; /* Break words if necessary */
@@ -416,23 +338,15 @@ textarea:focus {
     border: 1px solid var(--border-color);
     margin: 1em 0;
 }
-.light-theme .markdown-preview pre {
-    background-color: #f1f3f5; /* Lighter pre background for light theme */
-}
-
 
 .markdown-preview code:not(pre code) { /* Inline code */
-    font-family: var(--font-family-monospace);
-    background-color: var(--tertiary-bg-color);
-    color: var(--inline-code-text-color);
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+    background-color: var(--tertiary-bg);
+    color: var(--highlight-text);
     padding: 0.2em 0.4em;
     border-radius: 3px;
     font-size: 0.9em;
 }
-.light-theme .markdown-preview code:not(pre code) {
-    background-color: #e0e0e0;
-}
-
 
 /* Copy button for code blocks in preview */
 .markdown-preview pre .copy-button {
@@ -440,8 +354,8 @@ textarea:focus {
     top: 8px;
     right: 8px;
     padding: 6px;
-    background-color: var(--button-bg-color);
-    color: var(--button-text-color);
+    background-color: var(--button-bg);
+    color: var(--primary-text);
     border: 1px solid var(--border-color);
     border-radius: 4px;
     cursor: pointer;
@@ -450,7 +364,7 @@ textarea:focus {
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 1px 2px var(--shadow-color);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .markdown-preview pre:hover .copy-button {
@@ -458,7 +372,7 @@ textarea:focus {
 }
 
 .markdown-preview pre .copy-button:hover {
-    background-color: var(--button-hover-bg-color);
+    background-color: var(--button-hover-bg);
 }
 
 .markdown-preview pre .copy-button svg {
@@ -468,7 +382,7 @@ textarea:focus {
 }
 
 .markdown-preview pre .copy-button:active {
-    background-color: var(--button-active-bg-color);
+    background-color: var(--accent-bg);
 }
 
 /* Scrollbar styling (optional, for a more consistent look) */
@@ -480,10 +394,10 @@ textarea:focus {
 /* Custom Context Menu Styling */
 .custom-context-menu {
     position: absolute;
-    background-color: var(--secondary-bg-color);
+    background-color: var(--secondary-bg);
     border: 1px solid var(--border-color);
-    border-radius: var(--border-radius);
-    box-shadow: 0 2px 5px var(--shadow-color);
+    border-radius: 6px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
     z-index: 1000;
     display: none; /* Hidden by default */
     padding: 5px 0;
@@ -498,17 +412,17 @@ textarea:focus {
 .custom-context-menu ul li {
     padding: 8px 15px;
     cursor: pointer;
-    color: var(--primary-text-color);
+    color: var(--primary-text);
     font-size: 0.95em;
     white-space: nowrap; /* Prevent text wrapping */
 }
 
 .custom-context-menu ul li:hover {
-    background-color: var(--button-hover-bg-color);
+    background-color: var(--accent-bg);
 }
 
 .custom-context-menu ul li:active {
-    background-color: var(--button-active-bg-color);
+    background-color: var(--accent-bg);
 }
 
 /* Disabled state for context menu items */
@@ -519,34 +433,38 @@ textarea:focus {
 }
 
 ::-webkit-scrollbar-track {
-    background: var(--tertiary-bg-color);
-    border-radius: var(--border-radius);
+    background: var(--scrollbar-track);
 }
 
 ::-webkit-scrollbar-thumb {
-    background: var(--button-bg-color);
-    border-radius: var(--border-radius);
+    background: var(--scrollbar-thumb);
+    border-radius: 6px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: var(--button-hover-bg-color);
-}
-
-/* Ensure highlight.js theme matches the app theme */
-.light-theme #highlight-theme-style {
-    href: "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-light.min.css";
+    background: var(--scrollbar-thumb-hover);
 }
 
 /* 针对只包含一个 .katex-display 元素的 p 标签 (KaTeX 显示模式公式的容器) */
 .markdown-preview p:has(> .katex-display:only-child) {
     margin-block-start: 0; /* 移除上边距 (逻辑属性) */
     margin-block-end: 0;   /* 可选：同时移除下边距，或设置为一个较小的值 */
-                           /* 如果只想保留原有的 margin-bottom: 1em; 可以只设置 margin-block-start */
 }
 
-/* 如果想保留原有的 margin-bottom: 1em; 可以这样写：*/
-/*
-.markdown-preview p:has(> .katex-display:only-child) {
-    margin-block-start: 0;
+.button-success {
+    background-color: var(--success-color);
+    border-color: var(--success-color);
+    color: var(--text-on-accent);
 }
-*/
+
+.button-error {
+    background-color: var(--danger-color);
+    border-color: var(--danger-color);
+    color: var(--text-on-accent);
+}
+
+.button-confirm-delete {
+    background-color: var(--danger-hover-bg);
+    border-color: var(--danger-hover-bg);
+    color: var(--text-on-accent);
+}

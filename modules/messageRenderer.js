@@ -253,7 +253,8 @@ async function renderAttachments(message, contentDiv) {
                 attachmentElement.classList.add('message-attachment-image-thumbnail');
                 attachmentElement.onclick = (e) => {
                     e.stopPropagation();
-                    electronAPI.openImageInNewWindow(att.src, att.name);
+                    const currentTheme = document.body.classList.contains('light-theme') ? 'light' : 'dark';
+                    electronAPI.openImageInNewWindow(att.src, att.name, currentTheme);
                 };
                  attachmentElement.addEventListener('contextmenu', (e) => { // Use attachmentElement here
                     e.preventDefault(); e.stopPropagation();

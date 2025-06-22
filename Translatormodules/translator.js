@@ -21,8 +21,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // 应用主题的函数 (与主程序同步)
     const applyTheme = (theme) => {
-        // body.classList.toggle('light-theme', isLight) 
-        // 会在 isLight 为 true 时添加 'light-theme' 类, false 时移除
         document.body.classList.toggle('light-theme', theme === 'light');
         currentTheme = theme;
     };
@@ -120,6 +118,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
+    // 初始化主题
+    applyTheme(currentTheme);
+
     // --- 为复制按钮添加点击事件 ---
     copyBtn.addEventListener('click', () => {
         const textToCopy = translatedTextarea.value;
@@ -139,6 +140,4 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    // 初始化主题
-    applyTheme(currentTheme);
 });

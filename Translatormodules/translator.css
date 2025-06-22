@@ -79,7 +79,7 @@ body {
 }
 /* 为翻译按钮设置白色文本 */
 #translateBtn {
-    color: white; /* 确保翻译按钮文本为白色 */
+    color: var(--text-on-accent); /* 确保翻译按钮文本与主题匹配 */
 }
 
 .translator-controls button:hover,
@@ -153,7 +153,7 @@ body {
 #copyBtn svg {
     width: 18px;
     height: 18px;
-    color: white; /* 确保复制按钮图标为白色 */
+    color: var(--text-on-accent); /* 确保复制按钮图标与主题匹配 */
 }
 
 .copy-feedback {

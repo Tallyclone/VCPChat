@@ -8,6 +8,7 @@
     --accent-bg-dark: #3a3a3e;       /* 悬停/选中背景 - 中墨灰 */
     --primary-text-dark: #e0e0e0;    /* 主要文字 - 浅灰 */
     --secondary-text-dark: #a0a0a0;  /* 次要/标题文字 - 中灰 */
+    --text-on-accent-dark: #ffffff; /* 在强调色背景上的文字颜色 */
     --highlight-text-dark: #6fa8dc;  /* 高亮文字 - 柔和蓝 (点缀色) */
     --border-color-dark: #3a3a3e;    /* 边框颜色 */
     --user-bubble-bg-dark: rgba(56, 120, 173, 0.75);  /* 用户气泡 - 柔和蓝 (点缀色) - 带透明度 */
@@ -16,6 +17,7 @@
     --button-hover-bg-dark: #58585e; /* 按钮悬停 - 略亮的墨灰 */
     --danger-color-dark: #e57373;    /* 危险操作 - 柔和红 */
     --danger-hover-bg-dark: #ef5350; /* 危险操作悬停 - 略深的柔和红 */
+    --success-color-dark: #66bb6a; /* 成功操作 - 柔和绿 */
     --input-bg-dark: #222225;        /* 输入框背景 */
     --tool-bubble-bg-dark: #3a3a3e;   /* VCP工具调用气泡背景 */
     --tool-bubble-border-dark: #58585e;
@@ -34,6 +36,7 @@
     --accent-bg-light: #e0e6eb;       /* 悬停/选中背景 */
     --primary-text-light: #2c3e50;    /* 主要文字 - 深灰蓝 */
     --secondary-text-light: #5a6f80;  /* 次要/标题文字 - 中灰蓝 */
+    --text-on-accent-light: #ffffff; /* 在强调色背景上的文字颜色 */
     --highlight-text-light: #3498db;  /* 高亮文字 - 清爽蓝 */
     --border-color-light: #e0e6eb;    /* 边框颜色 - 调整为更浅的颜色，与 accent-bg-light 相似 */
     --user-bubble-bg-light: rgba(52, 152, 219, 0.7);  /* 用户气泡 - 清爽蓝 - 带透明度 */
@@ -42,6 +45,7 @@
     --button-hover-bg-light: #2980b9; /* 按钮悬停 - 深一点的蓝 */
     --danger-color-light: #e74c3c;    /* 危险操作 - 红色 */
     --danger-hover-bg-light: #c0392b; /* 危险操作悬停 - 深红 */
+    --success-color-light: #4caf50; /* 成功操作 - 绿色 */
     --input-bg-light: #ffffff;        /* 输入框背景 - 白色 */
     --tool-bubble-bg-light: #e0e6eb;   /* VCP工具调用气泡背景 - 浅灰 */
     --tool-bubble-border-light: #b8c0c8;
@@ -61,6 +65,7 @@
     --accent-bg: var(--accent-bg-dark);
     --primary-text: var(--primary-text-dark);
     --secondary-text: var(--secondary-text-dark);
+    --text-on-accent: var(--text-on-accent-dark);
     --highlight-text: var(--highlight-text-dark);
     --border-color: var(--border-color-dark);
     --user-bubble-bg: var(--user-bubble-bg-dark);
@@ -69,6 +74,7 @@
     --button-hover-bg: var(--button-hover-bg-dark);
     --danger-color: var(--danger-color-dark);
     --danger-hover-bg: var(--danger-hover-bg-dark);
+    --success-color: var(--success-color-dark);
     --input-bg: var(--input-bg-dark);
     --tool-bubble-bg: var(--tool-bubble-bg-dark);
     --tool-bubble-border: var(--tool-bubble-border-dark);
@@ -96,6 +102,7 @@ body.light-theme {
     --accent-bg: var(--accent-bg-light);
     --primary-text: var(--primary-text-light);
     --secondary-text: var(--secondary-text-light);
+    --text-on-accent: var(--text-on-accent-light);
     --highlight-text: var(--highlight-text-light);
     --border-color: var(--border-color-light);
     --user-bubble-bg: var(--user-bubble-bg-light);
@@ -104,6 +111,7 @@ body.light-theme {
     --button-hover-bg: var(--button-hover-bg-light);
     --danger-color: var(--danger-color-light);
     --danger-hover-bg: var(--danger-hover-bg-light);
+    --success-color: var(--success-color-light);
     --input-bg: var(--input-bg-light);
     --tool-bubble-bg: var(--tool-bubble-bg-light);
     --tool-bubble-border: var(--tool-bubble-border-light);
