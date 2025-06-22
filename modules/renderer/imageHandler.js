@@ -2,7 +2,8 @@
 
 // This map holds the loading state for images within each message,
 // preventing re-loading and solving the placeholder flicker issue during streaming.
-// Structure: Map<messageId, Map<src, { status: 'loading'|'loaded'|'error', element?: HTMLImageElement }>>
+// Structure: Map<messageId, Map<uniqueImageKey, { status: 'loading'|'loaded'|'error', element?: HTMLImageElement }>>
+// uniqueImageKey is `${src}-${index}` to handle duplicate images in the same message.
 const messageImageStates = new Map();
 
 let imageHandlerRefs = {
@@ -39,27 +40,30 @@ export function setContentAndProcessImages(contentDiv, rawHtml, messageId) {
         if (!srcMatch) return ''; // 忽略没有src的标签
         const src = srcMatch[1];
 
-        const state = imageStates.get(src);
+       const uniqueImageKey = `${src}-${imageCounter}`;
+       const placeholderId = `img-placeholder-${messageId}-${imageCounter}`;
+       imageCounter++;
 
-        // 如果图片已经加载成功，直接返回最终的<img>元素字符串
-        if (state && state.status === 'loaded' && state.element) {
-            return state.element.outerHTML;
-        }
+       const state = imageStates.get(uniqueImageKey);
 
-        // 如果图片加载失败，返回错误占位符
-        if (state && state.status === 'error') {
-             return `<div class="image-placeholder" style="min-height: 50px; display: flex; align-items: center; justify-content: center;">图片加载失败</div>`;
-        }
+       // 如果图片已经加载成功，直接返回最终的<img>元素字符串
+       if (state && state.status === 'loaded' && state.element) {
+           return state.element.outerHTML;
+       }
 
-        const placeholderId = `img-placeholder-${messageId}-${imageCounter++}`;
-        const widthMatch = imgTagString.match(/width="([^"]+)"/);
-        const displayWidth = widthMatch ? parseInt(widthMatch[1], 10) : 200;
+       // 如果图片加载失败，返回错误占位符
+       if (state && state.status === 'error') {
+           return `<div class="image-placeholder" style="min-height: 50px; display: flex; align-items: center; justify-content: center;">图片加载失败</div>`;
+       }
 
-        // 如果是新图片，则启动加载
-        if (!state) {
-            imageStates.set(src, { status: 'loading' });
+       const widthMatch = imgTagString.match(/width="([^"]+)"/);
+       const displayWidth = widthMatch ? parseInt(widthMatch[1], 10) : 200;
 
-            const imageLoader = new Image();
+       // 如果是新图片，则启动加载
+       if (!state) {
+           imageStates.set(uniqueImageKey, { status: 'loading' });
+
+           const imageLoader = new Image();
             imageLoader.src = src;
 
             imageLoader.onload = () => {
@@ -81,12 +85,12 @@ export function setContentAndProcessImages(contentDiv, rawHtml, messageId) {
                     imageHandlerRefs.electronAPI.showImageContextMenu(src);
                 });
 
-                // 更新状态
-                const currentState = imageStates.get(src);
-                if (currentState) {
-                    currentState.status = 'loaded';
-                    currentState.element = finalImage;
-                }
+               // 更新状态
+               const currentState = imageStates.get(uniqueImageKey);
+               if (currentState) {
+                   currentState.status = 'loaded';
+                   currentState.element = finalImage;
+               }
 
                 // 替换DOM中的占位符 - 使用更智能的替换策略
                 const placeholder = document.getElementById(placeholderId);
@@ -104,11 +108,11 @@ export function setContentAndProcessImages(contentDiv, rawHtml, messageId) {
                 }
             };
 
-            imageLoader.onerror = () => {
-                const currentState = imageStates.get(src);
-                if (currentState) {
-                    currentState.status = 'error';
-                }
+           imageLoader.onerror = () => {
+               const currentState = imageStates.get(uniqueImageKey);
+               if (currentState) {
+                   currentState.status = 'error';
+               }
                 const placeholder = document.getElementById(placeholderId);
                 if (placeholder && document.body.contains(placeholder)) {
                     const messageContainer = placeholder.closest('.message-item');

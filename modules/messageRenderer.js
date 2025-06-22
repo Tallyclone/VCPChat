@@ -191,6 +191,9 @@ function initializeMessageRenderer(refs) {
        ensureSeparatorBetweenImgAndCode: contentProcessor.ensureSeparatorBetweenImgAndCode,
        removeBoldMarkersAroundQuotes: contentProcessor.removeBoldMarkersAroundQuotes,
 
+       // Pass the main processor function
+       processRenderedContent: contentProcessor.processRenderedContent,
+
        // Debouncing and Timers
        enhancedRenderDebounceTimers: enhancedRenderDebounceTimers,
        ENHANCED_RENDER_DEBOUNCE_DELAY: ENHANCED_RENDER_DEBOUNCE_DELAY,
@@ -456,6 +459,8 @@ function appendStreamChunk(messageId, chunkData, agentNameForGroup, agentIdForGr
 }
 
 async function finalizeStreamedMessage(messageId, finishReason, fullResponseText, agentNameForGroup, agentIdForGroup) {
+    // The responsibility for final rendering is now fully delegated to streamManager.
+    // This function just acts as a passthrough.
     await streamManager.finalizeStreamedMessage(messageId, finishReason, fullResponseText, agentNameForGroup, agentIdForGroup);
 }
 

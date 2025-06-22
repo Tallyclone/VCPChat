@@ -77,50 +77,10 @@ function processAndRenderSmoothChunk(messageId) {
     processedTextForParse = refs.ensureSeparatorBetweenImgAndCode(processedTextForParse);
     processedTextForParse = refs.removeBoldMarkersAroundQuotes(processedTextForParse);
     const rawHtml = markedInstance.parse(processedTextForParse);
-    refs.setContentAndProcessImages(contentDiv, rawHtml, messageId);
-
-    const fullAccumulatedText = accumulatedStreamText.get(messageId) || "";
-    if (messageItem) {
-        let currentDelay = refs.ENHANCED_RENDER_DEBOUNCE_DELAY;
-        if (fullAccumulatedText.includes("<<<DailyNoteStart>>>") || fullAccumulatedText.includes("<<<[TOOL_REQUEST]>>>")) {
-            currentDelay = refs.DIARY_RENDER_DEBOUNCE_DELAY;
-        }
-
-        if (refs.enhancedRenderDebounceTimers.has(messageItem)) {
-            clearTimeout(refs.enhancedRenderDebounceTimers.get(messageItem));
-        }
-        refs.enhancedRenderDebounceTimers.set(messageItem, setTimeout(() => {
-            if (document.body.contains(messageItem)) {
-                const targetContentDiv = messageItem.querySelector('.md-content');
-                if (targetContentDiv) {
-                    targetContentDiv.querySelectorAll('pre[data-vcp-prettified="true"], pre[data-maid-diary-prettified="true"]').forEach(pre => {
-                        delete pre.dataset.vcpPrettified;
-                        delete pre.dataset.maidDiaryPrettified;
-                    });
-                    
-                    let processedForDebounce = refs.removeSpeakerTags(textForRendering);
-                    processedForDebounce = refs.ensureNewlineAfterCodeBlock(processedForDebounce);
-                    processedForDebounce = refs.ensureSpaceAfterTilde(processedForDebounce);
-                    processedForDebounce = refs.removeIndentationFromCodeBlockMarkers(processedForDebounce);
-                    processedForDebounce = refs.ensureSeparatorBetweenImgAndCode(processedForDebounce);
-                    processedForDebounce = refs.removeBoldMarkersAroundQuotes(processedForDebounce);
-                    const rawHtml = markedInstance.parse(processedForDebounce);
-                    refs.setContentAndProcessImages(targetContentDiv, rawHtml, messageItem.dataset.messageId);
-
-                    if (window.renderMathInElement) {
-                        window.renderMathInElement(targetContentDiv, {
-                            delimiters: [ {left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}, {left: "\\(", right: "\\)", display: false}, {left: "\\[", right: "\\]", display: true} ],
-                            throwOnError: false
-                        });
-                    }
-                    refs.processAllPreBlocksInContentDiv(targetContentDiv);
-                    refs.highlightTagsInMessage(targetContentDiv);
-                    refs.highlightQuotesInMessage(targetContentDiv);
-                }
-            }
-            refs.enhancedRenderDebounceTimers.delete(messageItem);
-        }, currentDelay));
-    }
+   refs.setContentAndProcessImages(contentDiv, rawHtml, messageId);
+   // The full processRenderedContent includes all necessary post-processing,
+   // so we call it here to apply syntax highlighting and other effects during streaming.
+   refs.processRenderedContent(contentDiv);
     
     uiHelper.scrollToBottom();
 }
@@ -160,43 +120,9 @@ function renderChunkDirectlyToDOM(messageId, textToAppend, agentNameForGroup, ag
     processedFullCurrentTextForParse = refs.ensureSeparatorBetweenImgAndCode(processedFullCurrentTextForParse);
     processedFullCurrentTextForParse = refs.removeBoldMarkersAroundQuotes(processedFullCurrentTextForParse);
     const rawHtml = markedInstance.parse(processedFullCurrentTextForParse);
-    refs.setContentAndProcessImages(contentDiv, rawHtml, messageId);
-
-    if (messageItem) {
-        let currentDelay = refs.ENHANCED_RENDER_DEBOUNCE_DELAY;
-        if (fullCurrentText.includes("<<<DailyNoteStart>>>") || fullCurrentText.includes("<<<[TOOL_REQUEST]>>>")) {
-            currentDelay = refs.DIARY_RENDER_DEBOUNCE_DELAY;
-        }
-        if (refs.enhancedRenderDebounceTimers.has(messageItem)) {
-            clearTimeout(refs.enhancedRenderDebounceTimers.get(messageItem));
-        }
-        refs.enhancedRenderDebounceTimers.set(messageItem, setTimeout(() => {
-            if (document.body.contains(messageItem)) {
-                const targetContentDiv = messageItem.querySelector('.md-content');
-                if (targetContentDiv) {
-                    targetContentDiv.querySelectorAll('pre[data-vcp-prettified="true"], pre[data-maid-diary-prettified="true"]').forEach(pre => {
-                        delete pre.dataset.vcpPrettified;
-                        delete pre.dataset.maidDiaryPrettified;
-                    });
-                    let processedForDebounce = refs.removeSpeakerTags(fullCurrentText);
-                    processedForDebounce = refs.ensureNewlineAfterCodeBlock(processedForDebounce);
-                    processedForDebounce = refs.ensureSpaceAfterTilde(processedForDebounce);
-                    processedForDebounce = refs.removeIndentationFromCodeBlockMarkers(processedForDebounce);
-                    processedForDebounce = refs.ensureSeparatorBetweenImgAndCode(processedForDebounce);
-                    processedForDebounce = refs.removeBoldMarkersAroundQuotes(processedForDebounce);
-                    const rawHtml = markedInstance.parse(processedForDebounce);
-                    refs.setContentAndProcessImages(targetContentDiv, rawHtml, messageItem.dataset.messageId);
-                    if (window.renderMathInElement) {
-                        window.renderMathInElement(targetContentDiv, { delimiters: [ {left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}, {left: "\\(", right: "\\)", display: false}, {left: "\\[", right: "\\]", display: true} ], throwOnError: false });
-                    }
-                    refs.processAllPreBlocksInContentDiv(targetContentDiv);
-                    refs.highlightTagsInMessage(targetContentDiv);
-                    refs.highlightQuotesInMessage(targetContentDiv);
-                }
-            }
-            refs.enhancedRenderDebounceTimers.delete(messageItem);
-        }, currentDelay));
-    }
+   refs.setContentAndProcessImages(contentDiv, rawHtml, messageId);
+   // The full processRenderedContent includes all necessary post-processing.
+   refs.processRenderedContent(contentDiv);
     uiHelper.scrollToBottom();
 }
 
@@ -306,31 +232,21 @@ export function appendStreamChunk(messageId, chunkData, agentNameForGroup, agent
                     if (finalMessageItem) {
                         const finalContentDiv = finalMessageItem.querySelector('.md-content');
                         if (finalContentDiv && typeof textForFinalPass === 'string') {
-                            if (refs.enhancedRenderDebounceTimers.has(finalMessageItem)) {
-                                clearTimeout(refs.enhancedRenderDebounceTimers.get(finalMessageItem));
-                                refs.enhancedRenderDebounceTimers.delete(finalMessageItem);
-                            }
-                            finalContentDiv.querySelectorAll('pre[data-vcp-prettified="true"], pre[data-maid-diary-prettified="true"]').forEach(pre => {
-                                delete pre.dataset.vcpPrettified;
-                                delete pre.dataset.maidDiaryPrettified;
-                            });
-
-                            let processedText = refs.removeSpeakerTags(textForFinalPass);
-                            processedText = refs.ensureNewlineAfterCodeBlock(processedText);
-                            processedText = refs.ensureSpaceAfterTilde(processedText);
-                            processedText = refs.removeIndentationFromCodeBlockMarkers(processedText);
-                            processedText = refs.ensureSeparatorBetweenImgAndCode(processedText);
-                            processedText = refs.removeBoldMarkersAroundQuotes(processedText);
-                            finalContentDiv.innerHTML = refs.markedInstance.parse(processedText);
-
-                            if (window.renderMathInElement) {
-                                window.renderMathInElement(finalContentDiv, { delimiters: [{left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}, {left: "\\(", right: "\\)", display: false}, {left: "\\[", right: "\\]", display: true}], throwOnError: false });
+                           // Clear any pending debounced timers since we are doing the final render now.
+                           if (refs.enhancedRenderDebounceTimers.has(finalMessageItem)) {
+                               clearTimeout(refs.enhancedRenderDebounceTimers.get(finalMessageItem));
+                               refs.enhancedRenderDebounceTimers.delete(finalMessageItem);
                            }
-                           refs.processAllPreBlocksInContentDiv(finalContentDiv);
-                           refs.highlightTagsInMessage(finalContentDiv);
-                           refs.highlightQuotesInMessage(finalContentDiv);
+
+                           // Perform the final, definitive render.
+                           let processedText = refs.preprocessFullContent(textForFinalPass);
+                           finalContentDiv.innerHTML = refs.markedInstance.parse(processedText);
+                           
+                           // Now, run the full, unified content processor.
+                           refs.processRenderedContent(finalContentDiv);
+                           
                            refs.uiHelper.scrollToBottom();
-                        }
+                       }
                     }
                     streamingChunkQueues.delete(messageId);
                     accumulatedStreamText.delete(messageId);
@@ -454,25 +370,12 @@ export async function finalizeStreamedMessage(messageId, finishReason, fullRespo
             processedFinalText = refs.removeIndentationFromCodeBlockMarkers(processedFinalText);
             processedFinalText = refs.ensureSeparatorBetweenImgAndCode(processedFinalText);
             processedFinalText = refs.removeBoldMarkersAroundQuotes(processedFinalText);
-            const rawHtml = markedInstance.parse(processedFinalText);
-            refs.setContentAndProcessImages(contentDiv, rawHtml, messageId);
-
-            if (window.renderMathInElement) {
-                 window.renderMathInElement(contentDiv, { delimiters: [{left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}, {left: "\\(", right: "\\)", display: false}, {left: "\\[", right: "\\]", display: true}], throwOnError: false });
-            }
-            
-            if (refs.enhancedRenderDebounceTimers.has(messageItem)) {
-                clearTimeout(refs.enhancedRenderDebounceTimers.get(messageItem));
-                refs.enhancedRenderDebounceTimers.delete(messageItem);
-            }
-            contentDiv.querySelectorAll('pre[data-vcp-prettified="true"], pre[data-maid-diary-prettified="true"]').forEach(pre => {
-                delete pre.dataset.vcpPrettified;
-                delete pre.dataset.maidDiaryPrettified;
-            });
-            refs.processAllPreBlocksInContentDiv(contentDiv);
-            refs.highlightTagsInMessage(contentDiv);
-            refs.highlightQuotesInMessage(contentDiv);
-        }
+           const rawHtml = markedInstance.parse(processedFinalText);
+           refs.setContentAndProcessImages(contentDiv, rawHtml, messageId);
+           
+           // Use the full, unified content processor for the final render.
+           refs.processRenderedContent(contentDiv);
+       }
     }
 
     if (!shouldEnableSmoothStreaming(messageId)) {
