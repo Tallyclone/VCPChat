@@ -113,9 +113,6 @@
             padding: 0.2em 0.4em;
             border-radius: 3px;
         }
-        img { /* Ensure images are hidden if any slip through the stripping process */
-            display: none !important;
-        }
         /* Style for the copy button */
         .copy-button {
             position: absolute;
@@ -220,7 +217,7 @@
         .html-preview-container {
             position: relative;
             width: 100%;
-            height: 60vh; /* 60% of the viewport height */
+            height: 85vh; /* 85% of the viewport height */
             margin-top: 10px;
             margin-bottom: 10px;
         }
@@ -599,7 +596,7 @@
 
                     // Isolate HTML code blocks to prevent quote rendering from corrupting them.
                     const htmlBlocks = [];
-                    let processedText = decodedText.replace(/(```html\n[\s\S]*?```)/g, (match) => {
+                    let processedText = decodedText.replace(/(```\s*html\n[\s\S]*?```)/gi, (match) => {
                         htmlBlocks.push(match);
                         return `__HTML_BLOCK_PLACEHOLDER_${htmlBlocks.length - 1}__`;
                     });
@@ -614,7 +611,7 @@
                     });
 
                     // Prepare Mermaid diagrams before Markdown rendering
-                    const mermaidRegex = /```mermaid\n([\s\S]*?)```/g;
+                    const mermaidRegex = /```\s*mermaid\n([\s\S]*?)```/gi;
                     let mermaidProcessedText = processedText.replace(mermaidRegex, (match, mermaidContent) => {
                         // Create a unique ID for each diagram to avoid conflicts if multiple diagrams exist
                         const diagramId = `mermaid-diagram-${Math.random().toString(36).substring(2, 15)}`;
@@ -648,8 +645,8 @@
 
                                 const codeContent = decodeHtmlEntities(block.innerText);
                                 // More robust check: Only identify as HTML if explicitly marked with ```html
-                                const isHtml = block.classList.contains('language-html');
-                                const isPython = block.classList.contains('language-python');
+                                const isHtml = Array.from(block.classList).some(cls => /^language-html$/i.test(cls));
+                                const isPython = Array.from(block.classList).some(cls => /^language-python$/i.test(cls));
 
                                 // Create Play Button for HTML content
                                 if (isHtml) {

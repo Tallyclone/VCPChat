@@ -146,7 +146,20 @@ function showContextMenu(event, messageItem, message) {
             } else if (typeof message.content !== 'string') {
                 contentToProcess = '';
             }
-            const plainTextContent = contentToProcess.replace(/<img[^>]*>/gi, "").replace(/<audio[^>]*>.*?<\/audio>/gi, "[音频]").replace(/<video[^>]*>.*?<\/video>/gi, "[视频]");
+            // Split content by code blocks to selectively clean media tags
+            const parts = contentToProcess.split(/(```[\s\S]*?```)/g);
+            const processedParts = parts.map(part => {
+                // If the part is a code block (starts and ends with ```), keep it as is.
+                if (part.startsWith('```') && part.endsWith('```')) {
+                    return part;
+                } else {
+                    // Otherwise, it's not a code block, so remove media tags.
+                    return part.replace(/<img[^>]*>/gi, "")
+                               .replace(/<audio[^>]*>.*?<\/audio>/gi, "[音频]")
+                               .replace(/<video[^>]*>.*?<\/video>/gi, "[视频]");
+                }
+            });
+            const plainTextContent = processedParts.join('');
             const windowTitle = `阅读: ${message.id.substring(0,10)}...`;
             const currentTheme = document.body.classList.contains('light-theme') ? 'light' : 'dark';
             if (electronAPI && typeof electronAPI.openTextInNewWindow === 'function') {
