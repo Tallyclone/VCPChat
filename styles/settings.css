@@ -736,3 +736,9 @@ body.light-theme .invite-agent-button:hover {
 .form-group-inline-avatar label {
     margin-bottom: 0; /* 移除标签的底部外边距 */
 }
+/* General Input Placeholder Styling */
+input::placeholder,
+textarea::placeholder {
+    color: var(--placeholder-text);
+    opacity: 1; /* Override default opacity */
+}

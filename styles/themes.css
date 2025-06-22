@@ -85,6 +85,7 @@
     --scrollbar-thumb: var(--scrollbar-thumb-dark);
     --scrollbar-thumb-hover: var(--scrollbar-thumb-hover-dark);
     --quoted-text: var(--quoted-text-dark); /* 新增：引用文本颜色 */
+    --placeholder-text: var(--placeholder-text-dark);
 
     /* RGB versions for semi-transparent backgrounds */
     --rgb-secondary-bg-dark: 40, 40, 44;
@@ -92,6 +93,9 @@
     /* --- 在这里添加以下两行 --- */
     --shimmer-color-transparent: rgba(224, 224, 224, 0.6); /* 基于您的主文字颜色 #e0e0e0 */
     --shimmer-color-highlight: #ffffff; /* 暗色模式下，用纯白作为高光最合适 */
+
+    /* --- Custom Properties --- */
+    --placeholder-text-dark: #6a6a6e;
 }
 
 /* --- 亮色主题应用 --- */
@@ -122,7 +126,11 @@ body.light-theme {
     --scrollbar-thumb: var(--scrollbar-thumb-light);
     --scrollbar-thumb-hover: var(--scrollbar-thumb-hover-light);
     --quoted-text: var(--quoted-text-light); /* 新增：引用文本颜色 */
+    --placeholder-text: var(--placeholder-text-light);
     /* --- 在这里添加以下两行 --- */
     --shimmer-color-transparent: rgba(44, 62, 80, 0.3); /* 基于您的亮色主文字 #2c3e50 - 降低透明度以增强对比 */
     --shimmer-color-highlight: #000000; /* 亮色模式下，用纯黑作为高光有强烈的对比感 */
+
+    /* --- Custom Properties --- */
+    --placeholder-text-light: #a0aab3;
 }
