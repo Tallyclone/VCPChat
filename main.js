@@ -26,7 +26,7 @@ const DistributedServer = require('./VCPDistributedServer/VCPDistributedServer.j
 const windowHandlers = require('./modules/ipc/windowHandlers'); // Import window IPC handlers
 const settingsHandlers = require('./modules/ipc/settingsHandlers'); // Import settings IPC handlers
 const fileDialogHandlers = require('./modules/ipc/fileDialogHandlers'); // Import file dialog handlers
-const agentHandlers = require('./modules/ipc/agentHandlers'); // Import agent handlers
+const { getAgentConfigById, ...agentHandlers } = require('./modules/ipc/agentHandlers'); // Import agent handlers
 const chatHandlers = require('./modules/ipc/chatHandlers'); // Import chat handlers
 const groupChatHandlers = require('./modules/ipc/groupChatHandlers'); // Import group chat handlers
 
@@ -872,31 +872,7 @@ app.on('will-quit', () => {
 // --- IPC Handlers ---
 // open-external-link handler is now in modules/ipc/fileDialogHandlers.js
 
-// Helper function to get agent config, needed by assistant bar
-async function getAgentConfigById(agentId) {
-    const agentDir = path.join(AGENT_DIR, agentId);
-    const configPath = path.join(agentDir, 'config.json');
-    if (await fs.pathExists(configPath)) {
-        const config = await fs.readJson(configPath);
-        const avatarPathPng = path.join(agentDir, 'avatar.png');
-        const avatarPathJpg = path.join(agentDir, 'avatar.jpg');
-        const avatarPathJpeg = path.join(agentDir, 'avatar.jpeg');
-        const avatarPathGif = path.join(agentDir, 'avatar.gif');
-        config.avatarUrl = null;
-        if (await fs.pathExists(avatarPathPng)) {
-            config.avatarUrl = `file://${avatarPathPng}?t=${Date.now()}`;
-        } else if (await fs.pathExists(avatarPathJpg)) {
-            config.avatarUrl = `file://${avatarPathJpg}?t=${Date.now()}`;
-        } else if (await fs.pathExists(avatarPathJpeg)) {
-            config.avatarUrl = `file://${avatarPathJpeg}?t=${Date.now()}`;
-        } else if (await fs.pathExists(avatarPathGif)) {
-            config.avatarUrl = `file://${avatarPathGif}?t=${Date.now()}`;
-        }
-        config.id = agentId;
-        return config;
-    }
-    return { error: `Agent config for ${agentId} not found.` };
-}
+// The getAgentConfigById helper function has been moved to agentHandlers.js
 
 // VCP Server Communication is now handled in modules/ipc/chatHandlers.js
 

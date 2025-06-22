@@ -60,25 +60,33 @@
         }
 
         const toast = document.createElement('div');
-        toast.className = `toast-notification-item ${type}`; // e.g., 'info', 'success', 'error'
+        toast.className = `floating-toast-notification ${type}`; // e.g., 'info', 'success', 'error'
         toast.textContent = message;
 
         container.appendChild(toast);
 
         // Animate in
         requestAnimationFrame(() => {
-            toast.classList.add('show');
+            toast.classList.add('visible');
         });
 
         // Set timer to animate out and remove
         setTimeout(() => {
-            toast.classList.remove('show');
+            toast.classList.remove('visible');
+            toast.classList.add('exiting'); // Add exiting class for the out-animation
             // Remove the element from the DOM after the fade-out transition
-            toast.addEventListener('transitionend', () => {
-                if (toast.parentNode) {
+            toast.addEventListener('transitionend', (event) => {
+                // Make sure we're listening for the right transition
+                if (event.propertyName === 'transform' && toast.parentNode) {
                     toast.parentNode.removeChild(toast);
                 }
             });
+             // Fallback removal in case transitionend doesn't fire
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+            }, 1000); // Should be longer than the transition duration
         }, duration);
     };
 

@@ -3,6 +3,38 @@ const { ipcMain } = require('electron');
 const fs = require('fs-extra');
 const path = require('path');
 
+let AGENT_DIR_CACHE; // Cache the agent directory path
+
+async function getAgentConfigById(agentId) {
+    if (!AGENT_DIR_CACHE) {
+        console.error("agentHandlers not initialized with AGENT_DIR. Cannot get agent config.");
+        return { error: "Agent handler not initialized." };
+    }
+    const agentDir = path.join(AGENT_DIR_CACHE, agentId);
+    const configPath = path.join(agentDir, 'config.json');
+    if (await fs.pathExists(configPath)) {
+        const config = await fs.readJson(configPath);
+        const avatarPathPng = path.join(agentDir, 'avatar.png');
+        const avatarPathJpg = path.join(agentDir, 'avatar.jpg');
+        const avatarPathJpeg = path.join(agentDir, 'avatar.jpeg');
+        const avatarPathGif = path.join(agentDir, 'avatar.gif');
+        config.avatarUrl = null;
+        if (await fs.pathExists(avatarPathPng)) {
+            config.avatarUrl = `file://${avatarPathPng}?t=${Date.now()}`;
+        } else if (await fs.pathExists(avatarPathJpg)) {
+            config.avatarUrl = `file://${avatarPathJpg}?t=${Date.now()}`;
+        } else if (await fs.pathExists(avatarPathJpeg)) {
+            config.avatarUrl = `file://${avatarPathJpeg}?t=${Date.now()}`;
+        } else if (await fs.pathExists(avatarPathGif)) {
+            config.avatarUrl = `file://${avatarPathGif}?t=${Date.now()}`;
+        }
+        config.id = agentId;
+        return config;
+    }
+    return { error: `Agent config for ${agentId} not found.` };
+}
+
+
 /**
  * Initializes agent management related IPC handlers.
  * @param {object} context - An object containing necessary context.
@@ -16,6 +48,7 @@ const path = require('path');
  */
 function initialize(context) {
     const { AGENT_DIR, USER_DATA_DIR, SETTINGS_FILE, USER_AVATAR_FILE } = context;
+    AGENT_DIR_CACHE = AGENT_DIR; // Cache the directory path
 
     ipcMain.handle('get-agents', async () => {
         try {
@@ -155,29 +188,9 @@ function initialize(context) {
         }
     });
 
-    ipcMain.handle('get-agent-config', async (event, agentId) => {
-        try {
-            const agentDir = path.join(AGENT_DIR, agentId);
-            const configPath = path.join(agentDir, 'config.json');
-            if (await fs.pathExists(configPath)) {
-                const config = await fs.readJson(configPath);
-                const avatarPathPng = path.join(agentDir, 'avatar.png');
-                const avatarPathJpg = path.join(agentDir, 'avatar.jpg');
-                const avatarPathJpeg = path.join(agentDir, 'avatar.jpeg');
-                const avatarPathGif = path.join(agentDir, 'avatar.gif');
-                config.avatarUrl = null;
-                if (await fs.pathExists(avatarPathPng)) config.avatarUrl = `file://${avatarPathPng}?t=${Date.now()}`;
-                else if (await fs.pathExists(avatarPathJpg)) config.avatarUrl = `file://${avatarPathJpg}?t=${Date.now()}`;
-                else if (await fs.pathExists(avatarPathJpeg)) config.avatarUrl = `file://${avatarPathJpeg}?t=${Date.now()}`;
-                else if (await fs.pathExists(avatarPathGif)) config.avatarUrl = `file://${avatarPathGif}?t=${Date.now()}`;
-                config.id = agentId;
-                return config;
-            }
-            return { error: `Agent config for ${agentId} not found.` };
-        } catch (error) {
-            console.error(`获取Agent ${agentId} 配置失败:`, error);
-            return { error: error.message };
-        }
+    ipcMain.handle('get-agent-config', (event, agentId) => {
+        // Now this handler simply calls the exported function
+        return getAgentConfigById(agentId);
     });
 
     ipcMain.handle('save-agent-config', async (event, agentId, config) => {
@@ -334,5 +347,6 @@ function initialize(context) {
 }
 
 module.exports = {
-    initialize
+    initialize,
+    getAgentConfigById
 };

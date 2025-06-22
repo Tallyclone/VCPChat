@@ -348,17 +348,23 @@
 
     <script src="modules/topicSummarizer.js"></script>
     <script src="modules/notificationRenderer.js"></script>
-    <script src="modules/messageRenderer.js"></script>
-    <script src="modules/inputEnhancer.js"></script> <!-- Add inputEnhancer.js -->
-    <script src="modules/itemListManager.js"></script> <!-- Add itemListManager.js -->
-    <script src="modules/topicListManager.js"></script> <!-- Add topicListManager.js -->
+    <script type="module" src="modules/messageRenderer.js"></script>
+    <script src="modules/inputEnhancer.js"></script>
+    <script src="modules/itemListManager.js"></script>
+    <script src="modules/topicListManager.js"></script>
     <script src="modules/chatManager.js"></script>
     <script src="modules/uiManager.js"></script>
     <script src="modules/settingsManager.js"></script>
     <script src="modules/ui-helpers.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
-<script src="Groupmodules/grouprenderer.js"></script>
-    <script src="renderer.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <script src="Groupmodules/grouprenderer.js"></script>
+    <script type="module" src="modules/renderer/colorUtils.js"></script>
+    <script type="module" src="modules/renderer/imageHandler.js"></script>
+    <script type="module" src="modules/renderer/domBuilder.js"></script>
+    <script type="module" src="modules/renderer/streamManager.js"></script>
+    <script type="module" src="modules/renderer/contentProcessor.js"></script>
+    <script type="module" src="modules/renderer/messageContextMenu.js"></script>
+    <script src="renderer.js" defer></script>
 </body>
 </html>
 <div id="floating-toast-notifications-container"></div>

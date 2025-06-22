@@ -547,7 +547,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             mainRendererFunctions: {
                 setCroppedFile: setCroppedFile,
                 getCroppedFile: getCroppedFile,
-                getAverageColorFromAvatar: getAverageColorFromAvatar,
                 updateChatHeader: (text) => { if (currentChatNameH3) currentChatNameH3.textContent = text; },
                 onItemDeleted: async () => {
                     window.chatManager.displayNoItemSelected();
@@ -826,19 +825,21 @@ function setupEventListeners() {
                         window.messageRenderer.setUserAvatar(avatarSaveResult.avatarUrl);
                     }
                     if (avatarSaveResult.needsColorExtraction && window.electronAPI && window.electronAPI.saveAvatarColor) {
-                        getAverageColorFromAvatar(avatarSaveResult.avatarUrl, (avgColor) => {
-                            if (avgColor) {
-                                window.electronAPI.saveAvatarColor({ type: 'user', id: 'user_global', color: avgColor })
-                                    .then((saveColorResult) => {
-                                        if (saveColorResult && saveColorResult.success) {
-                                            globalSettings.userAvatarCalculatedColor = avgColor; // Update global state
-                                            if (window.messageRenderer) window.messageRenderer.setUserAvatarColor(avgColor);
-                                        } else {
-                                            console.warn("Failed to save user avatar color:", saveColorResult?.error);
-                                        }
-                                    }).catch(err => console.error("Error saving user avatar color:", err));
-                            }
-                        });
+                        if (window.getDominantAvatarColor) {
+                            window.getDominantAvatarColor(avatarSaveResult.avatarUrl).then(avgColor => {
+                                if (avgColor) {
+                                    window.electronAPI.saveAvatarColor({ type: 'user', id: 'user_global', color: avgColor })
+                                        .then((saveColorResult) => {
+                                            if (saveColorResult && saveColorResult.success) {
+                                                globalSettings.userAvatarCalculatedColor = avgColor; // Update global state
+                                                if (window.messageRenderer) window.messageRenderer.setUserAvatarColor(avgColor);
+                                            } else {
+                                                console.warn("Failed to save user avatar color:", saveColorResult?.error);
+                                            }
+                                        }).catch(err => console.error("Error saving user avatar color:", err));
+                                }
+                            });
+                        }
                     }
                     setCroppedFile('user', null); // Clear centrally
                     userAvatarInput.value = ''; // Clear file input
@@ -1198,46 +1199,4 @@ function setCroppedFile(type, file) {
 window.getCroppedFile = getCroppedFile;
 window.setCroppedFile = setCroppedFile;
 
-// Function to extract average color from an avatar image
-function getAverageColorFromAvatar(imageUrl, callback) {
-    const img = new Image();
-    img.crossOrigin = "Anonymous"; // Important for local file URLs if issues arise, though usually okay for file://
-    img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx.drawImage(img, 0, 0, img.width, img.height);
-        try {
-            const imageData = ctx.getImageData(0, 0, img.width, img.height);
-            const data = imageData.data;
-            let r = 0, g = 0, b = 0, count = 0;
-            for (let i = 0; i < data.length; i += 4) {
-                // Consider only non-transparent pixels and somewhat opaque
-                if (data[i + 3] > 128) { 
-                    r += data[i];
-                    g += data[i + 1];
-                    b += data[i + 2];
-                    count++;
-                }
-            }
-            if (count > 0) {
-                r = Math.floor(r / count);
-                g = Math.floor(g / count);
-                b = Math.floor(b / count);
-                callback(`rgb(${r},${g},${b})`);
-            } else {
-                callback(null); // All transparent or no pixels
-            }
-        } catch (e) {
-            console.error("Error getting image data (possibly CORS or security issue for remote images):", e);
-            callback(null);
-        }
-    };
-    img.onerror = () => {
-        console.error("Failed to load image for color extraction:", imageUrl);
-        callback(null);
-    };
-    img.src = imageUrl;
-}
 
