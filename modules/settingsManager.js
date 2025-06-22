@@ -136,7 +136,7 @@ const settingsManager = (() => {
                     uiHelper.showToastNotification(`保存Agent头像失败: ${avatarResult.error}`, 'error');
                 } else {
                     if (avatarResult.needsColorExtraction && electronAPI.saveAvatarColor) {
-                         mainRendererFunctions.getAverageColorFromAvatar(avatarResult.avatarUrl, (avgColor) => {
+                         uiHelper.getAverageColorFromAvatar(avatarResult.avatarUrl, (avgColor) => {
                             if (avgColor) {
                                 electronAPI.saveAvatarColor({ type: 'agent', id: agentId, color: avgColor })
                                     .then((saveColorResult) => {
