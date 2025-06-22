@@ -234,7 +234,7 @@ textarea:focus {
     flex-direction: column; /* Stack content and bubble vertically */
     position: relative; /* For positioning the bubble */
     overflow: hidden; /* Prevent internal content from overflowing this container */
-    background-color: var(--tertiary-bg); /* Give them a distinct background */
+    background-color: var(--input-bg); /* Give them a distinct background */
     border: 1px solid var(--border-color);
     border-radius: 6px;
 }
@@ -467,4 +467,15 @@ textarea:focus {
     background-color: var(--danger-hover-bg);
     border-color: var(--danger-hover-bg);
     color: var(--text-on-accent);
+}
+
+/* Light theme specific adjustments for better contrast */
+.light-theme .sidebar input[type="text"],
+.light-theme #noteTitle {
+    background-color: #f5f5f5; /* Matching background for inputs */
+}
+
+.light-theme .editor-container,
+.light-theme .preview-container {
+    background-color: #f5f5f5; /* A light grey for better separation */
 }
