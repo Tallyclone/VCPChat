@@ -219,7 +219,7 @@
  
     <div class="modal" id="globalSettingsModal">
         <div class="modal-content">
-            <span class="close-button" onclick="closeModal('globalSettingsModal')">×</span>
+            <span class="close-button" onclick="uiHelperFunctions.closeModal('globalSettingsModal')">×</span>
             <h2>全局设置</h2>
             <form id="globalSettingsForm">
                 <div>
@@ -301,7 +301,7 @@
 
     <div class="modal" id="avatarCropperModal">
         <div class="modal-content" style="max-width: 420px;"> <!-- Adjusted width for cropper -->
-            <span class="close-button" onclick="closeModal('avatarCropperModal'); document.getElementById('agentAvatarInput').value = ''; if(document.getElementById('userAvatarInput')) document.getElementById('userAvatarInput').value = '';">&times;</span>
+            <span class="close-button" onclick="uiHelperFunctions.closeModal('avatarCropperModal'); document.getElementById('agentAvatarInput').value = ''; if(document.getElementById('userAvatarInput')) document.getElementById('userAvatarInput').value = '';">&times;</span>
             <h2>裁剪头像</h2>
             <div id="avatarCropperContainer" style="width: 360px; height: 360px; margin: 10px auto; position: relative; border: 1px solid var(--border-color); overflow: hidden; background-color: #ccc;">
                 <!-- Canvas for the image -->
@@ -330,7 +330,7 @@
 
 <div class="modal" id="createGroupModal">
         <div class="modal-content">
-            <span class="close-button" onclick="closeModal('createGroupModal')">×</span>
+            <span class="close-button" onclick="uiHelperFunctions.closeModal('createGroupModal')">×</span>
             <h2>创建新群组</h2>
             <form id="createGroupForm">
                 <div>
@@ -338,7 +338,7 @@
                     <input type="text" id="newGroupNameInput" name="groupName" placeholder="请输入群组名称" required>
                 </div>
                 <div class="form-actions">
-                    <button type="button" class="button-secondary" onclick="closeModal('createGroupModal')">取消</button>
+                    <button type="button" class="button-secondary" onclick="uiHelperFunctions.closeModal('createGroupModal')">取消</button>
                     <button type="submit" class="button-primary">创建</button>
                 </div>
             </form>
