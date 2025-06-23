@@ -223,7 +223,7 @@ function createAssistantBarWindow() {
     // This function is now an initializer for a reusable, hidden window.
     // It's called once at startup.
     assistantBarWindow = new BrowserWindow({
-        width: 360,
+        width: 410,
         height: 40,
         show: false, // Create hidden
         frame: false,
@@ -773,6 +773,41 @@ function formatTimestampForFilename(timestamp) {
         // When an action is taken, hide the bar and stop the listener
         hideAssistantBarAndStopListener();
         
+        // Handle the 'note' action separately
+        if (action === 'note') {
+            try {
+                console.log('[Main] Assistant action: note. Creating note from selection.');
+                const noteTitle = `来自划词笔记：${lastProcessedSelection.substring(0, 20)}...`;
+                const noteContent = lastProcessedSelection;
+                
+                // This is the same logic as in 'open-notes-with-content'
+                const targetWindow = createOrFocusNotesWindow();
+                const wc = targetWindow.webContents;
+                const data = {
+                    title: noteTitle,
+                    content: noteContent,
+                    theme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
+                };
+
+                if (!wc.isLoading()) {
+                    console.log(`[Main Process] Notes window already loaded. Sending shared content immediately.`);
+                    wc.send('shared-note-data', data);
+                } else {
+                    console.log(`[Main Process] Notes window is new. Waiting for 'notes-window-ready' signal...`);
+                    ipcMain.once('notes-window-ready', (e) => {
+                        if (e.sender === wc) {
+                            console.log(`[Main Process] Received 'notes-window-ready' signal. Sending shared content.`);
+                            wc.send('shared-note-data', data);
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('[Main] Error creating note from assistant action:', error);
+            }
+            return; // Stop execution here for the note action
+        }
+        
+        // Original logic for other actions
         try {
             const settings = await fs.readJson(SETTINGS_FILE);
             // No longer pass the full agent config. Just the ID.
