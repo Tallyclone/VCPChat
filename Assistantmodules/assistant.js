@@ -22,8 +22,35 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Main Logic ---
 
     closeBtn.addEventListener('click', () => window.close());
+// --- Click Handler for Images and Links ---
+chatMessagesDiv.addEventListener('click', (event) => {
+    const target = event.target;
 
-    window.electronAPI.onAssistantData(async (data) => {
+    // Handle image clicks
+    if (target.tagName === 'IMG' && target.closest('.message-content')) {
+        event.preventDefault();
+        const imageUrl = target.src;
+        const imageTitle = target.alt || '图片预览';
+        const theme = document.body.classList.contains('light-theme') ? 'light' : 'dark';
+        console.log(`[Assistant] Image clicked. Opening in new window. URL: ${imageUrl}`);
+        window.electronAPI.openImageInNewWindow(imageUrl, imageTitle, theme);
+        return;
+    }
+
+    // Handle link clicks
+    if (target.tagName === 'A' && target.href) {
+        event.preventDefault();
+        const url = target.href;
+        // Ensure it's a web link before opening
+        if (url.startsWith('http:') || url.startsWith('https:')) {
+            console.log(`[Assistant] Link clicked. Opening externally. URL: ${url}`);
+            window.electronAPI.sendOpenExternalLink(url);
+        }
+        return;
+    }
+});
+
+window.electronAPI.onAssistantData(async (data) => {
         console.log('Received assistant data:', data);
         const { selectedText, action, agentId: receivedAgentId, theme } = data;
         
