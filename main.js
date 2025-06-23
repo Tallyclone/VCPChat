@@ -1,4 +1,4 @@
-// main.js - Electron 主进程
+// main.js - Electron 主窗口
 
 const sharp = require('sharp'); // 确保在文件顶部引入
 
