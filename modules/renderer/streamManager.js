@@ -240,7 +240,8 @@ export function appendStreamChunk(messageId, chunkData, agentNameForGroup, agent
 
                            // Perform the final, definitive render.
                            let processedText = refs.preprocessFullContent(textForFinalPass);
-                           finalContentDiv.innerHTML = refs.markedInstance.parse(processedText);
+                           const rawHtml = refs.markedInstance.parse(processedText);
+                           refs.setContentAndProcessImages(finalContentDiv, rawHtml, messageId);
                            
                            // Now, run the full, unified content processor.
                            refs.processRenderedContent(finalContentDiv);

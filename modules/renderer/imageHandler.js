@@ -33,6 +33,7 @@ export function setContentAndProcessImages(contentDiv, rawHtml, messageId) {
     }
     const imageStates = messageImageStates.get(messageId);
     let imageCounter = 0;
+    const loadedImagesToReplace = []; // 用于存储已加载图片的信息，以便在innerHTML后替换
 
     // 1. 替换HTML中的<img>标签，并启动新图片的加载过程
     const processedHtml = rawHtml.replace(/<img[^>]+>/g, (imgTagString) => {
@@ -40,30 +41,32 @@ export function setContentAndProcessImages(contentDiv, rawHtml, messageId) {
         if (!srcMatch) return ''; // 忽略没有src的标签
         const src = srcMatch[1];
 
-       const uniqueImageKey = `${src}-${imageCounter}`;
-       const placeholderId = `img-placeholder-${messageId}-${imageCounter}`;
-       imageCounter++;
+        const uniqueImageKey = `${src}-${imageCounter}`;
+        const placeholderId = `img-placeholder-${messageId}-${imageCounter}`;
+        imageCounter++;
 
-       const state = imageStates.get(uniqueImageKey);
+        const state = imageStates.get(uniqueImageKey);
 
-       // 如果图片已经加载成功，直接返回最终的<img>元素字符串
-       if (state && state.status === 'loaded' && state.element) {
-           return state.element.outerHTML;
-       }
+        // 如果图片已经加载成功，记录下来以便稍后替换，并返回占位符
+        if (state && state.status === 'loaded' && state.element) {
+            loadedImagesToReplace.push({ placeholderId, element: state.element });
+            // 使用一个临时的div作为占位符
+            return `<div id="${placeholderId}" class="image-placeholder-ready"></div>`;
+        }
 
-       // 如果图片加载失败，返回错误占位符
-       if (state && state.status === 'error') {
-           return `<div class="image-placeholder" style="min-height: 50px; display: flex; align-items: center; justify-content: center;">图片加载失败</div>`;
-       }
+        // 如果图片加载失败，返回错误占位符
+        if (state && state.status === 'error') {
+            return `<div class="image-placeholder" style="min-height: 50px; display: flex; align-items: center; justify-content: center;">图片加载失败</div>`;
+        }
 
-       const widthMatch = imgTagString.match(/width="([^"]+)"/);
-       const displayWidth = widthMatch ? parseInt(widthMatch[1], 10) : 200;
+        const widthMatch = imgTagString.match(/width="([^"]+)"/);
+        const displayWidth = widthMatch ? parseInt(widthMatch[1], 10) : 200;
 
-       // 如果是新图片，则启动加载
-       if (!state) {
-           imageStates.set(uniqueImageKey, { status: 'loading' });
+        // 如果是新图片，则启动加载
+        if (!state) {
+            imageStates.set(uniqueImageKey, { status: 'loading' });
 
-           const imageLoader = new Image();
+            const imageLoader = new Image();
             imageLoader.src = src;
 
             imageLoader.onload = () => {
@@ -76,26 +79,28 @@ export function setContentAndProcessImages(contentDiv, rawHtml, messageId) {
                 finalImage.style.height = `${displayHeight}px`;
                 finalImage.style.cursor = 'pointer';
                 finalImage.title = `点击在新窗口预览: ${finalImage.alt || src}\n右键可复制图片`;
+                
                 finalImage.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    imageHandlerRefs.electronAPI.openImageInNewWindow(src, finalImage.alt || src.split('/').pop() || 'AI 图片');
+                    const currentTheme = document.body.classList.contains('light-theme') ? 'light' : 'dark';
+                    imageHandlerRefs.electronAPI.openImageInNewWindow(src, finalImage.alt || src.split('/').pop() || 'AI 图片', currentTheme);
                 });
+
                 finalImage.addEventListener('contextmenu', (e) => {
                     e.preventDefault(); e.stopPropagation();
                     imageHandlerRefs.electronAPI.showImageContextMenu(src);
                 });
 
-               // 更新状态
-               const currentState = imageStates.get(uniqueImageKey);
-               if (currentState) {
-                   currentState.status = 'loaded';
-                   currentState.element = finalImage;
-               }
+                // 更新状态
+                const currentState = imageStates.get(uniqueImageKey);
+                if (currentState) {
+                    currentState.status = 'loaded';
+                    currentState.element = finalImage;
+                }
 
-                // 替换DOM中的占位符 - 使用更智能的替换策略
+                // 替换DOM中的占位符
                 const placeholder = document.getElementById(placeholderId);
                 if (placeholder && document.body.contains(placeholder)) {
-                    // 检查占位符是否仍在正确的消息容器中
                     const messageContainer = placeholder.closest('.message-item');
                     if (messageContainer && messageContainer.dataset.messageId === messageId) {
                         placeholder.replaceWith(finalImage);
@@ -108,11 +113,11 @@ export function setContentAndProcessImages(contentDiv, rawHtml, messageId) {
                 }
             };
 
-           imageLoader.onerror = () => {
-               const currentState = imageStates.get(uniqueImageKey);
-               if (currentState) {
-                   currentState.status = 'error';
-               }
+            imageLoader.onerror = () => {
+                const currentState = imageStates.get(uniqueImageKey);
+                if (currentState) {
+                    currentState.status = 'error';
+                }
                 const placeholder = document.getElementById(placeholderId);
                 if (placeholder && document.body.contains(placeholder)) {
                     const messageContainer = placeholder.closest('.message-item');
@@ -124,16 +129,22 @@ export function setContentAndProcessImages(contentDiv, rawHtml, messageId) {
             };
         }
 
-        // 返回占位符
+        // 返回加载中占位符
         return `<div id="${placeholderId}" class="image-placeholder" style="width: ${displayWidth}px; min-height: 100px;"></div>`;
     });
 
     // 2. 直接更新DOM内容
-    // 简化逻辑：直接设置innerHTML。
-    // 图片的加载和替换由其自身的onload回调处理，这使得该过程独立于messageRenderer的重绘。
-    // 只要messageImageStates是持久的，即使innerHTML被多次重写，
-    // 正在加载的图片状态也不会丢失。当图片加载完成时，它会找到正确的占位符并替换自己。
     contentDiv.innerHTML = processedHtml;
+
+    // 3. 替换那些已经加载好的图片的占位符
+    if (loadedImagesToReplace.length > 0) {
+        for (const item of loadedImagesToReplace) {
+            const placeholder = document.getElementById(item.placeholderId);
+            if (placeholder) {
+                placeholder.replaceWith(item.element);
+            }
+        }
+    }
 }
 
 // Function to clear image state for a specific message
