@@ -75,7 +75,6 @@ function processAndRenderSmoothChunk(messageId) {
     processedTextForParse = refs.ensureSpaceAfterTilde(processedTextForParse);
     processedTextForParse = refs.removeIndentationFromCodeBlockMarkers(processedTextForParse);
     processedTextForParse = refs.ensureSeparatorBetweenImgAndCode(processedTextForParse);
-    processedTextForParse = refs.removeBoldMarkersAroundQuotes(processedTextForParse);
     const rawHtml = markedInstance.parse(processedTextForParse);
    refs.setContentAndProcessImages(contentDiv, rawHtml, messageId);
    // The full processRenderedContent includes all necessary post-processing,
@@ -118,7 +117,6 @@ function renderChunkDirectlyToDOM(messageId, textToAppend, agentNameForGroup, ag
     processedFullCurrentTextForParse = refs.ensureSpaceAfterTilde(processedFullCurrentTextForParse);
     processedFullCurrentTextForParse = refs.removeIndentationFromCodeBlockMarkers(processedFullCurrentTextForParse);
     processedFullCurrentTextForParse = refs.ensureSeparatorBetweenImgAndCode(processedFullCurrentTextForParse);
-    processedFullCurrentTextForParse = refs.removeBoldMarkersAroundQuotes(processedFullCurrentTextForParse);
     const rawHtml = markedInstance.parse(processedFullCurrentTextForParse);
    refs.setContentAndProcessImages(contentDiv, rawHtml, messageId);
    // The full processRenderedContent includes all necessary post-processing.
@@ -369,7 +367,6 @@ export async function finalizeStreamedMessage(messageId, finishReason, fullRespo
             processedFinalText = refs.ensureSpaceAfterTilde(processedFinalText);
             processedFinalText = refs.removeIndentationFromCodeBlockMarkers(processedFinalText);
             processedFinalText = refs.ensureSeparatorBetweenImgAndCode(processedFinalText);
-            processedFinalText = refs.removeBoldMarkersAroundQuotes(processedFinalText);
            const rawHtml = markedInstance.parse(processedFinalText);
            refs.setContentAndProcessImages(contentDiv, rawHtml, messageId);
            
