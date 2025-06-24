@@ -1124,8 +1124,10 @@ if (!gotTheLock) {
     // --- Python Execution IPC Handler ---
     ipcMain.handle('execute-python-code', (event, code) => {
         return new Promise((resolve) => {
-            // Use '-u' for unbuffered output to get results as they come
-            const pythonProcess = spawn('python', ['-u']);
+            // Use '-u' for unbuffered output and set PYTHONIOENCODING for proper UTF-8 handling
+            const pythonProcess = spawn('python', ['-u'], {
+                env: { ...process.env, PYTHONIOENCODING: 'UTF-8' }
+            });
 
             let stdout = '';
             let stderr = '';
