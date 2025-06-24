@@ -31,10 +31,23 @@ body {
     z-index: 1;
 }
 
+.resizer {
+    width: 5px;
+    cursor: col-resize;
+    background-color: var(--border-color);
+    z-index: 2;
+    transition: background-color 0.2s;
+}
+
+.resizer:hover {
+    background-color: var(--highlight-text);
+}
+
 /* Sidebar styling */
 .sidebar {
-    width: 260px; /* Fixed width for the sidebar */
-    min-width: 220px; /* Prevent it from becoming too small */
+    width: 260px; /* Initial width for the sidebar */
+    min-width: 200px; /* Prevent it from becoming too small */
+    max-width: 500px; /* Prevent it from becoming too large */
     background-color: var(--secondary-bg);
     border-radius: 6px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
@@ -50,6 +63,16 @@ body {
     display: flex;
     flex-direction: column;
     gap: 10px;
+}
+
+.sidebar-actions {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+}
+
+.sidebar-actions .button {
+    flex: 1; /* Each button takes half the space */
 }
 
 /* Common input styling */
@@ -129,23 +152,92 @@ textarea:focus {
 }
 
 .note-list-panel li {
-    padding: 10px 12px;
-    border-bottom: 1px solid var(--border-color);
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.note-list-panel .folder-header-row,
+.note-list-panel .note-item {
+    padding: 6px 8px;
     cursor: pointer;
     transition: background-color 0.2s, color 0.2s;
     font-size: 0.95em;
-    display: flex; /* 使用 Flexbox */
-    justify-content: space-between; /* 标题和时间戳两端对齐 */
-    align-items: center; /* 垂直居中 */
-    gap: 10px; /* 标题和时间戳之间的间距 */
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    position: relative; /* For inline editing */
+    border-radius: 4px;
+    margin: 1px 4px;
 }
 
-.note-list-panel li .note-title-display {
-    flex-grow: 1; /* 标题占据可用空间 */
-    flex-shrink: 1; /* 允许标题收缩 */
+.note-list-panel .folder-item {
+    /* This is now just a container, no direct styling needed */
+}
+
+.note-list-panel .folder-header-row {
+    font-weight: 600;
+}
+
+.folder-toggle {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    transition: transform 0.2s ease-in-out;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.folder-toggle.collapsed {
+    transform: rotate(-90deg);
+}
+
+.folder-content {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    padding-left: 24px; /* Indent notes inside a folder */
+}
+
+.folder-content.collapsed {
+    display: none;
+}
+
+.note-list-panel .note-item {
+    justify-content: space-between; /* 标题和时间戳两端对齐 */
+    gap: 10px; /* 标题和时间戳之间的间距 */
+    font-weight: 500;
+}
+
+.item-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    margin-right: 4px;
+}
+
+.note-list-panel .item-name {
+    flex-grow: 1;
     overflow: hidden;
     white-space: nowrap;
-    text-overflow: ellipsis; /* 标题超出时显示省略号 */
+    text-overflow: ellipsis;
+}
+
+/* Inline editing input */
+.inline-edit-input {
+    flex-grow: 1;
+    border: none;
+    background-color: var(--input-bg);
+    color: var(--primary-text);
+    font-size: 0.95em; /* Match the parent font-size */
+    font-family: inherit;
+    padding: 2px 4px;
+    margin: 0;
+    outline: none;
+    border-radius: 3px;
+    box-shadow: 0 0 0 1px var(--highlight-text);
+    line-height: 1.4; /* Explicit line-height */
 }
 
 .note-list-panel li .note-timestamp-display {
@@ -155,18 +247,35 @@ textarea:focus {
     opacity: 0.7; /* 时间戳透明度 */
 }
 
-.note-list-panel li:last-child {
-    border-bottom: none;
-}
-
-.note-list-panel li:hover {
+.note-list-panel .folder-header-row:hover,
+.note-list-panel .note-item:hover {
     background-color: var(--accent-bg);
 }
 
-.note-list-panel li.active {
+.note-list-panel .folder-header-row.active,
+.note-list-panel .note-item.active {
     background-color: var(--user-bubble-bg);
     color: var(--text-on-accent);
-    font-weight: 600;
+}
+
+.note-list-panel .folder-header-row.active .item-name,
+.note-list-panel .note-item.active .item-name,
+.note-list-panel .note-item.active .note-timestamp-display {
+    color: var(--text-on-accent);
+}
+
+
+/* Multi-selection style */
+.note-list-panel .folder-header-row.selected,
+.note-list-panel .note-item.selected {
+    background-color: var(--accent-bg);
+    box-shadow: inset 0 0 0 1px var(--highlight-text);
+}
+
+.note-list-panel .folder-header-row.selected.active,
+.note-list-panel .note-item.selected.active {
+    background-color: var(--user-bubble-bg); /* Active selection should be more prominent */
+    box-shadow: inset 0 0 0 1px var(--highlight-text);
 }
 
 /* Styles for drag and drop */
@@ -175,8 +284,17 @@ textarea:focus {
     background-color: var(--accent-bg); /* Optional: change background while dragging */
 }
 
-.note-list-panel li.drag-over-target {
-    border-top: 2px dashed var(--highlight-text); /* Highlight potential drop target */
+.note-list-panel .note-item.drag-over-target-top {
+    border-top: 2px solid var(--highlight-text);
+}
+
+.note-list-panel .note-item.drag-over-target-bottom {
+    border-bottom: 2px solid var(--highlight-text);
+}
+
+.note-list-panel .folder-header-row.drag-over-folder {
+    background-color: var(--accent-bg);
+    box-shadow: inset 0 0 0 2px var(--highlight-text);
 }
 
 
@@ -414,7 +532,36 @@ textarea:focus {
     cursor: pointer;
     color: var(--primary-text);
     font-size: 0.95em;
-    white-space: nowrap; /* Prevent text wrapping */
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    position: relative; /* For sub-menu */
+}
+
+.custom-context-menu ul li.separator {
+    height: 1px;
+    background-color: var(--border-color);
+    margin: 4px 0;
+    padding: 0;
+}
+
+.custom-context-menu .submenu {
+    display: none;
+    position: absolute;
+    left: 100%;
+    top: -5px; /* Align with parent item */
+    background-color: var(--secondary-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    z-index: 1001;
+    padding: 5px 0;
+    min-width: 150px;
+}
+
+.custom-context-menu li:hover > .submenu {
+    display: block;
 }
 
 .custom-context-menu ul li:hover {
@@ -467,6 +614,11 @@ textarea:focus {
     background-color: var(--danger-hover-bg);
     border-color: var(--danger-hover-bg);
     color: var(--text-on-accent);
+}
+
+.button-autosave-feedback {
+    transition: background-color 0.3s ease-in-out;
+    background-color: var(--success-color) !important;
 }
 
 /* Light theme specific adjustments for better contrast */

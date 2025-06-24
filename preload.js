@@ -1,6 +1,10 @@
 // preload.js
 const { contextBridge, ipcRenderer } = require('electron');
 
+contextBridge.exposeInMainWorld('electronPath', {
+    dirname: (p) => ipcRenderer.invoke('path:dirname', p),
+});
+
 contextBridge.exposeInMainWorld('electronAPI', {
     // Settings
     loadSettings: () => ipcRenderer.invoke('load-settings'),
@@ -36,10 +40,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     handleFileDrop: (agentId, topicId, droppedFilesData) => ipcRenderer.invoke('handle-file-drop', agentId, topicId, droppedFilesData),
 
     // Notes
-    readTxtNotes: () => ipcRenderer.invoke('read-txt-notes'),
-    writeTxtNote: (noteData) => ipcRenderer.invoke('write-txt-note', noteData),
-    deleteTxtNote: (fileName) => ipcRenderer.invoke('delete-txt-note', fileName),
+    // --- Notes (New Tree Structure) ---
+    readNotesTree: () => ipcRenderer.invoke('read-notes-tree'),
+    writeTxtNote: (noteData) => ipcRenderer.invoke('write-txt-note', noteData), // Re-used for saving notes
+    deleteItem: (itemPath) => ipcRenderer.invoke('delete-item', itemPath),
+    createNoteFolder: (data) => ipcRenderer.invoke('create-note-folder', data), // { parentPath, folderName }
+    renameItem: (data) => ipcRenderer.invoke('rename-item', data), // { oldPath, newName }
+    'notes:move-items': (data) => ipcRenderer.invoke('notes:move-items', data),
     savePastedImageToFile: (imageData, noteId) => ipcRenderer.invoke('save-pasted-image-to-file', imageData, noteId),
+    getNotesRootDir: () => ipcRenderer.invoke('get-notes-root-dir'),
+    copyNoteContent: (filePath) => ipcRenderer.invoke('copy-note-content', filePath),
 
     // Open Notes Window
     openNotesWindow: (theme) => ipcRenderer.invoke('open-notes-window', theme),

@@ -2,7 +2,7 @@
 
 const sharp = require('sharp'); // 确保在文件顶部引入
 
-const { app, BrowserWindow, ipcMain, nativeTheme, globalShortcut, screen } = require('electron'); // Added screen
+const { app, BrowserWindow, ipcMain, nativeTheme, globalShortcut, screen, clipboard, shell } = require('electron'); // Added screen, clipboard, and shell
 // selection-hook for non-clipboard text capture on Windows
 let SelectionHook = null;
 try {
@@ -394,8 +394,14 @@ if (!gotTheLock) {
     settingsHandlers.initialize({ SETTINGS_FILE, USER_AVATAR_FILE, AGENT_DIR }); // Initialize settings handlers
 
 
-    // Group Chat IPC Handlers are now in modules/ipc/groupChatHandlers.js
+    // Add IPC handler for path operations
+    ipcMain.handle('path:dirname', (event, p) => {
+        return path.dirname(p);
+    });
 
+
+    // Group Chat IPC Handlers are now in modules/ipc/groupChatHandlers.js
+ 
     // Translator IPC Handlers
     const TRANSLATOR_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Translatormodules');
     fs.ensureDirSync(TRANSLATOR_DIR); // Ensure the Translator directory exists
@@ -482,109 +488,399 @@ if (!gotTheLock) {
     const NOTES_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Notemodules');
     fs.ensureDirSync(NOTES_DIR); // Ensure the Notes directory exists
 
-    ipcMain.handle('read-txt-notes', async () => {
+    // --- Start of New/Updated Notes IPC Handlers ---
+
+    // Helper function to recursively read the directory structure
+    async function readDirectoryStructure(dirPath) {
+        const items = [];
+        const files = await fs.readdir(dirPath, { withFileTypes: true });
+        const orderFilePath = path.join(dirPath, '.folder-order.json');
+        let orderedIds = [];
+
         try {
-            const files = await fs.readdir(NOTES_DIR);
-            const noteFiles = files.filter(file => file.endsWith('.txt'));
-            const notes = [];
+            if (await fs.pathExists(orderFilePath)) {
+                const orderData = await fs.readJson(orderFilePath);
+                orderedIds = orderData.order || [];
+            }
+        } catch (e) {
+            console.error(`Error reading order file ${orderFilePath}:`, e);
+        }
 
-            for (const fileName of noteFiles) {
-                const filePath = path.join(NOTES_DIR, fileName);
-                const content = await fs.readFile(filePath, 'utf8');
-                
-                const lines = content.split('\n');
-                if (lines.length < 1) continue; 
+        for (const file of files) {
+            const fullPath = path.join(dirPath, file.name);
+            if (file.name.startsWith('.') || file.name.endsWith('.json')) continue; // Skip order and hidden files
 
-                const header = lines[0];
-                const noteContent = lines.slice(1).join('\n');
+            if (file.isDirectory()) {
+                items.push({
+                    id: `folder-${Buffer.from(fullPath).toString('hex')}`,
+                    type: 'folder',
+                    name: file.name,
+                    path: fullPath,
+                    children: await readDirectoryStructure(fullPath)
+                });
+            } else if (file.isFile() && (file.name.endsWith('.txt') || file.name.endsWith('.md'))) {
+                try {
+                    const content = await fs.readFile(fullPath, 'utf8');
+                    const lines = content.split('\n');
+                    if (lines.length < 1) continue;
 
-                const parts = header.split('-');
-                if (parts.length >= 3) {
-                    const title = parts[0];
-                    const username = parts[1];
-                    const timestampStr = parts[2];
-                    const timestamp = parseInt(timestampStr, 10); 
+                    const header = lines[0];
+                    const noteContent = lines.slice(1).join('\n');
+                    const parts = header.split('-');
 
-                    const id = fileName.replace(/\.txt$/, '');
+                    if (parts.length >= 3) {
+                        const timestampStr = parts.pop();
+                        const username = parts.pop();
+                        const title = parts.join('-');
+                        const timestamp = parseInt(timestampStr, 10);
+                        const id = `note-${Buffer.from(fullPath).toString('hex')}`;
 
-                    notes.push({
-                        id: id, 
-                        title: title,
-                        username: username,
-                        timestamp: timestamp,
-                        content: noteContent,
-                        fileName: fileName 
-                    });
-                } else {
-                    console.warn(`跳过格式不正确的笔记文件: ${fileName}`);
+                        items.push({
+                            id,
+                            type: 'note',
+                            title,
+                            username,
+                            timestamp,
+                            content: noteContent,
+                            fileName: file.name,
+                            path: fullPath
+                        });
+                    } else {
+                        console.warn(`Skipping improperly formatted note file: ${file.name}`);
+                    }
+                } catch (readError) {
+                    console.error(`Error reading note file ${file.name}:`, readError);
                 }
             }
-            notes.sort((a, b) => b.timestamp - a.timestamp);
-            return notes;
+        }
+
+        // Sort items based on the .folder-order.json file, with fallbacks
+        items.sort((a, b) => {
+            const indexA = orderedIds.indexOf(a.id);
+            const indexB = orderedIds.indexOf(b.id);
+
+            if (indexA !== -1 && indexB !== -1) {
+                return indexA - indexB; // Both are in the order file
+            }
+            if (indexA !== -1) return -1; // Only A is in the order file, so it comes first
+            if (indexB !== -1) return 1;  // Only B is in the order file, so it comes first
+
+            // Fallback for items not in the order file: folders first, then by name
+            if (a.type === 'folder' && b.type !== 'folder') return -1;
+            if (a.type !== 'folder' && b.type === 'folder') return 1;
+            const nameA = a.name || a.title;
+            const nameB = b.name || b.title;
+            return nameA.localeCompare(nameB);
+        });
+
+        return items;
+    }
+
+    // IPC handler to read the entire note tree structure
+    ipcMain.handle('read-notes-tree', async () => {
+        try {
+            return await readDirectoryStructure(NOTES_DIR);
         } catch (error) {
-            console.error('读取TXT笔记失败:', error);
+            console.error('读取笔记结构失败:', error);
             return { error: error.message };
         }
     });
 
-function formatTimestampForFilename(timestamp) {
-    const date = new Date(timestamp);
-    const year = date.getFullYear();
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const day = date.getDate().toString().padStart(2, '0');
-    const hours = date.getHours().toString().padStart(2, '0');
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-    const seconds = date.getSeconds().toString().padStart(2, '0');
-    const milliseconds = date.getMilliseconds().toString().padStart(3, '0');
-    return `${year}${month}${day}_${hours}${minutes}${seconds}_${milliseconds}`;
-}
-
+    // IPC handler to write a note file
     ipcMain.handle('write-txt-note', async (event, noteData) => {
         try {
-            const { id, title, username, timestamp, content, oldFileName } = noteData;
-            const formattedTimestamp = formatTimestampForFilename(timestamp);
-            const newFileName = `${title}-${username}-${formattedTimestamp}.txt`;
-            const newFilePath = path.join(NOTES_DIR, newFileName);
+            const { title, username, timestamp, content, oldFilePath, directoryPath } = noteData;
+            
+            let filePath;
+            let isNewNote = false;
 
-            console.log(`[Main Process - write-txt-note] oldFileName: ${oldFileName}, newFileName: ${newFileName}`);
-            if (oldFileName && oldFileName !== newFileName) {
-                const oldFilePath = path.join(NOTES_DIR, oldFileName);
-                if (await fs.pathExists(oldFilePath)) {
-                    try {
-                        await fs.remove(oldFilePath);
-                        console.log(`[Main Process - write-txt-note] 旧笔记文件已成功删除: ${oldFilePath}`);
-                    } catch (removeError) {
-                        console.error(`[Main Process - write-txt-note] 删除旧笔记文件失败: ${oldFilePath}`, removeError);
-                    }
-                } else {
-                    console.log(`[Main Process - write-txt-note] 旧笔记文件不存在，无需删除: ${oldFilePath}`);
+            if (oldFilePath && await fs.pathExists(oldFilePath)) {
+                // This is an existing note. Use its path. DO NOT RENAME.
+                filePath = oldFilePath;
+            } else {
+                // This is a new note. Create a new path.
+                isNewNote = true;
+                const targetDir = directoryPath || NOTES_DIR;
+                await fs.ensureDir(targetDir);
+                const extension = '.md';
+                const newFileName = `${title}${extension}`;
+                filePath = path.join(targetDir, newFileName);
+
+                if (await fs.pathExists(filePath)) {
+                    throw new Error(`A note named '${title}' already exists.`);
                 }
             }
 
             const fileContent = `${title}-${username}-${timestamp}\n${content}`;
-            await fs.writeFile(newFilePath, fileContent, 'utf8');
-            console.log(`[Main Process - write-txt-note] 笔记已保存到: ${newFilePath}`);
-            return { success: true, fileName: newFileName };
+            await fs.writeFile(filePath, fileContent, 'utf8');
+            console.log(`Note content saved to: ${filePath}`);
+            
+            const newId = `note-${Buffer.from(filePath).toString('hex')}`;
+            return {
+                success: true,
+                filePath: filePath,
+                fileName: path.basename(filePath),
+                id: newId,
+                isNewNote: isNewNote // Let the frontend know if it was a creation
+            };
         } catch (error) {
-            console.error('[Main Process - write-txt-note] 保存TXT笔记失败:', error);
-            return { error: error.message };
+            console.error('[Main Process - write-txt-note] Failed to save note:', error);
+            return { success: false, error: error.message };
         }
     });
 
-    ipcMain.handle('delete-txt-note', async (event, fileName) => {
+    // IPC handler to delete a file or a folder
+    ipcMain.handle('delete-item', async (event, itemPath) => {
         try {
-            const filePath = path.join(NOTES_DIR, fileName);
-            if (await fs.pathExists(filePath)) {
-                await fs.remove(filePath);
-                console.log(`笔记文件已删除: ${filePath}`);
+            if (await fs.pathExists(itemPath)) {
+                await shell.trashItem(itemPath);
+                console.log(`Item moved to trash: ${itemPath}`);
                 return { success: true };
             }
-            return { success: false, error: '文件不存在或已被删除。' };
+            return { success: false, error: 'Item not found.' };
         } catch (error) {
-            console.error('删除TXT笔记失败:', error);
-            return { error: error.message };
+            console.error('Failed to move item to trash:', error);
+            return { success: false, error: error.message };
         }
     });
+
+    // IPC handler to create a new folder
+    ipcMain.handle('create-note-folder', async (event, { parentPath, folderName }) => {
+        try {
+            const newFolderPath = path.join(parentPath, folderName);
+            if (await fs.pathExists(newFolderPath)) {
+                return { success: false, error: 'A folder with the same name already exists.' };
+            }
+            await fs.ensureDir(newFolderPath);
+            console.log(`Folder created: ${newFolderPath}`);
+            const newId = `folder-${Buffer.from(newFolderPath).toString('hex')}`;
+            return { success: true, path: newFolderPath, id: newId };
+        } catch (error) {
+            console.error('Failed to create folder:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // IPC handler to rename a file or folder
+    ipcMain.handle('rename-item', async (event, { oldPath, newName, newContentBody }) => {
+        try {
+            const parentDir = path.dirname(oldPath);
+            const stat = await fs.stat(oldPath);
+            const isDirectory = stat.isDirectory();
+            
+            const sanitizedNewName = newName.replace(/[\\/:*?"<>|]/g, '');
+            if (!sanitizedNewName) {
+                return { success: false, error: 'Invalid name provided.' };
+            }
+
+            const newPath = isDirectory
+                ? path.join(parentDir, sanitizedNewName)
+                : path.join(parentDir, sanitizedNewName + path.extname(oldPath));
+
+            if (oldPath === newPath) {
+                // If only content is changing, not the name, we should still proceed.
+                if (newContentBody === undefined) {
+                    return { success: true, newPath, id: `${isDirectory ? 'folder' : 'note'}-${Buffer.from(oldPath).toString('hex')}` };
+                }
+            }
+
+            if (oldPath !== newPath && await fs.pathExists(newPath)) {
+                return { success: false, error: 'A file or folder with the same name already exists.' };
+            }
+
+            if (isDirectory) {
+                // For directories, rename the folder AND update the parent's order file.
+                await fs.rename(oldPath, newPath);
+                
+                const orderFilePath = path.join(parentDir, '.folder-order.json');
+                if (await fs.pathExists(orderFilePath)) {
+                    try {
+                        const orderData = await fs.readJson(orderFilePath);
+                        const oldId = `folder-${Buffer.from(oldPath).toString('hex')}`;
+                        const newId = `folder-${Buffer.from(newPath).toString('hex')}`;
+                        const itemIndex = orderData.order.indexOf(oldId);
+                        if (itemIndex !== -1) {
+                            orderData.order[itemIndex] = newId;
+                            await fs.writeJson(orderFilePath, orderData, { spaces: 2 });
+                        }
+                    } catch (e) {
+                        console.error(`Failed to update order file during folder rename: ${orderFilePath}`, e);
+                        // Don't block the rename operation if order update fails
+                    }
+                }
+            } else {
+                // For notes, we need to update the content AND potentially the filename.
+                const content = await fs.readFile(oldPath, 'utf8');
+                const lines = content.split('\n');
+                let newFileContent = content; // Default to old content if header is malformed
+
+                if (lines.length > 0) {
+                    const header = lines[0];
+                    const oldContentBody = lines.slice(1).join('\n');
+                    const contentBody = newContentBody !== undefined ? newContentBody : oldContentBody;
+                    
+                    const parts = header.split('-');
+                    if (parts.length >= 3) {
+                        const timestampStr = parts.pop();
+                        const username = parts.pop();
+                        // The original title is parts.join('-'), but we don't need it.
+                        
+                        const newHeader = `${sanitizedNewName}-${username}-${timestampStr}`;
+                        newFileContent = `${newHeader}\n${contentBody}`;
+                    }
+                }
+                
+                // If the path is the same, just overwrite. If different, write new and remove old.
+                await fs.writeFile(newPath, newFileContent, 'utf8');
+                if (oldPath !== newPath) {
+                    await fs.remove(oldPath);
+                }
+
+                // Update order file for notes as well
+                const orderFilePath = path.join(parentDir, '.folder-order.json');
+                if (await fs.pathExists(orderFilePath)) {
+                    try {
+                        const orderData = await fs.readJson(orderFilePath);
+                        const oldId = `note-${Buffer.from(oldPath).toString('hex')}`;
+                        const newId = `note-${Buffer.from(newPath).toString('hex')}`;
+                        const itemIndex = orderData.order.indexOf(oldId);
+                        if (itemIndex !== -1) {
+                            orderData.order[itemIndex] = newId;
+                            await fs.writeJson(orderFilePath, orderData, { spaces: 2 });
+                        }
+                    } catch (e) {
+                        console.error(`Failed to update order file during note rename: ${orderFilePath}`, e);
+                    }
+                }
+            }
+
+            console.log(`Renamed/Updated successfully: from ${oldPath} to ${newPath}`);
+            
+            const type = isDirectory ? 'folder' : 'note';
+            const newId = `${type}-${Buffer.from(newPath).toString('hex')}`;
+            return { success: true, newPath, newId };
+        } catch (error) {
+            console.error('Rename failed:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // IPC handler to move files/folders
+    // IPC handler to move files/folders (Refactored for clarity and single source of truth)
+    ipcMain.handle('notes:move-items', async (event, { sourcePaths, target }) => {
+        try {
+            const { destPath, targetId, position } = target;
+            const sourceDir = path.dirname(sourcePaths[0]);
+
+            // --- Step 1: Validate move ---
+            for (const sourcePath of sourcePaths) {
+                if (destPath.startsWith(sourcePath + path.sep)) {
+                    throw new Error('Invalid move: Cannot move a folder into itself.');
+                }
+                const itemName = path.basename(sourcePath);
+                const potentialNewPath = path.join(destPath, itemName);
+                // Allow reordering within the same directory, but prevent name collisions when moving to a new directory.
+                if (sourceDir !== destPath && await fs.pathExists(potentialNewPath)) {
+                    throw new Error(`An item named '${itemName}' already exists at the destination.`);
+                }
+            }
+
+            // --- Step 2: Physically move files and collect new info ---
+            const movedItems = [];
+            for (const oldPath of sourcePaths) {
+                const itemName = path.basename(oldPath);
+                const newPath = path.join(destPath, itemName);
+                const stat = await fs.stat(oldPath);
+                const type = stat.isDirectory() ? 'folder' : 'note';
+                const oldId = `${type}-${Buffer.from(oldPath).toString('hex')}`;
+
+                if (oldPath !== newPath) {
+                    await fs.move(oldPath, newPath, { overwrite: true });
+                }
+                
+                const newId = `${type}-${Buffer.from(newPath).toString('hex')}`;
+                movedItems.push({ oldId, newId, id: newId });
+            }
+
+            // --- Step 3: Update order files ---
+            const movedIdsSet = new Set(movedItems.map(i => i.id));
+            const movedOldIdsSet = new Set(movedItems.map(i => i.oldId));
+            const newIdsArray = movedItems.map(i => i.id);
+
+            // 3a: Update source directory's order file if it's a real move
+            if (sourceDir !== destPath) {
+                const sourceOrderPath = path.join(sourceDir, '.folder-order.json');
+                if (await fs.pathExists(sourceOrderPath)) {
+                    try {
+                        const sourceOrder = await fs.readJson(sourceOrderPath);
+                        sourceOrder.order = sourceOrder.order.filter(id => !movedOldIdsSet.has(id));
+                        if (sourceOrder.order.length > 0) {
+                            await fs.writeJson(sourceOrderPath, sourceOrder, { spaces: 2 });
+                        } else {
+                            await fs.remove(sourceOrderPath);
+                        }
+                    } catch (e) {
+                        console.error(`Could not process source order file ${sourceOrderPath}:`, e);
+                    }
+                }
+            }
+
+            // 3b: Update destination directory's order file
+            const destOrderPath = path.join(destPath, '.folder-order.json');
+            let destOrderIds = [];
+            if (await fs.pathExists(destOrderPath)) {
+                try {
+                    destOrderIds = (await fs.readJson(destOrderPath)).order || [];
+                } catch (e) {
+                    console.error(`Could not read destination order file ${destOrderPath}, will regenerate.`, e);
+                }
+            }
+
+            // Filter out any items that are being moved from the destination's current order
+            let finalOrder = destOrderIds.filter(id => !movedIdsSet.has(id));
+
+            // Insert moved items at the correct position
+            if (targetId && position !== 'inside') {
+                const targetIndex = finalOrder.indexOf(targetId);
+                if (targetIndex !== -1) {
+                    const insertIndex = position === 'before' ? targetIndex : targetIndex + 1;
+                    finalOrder.splice(insertIndex, 0, ...newIdsArray);
+                } else {
+                    finalOrder.push(...newIdsArray); // Fallback: add to end if target not found
+                }
+            } else {
+                // 'inside' or no specific target, add to the top
+                finalOrder.unshift(...newIdsArray);
+            }
+            
+            // Write the final order to the destination
+            await fs.writeJson(destOrderPath, { order: finalOrder }, { spaces: 2 });
+
+            return { success: true };
+        } catch (error) {
+            console.error('Failed to move or reorder items:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('copy-note-content', async (event, filePath) => {
+        try {
+            const content = await fs.readFile(filePath, 'utf8');
+            const lines = content.split('\n').slice(1).join('\n'); // Get content without header
+            clipboard.writeText(lines);
+            return { success: true };
+        } catch (error) {
+            console.error('Failed to copy note content:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // IPC handler to get the root directory for notes
+    ipcMain.handle('get-notes-root-dir', () => {
+        return NOTES_DIR;
+    });
+
+    // --- End of New/Updated Notes IPC Handlers ---
 
     // --- Singleton Notes Window Creation Function ---
     function createOrFocusNotesWindow() {
@@ -872,6 +1168,20 @@ app.on('will-quit', () => {
         }
     });
 });
+
+// --- Helper Functions ---
+
+function formatTimestampForFilename(timestamp) {
+    const date = new Date(timestamp);
+    const year = date.getFullYear();
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    const seconds = date.getSeconds().toString().padStart(2, '0');
+    const milliseconds = date.getMilliseconds().toString().padStart(3, '0');
+    return `${year}${month}${day}_${hours}${minutes}${seconds}_${milliseconds}`;
+}
 
 // --- IPC Handlers ---
 // open-external-link handler is now in modules/ipc/fileDialogHandlers.js

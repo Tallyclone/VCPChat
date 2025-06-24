@@ -1,6 +1,8 @@
 document.addEventListener('DOMContentLoaded', async () => {
+    // --- DOM Element References ---
     const noteList = document.getElementById('noteList');
     const newNoteBtn = document.getElementById('newNoteBtn');
+    const newFolderBtn = document.getElementById('newFolderBtn');
     const saveNoteBtn = document.getElementById('saveNoteBtn');
     const deleteNoteBtn = document.getElementById('deleteNoteBtn');
     const noteTitleInput = document.getElementById('noteTitle');
@@ -10,645 +12,441 @@ document.addEventListener('DOMContentLoaded', async () => {
     const editorBubble = document.querySelector('.editor-bubble');
     const previewBubble = document.querySelector('.preview-bubble');
     const customContextMenu = document.getElementById('customContextMenu');
-    const contextMenuCopy = document.getElementById('contextMenuCopy');
-    const contextMenuCut = document.getElementById('contextMenuCut');
-    const contextMenuPaste = document.getElementById('contextMenuPaste');
+    const resizer = document.getElementById('resizer');
+    const sidebar = document.querySelector('.sidebar');
+
+    // --- State Management ---
+    let noteTree = []; // Stores the entire folder/note hierarchy
+    let activeNoteId = null; // ID of the note currently being edited
+    let activeItemId = null; // ID of the last clicked item (note or folder)
+    let selectedItems = new Set(); // Stores IDs of all selected items for multi-select
+    let deleteTimer = null;
+    let currentUsername = 'defaultUser';
+    let collapsedFolders = new Set(); // Stores IDs of collapsed folders to persist state
+    // --- Drag & Drop State ---
+    let dragState = {
+        sourceIds: null,
+        lastDragOverElement: null,
+        dropAction: null, // Can be 'before', 'after', 'inside'
+    };
+
+    // --- SVG Icons ---
+    const FOLDER_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="item-icon"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"></path></svg>`;
+    const NOTE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="item-icon"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zM6 20V4h7v5h5v11H6z"></path></svg>`;
+    const TOGGLE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="folder-toggle"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"></path></svg>`;
 
 
-    let notes = []; // Stores all notes
-    let activeNoteId = null; // Stores the ID of the currently active note
-    let deleteTimer = null; // Timer for two-step delete confirmation
-    let autoSaveTimer = null; // Timer for debounced auto-save
-    let currentUsername = 'defaultUser'; // Initialize with a fallback default
-    let draggedElement = null; // Used to store the element being dragged
-
-    // Debounce function
-    function debounce(func, delay) {
+    // --- Debounce & Utility Functions ---
+    const debounce = (func, delay) => {
         let timeout;
-        return function(...args) {
-            const context = this;
+        return (...args) => {
             clearTimeout(timeout);
-            timeout = setTimeout(() => func.apply(context, args), delay);
+            timeout = setTimeout(() => func.apply(this, args), delay);
         };
-    }
+    };
 
-    // Helper function to show button feedback
+    const throttle = (func, limit) => {
+        let lastFunc;
+        let lastRan;
+        return function() {
+            const context = this;
+            const args = arguments;
+            if (!lastRan) {
+                func.apply(context, args);
+                lastRan = Date.now();
+            } else {
+                clearTimeout(lastFunc);
+                lastFunc = setTimeout(function() {
+                    if ((Date.now() - lastRan) >= limit) {
+                        func.apply(context, args);
+                        lastRan = Date.now();
+                    }
+                }, limit - (Date.now() - lastRan));
+            }
+        }
+    };
+
     function showButtonFeedback(button, originalText, feedbackText, isSuccess = true, duration = 2000) {
         const feedbackClass = isSuccess ? 'button-success' : 'button-error';
-        
         button.textContent = feedbackText;
         button.classList.add(feedbackClass);
         button.disabled = true;
-
         setTimeout(() => {
             button.textContent = originalText;
             button.classList.remove(feedbackClass);
             button.disabled = false;
-            // Force style re-evaluation by blurring the element after feedback.
             button.blur();
         }, duration);
     }
 
-    // Function to apply theme based on URL parameter
-    function applyTheme() {
+    // --- Theme Management ---
+    function applyTheme(theme) {
         const params = new URLSearchParams(window.location.search);
-        const theme = params.get('theme') || 'dark'; // Default to dark
+        const currentTheme = theme || params.get('theme') || 'dark';
         const highlightThemeStyle = document.getElementById('highlight-theme-style');
-        if (theme === 'light') {
+        if (currentTheme === 'light') {
             document.body.classList.add('light-theme');
-            if (highlightThemeStyle) {
-                highlightThemeStyle.href = "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-light.min.css";
-            }
+            if (highlightThemeStyle) highlightThemeStyle.href = "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-light.min.css";
         } else {
             document.body.classList.remove('light-theme');
-            if (highlightThemeStyle) {
-                highlightThemeStyle.href = "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css";
-            }
+            if (highlightThemeStyle) highlightThemeStyle.href = "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css";
         }
     }
+    window.electronAPI.onThemeUpdated(applyTheme);
 
-    // Listen for theme updates from the main process
-    window.electronAPI.onThemeUpdated((theme) => {
-        console.log(`[Notes App] Theme updated to: ${theme}`);
-        applyTheme(theme);
-    });
-
-    // Load username from settings
-    try {
-        const settings = await window.electronAPI.loadSettings();
-        if (settings && settings.userName) {
-            currentUsername = settings.userName;
-            console.log('从设置加载用户名:', currentUsername);
-        } else {
-            console.warn('设置中未找到用户名，使用默认值:', currentUsername);
-        }
-    } catch (error) {
-        console.error('加载设置中的用户名失败:', error);
-    }
-
-    // Function to render Markdown with syntax highlighting
+    // --- Markdown & Preview Rendering ---
     function renderMarkdown(markdown) {
-        if (window.marked && window.hljs) {
-            const renderer = new marked.Renderer();
-            const originalImageRenderer = renderer.image.bind(renderer);
-
-            renderer.image = (href, title, text) => {
-                console.log(`[Marked Renderer - All Images] Raw href type: ${typeof href}, value:`, href, `title: ${title}, text: ${text}`);
-
-                let actualHref = href;
-                if (typeof href === 'object' && href !== null && href.href) {
-                    actualHref = href.href; // Attempt to get string URL from object
-                    console.log(`[Marked Renderer] Extracted href from object: ${actualHref}`);
-                } else if (typeof href !== 'string') {
-                    console.error('[Marked Renderer] href is not a string and has no .href property. Cannot render image. Href was:', href);
-                     // Return alt text or a placeholder if href is unusable
-                    return text || '[Image URL Error]';
-                }
-
-                // Ensure actualHref is a string before proceeding with startsWith
-                if (typeof actualHref === 'string') {
-                    if (actualHref.startsWith('file:///')) {
-                        console.log(`[Marked Renderer] Rendering local image with alt: "${text}" and title: "${title}" using actualHref: ${actualHref}`);
-                        const escapedHref = actualHref.replace(/"/g, '"');
-                        return `<img src="${escapedHref}" alt="${text || 'Pasted Image'}" ${title ? `title="${title}"` : ''} style="max-width: 100%; display: block;">`;
-                    } else if (actualHref.startsWith('http://') || actualHref.startsWith('https://')) {
-                        console.log(`[Marked Renderer] Rendering remote image: ${actualHref}`);
-                        const escapedHref = actualHref.replace(/"/g, '"');
-                        return `<img src="${escapedHref}" alt="${text || 'Pasted Image'}" ${title ? `title="${title}"` : ''} style="max-width: 100%;">`;
-                    }
-                }
-                
-                console.log('[Marked Renderer] Passing to originalImageRenderer for href:', actualHref);
-                return originalImageRenderer(actualHref, title, text);
-            };
-
-            marked.setOptions({
-                renderer: renderer,
-                highlight: function(code, lang) {
-                    const language = hljs.getLanguage(lang) ? lang : 'plaintext';
-                    return hljs.highlight(code, { language }).value;
-                },
-                langPrefix: 'hljs language-' // highlight.js css expects this
-            });
-            const html = marked.parse(markdown);
-            previewContentDiv.innerHTML = html;
-
-            // Render LaTeX using KaTeX
-            if (window.renderMathInElement) {
-                renderMathInElement(previewContentDiv, {
-                    delimiters: [
-                        {left: "$$", right: "$$", display: true},
-                        {left: "$", right: "$", display: false},
-                        {left: "\\(", right: "\\)", display: false},
-                        {left: "\\[", right: "\\]", display: true}
-                    ],
-                    throwOnError: false // Don't throw error for invalid LaTeX
-                });
-            }
-
-            // Re-apply highlighting to code blocks after KaTeX might have altered them
-            // and before adding copy buttons.
-            if (window.hljs) {
-                previewContentDiv.querySelectorAll('pre code').forEach((block) => {
-                    // Remove existing highlighted content if any, to prevent nested spans
-                    // block.innerHTML = block.textContent; // This might be too aggressive, hljs.highlightElement should handle it.
-                    hljs.highlightElement(block);
-                });
-            }
-
-            // Add copy buttons to code blocks in preview
-            // Ensure we select blocks that have been processed by highlight.js (they should have .hljs class)
-            previewContentDiv.querySelectorAll('pre code.hljs').forEach((block) => {
-                const preElement = block.parentElement;
-                if (preElement.querySelector('.copy-button')) return; // Avoid adding multiple buttons
-
-                preElement.style.position = 'relative'; // Needed for absolute positioning of the button
-
-                const copyButton = document.createElement('button');
-                copyButton.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>`;
-                copyButton.className = 'copy-button';
-                copyButton.setAttribute('title', '复制');
-
-                copyButton.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    const codeToCopy = block.innerText;
-                    navigator.clipboard.writeText(codeToCopy).then(() => {
-                        copyButton.style.borderColor = 'var(--success-color, #4CAF50)';
-                        setTimeout(() => {
-                            copyButton.style.borderColor = 'var(--border-color)'; // Use CSS var
-                        }, 1500);
-                    }).catch(err => {
-                        console.error('无法复制到剪贴板:', err);
-                        copyButton.style.borderColor = 'var(--error-color, #F44336)';
-                        setTimeout(() => {
-                            copyButton.style.borderColor = 'var(--border-color)'; // Use CSS var
-                        }, 1500);
-                    });
-                });
-                preElement.appendChild(copyButton);
-            });
-        } else {
-            previewContentDiv.textContent = markdown; // Fallback
+        if (!window.marked || !window.hljs) {
+            previewContentDiv.textContent = markdown;
+            return;
         }
+        const sanitizedMarkdown = markdown.replace(/!\[(.*?)\]\(file:\/\/([^)]+)\)/g, (match, alt, url) => {
+            const correctedUrl = url.replace(/\\/g, '/');
+            return `![${alt}](file://${correctedUrl})`;
+        });
+        const rawHtml = marked.parse(sanitizedMarkdown);
+        const cleanHtml = DOMPurify.sanitize(rawHtml);
+        previewContentDiv.innerHTML = cleanHtml;
+        if (window.renderMathInElement) {
+            renderMathInElement(previewContentDiv, {
+                delimiters: [
+                    { left: "$$", right: "$$", display: true },
+                    { left: "$", right: "$", display: false },
+                ],
+                throwOnError: false
+            });
+        }
+        previewContentDiv.querySelectorAll('pre code').forEach(hljs.highlightElement);
+        addCopyButtonsToCodeBlocks();
     }
 
-    // Function to load notes from the file system
-    async function loadNotes(isHandlingShare = false) {
-        try {
-            if (!window.electronAPI || !window.electronAPI.readTxtNotes) {
-                console.error('electronAPI.readTxtNotes 不可用。');
-                notes = [];
-                displayNotes();
-                if (!isHandlingShare) clearNoteEditor();
-                return;
-            }
-            const loadedNotesResult = await window.electronAPI.readTxtNotes();
-            if (loadedNotesResult.error) {
-                console.error('加载笔记失败 (API返回错误):', loadedNotesResult.error);
-                notes = [];
-                displayNotes();
-                if (!isHandlingShare) clearNoteEditor();
-                return;
-            }
-            notes = loadedNotesResult;
-            displayNotes();
+    function addCopyButtonsToCodeBlocks() {
+        previewContentDiv.querySelectorAll('pre code.hljs').forEach(block => {
+            const preElement = block.parentElement;
+            if (preElement.querySelector('.copy-button')) return;
+            preElement.style.position = 'relative';
+            const copyButton = document.createElement('button');
+            copyButton.innerHTML = `<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>`;
+            copyButton.className = 'copy-button';
+            copyButton.title = '复制';
+            copyButton.addEventListener('click', (e) => {
+                e.stopPropagation();
+                navigator.clipboard.writeText(block.innerText).then(() => {
+                    copyButton.style.borderColor = 'var(--success-color)';
+                    setTimeout(() => { copyButton.style.borderColor = ''; }, 1500);
+                }).catch(err => console.error('无法复制:', err));
+            });
+            preElement.appendChild(copyButton);
+        });
+    }
 
-            if (!isHandlingShare && notes.length > 0) {
-                const lastActiveNoteId = localStorage.getItem('lastActiveNoteId');
-                const noteToLoad = notes.find(note => note.id === lastActiveNoteId) || notes[0];
-                if (noteToLoad) {
-                    selectNote(noteToLoad.id);
-                } else if (notes.length > 0) { // Fallback to first note if lastActiveNoteId is invalid
-                    selectNote(notes[0].id);
+    // --- Core Data & File System Logic ---
+    async function loadNoteTree() {
+        try {
+            const result = await window.electronAPI.readNotesTree();
+            if (result.error) {
+                console.error('加载笔记树失败:', result.error);
+                noteTree = [];
+            } else {
+                noteTree = result;
+            }
+            renderTree();
+            // Restore active/selected state if needed
+            if (activeNoteId) {
+                const item = findItemById(noteTree, activeNoteId);
+                if (item) {
+                    selectNote(item.id, item.path);
                 } else {
                     clearNoteEditor();
                 }
-            } else if (!isHandlingShare && notes.length === 0) {
-                clearNoteEditor();
-            }
-            // If isHandlingShare is true, do not auto-select a note here.
-            // The shared content will be populated by the calling function.
-        } catch (error) {
-            console.error('加载笔记失败:', error);
-            // Consider a more user-friendly error display than alert
-            // alert('加载笔记失败。请检查控制台获取更多信息。');
-            showButtonFeedback(saveNoteBtn, "保存", "加载失败", false, 3000); // Example feedback
-        }
-    }
-
-    // Function to display notes in the sidebar
-    function displayNotes(filter = '') {
-        noteList.innerHTML = '';
-        // Filter notes based on the search input
-        const notesToDisplay = notes.filter(note =>
-            (note.title && note.title.toLowerCase().includes(filter.toLowerCase())) ||
-            (note.content && note.content.toLowerCase().includes(filter.toLowerCase()))
-        );
-        // The order of notesToDisplay will reflect the order in the `notes` array,
-        // which will be modified by drag and drop.
-
-        notesToDisplay.forEach(note => {
-            const listItem = document.createElement('li');
-            listItem.dataset.id = note.id;
-            listItem.setAttribute('draggable', true); // Make the list item draggable
-
-            const titleSpan = document.createElement('span');
-            titleSpan.className = 'note-title-display';
-            titleSpan.textContent = note.title || '无标题笔记';
-
-            const timeSpan = document.createElement('span');
-            timeSpan.className = 'note-timestamp-display';
-            const date = new Date(note.timestamp);
-            timeSpan.textContent = date.toLocaleString('zh-CN', {
-                // year: '2-digit', // Shorter year
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
-
-            listItem.appendChild(titleSpan);
-            listItem.appendChild(timeSpan);
-
-            if (note.id === activeNoteId) {
-                listItem.classList.add('active');
-            }
-            listItem.addEventListener('click', () => selectNote(note.id));
-
-            // Add drag and drop event listeners
-            listItem.addEventListener('dragstart', handleDragStart);
-            listItem.addEventListener('dragover', handleDragOver);
-            listItem.addEventListener('dragleave', handleDragLeave);
-            listItem.addEventListener('drop', handleDrop);
-            listItem.addEventListener('dragend', handleDragEnd);
-
-            noteList.appendChild(listItem);
-        });
-    }
-
-    // Drag and Drop Handlers
-    function handleDragStart(e) {
-        draggedElement = this; // 'this' is the source li element
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', this.dataset.id); // Store the id of the note being dragged
-        this.classList.add('dragging'); // Add a class to style the dragged item
-    }
-
-    function handleDragOver(e) {
-        e.preventDefault(); // Necessary to allow dropping
-        e.dataTransfer.dropEffect = 'move';
-        if (this !== draggedElement) {
-            this.classList.add('drag-over-target'); // Add class to highlight potential drop target
-        }
-        return false;
-    }
-
-    function handleDragLeave(e) {
-        this.classList.remove('drag-over-target'); // Remove highlight when dragging away
-    }
-
-    function handleDrop(e) {
-        e.stopPropagation();
-        e.preventDefault();
-        this.classList.remove('drag-over-target');
-
-        if (draggedElement && draggedElement !== this) {
-            const sourceNoteId = e.dataTransfer.getData('text/plain');
-            const targetNoteId = this.dataset.id;
-
-            let sourceIndex = notes.findIndex(note => note && note.id === sourceNoteId);
-            let originalTargetIndex = notes.findIndex(note => note && note.id === targetNoteId);
-
-            if (sourceIndex === -1 || originalTargetIndex === -1) {
-                console.error('Source or target note not found in notes array during drop.', { sourceNoteId, targetNoteId, sourceIndex, originalTargetIndex });
-                if (draggedElement) draggedElement.classList.remove('dragging');
-                draggedElement = null;
-                return false;
-            }
-            
-            // Ensure draggedNote is valid before splicing
-            if (!notes[sourceIndex]) {
-                console.error('Invalid draggedNote at sourceIndex:', sourceIndex, 'notes:', notes);
-                if (draggedElement) draggedElement.classList.remove('dragging');
-                draggedElement = null;
-                return false;
-            }
-
-            const [draggedNoteObject] = notes.splice(sourceIndex, 1);
-            
-            if (!draggedNoteObject) {
-                 console.error('draggedNoteObject is undefined after splice. SourceIndex:', sourceIndex);
-                 // Attempt to re-fetch notes to recover state, or simply log and prevent further error
-                 if (draggedElement) draggedElement.classList.remove('dragging');
-                 draggedElement = null;
-                 // Potentially call loadNotes() here if state is critical, or just display error
-                 return false;
-            }
-
-
-            // After removing the source, the target's index might have shifted if source was before it.
-            let currentTargetIndexAfterSplice = notes.findIndex(note => note && note.id === targetNoteId);
-
-            const rect = this.getBoundingClientRect();
-            const verticalMidpoint = rect.top + rect.height / 2;
-
-            if (currentTargetIndexAfterSplice !== -1) {
-                if (e.clientY < verticalMidpoint) {
-                    notes.splice(currentTargetIndexAfterSplice, 0, draggedNoteObject);
-                } else {
-                    notes.splice(currentTargetIndexAfterSplice + 1, 0, draggedNoteObject);
-                }
             } else {
-                // This case means the target element was the one just before the source,
-                // and after source was removed, the original target is now at the end of the list
-                // or the list became empty.
-                // A simpler logic: if the original target was at an index `k`, and source was at `j`.
-                // If j < k, new target index is k-1. If j > k, new target index is k.
-                // We are inserting relative to the DOM element `this`.
-                // If the target element is `this`, and it's still in the DOM,
-                // we can find its new position in the `notes` array (which should match DOM order after filtering).
-                // The most robust way if `currentTargetIndexAfterSplice` is -1 (which means targetNoteId is no longer in notes array after splice,
-                // which should only happen if targetNoteId was the same as sourceNoteId, but this is prevented by `draggedElement !== this`)
-                // is to determine insertion based on the DOM position of `this` relative to other elements.
-                // However, since `displayNotes` re-renders from `notes` array, we must ensure `notes` array is correct.
-
-                // If targetIndex was -1, it means the targetNoteId is no longer in the `notes` array.
-                // This should not happen if `draggedElement !== this`.
-                // As a fallback, if `sourceIndex < originalTargetIndex` (meaning source was before target),
-                // we insert at `originalTargetIndex - 1`. Otherwise, at `originalTargetIndex`.
-                // This logic needs to be careful if `originalTargetIndex` was 0.
-                
-                let insertionPoint = -1;
-                if (sourceIndex < originalTargetIndex) { // Source was before target
-                    insertionPoint = originalTargetIndex -1;
-                } else { // Source was after target
-                    insertionPoint = originalTargetIndex;
-                }
-
-                // Adjust insertion point if it's out of bounds after splice
-                if (insertionPoint < 0) insertionPoint = 0;
-                if (insertionPoint > notes.length) insertionPoint = notes.length;
-
-
-                if (e.clientY < verticalMidpoint) {
-                     notes.splice(insertionPoint, 0, draggedNoteObject);
-                } else {
-                    // If inserting "after" the target, and target was the last element,
-                    // the insertion point might need to be notes.length
-                    if (insertionPoint === notes.length -1 && e.clientY >= verticalMidpoint) {
-                         notes.push(draggedNoteObject);
-                    } else {
-                         notes.splice(insertionPoint + 1, 0, draggedNoteObject);
-                    }
-                }
+                 clearNoteEditor();
             }
-
-            // Persist the new order (e.g., to localStorage or backend)
-            // For now, we just update the in-memory `notes` array.
-            // If you have a backend or persistent storage for note order, call it here.
-            // Example: await saveNoteOrderToBackend(notes.map(note => note.id));
-
-            const currentFilter = searchInput.value;
-            displayNotes(currentFilter); // Re-render the list
+        } catch (error) {
+            console.error('加载笔记树时发生异常:', error);
         }
-        if (draggedElement) { // Ensure draggedElement is cleared even if no drop happened on a valid target
-             draggedElement.classList.remove('dragging');
+    }
+
+    function findItemById(tree, id) {
+        for (const item of tree) {
+            if (item.id === id) return item;
+            if (item.type === 'folder' && item.children) {
+                const found = findItemById(item.children, id);
+                if (found) return found;
+            }
         }
-        draggedElement = null; // Clear in all cases after drop attempt
-        return false;
+        return null;
     }
     
-    function handleDragEnd(e) {
-        this.classList.remove('dragging');
-        // Clean up any drag-over-target classes that might be lingering
-        document.querySelectorAll('#noteList li.drag-over-target').forEach(item => {
-            item.classList.remove('drag-over-target');
-        });
-        draggedElement = null;
+    async function getParentPath(itemId) {
+        const item = findItemById(noteTree, itemId);
+        if (!item || !item.path) return null;
+        return await window.electronPath.dirname(item.path);
     }
 
-    // Function to select and display a note
-    async function selectNote(id) {
+    // --- DOM Rendering ---
+    function renderTree() {
+        noteList.innerHTML = '';
+        const filter = searchInput.value.toLowerCase();
+        const filteredTree = filter ? filterTree(noteTree, filter) : noteTree;
+        
+        const fragment = document.createDocumentFragment();
+        filteredTree.forEach(item => fragment.appendChild(createTreeElement(item)));
+        noteList.appendChild(fragment);
+    }
+
+    function filterTree(tree, filter) {
+        const result = [];
+        for (const item of tree) {
+            if (item.type === 'note') {
+                if (item.title.toLowerCase().includes(filter) || item.content.toLowerCase().includes(filter)) {
+                    result.push(item);
+                }
+            } else if (item.type === 'folder') {
+                const children = filterTree(item.children, filter);
+                if (children.length > 0 || item.name.toLowerCase().includes(filter)) {
+                    result.push({ ...item, children: children });
+                }
+            }
+        }
+        return result;
+    }
+
+    function createTreeElement(item) {
+        const isFolder = item.type === 'folder';
+        const li = document.createElement('li');
+        li.dataset.id = item.id;
+        li.dataset.path = item.path;
+        li.dataset.type = item.type;
+    
+        if (isFolder) {
+            li.className = 'folder-item';
+            li.setAttribute('draggable', true); // Make the entire <li> draggable
+            const isCollapsed = collapsedFolders.has(item.id);
+    
+            const folderHeader = document.createElement('div');
+            folderHeader.className = 'folder-header-row';
+            // No longer draggable itself, the parent <li> is.
+            const nameSpan = `<span class="item-name">${item.name || item.title}</span>`;
+            folderHeader.innerHTML = `${TOGGLE_ICON} ${FOLDER_ICON} ${nameSpan}`;
+            folderHeader.querySelector('.folder-toggle').classList.toggle('collapsed', isCollapsed);
+            
+            // Apply selection/active styles to the header for visual consistency
+            if (selectedItems.has(item.id)) folderHeader.classList.add('selected');
+            if (activeItemId === item.id) folderHeader.classList.add('active');
+    
+            li.appendChild(folderHeader);
+    
+            const childrenUl = document.createElement('ul');
+            childrenUl.className = 'folder-content';
+            childrenUl.classList.toggle('collapsed', isCollapsed);
+            if (item.children) {
+                item.children.forEach(child => childrenUl.appendChild(createTreeElement(child)));
+            }
+            li.appendChild(childrenUl);
+    
+            // Event listeners are now handled by delegation on the parent noteList
+        } else {
+            li.className = 'note-item';
+            li.setAttribute('draggable', true); // Make note items draggable
+            const nameSpan = `<span class="item-name">${item.title}</span>`;
+            const timeSpan = `<span class="note-timestamp-display">${new Date(item.timestamp).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>`;
+            li.innerHTML = `${NOTE_ICON} ${nameSpan} ${timeSpan}`;
+            
+            if (selectedItems.has(item.id)) li.classList.add('selected');
+            if (activeItemId === item.id) li.classList.add('active');
+    
+            // Event listeners are now handled by delegation on the parent noteList
+        }
+    
+        return li;
+    }
+
+    function toggleFolder(folderId) {
+        if (collapsedFolders.has(folderId)) {
+            collapsedFolders.delete(folderId);
+        } else {
+            collapsedFolders.add(folderId);
+        }
+        renderTree(); // Re-render to reflect the change
+    }
+
+    // --- Event Handlers ---
+    function handleItemClick(event, item) {
+        event.stopPropagation();
+        const { id, type, path } = item;
+
+        if (event.shiftKey && activeItemId) {
+            // Shift-click for range selection
+            const allItems = Array.from(noteList.querySelectorAll('[data-id]')).map(el => el.dataset.id);
+            const startIndex = allItems.indexOf(activeItemId);
+            const endIndex = allItems.indexOf(id);
+            if (startIndex !== -1 && endIndex !== -1) {
+                const [start, end] = [Math.min(startIndex, endIndex), Math.max(startIndex, endIndex)];
+                if (!event.ctrlKey) selectedItems.clear();
+                for (let i = start; i <= end; i++) {
+                    selectedItems.add(allItems[i]);
+                }
+            }
+        } else if (event.ctrlKey) {
+            // Ctrl-click for individual selection
+            if (selectedItems.has(id)) {
+                selectedItems.delete(id);
+            } else {
+                selectedItems.add(id);
+            }
+        } else {
+            // Simple click
+            selectedItems.clear();
+            selectedItems.add(id);
+        }
+        
+        activeItemId = id;
+        if (type === 'note') {
+            selectNote(id, path);
+        } else {
+            clearNoteEditor();
+        }
+        renderTree();
+    }
+
+    async function selectNote(id, notePath) {
         activeNoteId = id;
         localStorage.setItem('lastActiveNoteId', id);
-
-        document.querySelectorAll('#noteList li').forEach(item => {
-            item.classList.remove('active');
-            if (item.dataset.id === id) {
-                item.classList.add('active');
-            }
-        });
-
-        const note = notes.find(n => n.id === id);
+        
+        const note = findItemById(noteTree, id);
         if (note) {
             noteTitleInput.value = note.title;
             noteContentInput.value = note.content;
             renderMarkdown(note.content);
-            noteContentInput.style.display = 'block';
-            previewContentDiv.style.display = 'block';
-            editorBubble.style.display = 'block';
-            previewBubble.style.display = 'block';
-            // noteContentInput.focus(); // Avoid focus stealing on load
+            noteTitleInput.disabled = false;
+            noteContentInput.disabled = false;
         } else {
-            clearNoteEditor(); // If note not found
+            clearNoteEditor();
         }
     }
 
-    // Function to clear the note editor
     function clearNoteEditor() {
         activeNoteId = null;
         localStorage.removeItem('lastActiveNoteId');
         noteTitleInput.value = '';
         noteContentInput.value = '';
         previewContentDiv.innerHTML = '';
-        // By default, show editor and hide preview for a new, empty note
-        noteContentInput.style.display = 'block';
-        previewContentDiv.style.display = 'block'; // Keep preview visible or hide as preferred
-        editorBubble.style.display = 'block';
-        previewBubble.style.display = 'block'; // Keep preview bubble visible
-        document.querySelectorAll('#noteList li').forEach(item => item.classList.remove('active'));
-        noteTitleInput.focus();
+        noteTitleInput.disabled = true;
+        noteContentInput.disabled = true;
     }
 
-    // Event listener for new note button
-    newNoteBtn.addEventListener('click', () => {
-        clearNoteEditor();
-    });
- 
-    // Core function to save the current note
-    async function saveCurrentNote(isAutoSave = false) {
-        
-        function sanitizeForFileName(name, defaultName = 'untitled') {
-            if (typeof name !== 'string' || name.trim() === '') return defaultName;
-            // 替换文件名中的非法字符为下划线
-            let sanitized = name.replace(/[\\/:*?"<>|]/g, '_');
-            // 将多个连续的下划线替换为单个下划线
-            sanitized = sanitized.replace(/__+/g, '_');
-            // 移除可能导致问题的首尾下划线或点
-            sanitized = sanitized.replace(/^[_.]+|[_.]+$/g, '');
-            // 如果清理后为空，或者只剩下点，则返回默认名
-            if (sanitized.trim() === '' || sanitized.trim() === '.' || sanitized.trim() === '..') {
-                return defaultName;
-            }
-            // 限制文件名组件的长度 (可选)
-            // const maxLength = 50;
-            // return sanitized.substring(0, maxLength);
-            return sanitized;
-        }
+    newNoteBtn.addEventListener('click', () => createNewItem('note'));
+    newFolderBtn.addEventListener('click', () => createNewItem('folder'));
 
-        const rawTitle = noteTitleInput.value.trim();
-        const title = sanitizeForFileName(rawTitle, '无标题笔记'); // 清理标题用于保存和文件名
-        const content = noteContentInput.value;
+    async function createNewItem(type) {
+        let parentPath;
+        const activeItem = activeItemId ? findItemById(noteTree, activeItemId) : null;
 
-        // For new notes, if title (sanitized) and content are empty, don't save for auto-save.
-        // For manual saves or shared content, allow saving even if empty to create a placeholder.
-        if (!activeNoteId && !title && !content.trim() && isAutoSave) {
-            // console.log('自动保存：新笔记内容为空，不保存。');
-            return;
-        }
-
-        // If it's a manual save or shared content and empty, provide feedback but still proceed to create a note.
-        if (!activeNoteId && !title && !content.trim() && !isAutoSave) {
-            showButtonFeedback(saveNoteBtn, '保存', '创建空笔记', true, 1000); // Provide feedback but allow creation
-        }
-
-        let noteToSave;
-        const currentTimestamp = Date.now();
-
-        if (activeNoteId) {
-            noteToSave = notes.find(n => n.id === activeNoteId);
-            if (noteToSave) {
-                // Check if content actually changed to avoid unnecessary saves
-                // 使用清理后的 title 进行比较
-                if (noteToSave.title === title && noteToSave.content === content) {
-                    if (isAutoSave) {
-                        // console.log('自动保存：内容未更改。');
-                        if (saveNoteBtn.textContent !== '已保存' && saveNoteBtn.textContent !== '自动保存成功' && saveNoteBtn.textContent !== '保存失败' && !saveNoteBtn.disabled) {
-                            const originalText = saveNoteBtn.textContent;
-                            saveNoteBtn.textContent = '已是最新';
-                            setTimeout(() => {
-                                if (saveNoteBtn.textContent === '已是最新' && !saveNoteBtn.disabled) saveNoteBtn.textContent = originalText;
-                            }, 1000);
-                        }
-                        return;
-                    }
-                }
-                noteToSave.oldFileName = noteToSave.fileName;
-                noteToSave.title = title; // 使用清理后的 title
-                noteToSave.content = content;
-                noteToSave.timestamp = currentTimestamp;
-                // Ensure username is always the current one from settings
-                noteToSave.username = currentUsername;
+        if (activeItem) {
+            if (activeItem.type === 'folder') {
+                parentPath = activeItem.path;
             } else {
-                activeNoteId = null; // Note was lost, treat as new if user continues typing
+                // It's a note, so get its parent directory
+                parentPath = await window.electronPath.dirname(activeItem.path);
             }
-        }
-        
-        if (!activeNoteId) { // Create new note if not updating an existing one
-            noteToSave = {
-                id: currentTimestamp.toString(), // Assign a new ID for the new note
-                title: title || '无标题笔记',
-                content: content,
-                timestamp: currentTimestamp,
-                username: currentUsername,
-                oldFileName: null
-            };
-            notes.push(noteToSave);
-            // activeNoteId will be set by selectNote after loadNotes, ensuring it's correctly managed
+        } else {
+            // No active item, create at root.
+            parentPath = await window.electronAPI.getNotesRootDir();
         }
 
-        if (!noteToSave) { // Should not happen if logic is correct
-            console.error('保存逻辑错误：noteToSave 未定义。');
-            if (isAutoSave) return;
-            showButtonFeedback(saveNoteBtn, '保存', '保存出错', false);
+        if (type === 'folder') {
+            const folderName = '新建文件夹';
+            await window.electronAPI.createNoteFolder({ parentPath, folderName });
+        } else {
+            const newNote = {
+                title: '无标题笔记',
+                content: '',
+                username: currentUsername,
+                timestamp: Date.now(),
+                directoryPath: parentPath
+            };
+            const result = await window.electronAPI.writeTxtNote(newNote);
+            if (result.success) {
+                activeItemId = result.id;
+                activeNoteId = result.id;
+            }
+        }
+        await loadNoteTree();
+    }
+
+    // --- Save & Delete Logic ---
+    const debouncedSaveNote = debounce(() => saveCurrentNote(true), 3000);
+    noteTitleInput.addEventListener('input', debouncedSaveNote);
+    noteContentInput.addEventListener('input', (e) => {
+        renderMarkdown(e.target.value);
+        debouncedSaveNote();
+    });
+    saveNoteBtn.addEventListener('click', () => saveCurrentNote(false));
+
+    async function saveCurrentNote(isAutoSave = false) {
+        if (!activeNoteId) {
+            if (!isAutoSave) showButtonFeedback(saveNoteBtn, '保存', '无活动笔记', false);
             return;
         }
+        const noteInTree = findItemById(noteTree, activeNoteId);
+        if (!noteInTree) return;
 
-        try {
-            const saveResult = await window.electronAPI.writeTxtNote(noteToSave); // Changed to writeTxtNote and pass single note
+        const newTitle = noteTitleInput.value.trim() || '无标题笔记';
+        const newContent = noteContentInput.value;
 
-            if (!saveResult || saveResult.error) {
-                console.error('保存笔记失败，主进程返回错误:', saveResult ? saveResult.error : '未知错误');
-                const errorMessage = saveResult && saveResult.error ? saveResult.error : '保存时发生未知错误';
-                if (isAutoSave) {
-                    if (saveNoteBtn.textContent !== '保存失败' && !saveNoteBtn.disabled) {
-                        const originalText = saveNoteBtn.textContent;
-                        saveNoteBtn.textContent = '自动保存失败';
-                        saveNoteBtn.style.backgroundColor = 'var(--error-color, #F44336)';
-                        saveNoteBtn.style.borderColor = 'var(--error-color, #F44336)';
-                        saveNoteBtn.style.color = 'white';
-                        setTimeout(() => {
-                            if (saveNoteBtn.textContent === '自动保存失败' && !saveNoteBtn.disabled) {
-                                saveNoteBtn.textContent = '保存';
-                                saveNoteBtn.style.backgroundColor = '';
-                                saveNoteBtn.style.color = '';
-                                saveNoteBtn.style.borderColor = '';
-                            }
-                        }, 2000);
-                    }
-                } else {
-                    showButtonFeedback(saveNoteBtn, '保存', `保存失败: ${errorMessage}`, false);
-                }
-                return; // 保存失败，提前返回
+        const titleChanged = noteInTree.title !== newTitle;
+        const contentChanged = noteInTree.content !== newContent;
+
+        if (!titleChanged && !contentChanged) {
+            return; // No changes, exit early
+        }
+
+        let result;
+        if (titleChanged) {
+            // If title changes, we must use rename-item to change filename and content
+            result = await window.electronAPI.renameItem({
+                oldPath: noteInTree.path,
+                newName: newTitle,
+                newContentBody: newContent
+            });
+            if (result.success && result.newId) {
+                // IMPORTANT: Update the activeNoteId to the new ID before reloading the tree
+                activeNoteId = result.newId;
+                activeItemId = result.newId; // Also update the general active item
             }
-            
-            const newNoteFileName = saveResult.fileName;
-            const idForSelection = newNoteFileName.replace(/\.txt$/, '');
+        } else {
+            // If only content changes, use the lighter write-txt-note
+            const noteData = {
+                ...noteInTree,
+                title: newTitle, // Title is still needed for the header
+                content: newContent,
+                username: currentUsername,
+                timestamp: Date.now(),
+                oldFilePath: noteInTree.path, // Pass the path to identify the file
+            };
+            result = await window.electronAPI.writeTxtNote(noteData);
+        }
 
-            // 统一调用 loadNotes 和 selectNote 来保证数据一致性
-            await loadNotes();
-            selectNote(idForSelection); // 使用从新文件名派生的ID重新选择笔记
-
+        if (result.success) {
             if (isAutoSave) {
-                // console.log('笔记已自动保存:', noteToSave.id);
-                if (saveNoteBtn.textContent !== '已保存' && saveNoteBtn.textContent !== '保存失败' && !saveNoteBtn.disabled) {
-                    const originalText = saveNoteBtn.textContent;
-                    saveNoteBtn.textContent = '自动保存 ✓';
-                    setTimeout(() => {
-                        if (saveNoteBtn.textContent === '自动保存 ✓' && !saveNoteBtn.disabled) saveNoteBtn.textContent = '保存'; // Or originalText
-                    }, 1500);
-                }
+                saveNoteBtn.classList.add('button-autosave-feedback');
+                setTimeout(() => {
+                    saveNoteBtn.classList.remove('button-autosave-feedback');
+                }, 700);
             } else {
                 showButtonFeedback(saveNoteBtn, '保存', '已保存', true);
             }
-        } catch (error) {
-            console.error('保存笔记过程中发生异常:', error, '笔记数据:', noteToSave);
-            const displayError = error.message || '保存时发生未知异常';
-            if (isAutoSave) {
-                console.error('自动保存失败 (异常):', error, '笔记数据:', noteToSave);
-                 if (saveNoteBtn.textContent !== '保存失败' && !saveNoteBtn.disabled) {
-                    const originalText = saveNoteBtn.textContent;
-                    saveNoteBtn.textContent = '自动保存失败!';
-                    saveNoteBtn.style.backgroundColor = 'var(--error-color, #F44336)';
-                    saveNoteBtn.style.borderColor = 'var(--error-color, #F44336)';
-                    saveNoteBtn.style.color = 'white';
-                    setTimeout(() => {
-                        if (saveNoteBtn.textContent === '自动保存失败!' && !saveNoteBtn.disabled) {
-                            saveNoteBtn.textContent = '保存';
-                            saveNoteBtn.style.backgroundColor = '';
-                            saveNoteBtn.style.color = '';
-                            saveNoteBtn.style.borderColor = '';
-                        }
-                    }, 2000);
-                }
-            } else {
-                showButtonFeedback(saveNoteBtn, '保存', `保存失败: ${displayError}`, false);
-            }
+            // Always reload the tree to ensure consistency from the single source of truth
+            await loadNoteTree();
+        } else {
+            if (!isAutoSave) showButtonFeedback(saveNoteBtn, '保存', `保存失败: ${result.error}`, false);
         }
     }
 
-    // Debounced version of saveCurrentNote for auto-saving
-    const debouncedSaveNote = debounce(() => saveCurrentNote(true), 1500); // 1.5 seconds delay
-
-    // Event listener for manual saving a note
-    saveNoteBtn.addEventListener('click', async () => {
-        await saveCurrentNote(false); // false indicates manual save
-    });
-
-    // Event listener for deleting a note
     deleteNoteBtn.addEventListener('click', async () => {
-        if (!activeNoteId) {
-            showButtonFeedback(deleteNoteBtn, '删除', '请选择笔记', false);
+        if (selectedItems.size === 0) {
+            showButtonFeedback(deleteNoteBtn, '删除', '未选择项目', false);
             return;
         }
 
@@ -656,295 +454,472 @@ document.addEventListener('DOMContentLoaded', async () => {
             clearTimeout(deleteTimer);
             deleteTimer = null;
             deleteNoteBtn.classList.remove('button-confirm-delete');
-            
-            const noteToDelete = notes.find(n => n.id === activeNoteId);
-            if (!noteToDelete) {
-                showButtonFeedback(deleteNoteBtn, '删除', '笔记未找到', false);
-                return;
-            }
 
-            try {
-                await window.electronAPI.deleteTxtNote(noteToDelete.fileName);
-                notes = notes.filter(n => n.id !== activeNoteId);
-                await loadNotes();
-                clearNoteEditor();
-                showButtonFeedback(deleteNoteBtn, '删除', '已删除', true, 600);
-            } catch (error) {
-                console.error('删除笔记失败:', error);
-                showButtonFeedback(deleteNoteBtn, '删除', '删除失败', false);
+            for (const id of selectedItems) {
+                const item = findItemById(noteTree, id);
+                if (item) await window.electronAPI.deleteItem(item.path);
             }
+            
+            selectedItems.clear();
+            activeItemId = null;
+            activeNoteId = null;
+            await loadNoteTree();
+            showButtonFeedback(deleteNoteBtn, '删除', '已删除', true, 1000);
+
         } else {
-            deleteNoteBtn.textContent = '确认删除';
+            deleteNoteBtn.textContent = `确认删除 ${selectedItems.size} 项`;
             deleteNoteBtn.classList.add('button-confirm-delete');
             deleteTimer = setTimeout(() => {
                 deleteNoteBtn.textContent = '删除';
                 deleteNoteBtn.classList.remove('button-confirm-delete');
                 deleteTimer = null;
-                // Force style re-evaluation by blurring the element
                 deleteNoteBtn.blur();
             }, 3000);
         }
     });
 
-    // Event listener for search input
-    searchInput.addEventListener('input', (e) => {
-        displayNotes(e.target.value);
-    });
+    // --- Delegated Event Handlers ---
 
-    // Live Markdown preview
-    noteTitleInput.addEventListener('input', () => {
-        debouncedSaveNote();
-    });
+    function handleListClick(e) {
+        const itemElement = e.target.closest('[data-id]');
+        if (!itemElement) return;
 
-    noteContentInput.addEventListener('input', (e) => {
-        console.log('[Input Event] noteContentInput.value before renderMarkdown:', JSON.stringify(e.target.value)); // Log the value
-        renderMarkdown(e.target.value); // Existing live preview
-        debouncedSaveNote(); // Trigger debounced auto-save
-    });
+        if (e.target.closest('.folder-toggle')) {
+            e.stopPropagation();
+            toggleFolder(itemElement.dataset.id);
+            return;
+        }
+        
+        const item = findItemById(noteTree, itemElement.dataset.id);
+        if (item) {
+            handleItemClick(e, item);
+        }
+    }
 
-    // Event listener for pasting content into noteContentInput
-    noteContentInput.addEventListener('paste', async (event) => {
-        const items = event.clipboardData.items;
-        let imageFound = false;
+    function handleListContextMenu(e) {
+        const itemElement = e.target.closest('[data-id]');
+        if (!itemElement) return;
+        
+        const item = findItemById(noteTree, itemElement.dataset.id);
+        if (item) {
+            handleItemContextMenu(e, item);
+        }
+    }
 
-        for (const item of items) {
-            if (item.type.startsWith('image/')) {
-                event.preventDefault(); // Prevent default paste behavior for images
-                imageFound = true;
+    function handleListDragStart(e) {
+        const dragElement = e.target.closest('li[draggable="true"]');
+        if (!dragElement) {
+            e.preventDefault();
+            return;
+        }
+    
+        const id = dragElement.dataset.id;
+        // PERFORMANCE FIX: Manually update selection instead of re-rendering the whole tree.
+        if (!selectedItems.has(id)) {
+            // Clear previous selection visuals
+            noteList.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'));
+            selectedItems.clear();
+            
+            // Select the new item
+            const itemContainer = dragElement.matches('.note-item') ? dragElement : dragElement.querySelector('.folder-header-row');
+            if(itemContainer) itemContainer.classList.add('selected');
+            selectedItems.add(id);
+            activeItemId = id;
+        }
+    
+        dragState.sourceIds = Array.from(selectedItems);
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('application/vnd.vcp-notes.items+json', JSON.stringify(dragState.sourceIds));
+    
+        // Defer adding the 'dragging' class to ensure the drag ghost image is correct.
+        setTimeout(() => {
+            dragState.sourceIds.forEach(selectedId => {
+                const el = noteList.querySelector(`li[data-id='${selectedId}']`);
+                if (el) el.classList.add('dragging');
+            });
+        }, 0);
+        
+        // Disable global selection listener during drag
+        window.electronAPI.toggleSelectionListener(false);
+    }
 
-                if (!activeNoteId) {
-                    // If no active note, create a new one first before saving image
-                    // This is a simplified approach; ideally, user would explicitly create a new note
-                    // or we'd auto-create a "temp" note for the image.
-                    alert('请先选择或创建一篇笔记，再粘贴图片。');
-                    console.warn('Attempted to paste image without an active note.');
-                    return;
-                }
-
-                const file = item.getAsFile();
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onload = async (e) => {
-                        const base64Data = e.target.result.split(',')[1]; // Get base64 part
-                        const extension = file.type.split('/')[1] || 'png'; // e.g., 'png', 'jpeg'
-
-                        try {
-                            const result = await window.electronAPI.savePastedImageToFile({
-                                data: base64Data,
-                                extension: extension
-                            }, activeNoteId); // Pass activeNoteId for organization
-
-                            if (result.success && result.attachment) {
-                                let imagePath = result.attachment.internalPath; // Expected format: file://C:\path\to\image.png or file:///path/image.png
-
-                                if (imagePath.startsWith('file://')) {
-                                    imagePath = imagePath.substring(7); // Remove file:// -> C:\path\to\image.png or /path/image.png
-                                }
-                                
-                                // Replace all backslashes with forward slashes
-                                imagePath = imagePath.replace(/\\/g, '/'); // -> C:/path/to/image.png or /path/image.png
-                                
-                                // Construct the final URL with file:///
-                                // This ensures correct format like file:///C:/path/image.png or file:///path/image.png
-                                const imageUrl = `file:///${imagePath}`;
-                                const markdownLink = `![pasted_image](${imageUrl})`;
-
-                                // Insert markdownLink at current cursor position
-                                const start = noteContentInput.selectionStart;
-                                const end = noteContentInput.selectionEnd;
-                                const currentValue = noteContentInput.value;
-
-                                noteContentInput.value = currentValue.substring(0, start) + markdownLink + currentValue.substring(end);
-                                
-                                // Move cursor after the inserted link
-                                noteContentInput.selectionStart = noteContentInput.selectionEnd = start + markdownLink.length;
-
-                                // Trigger input event manually to update preview and auto-save
-                                noteContentInput.dispatchEvent(new Event('input', { bubbles: true }));
-                                console.log('Pasted image saved and Markdown link inserted:', markdownLink);
-                            } else {
-                                console.error('Failed to save pasted image:', result.error);
-                                alert('保存粘贴图片失败: ' + (result.error || '未知错误'));
-                            }
-                        } catch (error) {
-                            console.error('Error during image paste process:', error);
-                            alert('处理粘贴图片时发生错误: ' + error.message);
-                        }
-                    };
-                    reader.readAsDataURL(file);
-                }
-                break; // Only process the first image found
-            }
+    const throttledUpdateDragOverVisuals = throttle((targetElement, event) => {
+        // RACE CONDITION FIX: If drag has already ended, sourceIds will be null. Do nothing.
+        if (!dragState.sourceIds) {
+            return;
         }
 
-        if (!imageFound) {
-            // If no image found, allow default paste behavior for text
-            // No need to do anything, default behavior will proceed
+        // Clear previous target's visuals
+        if (dragState.lastDragOverElement && dragState.lastDragOverElement !== targetElement) {
+            dragState.lastDragOverElement.classList.remove('drag-over-folder', 'drag-over-target-top', 'drag-over-target-bottom');
         }
-    });
-
-    async function initializeApp() {
-        // Load username from settings first
-        try {
-            if (window.electronAPI && window.electronAPI.loadSettings) {
-                const settings = await window.electronAPI.loadSettings();
-                if (settings && settings.userName) {
-                    currentUsername = settings.userName;
-                    console.log('从设置加载用户名:', currentUsername);
-                } else {
-                    console.warn('设置中未找到用户名，使用默认值:', currentUsername);
-                }
+        dragState.lastDragOverElement = targetElement;
+        dragState.dropAction = null; // Reset action
+    
+        // Prevent dropping onto itself or its children (if dragging a folder)
+        if (dragState.sourceIds.includes(targetElement.dataset.id)) {
+            return;
+        }
+    
+        const rect = targetElement.getBoundingClientRect();
+        const isFolder = targetElement.dataset.type === 'folder';
+        const isNearTop = (event.clientY - rect.top) < (rect.height / 2);
+    
+        // Determine drop action based on position
+        if (isFolder) {
+            const dropIntoThreshold = rect.height * 0.25; // 25% margin top/bottom for reordering
+            if (event.clientY - rect.top < dropIntoThreshold) {
+                dragState.dropAction = 'before';
+            } else if (rect.bottom - event.clientY < dropIntoThreshold) {
+                dragState.dropAction = 'after';
             } else {
-                 console.warn('electronAPI.loadSettings 不可用。将使用默认用户名。');
+                dragState.dropAction = 'inside';
             }
-        } catch (error) {
-            console.error('加载用户设置失败:', error);
+        } else {
+            dragState.dropAction = isNearTop ? 'before' : 'after';
+        }
+    
+        // Apply visuals based on the determined action
+        targetElement.classList.toggle('drag-over-folder', dragState.dropAction === 'inside');
+        targetElement.classList.toggle('drag-over-target-top', dragState.dropAction === 'before');
+        targetElement.classList.toggle('drag-over-target-bottom', dragState.dropAction === 'after');
+    
+    }, 50);
+
+    function handleListDragOver(e) {
+        e.preventDefault(); // Necessary to allow for dropping
+        const targetElement = e.target.closest('li[draggable="true"]');
+        if (targetElement) {
+            throttledUpdateDragOverVisuals(targetElement, e);
+        }
+    }
+
+    function handleListDragLeave(e) {
+        // When leaving a specific item, remove its visuals
+        // If the mouse leaves an element that had visuals, clear them.
+        const targetElement = e.target.closest('li[draggable="true"]');
+        if (targetElement && dragState.lastDragOverElement === targetElement) {
+            dragState.lastDragOverElement.classList.remove('drag-over-folder', 'drag-over-target-top', 'drag-over-target-bottom');
+            dragState.lastDragOverElement = null;
+            dragState.dropAction = null;
+        }
+    }
+
+    async function handleListDrop(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    
+        const dropTargetElement = dragState.lastDragOverElement;
+        const dropAction = dragState.dropAction;
+    
+        // --- Cleanup ---
+        if (dropTargetElement) {
+            dropTargetElement.classList.remove('drag-over-folder', 'drag-over-target-top', 'drag-over-target-bottom');
+        }
+        // Reset state immediately after drop
+        const sourceIds = dragState.sourceIds;
+        dragState = { sourceIds: null, lastDragOverElement: null, dropAction: null };
+    
+        // --- Validate Drop ---
+        if (!dropTargetElement || !dropAction || !sourceIds) {
+            await loadNoteTree(); // Reload to clean up any visual artifacts
+            return;
+        }
+    
+        const sourcePaths = sourceIds.map(id => findItemById(noteTree, id)?.path).filter(Boolean);
+        if (sourcePaths.length === 0) return;
+    
+        const targetId = dropTargetElement.dataset.id;
+        const targetItem = findItemById(noteTree, targetId);
+        if (!targetItem) return;
+    
+        // --- Build Intent ---
+        let target = {
+            targetId: targetItem.id,
+            position: dropAction,
+        };
+    
+        if (dropAction === 'inside') {
+            target.destPath = targetItem.path;
+        } else {
+            target.destPath = await window.electronPath.dirname(targetItem.path);
+        }
+    
+        // --- Send Intent & Reload ---
+        const result = await window.electronAPI['notes:move-items']({ sourcePaths, target });
+        if (!result.success) {
+            console.error('Move operation failed:', result.error);
+        }
+        await loadNoteTree();
+    }
+
+    function handleListDragEnd(e) {
+        // This is a catch-all to ensure dragging classes and state are cleared.
+        noteList.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
+        if (dragState.lastDragOverElement) {
+            dragState.lastDragOverElement.classList.remove('drag-over-folder', 'drag-over-target-top', 'drag-over-target-bottom');
+        }
+        dragState = { sourceIds: null, lastDragOverElement: null, dropAction: null };
+
+        // Re-enable global selection listener after drag
+        window.electronAPI.toggleSelectionListener(true);
+    }
+
+    let NOTES_DIR_CACHE = null; // Cache for the root directory
+
+    // --- Context Menu ---
+    function handleItemContextMenu(e, item) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        if (!selectedItems.has(item.id)) {
+            selectedItems.clear();
+            selectedItems.add(item.id);
+            activeItemId = item.id;
+            renderTree();
         }
 
-        // Initial theme application
+        const menu = document.getElementById('customContextMenu');
+        menu.style.left = `${e.clientX}px`;
+        menu.style.top = `${e.clientY}px`;
+        menu.style.display = 'block';
+        
+        // Setup menu items based on selection
+        // This part can be expanded to disable/enable items
+        
+        const renameBtn = document.getElementById('context-rename');
+        const deleteBtn = document.getElementById('context-delete');
+        const copyNoteBtn = document.getElementById('context-copy-note');
+
+        renameBtn.onclick = () => startInlineRename(item.id);
+        deleteBtn.onclick = () => handleDirectDelete();
+        
+        copyNoteBtn.onclick = async () => {
+            const result = await window.electronAPI.copyNoteContent(item.path);
+            if (result.success) {
+                const originalText = copyNoteBtn.textContent;
+                copyNoteBtn.textContent = '已复制!';
+                setTimeout(() => {
+                    copyNoteBtn.textContent = originalText;
+                }, 1500);
+            }
+        };
+    }
+
+    document.addEventListener('click', () => {
+        customContextMenu.style.display = 'none';
+    });
+
+    function startInlineRename(itemId) {
+        const itemElement = noteList.querySelector(`[data-id="${itemId}"]`);
+        if (!itemElement) return;
+    
+        const container = itemElement.classList.contains('note-item')
+            ? itemElement
+            : itemElement.querySelector('.folder-header-row');
+        
+        if (!container) return;
+    
+        const nameSpan = container.querySelector('.item-name');
+        if (!nameSpan) return;
+    
+        const currentName = nameSpan.textContent;
+        nameSpan.style.display = 'none';
+    
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'inline-edit-input';
+        input.value = currentName;
+        
+        nameSpan.after(input);
+        input.focus();
+        input.select();
+    
+        const cleanup = () => {
+            input.removeEventListener('blur', handleBlur);
+            input.removeEventListener('keydown', handleKeydown);
+            input.remove();
+            nameSpan.style.display = '';
+        };
+    
+        const handleBlur = async () => {
+            const newName = input.value.trim();
+            cleanup();
+            if (newName && newName !== currentName) {
+                const item = findItemById(noteTree, itemId);
+                await window.electronAPI.renameItem({ oldPath: item.path, newName });
+                await loadNoteTree();
+            }
+        };
+    
+        const handleKeydown = (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                input.blur();
+            } else if (e.key === 'Escape') {
+                cleanup();
+            }
+        };
+    
+        const handleClick = (e) => {
+            e.stopPropagation();
+        };
+    
+        input.addEventListener('click', handleClick);
+        input.addEventListener('blur', handleBlur);
+        input.addEventListener('keydown', handleKeydown);
+    }
+
+    async function handleDirectDelete() {
+        if (selectedItems.size === 0) return;
+
+        for (const id of selectedItems) {
+            const item = findItemById(noteTree, id);
+            if (item) {
+                await window.electronAPI.deleteItem(item.path);
+            }
+        }
+        
+        selectedItems.clear();
+        activeItemId = null;
+        activeNoteId = null;
+        await loadNoteTree();
+    }
+
+    // --- Resizer Logic ---
+    function initResizer() {
+        let x = 0;
+        let sidebarWidth = 0;
+
+        const mouseDownHandler = (e) => {
+            x = e.clientX;
+            sidebarWidth = sidebar.getBoundingClientRect().width;
+
+            document.addEventListener('mousemove', mouseMoveHandler);
+            document.addEventListener('mouseup', mouseUpHandler);
+        };
+
+        const mouseMoveHandler = (e) => {
+            const dx = e.clientX - x;
+            const newSidebarWidth = sidebarWidth + dx;
+            sidebar.style.width = `${newSidebarWidth}px`;
+        };
+
+        const mouseUpHandler = () => {
+            document.removeEventListener('mousemove', mouseMoveHandler);
+            document.removeEventListener('mouseup', mouseUpHandler);
+        };
+
+        resizer.addEventListener('mousedown', mouseDownHandler);
+    }
+
+    // --- Initialization ---
+    async function initializeApp() {
+        initResizer();
+        searchInput.addEventListener('input', debounce(renderTree, 300));
+
+        // --- Attach Delegated Event Listeners ---
+        noteList.addEventListener('click', (e) => {
+            const itemElement = e.target.closest('[data-id]');
+            if (itemElement) {
+                // If click is on an item, delegate to the main handler
+                handleListClick(e);
+            } else {
+                // If click is in an empty area, clear the selection
+                selectedItems.clear();
+                activeItemId = null;
+                activeNoteId = null;
+                clearNoteEditor();
+                renderTree(); // Re-render to show the cleared selection
+            }
+        });
+        noteList.addEventListener('contextmenu', handleListContextMenu);
+        noteList.addEventListener('dragstart', handleListDragStart);
+        noteList.addEventListener('dragover', handleListDragOver);
+        noteList.addEventListener('dragleave', handleListDragLeave);
+        noteList.addEventListener('drop', handleListDrop);
+        noteList.addEventListener('dragend', handleListDragEnd);
+
+        try {
+            const settings = await window.electronAPI.loadSettings();
+            currentUsername = settings?.userName || 'defaultUser';
+            NOTES_DIR_CACHE = await window.electronAPI.getNotesRootDir();
+        } catch (error) {
+            console.error('加载用户设置或根目录失败:', error);
+        }
+        
         applyTheme();
+        await loadNoteTree();
 
-        // Load all existing notes. Don't auto-select one yet.
-        await loadNotes();
-
-        // NEW: Set up listener for shared data from main process
         window.electronAPI.onSharedNoteData(async (data) => {
-            const { title, content } = data;
-            console.log(`[Notes App] Received shared data via IPC. Title: ${title}, Content Length: ${content ? content.length : 0}`);
-            
-            clearNoteEditor(); // Clear current editor to prepare for new shared note
-            
-            noteTitleInput.value = title || '来自分享的笔记';
-            noteContentInput.value = content || '';
-            renderMarkdown(noteContentInput.value); // Render preview of shared content
-            
-            // Automatically save the shared content as a new note
-            console.log('[Notes App] Automatically saving shared content as a new note.');
-            await saveCurrentNote(false); // false indicates a manual save, which is appropriate here
+            // Generate a robust, unique title based on date and time, as suggested.
+            const now = new Date();
+            const generatedTitle = `分享笔记 ${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}.${String(now.getMinutes()).padStart(2, '0')}.${String(now.getSeconds()).padStart(2, '0')}`;
+
+            // Prepend the original title to the content for context.
+            const finalContent = data.title
+                ? `# ${data.title}\n\n${data.content || ''}`
+                : data.content || '';
+
+            const newNoteData = {
+                title: generatedTitle, // Use the safe, generated title for the filename and header
+                content: finalContent,
+                username: currentUsername,
+                timestamp: Date.now(),
+                directoryPath: await window.electronAPI.getNotesRootDir() // Create in root by default
+            };
+
+            const result = await window.electronAPI.writeTxtNote(newNoteData);
+            if (result.success) {
+                await loadNoteTree();
+                // Activate the new note
+                activeItemId = result.id;
+                activeNoteId = result.id;
+                selectNote(result.id, result.filePath);
+                renderTree();
+            } else {
+                console.error('Failed to create new note from shared content:', result.error);
+            }
         });
 
-        // Signal to the main process that the window is fully initialized and ready.
-        if (window.electronAPI && window.electronAPI.sendNotesWindowReady) {
-            console.log('[Notes App] Sending notes-window-ready signal to main process.');
+        if (window.electronAPI.sendNotesWindowReady) {
             window.electronAPI.sendNotesWindowReady();
         }
     }
 
-    await initializeApp();
+    // --- Paste Image Logic ---
+    noteContentInput.addEventListener('paste', async (event) => {
+        const items = (event.clipboardData || window.clipboardData).items;
+        for (const item of items) {
+            if (item.type.indexOf('image') !== -1) {
+                event.preventDefault();
+                const file = item.getAsFile();
+                const reader = new FileReader();
+                
+                reader.onload = async (e) => {
+                    const base64Data = e.target.result.split(',')[1];
+                    const extension = file.type.split('/')[1];
+                    
+                    const result = await window.electronAPI.savePastedImageToFile({ data: base64Data, extension }, activeNoteId);
 
-    // --- Custom Context Menu Logic ---
-    let contextMenuTargetElement = null; // To keep track of which element triggered the context menu
-
-    function updateContextMenuState(target) {
-        const selection = window.getSelection();
-        // FIX: Do not trim the selected text here. Any selection should enable copy/cut.
-        const selectedText = selection.toString(); 
-        const isInputOrTextarea = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA';
-        // const isPreview = previewContentDiv.contains(target) || target === previewContentDiv; // Not strictly needed for this logic
-
-        contextMenuCopy.classList.toggle('disabled', !selectedText);
-        contextMenuCut.classList.toggle('disabled', !selectedText || !isInputOrTextarea);
-        
-        navigator.clipboard.readText()
-            .then(clipboardText => {
-                contextMenuPaste.classList.toggle('disabled', !isInputOrTextarea || !clipboardText);
-            })
-            .catch(() => { // If clipboard is empty or permission denied
-                contextMenuPaste.classList.add('disabled');
-            });
-    }
-
-
-    function showContextMenu(x, y, target) {
-        contextMenuTargetElement = target;
-        customContextMenu.style.left = `${x}px`;
-        customContextMenu.style.top = `${y}px`;
-        customContextMenu.style.display = 'block';
-        updateContextMenuState(target);
-    }
-
-    function hideContextMenu() {
-        customContextMenu.style.display = 'none';
-        contextMenuTargetElement = null;
-    }
-
-    document.addEventListener('contextmenu', (e) => {
-        const target = e.target;
-        if (target === noteTitleInput || target === noteContentInput || previewContentDiv.contains(target)) {
-            e.preventDefault();
-            showContextMenu(e.clientX, e.clientY, target);
-        } else {
-            hideContextMenu();
-        }
-    });
-
-    document.addEventListener('click', (e) => {
-        if (!customContextMenu.contains(e.target)) {
-            hideContextMenu();
-        }
-    });
-
-    contextMenuCopy.addEventListener('click', () => {
-        if (contextMenuCopy.classList.contains('disabled') || !contextMenuTargetElement) return;
-        
-        let textToCopy = '';
-        const target = contextMenuTargetElement;
-
-        if ((target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') && typeof target.selectionStart === 'number' && typeof target.selectionEnd === 'number') {
-            textToCopy = target.value.substring(target.selectionStart, target.selectionEnd);
-        } else {
-            const selection = window.getSelection();
-            if (selection) {
-                textToCopy = selection.toString();
+                    if (result.success && result.attachment) {
+                        const markdownImage = `![${result.attachment.name}](${result.attachment.internalPath})`;
+                        const { selectionStart, selectionEnd } = noteContentInput;
+                        const currentContent = noteContentInput.value;
+                        const newContent = `${currentContent.substring(0, selectionStart)}${markdownImage}${currentContent.substring(selectionEnd)}`;
+                        noteContentInput.value = newContent;
+                        renderMarkdown(newContent);
+                        debouncedSaveNote();
+                    } else {
+                        console.error('Failed to save pasted image:', result.error);
+                    }
+                };
+                
+                reader.readAsDataURL(file);
+                return; // Stop after handling the first image
             }
         }
-
-        if (textToCopy) { // 只有在确实有文本时才执行复制
-            navigator.clipboard.writeText(textToCopy).catch(err => console.error('复制失败:', err));
-        }
-        hideContextMenu();
     });
 
-    contextMenuCut.addEventListener('click', () => {
-        if (contextMenuCut.classList.contains('disabled') || !contextMenuTargetElement) return;
-        
-        const target = contextMenuTargetElement;
-        if ((target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') && typeof target.selectionStart === 'number' && typeof target.selectionEnd === 'number') {
-            const textToCut = target.value.substring(target.selectionStart, target.selectionEnd);
-            
-            if (textToCut) { // 只有在确实有文本时才执行剪切
-                navigator.clipboard.writeText(textToCut)
-                    .then(() => {
-                        const start = target.selectionStart;
-                        const end = target.selectionEnd;
-                        target.value = target.value.substring(0, start) + target.value.substring(end);
-                        target.setSelectionRange(start, start); // Move cursor to cut position
-                        target.dispatchEvent(new Event('input', { bubbles: true })); // Trigger input for live preview
-                    })
-                    .catch(err => console.error('剪切失败 (复制部分):', err));
-            }
-        }
-        hideContextMenu();
-    });
-
-    contextMenuPaste.addEventListener('click', async () => {
-        if (contextMenuPaste.classList.contains('disabled') || !contextMenuTargetElement) return;
-
-        const target = contextMenuTargetElement;
-        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
-            try {
-                const textToPaste = await navigator.clipboard.readText();
-                if (textToPaste) {
-                    const start = target.selectionStart;
-                    const end = target.selectionEnd;
-                    target.value = target.value.substring(0, start) + textToPaste + target.value.substring(end);
-                    target.selectionStart = target.selectionEnd = start + textToPaste.length;
-                    target.dispatchEvent(new Event('input', { bubbles: true })); // Trigger input for live preview
-                }
-            } catch (err) {
-                console.error('粘贴失败:', err);
-            }
-        }
-        hideContextMenu();
-    });
+    initializeApp();
 });

@@ -79,7 +79,18 @@ window.itemListManager = (() => {
             ghostClass: 'sortable-ghost-main',
             chosenClass: 'sortable-chosen-main',
             dragClass: 'sortable-drag-main',
+            onStart: function(evt) {
+                // Disable selection hook during drag to prevent conflicts
+                if (window.electronAPI && window.electronAPI.toggleSelectionListener) {
+                    window.electronAPI.toggleSelectionListener(false);
+                }
+            },
             onEnd: async function (evt) {
+                // Re-enable selection hook after drag
+                if (window.electronAPI && window.electronAPI.toggleSelectionListener) {
+                    window.electronAPI.toggleSelectionListener(true);
+                }
+
                 const allListItems = Array.from(evt.to.children);
                 const orderedItems = allListItems.map(item => ({
                     id: item.dataset.itemId,

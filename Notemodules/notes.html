@@ -12,6 +12,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css" id="highlight-theme-style">
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <!-- DOMPurify for HTML sanitization -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js"></script>
     <!-- KaTeX for LaTeX rendering -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8" crossorigin="anonymous"></script>
@@ -24,12 +26,18 @@
         <div class="sidebar">
             <div class="sidebar-header">
                 <input type="text" id="searchInput" placeholder="搜索笔记..." aria-label="搜索笔记">
-                <button id="newNoteBtn" class="button">新建笔记</button>
+                <div class="sidebar-actions">
+                    <button id="newNoteBtn" class="button">新建笔记</button>
+                    <button id="newFolderBtn" class="button">新建文件夹</button>
+                </div>
             </div>
             <ul id="noteList" class="note-list-panel" aria-live="polite">
                 <!-- 笔记项目将由 JavaScript 动态插入此处 -->
             </ul>
         </div>
+
+        <!-- Resizer Handle -->
+        <div class="resizer" id="resizer"></div>
 
         <!-- 用于笔记编辑和预览的主内容区域 -->
         <div class="main-content">
@@ -61,10 +69,9 @@
     <!-- Custom Context Menu HTML -->
     <div id="customContextMenu" class="custom-context-menu">
         <ul>
-            <li id="contextMenuCopy">复制</li>
-            <li id="contextMenuCut">剪切</li>
-            <li id="contextMenuPaste">粘贴</li>
-            <li id="contextMenuUndo">撤销</li>
+            <li id="context-rename">重命名</li>
+            <li id="context-delete">删除</li>
+            <li id="context-copy-note">复制笔记</li>
         </ul>
     </div>
 </body>
