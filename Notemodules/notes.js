@@ -152,6 +152,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         previewContentDiv.querySelectorAll('pre code').forEach(hljs.highlightElement);
         addCopyButtonsToCodeBlocks();
+        makeImagesClickable();
     }
 
     function addCopyButtonsToCodeBlocks() {
@@ -171,6 +172,22 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }).catch(err => console.error('无法复制:', err));
             });
             preElement.appendChild(copyButton);
+        });
+    }
+
+    function makeImagesClickable() {
+        previewContentDiv.querySelectorAll('img').forEach(img => {
+            img.style.cursor = 'pointer';
+            img.addEventListener('click', (e) => {
+                e.preventDefault();
+                const imageUrl = img.getAttribute('src');
+                const imageTitle = img.getAttribute('alt') || '图片预览';
+                if (window.electronAPI && window.electronAPI.openImageInNewWindow) {
+                    window.electronAPI.openImageInNewWindow(imageUrl, imageTitle);
+                } else {
+                    console.error('Image viewer API is not available.');
+                }
+            });
         });
     }
 

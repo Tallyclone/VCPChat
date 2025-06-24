@@ -443,6 +443,12 @@ textarea:focus {
     color: var(--secondary-text);
     font-style: italic;
 }
+/* 限制预览区图片宽度，防止溢出 */
+.markdown-preview img {
+    max-width: 100%;
+    height: auto;
+    display: block; /* 确保图片是块级元素，避免底部多余空间 */
+}
 
 .markdown-preview pre {
     background-color: var(--tertiary-bg);
