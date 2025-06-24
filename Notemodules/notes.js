@@ -100,12 +100,50 @@ document.addEventListener('DOMContentLoaded', async () => {
             previewContentDiv.textContent = markdown;
             return;
         }
-        const sanitizedMarkdown = markdown.replace(/!\[(.*?)\]\(file:\/\/([^)]+)\)/g, (match, alt, url) => {
+
+        // 用户提出的 HTML 代码块自动包裹逻辑
+        let processedMarkdown = markdown;
+        const docTypeRegex = /<!DOCTYPE html>/i;
+        const htmlEndRegex = /<\/html>/i;
+        const codeBlockStart = '```html\n';
+        const codeBlockEnd = '\n```';
+
+        // 检查是否包含 <!DOCTYPE html> 且前面没有代码块开始标记
+        // 注意：这里需要更精确的检查，以避免重复添加或破坏现有代码块
+        // 简单的 includes 检查可能不够，但作为启发式方法可以尝试
+        if (docTypeRegex.test(processedMarkdown) && !processedMarkdown.includes(codeBlockStart)) {
+            // 找到 <!DOCTYPE html> 的位置，在其前面插入
+            const index = processedMarkdown.indexOf('<!DOCTYPE html>');
+            if (index !== -1) {
+                processedMarkdown = processedMarkdown.substring(0, index) + codeBlockStart + processedMarkdown.substring(index);
+            }
+        }
+
+        // 检查是否包含 </html> 且后面没有代码块结束标记
+        if (htmlEndRegex.test(processedMarkdown) && !processedMarkdown.includes(codeBlockEnd)) {
+            // 找到 </html> 的位置，在其后面插入
+            const index = processedMarkdown.lastIndexOf('</html>');
+            if (index !== -1) {
+                processedMarkdown = processedMarkdown.substring(0, index + '</html>'.length) + codeBlockEnd + processedMarkdown.substring(index + '</html>'.length);
+            }
+        }
+
+        // 修正本地图片路径：确保路径中的反斜杠转换为正斜杠，并保留 file:// 协议
+        const sanitizedMarkdown = processedMarkdown.replace(/!\[(.*?)\]\(file:\/\/([^)]+)\)/g, (match, alt, url) => {
+            // 将反斜杠转换为正斜杠
             const correctedUrl = url.replace(/\\/g, '/');
+            // 确保返回的 URL 仍然带有 file:// 协议，因为这是原始输入的一部分
             return `![${alt}](file://${correctedUrl})`;
         });
         const rawHtml = marked.parse(sanitizedMarkdown);
-        const cleanHtml = DOMPurify.sanitize(rawHtml);
+        const cleanHtml = DOMPurify.sanitize(rawHtml, {
+            // 明确允许 img 标签和 src 属性，尽管它们通常是默认允许的
+            ADD_TAGS: ['img'],
+            ADD_ATTR: ['src'],
+            // 允许未知协议，这是最宽松的，但有安全风险
+            // 如果只针对 file://，可以考虑更精细的 hook 或自定义协议处理
+            ALLOW_UNKNOWN_PROTOCOLS: true
+        });
         previewContentDiv.innerHTML = cleanHtml;
         if (window.renderMathInElement) {
             renderMathInElement(previewContentDiv, {

@@ -46,7 +46,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     deleteItem: (itemPath) => ipcRenderer.invoke('delete-item', itemPath),
     createNoteFolder: (data) => ipcRenderer.invoke('create-note-folder', data), // { parentPath, folderName }
     renameItem: (data) => ipcRenderer.invoke('rename-item', data), // { oldPath, newName }
-    'notes:move-items': (data) => ipcRenderer.invoke('notes:move-items', data),
+    'notes:move-items': (data) => ipcRenderer.invoke('notes:move-items', data), // Corrected name
     savePastedImageToFile: (imageData, noteId) => ipcRenderer.invoke('save-pasted-image-to-file', imageData, noteId),
     getNotesRootDir: () => ipcRenderer.invoke('get-notes-root-dir'),
     copyNoteContent: (filePath) => ipcRenderer.invoke('copy-note-content', filePath),
@@ -56,7 +56,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // For sharing content to a new notes window
     openNotesWithContent: (data) => ipcRenderer.invoke('open-notes-with-content', data), // data: { title, content, theme }
     onSharedNoteData: (callback) => ipcRenderer.on('shared-note-data', (_event, data) => callback(data)), // New listener for shared data
-    sendNotesWindowReady: () => ipcRenderer.send('notes-window-ready'), // Signal that the notes window is ready
+    sendNotesWindowReady: () => ipcRenderer.send('notes-window-ready'), // DEPRECATED, but kept for now
+    notesRendererReady: () => ipcRenderer.send('notes-renderer-ready'), // New, more reliable signal
     // Open Translator Window
     openTranslatorWindow: (theme) => ipcRenderer.invoke('open-translator-window', theme),
  
