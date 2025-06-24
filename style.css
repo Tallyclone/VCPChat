@@ -1,4 +1,5 @@
 /* style.css - Main Entry Point */
+@import url('https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css');
 
 @import url('./styles/themes.css');
 @import url('./styles/base.css');

@@ -348,6 +348,13 @@ function processRenderedContent(contentDiv) {
     // Highlighting must run after KaTeX and other DOM manipulations
     highlightTagsInMessage(contentDiv);
     highlightQuotesInMessage(contentDiv);
+
+    // Apply syntax highlighting to code blocks
+    if (window.hljs) {
+        contentDiv.querySelectorAll('pre code').forEach((block) => {
+            window.hljs.highlightElement(block);
+        });
+    }
 }
 
 

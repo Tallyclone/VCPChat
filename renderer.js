@@ -1154,9 +1154,16 @@ let markedInstance;
 if (window.marked && typeof window.marked.Marked === 'function') { // Ensure Marked is a constructor
     try {
         markedInstance = new window.marked.Marked({
-            sanitize: false, 
+            sanitize: false,
             gfm: true,
-            breaks: true
+            breaks: true,
+            highlight: function(code, lang) {
+                if (window.hljs) {
+                    const language = window.hljs.getLanguage(lang) ? lang : 'plaintext';
+                    return window.hljs.highlight(code, { language }).value;
+                }
+                return code; // Fallback for safety
+            }
         });
         // Optional: Add custom processing like quote spans if needed
     } catch (err) {

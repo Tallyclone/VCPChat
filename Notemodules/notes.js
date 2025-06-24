@@ -105,14 +105,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         let processedMarkdown = markdown;
         const docTypeRegex = /<!DOCTYPE html>/i;
         const htmlEndRegex = /<\/html>/i;
-        const codeBlockStart = '```html\n';
-        const codeBlockEnd = '\n```';
+        const codeBlockStart = '\n```html\n';
+        const codeBlockEnd = '\n```\n'; // 在这里添加了额外的换行符
 
         // 检查是否包含 <!DOCTYPE html> 且前面没有代码块开始标记
-        // 注意：这里需要更精确的检查，以避免重复添加或破坏现有代码块
-        // 简单的 includes 检查可能不够，但作为启发式方法可以尝试
         if (docTypeRegex.test(processedMarkdown) && !processedMarkdown.includes(codeBlockStart)) {
-            // 找到 <!DOCTYPE html> 的位置，在其前面插入
             const index = processedMarkdown.indexOf('<!DOCTYPE html>');
             if (index !== -1) {
                 processedMarkdown = processedMarkdown.substring(0, index) + codeBlockStart + processedMarkdown.substring(index);
@@ -121,7 +118,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // 检查是否包含 </html> 且后面没有代码块结束标记
         if (htmlEndRegex.test(processedMarkdown) && !processedMarkdown.includes(codeBlockEnd)) {
-            // 找到 </html> 的位置，在其后面插入
             const index = processedMarkdown.lastIndexOf('</html>');
             if (index !== -1) {
                 processedMarkdown = processedMarkdown.substring(0, index + '</html>'.length) + codeBlockEnd + processedMarkdown.substring(index + '</html>'.length);
