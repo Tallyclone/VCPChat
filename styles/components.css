@@ -71,11 +71,11 @@ body.light-theme .sidebar-button:hover {
     background: transparent;
     border: 1px solid var(--button-bg);
     color: var(--secondary-text);
-    padding: 0 10px; 
-    height: 32px; 
-    border-radius: 8px; 
+    padding: 0 8px;
+    height: 32px;
+    border-radius: 8px;
     cursor: pointer;
-    margin-left: 8px; 
+    margin-left: 4px;
     font-size: 0.9em;
     transition: background-color 0.2s, border-color 0.2s;
     display: inline-flex; 
