@@ -290,7 +290,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 8px 18px; /* Adjusted padding for better width consistency */
+            padding: 2px 18px; /* Adjusted padding for better width consistency */
             background-color: var(--viewer-code-bg);
             color: var(--viewer-button-text);
             border: none;
@@ -357,6 +357,56 @@
             word-wrap: break-word;
             display: none; /* Hidden by default */
         }
+
+        /* Styles for Sandbox Toggle Switch */
+        .sandbox-toggle-container {
+            display: flex;
+            align-items: center;
+            justify-content: center; /* To align items like other buttons */
+            gap: 8px;
+            color: var(--viewer-button-text);
+            padding: 8px 12px; /* Reduced horizontal padding to compensate for width */
+            background-color: var(--viewer-code-bg);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            font-size: 14px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            min-width: 130px;
+        }
+        .sandbox-toggle-container:hover {
+            background-color: var(--viewer-code-bg-hover);
+        }
+        .sandbox-toggle-checkbox {
+            display: none;
+        }
+        .sandbox-toggle-label {
+            position: relative;
+            width: 44px; /* Increased width */
+            height: 24px; /* Increased height */
+            background-color: var(--viewer-code-bg-hover);
+            border-radius: 12px; /* Adjusted border-radius */
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .sandbox-toggle-label::after {
+            content: '';
+            position: absolute;
+            width: 20px; /* Increased size */
+            height: 20px; /* Increased size */
+            border-radius: 50%;
+            background-color: white;
+            top: 2px;
+            left: 2px;
+            transition: transform 0.3s;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+        .sandbox-toggle-checkbox:checked + .sandbox-toggle-label {
+            background-color: #4CAF50; /* Green when active */
+        }
+        .sandbox-toggle-checkbox:checked + .sandbox-toggle-label::after {
+            transform: translateX(20px);
+        }
     </style>
 </head>
 <body>
@@ -380,6 +430,11 @@
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92-1.31-2.92-2.92-2.92z"/></svg>
             <span>分享笔记</span>
         </button>
+        <div class="sandbox-toggle-container" title="切换Python执行环境。开启时使用安全的浏览器沙箱环境，关闭时使用本机的Python环境。">
+            <label for="sandbox-toggle">安全沙箱</label>
+            <input type="checkbox" id="sandbox-toggle" class="sandbox-toggle-checkbox" checked>
+            <label for="sandbox-toggle" class="sandbox-toggle-label"></label>
+        </div>
     </div>
     <script>
         // Marked (Markdown rendering) - Ensure marked.min.js is available
@@ -393,35 +448,114 @@
         document.addEventListener('DOMContentLoaded', () => {
             mermaid.initialize({ startOnLoad: false }); // 初始化 Mermaid，但不自动渲染
 
-            // --- Local Python Execution ---
-            async function runPythonCode(code, outputContainer) {
-                outputContainer.style.display = 'block';
-                outputContainer.textContent = 'Executing with local Python...';
+            // --- Dual-Mode Python Execution ---
+            let pyodide = null;
+            let isPyodideLoading = false;
 
+            async function initializePyodide(statusElement) {
+                if (pyodide) return pyodide;
+                if (isPyodideLoading) {
+                    statusElement.textContent = 'Pyodide is already loading, please wait...';
+                    return null;
+                }
+                isPyodideLoading = true;
+                try {
+                    statusElement.textContent = 'Loading Pyodide script...';
+                    if (!window.loadPyodide) {
+                        const script = document.createElement('script');
+                        script.src = 'https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js';
+                        document.head.appendChild(script);
+                        await new Promise((resolve, reject) => {
+                            script.onload = resolve;
+                            script.onerror = reject;
+                        });
+                    }
+                    statusElement.textContent = 'Initializing Pyodide core... (this may take a moment)';
+                    pyodide = await window.loadPyodide();
+                    console.log("Pyodide initialized successfully.");
+                    return pyodide;
+                } catch (error) {
+                    console.error("Pyodide initialization failed:", error);
+                    statusElement.textContent = `Pyodide initialization failed: ${error}`;
+                    return null;
+                } finally {
+                    isPyodideLoading = false;
+                }
+            }
+
+            async function runPythonInSandbox(code, outputContainer) {
+                outputContainer.textContent = 'Preparing Python sandbox environment...';
+                const pyodideInstance = await initializePyodide(outputContainer);
+                if (!pyodideInstance) return;
+
+                try {
+                    const packageRegex = /^#\s*requires:\s*([a-zA-Z0-9_,\s-]+)/gm;
+                    const packages = new Set();
+                    let match;
+                    while ((match = packageRegex.exec(code)) !== null) {
+                        match[1].split(',').forEach(p => {
+                            const pkg = p.trim();
+                            if (pkg) packages.add(pkg);
+                        });
+                    }
+
+                    if (packages.size > 0) {
+                        const packageList = Array.from(packages);
+                        outputContainer.textContent = `Installing required packages: ${packageList.join(', ')}...`;
+                        await pyodideInstance.loadPackage("micropip");
+                        const micropip = pyodideInstance.pyimport("micropip");
+                        await micropip.install(packageList);
+                        outputContainer.textContent = 'Packages installed. Executing code...';
+                    } else {
+                        outputContainer.textContent = 'Executing code in sandbox...';
+                    }
+
+                    let stdout = '';
+                    let stderr = '';
+                    pyodideInstance.setStdout({ batched: (s) => { stdout += s + '\n'; } });
+                    pyodideInstance.setStderr({ batched: (s) => { stderr += s + '\n'; } });
+                    await pyodideInstance.runPythonAsync(code);
+
+                    let result = '';
+                    if (stdout) result += stdout;
+                    if (stderr) result += `\n--- ERRORS ---\n${stderr}`;
+                    outputContainer.textContent = result.trim() || 'Execution finished with no output.';
+                } catch (error) {
+                    console.error("Sandbox Python execution error:", error);
+                    outputContainer.textContent = `Sandbox Execution Error:\n${error.toString()}`;
+                }
+            }
+
+            async function runPythonLocally(code, outputContainer) {
+                outputContainer.textContent = 'Executing with local Python...';
                 if (window.electronAPI && window.electronAPI.executePythonCode) {
                     try {
                         const { stdout, stderr } = await window.electronAPI.executePythonCode(code);
-                        
                         let result = '';
-                        if (stdout) {
-                            result += `--- Output ---\n${stdout}`;
-                        }
-                        if (stderr) {
-                            result += `\n--- Errors ---\n${stderr}`;
-                        }
-                        
+                        if (stdout) result += `--- Output ---\n${stdout}`;
+                        if (stderr) result += `\n--- Errors ---\n${stderr}`;
                         outputContainer.textContent = result.trim() || 'Execution finished with no output.';
-
                     } catch (error) {
                         console.error("Local Python execution error:", error);
-                        outputContainer.textContent = `Execution Error:\n${error.toString()}`;
+                        outputContainer.textContent = `Local Execution Error:\n${error.toString()}`;
                     }
                 } else {
-                    outputContainer.textContent = 'Error: electronAPI.executePythonCode is not available. Cannot run local Python.';
+                    outputContainer.textContent = 'Error: electronAPI.executePythonCode is not available.';
                     console.error('electronAPI.executePythonCode is not available.');
                 }
             }
-            // --- End Local Python Execution ---
+
+            async function runPythonCode(code, outputContainer) {
+                outputContainer.style.display = 'block';
+                const isSandboxMode = document.getElementById('sandbox-toggle').checked;
+
+                if (isSandboxMode) {
+                    await runPythonInSandbox(code, outputContainer);
+                } else {
+                    await runPythonLocally(code, outputContainer);
+                }
+            }
+            // --- End Dual-Mode Python Execution ---
 
             function removeBoldMarkersAroundQuotes(text) {
                 if (typeof text !== 'string') return text;
