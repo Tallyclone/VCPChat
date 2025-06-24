@@ -358,6 +358,10 @@ window.chatManager = (() => {
                     if (summarizedTitle) {
                         const saveResult = await electronAPI.saveAgentTopicTitle(currentSelectedItem.id, currentTopicId, summarizedTitle);
                         if (saveResult.success) {
+                            // 话题标题更新成功后，直接更新 currentSelectedItem.config 中的话题名称
+                            if (currentTopicObject) {
+                                currentTopicObject.name = summarizedTitle;
+                            }
                             if (document.getElementById('tabContentTopics').classList.contains('active')) {
                                 if (topicListManager) topicListManager.loadTopicList();
                             }
