@@ -80,3 +80,5 @@ async function summarizeTopicFromMessages(messages, agentName) {
 // 在Electron的Renderer进程中，我们通常会通过 <script src="..."> 引入
 // 或者，如果preload.js可以访问这个文件，也可以通过IPC暴露
 // 但最简单的方式是在renderer.js中直接通过相对路径的script标签引入
+
+window.summarizeTopicFromMessages = summarizeTopicFromMessages;

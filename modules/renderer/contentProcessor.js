@@ -73,19 +73,6 @@ function ensureSeparatorBetweenImgAndCode(text) {
     return text.replace(/(<img[^>]+>)\s*(```)/g, '$1\n\n<!-- VCP-Renderer-Separator -->\n\n$2');
 }
 
-/**
- * Removes markdown bold markers (**) from around quoted text to fix rendering issues.
- * @param {string} text The input string.
- * @returns {string} The processed string.
- */
-function removeBoldMarkersAroundQuotes(text) {
-    if (typeof text !== 'string') return text;
-    // Replace **" with " and **“ with “
-    let processedText = text.replace(/\*\*(["“])/g, '$1');
-    // Replace "** with " and ”** with ”
-    processedText = processedText.replace(/(["”])\*\*/g, '$1');
-    return processedText;
-}
 
 /**
  * Parses VCP tool_name from content.
@@ -352,7 +339,10 @@ function processRenderedContent(contentDiv) {
     // Apply syntax highlighting to code blocks
     if (window.hljs) {
         contentDiv.querySelectorAll('pre code').forEach((block) => {
-            window.hljs.highlightElement(block);
+            // Only highlight if the block hasn't been specially prettified (e.g., DailyNote or VCP ToolUse)
+            if (!block.parentElement.dataset.vcpPrettified && !block.parentElement.dataset.maidDiaryPrettified) {
+                window.hljs.highlightElement(block);
+            }
         });
     }
 }
@@ -365,7 +355,6 @@ export {
     removeIndentationFromCodeBlockMarkers,
     removeSpeakerTags,
     ensureSeparatorBetweenImgAndCode,
-    removeBoldMarkersAroundQuotes,
     processAllPreBlocksInContentDiv,
     highlightTagsInMessage,
     highlightQuotesInMessage,

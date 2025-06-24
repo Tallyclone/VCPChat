@@ -643,22 +643,6 @@ window.chatManager = (() => {
         }
     }
 
-    async function summarizeTopicFromMessages(messages, agentName) {
-        // This function is now inside chatManager
-        if (!messages || messages.length === 0) return null;
-        const globalSettings = globalSettingsRef.get();
-
-        // Find the first user message
-        const firstUserMessage = messages.find(m => m.role === 'user');
-        if (!firstUserMessage || !firstUserMessage.content) return null;
-
-        // Simple summarization: use the first 20 characters of the first user message.
-        let summary = firstUserMessage.content.substring(0, 20);
-        if (firstUserMessage.content.length > 20) {
-            summary += '...';
-        }
-        return summary;
-    }
 
     async function handleCreateBranch(selectedMessage) { // Only for Agents
         const currentSelectedItem = currentSelectedItemRef.get();
@@ -739,6 +723,5 @@ window.chatManager = (() => {
         displayNoItemSelected,
         attemptTopicSummarizationIfNeeded,
         handleCreateBranch,
-        summarizeTopicFromMessages
     };
 })();

@@ -213,11 +213,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             markedInstance: markedInstance, // Assuming marked.js is loaded
             uiHelper: uiHelperFunctions,
             summarizeTopicFromMessages: (messages, agentName) => {
-                if (window.chatManager) {
-                    return window.chatManager.summarizeTopicFromMessages(messages, agentName);
+                // Directly use the function from the summarizer module, which should be on the window scope
+                if (typeof window.summarizeTopicFromMessages === 'function') {
+                    return window.summarizeTopicFromMessages(messages, agentName);
                 } else {
-                    console.error('[MessageRenderer] chatManager not available for summarizeTopicFromMessages');
-                    return null;
+                    console.error('[MessageRenderer] summarizeTopicFromMessages function not found on window scope.');
+                    return `关于 "${messages.find(m=>m.role==='user')?.content.substring(0,15) || '...'}" (备用)`;
                 }
             },
             handleCreateBranch: (selectedMessage) => {
@@ -479,7 +480,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             mainRendererFunctions: {
                 displaySettingsForItem: () => window.settingsManager.displaySettingsForItem(),
                 updateAttachmentPreview: updateAttachmentPreview,
-                summarizeTopicFromMessages: (messages, agentName) => window.chatManager.summarizeTopicFromMessages(messages, agentName),
+                // This is no longer needed as chatManager will call messageRenderer's summarizer
             }
         });
     } else {

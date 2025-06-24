@@ -57,7 +57,6 @@ function preprocessFullContent(text) {
    processed = contentProcessor.removeIndentationFromCodeBlockMarkers(processed);
    processed = contentProcessor.removeSpeakerTags(processed);
    processed = contentProcessor.ensureSeparatorBetweenImgAndCode(processed);
-   processed = contentProcessor.removeBoldMarkersAroundQuotes(processed);
    return processed;
 }
 
@@ -189,7 +188,6 @@ function initializeMessageRenderer(refs) {
        ensureSpaceAfterTilde: contentProcessor.ensureSpaceAfterTilde,
        removeIndentationFromCodeBlockMarkers: contentProcessor.removeIndentationFromCodeBlockMarkers,
        ensureSeparatorBetweenImgAndCode: contentProcessor.ensureSeparatorBetweenImgAndCode,
-       removeBoldMarkersAroundQuotes: contentProcessor.removeBoldMarkersAroundQuotes,
 
        // Pass the main processor function
        processRenderedContent: contentProcessor.processRenderedContent,
