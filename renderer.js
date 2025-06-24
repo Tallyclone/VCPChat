@@ -871,7 +871,7 @@ function setupEventListeners() {
         userAvatarInput.addEventListener('change', (event) => {
             const file = event.target.files[0];
             if (file) {
-                openAvatarCropper(file, (croppedFile) => {
+                uiHelperFunctions.openAvatarCropper(file, (croppedFile) => {
                     setCroppedFile('user', croppedFile); // Use central setter
                     if (userAvatarPreview) {
                         userAvatarPreview.src = URL.createObjectURL(croppedFile);
