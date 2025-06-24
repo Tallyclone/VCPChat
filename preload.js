@@ -171,6 +171,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onThemeUpdated: (callback) => ipcRenderer.on('theme-updated', (_event, theme) => callback(theme)),
     setTheme: (theme) => ipcRenderer.send('set-theme', theme),
     removeVcpStreamChunkListener: (callback) => ipcRenderer.removeListener('vcp-stream-chunk', callback),
+
+    // Local Python Execution
+    executePythonCode: (code) => ipcRenderer.invoke('execute-python-code', code),
 });
 
 // Log the electronAPI object as it's defined in preload.js right after exposing it

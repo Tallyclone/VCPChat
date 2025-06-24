@@ -393,74 +393,35 @@
         document.addEventListener('DOMContentLoaded', () => {
             mermaid.initialize({ startOnLoad: false }); // 初始化 Mermaid，但不自动渲染
 
-            // --- Pyodide/WASM Integration for Python ---
-            let pyodide = null;
-            let isPyodideLoading = false;
-            
-            async function initializePyodide(statusElement) {
-                if (pyodide) return pyodide;
-                if (isPyodideLoading) {
-                    statusElement.textContent = 'Pyodide is already loading, please wait...';
-                    return null; // Indicate that the caller should wait and try again
-                }
-
-                isPyodideLoading = true;
-                try {
-                    statusElement.textContent = 'Loading Pyodide script...';
-                    if (!window.loadPyodide) {
-                        const script = document.createElement('script');
-                        script.src = 'https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js';
-                        document.head.appendChild(script);
-                        await new Promise((resolve, reject) => {
-                            script.onload = resolve;
-                            script.onerror = reject;
-                        });
-                    }
-                    
-                    statusElement.textContent = 'Initializing Pyodide core... (this may take a moment)';
-                    pyodide = await window.loadPyodide();
-                    console.log("Pyodide initialized successfully.");
-                    return pyodide;
-                } catch (error) {
-                    console.error("Pyodide initialization failed:", error);
-                    statusElement.textContent = `Pyodide initialization failed: ${error}`;
-                    return null;
-                } finally {
-                    isPyodideLoading = false;
-                }
-            }
-
+            // --- Local Python Execution ---
             async function runPythonCode(code, outputContainer) {
                 outputContainer.style.display = 'block';
-                outputContainer.textContent = 'Preparing Python environment...';
+                outputContainer.textContent = 'Executing with local Python...';
 
-                const pyodideInstance = await initializePyodide(outputContainer);
-                if (!pyodideInstance) {
-                    // If null, it means it's loading or failed. The message is already set by initializePyodide.
-                    return;
-                }
+                if (window.electronAPI && window.electronAPI.executePythonCode) {
+                    try {
+                        const { stdout, stderr } = await window.electronAPI.executePythonCode(code);
+                        
+                        let result = '';
+                        if (stdout) {
+                            result += `--- Output ---\n${stdout}`;
+                        }
+                        if (stderr) {
+                            result += `\n--- Errors ---\n${stderr}`;
+                        }
+                        
+                        outputContainer.textContent = result.trim() || 'Execution finished with no output.';
 
-                outputContainer.textContent = 'Executing code...';
-                try {
-                    // Capture output
-                    let stdout = '';
-                    let stderr = '';
-                    pyodideInstance.setStdout({ batched: (s) => { stdout += s + '\n'; } });
-                    pyodideInstance.setStderr({ batched: (s) => { stderr += s + '\n'; } });
-
-                    await pyodideInstance.runPythonAsync(code);
-
-                    let result = '';
-                    if (stdout) result += stdout;
-                    if (stderr) result += `\n--- ERRORS ---\n${stderr}`;
-                    outputContainer.textContent = result.trim() || 'Execution finished with no output.';
-
-                } catch (error) {
-                    console.error("Python execution error:", error);
-                    outputContainer.textContent = `Execution Error:\n${error.toString()}`;
+                    } catch (error) {
+                        console.error("Local Python execution error:", error);
+                        outputContainer.textContent = `Execution Error:\n${error.toString()}`;
+                    }
+                } else {
+                    outputContainer.textContent = 'Error: electronAPI.executePythonCode is not available. Cannot run local Python.';
+                    console.error('electronAPI.executePythonCode is not available.');
                 }
             }
-            // --- End Pyodide Integration ---
+            // --- End Local Python Execution ---
 
             function removeBoldMarkersAroundQuotes(text) {
                 if (typeof text !== 'string') return text;

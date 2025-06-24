@@ -100,10 +100,16 @@ body.light-theme .sidebar-button:hover {
     top: 3.4px; 
 }
 
+.chat-actions .header-button#toggleAssistantBtn {
+    padding: 0 10px;
+    position: relative;
+    top: 3.4px;
+}
+
 .chat-actions .header-button:hover {
-    background-color: var(--button-hover-bg); 
+    background-color: var(--button-hover-bg);
     border-color: var(--button-hover-bg);
-    color: var(--primary-text); 
+    color: var(--primary-text);
 }
 
 button#devButton.header-button {
@@ -504,4 +510,13 @@ input:checked + .slider:before {
 
 .slider.round:before {
   border-radius: 50%;
+}
+/* --- Toggle Assistant Button --- */
+#toggleAssistantBtn.active {
+    background-color: var(--border-color);
+    color: var(--button-bg); /* Or whatever the background color is */
+}
+
+#toggleAssistantBtn.active svg {
+    stroke: var(--button-bg); /* Make the icon color same as background */
 }

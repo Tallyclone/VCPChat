@@ -18,6 +18,7 @@ try {
 const path = require('path');
 const fs = require('fs-extra'); // Using fs-extra for convenience
 const os = require('os');
+const { spawn } = require('child_process'); // For executing local python
 const WebSocket = require('ws'); // For VCPLog notifications
 const { GlobalKeyboardListener } = require('node-global-key-listener');
 const fileManager = require('./modules/fileManager'); // Import the new file manager
@@ -1119,6 +1120,40 @@ if (!gotTheLock) {
     });
 
 });
+
+    // --- Python Execution IPC Handler ---
+    ipcMain.handle('execute-python-code', (event, code) => {
+        return new Promise((resolve) => {
+            // Use '-u' for unbuffered output to get results as they come
+            const pythonProcess = spawn('python', ['-u']);
+
+            let stdout = '';
+            let stderr = '';
+
+            pythonProcess.stdout.on('data', (data) => {
+                stdout += data.toString();
+            });
+
+            pythonProcess.stderr.on('data', (data) => {
+                stderr += data.toString();
+            });
+
+            pythonProcess.on('close', (exitCode) => {
+                console.log(`Python process exited with code ${exitCode}`);
+                resolve({ stdout, stderr });
+            });
+
+            pythonProcess.on('error', (err) => {
+                console.error('Failed to start Python process:', err);
+                // Resolve with an error message in stderr, so the frontend can display it
+                resolve({ stdout: '', stderr: `Failed to start python process. Please ensure Python is installed and accessible in your system's PATH. Error: ${err.message}` });
+            });
+
+            // Write the code to the process's standard input and close it
+            pythonProcess.stdin.write(code);
+            pythonProcess.stdin.end();
+        });
+    });
 
 app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {

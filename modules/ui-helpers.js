@@ -70,24 +70,35 @@
             toast.classList.add('visible');
         });
 
-        // Set timer to animate out and remove
-        setTimeout(() => {
+        const removeToast = () => {
+            if (!toast.parentNode) return; // Already removed
             toast.classList.remove('visible');
-            toast.classList.add('exiting'); // Add exiting class for the out-animation
-            // Remove the element from the DOM after the fade-out transition
-            toast.addEventListener('transitionend', (event) => {
-                // Make sure we're listening for the right transition
+            toast.classList.add('exiting');
+            
+            const onTransitionEnd = (event) => {
                 if (event.propertyName === 'transform' && toast.parentNode) {
                     toast.parentNode.removeChild(toast);
+                    toast.removeEventListener('transitionend', onTransitionEnd);
                 }
-            });
-             // Fallback removal in case transitionend doesn't fire
+            };
+            toast.addEventListener('transitionend', onTransitionEnd);
+
+            // Fallback removal
             setTimeout(() => {
                 if (toast.parentNode) {
                     toast.parentNode.removeChild(toast);
                 }
-            }, 1000); // Should be longer than the transition duration
-        }, duration);
+            }, 500); // Should match animation duration
+        };
+
+        // Set timer to animate out and remove
+        const removalTimeout = setTimeout(removeToast, duration);
+
+        // Add click listener to remove early
+        toast.addEventListener('click', () => {
+            clearTimeout(removalTimeout); // Cancel the scheduled removal
+            removeToast();
+        });
     };
 
     /**

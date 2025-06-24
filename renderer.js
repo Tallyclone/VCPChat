@@ -97,7 +97,7 @@ const dateDisplayElement = document.getElementById('dateDisplay');
 let inviteAgentButtonsContainerElement; // 新增：邀请发言按钮容器的引用
 
 // Assistant settings elements
-const assistantEnabledCheckbox = document.getElementById('assistantEnabled');
+const toggleAssistantBtn = document.getElementById('toggleAssistantBtn'); // New button
 const assistantAgentContainer = document.getElementById('assistantAgentContainer');
 const assistantAgentSelect = document.getElementById('assistantAgent');
 
@@ -662,20 +662,23 @@ async function loadAndApplyGlobalSettings() {
         }
         
         // Load assistant settings
-        assistantEnabledCheckbox.checked = globalSettings.assistantEnabled === true;
-        if (globalSettings.assistantEnabled) {
-            assistantAgentContainer.style.display = 'block';
-            if (assistantAgentSelect) assistantAgentSelect.required = true;
-        } else {
-            assistantAgentContainer.style.display = 'none';
-            if (assistantAgentSelect) assistantAgentSelect.required = false;
-        }
+        // The container is now always visible in settings, just the agent selection.
+        assistantAgentContainer.style.display = 'block';
         await window.settingsManager.populateAssistantAgentSelect();
         if (globalSettings.assistantAgent) {
             assistantAgentSelect.value = globalSettings.assistantAgent;
         }
+
+        // Set the initial state of the new toggle button in the main UI
+        if (toggleAssistantBtn) {
+            if (globalSettings.assistantEnabled) {
+                toggleAssistantBtn.classList.add('active');
+            } else {
+                toggleAssistantBtn.classList.remove('active');
+            }
+        }
         
-        // Initial toggle based on settings
+        // Initial toggle of the listener based on settings
         window.electronAPI.toggleSelectionListener(globalSettings.assistantEnabled);
 
         // Load distributed server setting
@@ -804,7 +807,7 @@ function setupEventListeners() {
             enableSmoothStreaming: document.getElementById('enableSmoothStreaming').checked,
             minChunkBufferSize: parseInt(document.getElementById('minChunkBufferSize').value, 10) || 1,
             smoothStreamIntervalMs: parseInt(document.getElementById('smoothStreamIntervalMs').value, 10) || 25,
-            assistantEnabled: assistantEnabledCheckbox.checked,
+            // assistantEnabled is no longer part of the form, it's managed by the toggle button
             assistantAgent: assistantAgentSelect.value,
             enableDistributedServer: document.getElementById('enableDistributedServer').checked,
         };
@@ -1049,19 +1052,27 @@ function setupEventListeners() {
         });
     }
 
-    if (assistantEnabledCheckbox) {
-        assistantEnabledCheckbox.addEventListener('change', (event) => {
-            const isEnabled = event.target.checked;
-            assistantAgentContainer.style.display = isEnabled ? 'block' : 'none';
-            window.electronAPI.toggleSelectionListener(isEnabled);
+    if (toggleAssistantBtn) {
+        toggleAssistantBtn.addEventListener('click', async () => {
+            const isActive = toggleAssistantBtn.classList.toggle('active');
+            globalSettings.assistantEnabled = isActive;
 
-            // Dynamically set the required attribute on the select element
-            if (assistantAgentSelect) {
-                assistantAgentSelect.required = isEnabled;
-            }
+            // Notify main process immediately
+            window.electronAPI.toggleSelectionListener(isActive);
 
-            if (isEnabled) {
-                window.settingsManager.populateAssistantAgentSelect(); // Refresh agent list when enabled
+            // Save the setting immediately
+            const result = await window.electronAPI.saveSettings({
+                ...globalSettings, // Send all settings to avoid overwriting
+                assistantEnabled: isActive
+            });
+
+            if (result.success) {
+                uiHelperFunctions.showToastNotification(`划词助手已${isActive ? '开启' : '关闭'}`, 'info');
+            } else {
+                uiHelperFunctions.showToastNotification(`设置划词助手状态失败: ${result.error}`, 'error');
+                // Revert UI on failure
+                toggleAssistantBtn.classList.toggle('active', !isActive);
+                globalSettings.assistantEnabled = !isActive;
             }
         });
     }
