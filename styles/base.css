@@ -24,5 +24,5 @@ body {
 }
 
 body.light-theme .main-content {
-    background-image: url('../assets/light.jpeg'); /* Adjusted path for styles directory */
+    background-image: var(--chat-wallpaper-light);
 }

@@ -90,7 +90,7 @@
     display: flex;
     flex-direction: column;
     background-color: var(--tertiary-bg); 
-    background-image: url('../assets/dark.jpg'); /* Adjusted path */
+    background-image: var(--chat-wallpaper-dark);
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;

@@ -19,11 +19,11 @@ html, body {
 
 /* 根据主题设置不同的壁纸, 这部分逻辑将由JS动态添加class到body上实现 */
 #assistant-window-body.dark-theme {
-    background-image: url('../assets/dark.jpg');
+    background-image: var(--chat-wallpaper-dark);
 }
 
 #assistant-window-body.light-theme {
-    background-image: url('../assets/light.jpeg');
+    background-image: var(--chat-wallpaper-light);
 }
 
 
