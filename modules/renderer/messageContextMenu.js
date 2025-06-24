@@ -51,7 +51,10 @@ function showContextMenu(event, messageItem, message) {
     menu.id = 'chatContextMenu';
     menu.classList.add('context-menu');
 
-    if (message.isThinking || messageItem.classList.contains('streaming')) {
+    const isThinkingOrStreaming = message.isThinking || messageItem.classList.contains('streaming');
+    const isError = message.finishReason === 'error';
+
+    if (isThinkingOrStreaming) {
         const cancelOption = document.createElement('div');
         cancelOption.classList.add('context-menu-item');
         cancelOption.textContent = message.isThinking ? "强制移除'思考中...'" : "取消回复生成";
@@ -64,7 +67,10 @@ function showContextMenu(event, messageItem, message) {
             closeContextMenu();
         };
         menu.appendChild(cancelOption);
-    } else {
+    }
+    
+    // For non-thinking/non-streaming messages (including errors and completed messages)
+    if (!isThinkingOrStreaming) {
         const isEditing = messageItem.classList.contains('message-item-editing');
         const textarea = isEditing ? messageItem.querySelector('.message-edit-textarea') : null;
 
@@ -187,7 +193,8 @@ function showContextMenu(event, messageItem, message) {
             }
             closeContextMenu();
         };
-
+        
+        // Regenerate option should be here to maintain order
         if (message.role === 'assistant' && !message.isGroupMessage && currentSelectedItemVal.type === 'agent') {
             const regenerateOption = document.createElement('div');
             regenerateOption.classList.add('context-menu-item', 'regenerate-text');
@@ -198,6 +205,7 @@ function showContextMenu(event, messageItem, message) {
             };
             menu.appendChild(regenerateOption);
         }
+
         menu.appendChild(deleteOption);
     }
 

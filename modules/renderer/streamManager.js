@@ -277,9 +277,8 @@ export async function finalizeStreamedMessage(messageId, finishReason, fullRespo
         return;
     }
 
-    if (!shouldEnableSmoothStreaming(messageId)) {
-        messageItem.classList.remove('streaming', 'thinking');
-    }
+    // Always remove streaming and thinking classes on finalization, regardless of mode.
+    messageItem.classList.remove('streaming', 'thinking');
     
     const messageIndex = currentChatHistoryArray.findIndex(msg => msg.id === messageId);
     let finalFullTextForRender;
