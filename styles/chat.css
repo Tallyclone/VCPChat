@@ -146,12 +146,12 @@
 
 .message-item.user .md-content {
     background-color: var(--user-bubble-bg);
-    color: var(--primary-text); 
-    border-bottom-right-radius: 4px; 
+    color: var(--user-text);
+    border-bottom-right-radius: 4px;
 }
 body.light-theme .message-item.user .md-content {
     background-color: var(--user-bubble-bg-light);
-    color: #ffffff; 
+    color: var(--user-text);
 }
 
 .message-item.assistant .md-content {
