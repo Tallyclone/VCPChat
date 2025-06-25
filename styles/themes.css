@@ -94,7 +94,7 @@ body.light-theme {
     --text-on-accent: #2d2922;  /* 强调背景文字 */
     --placeholder-text: #a0927f; /* 占位文字 - 暖灰褐 */
     --quoted-text: #228b22;     /* 引用文字 - 森林绿 */
-    --user-text: #f5deb3;       /* 用户气泡文字 - 米黄色 */
+    --user-text: #854914;       /* 用户气泡文字 - 米橙色 */
 
     /* --- Bubble Colors --- */
     --user-bubble-bg: rgba(139, 69, 19, 0.08);     /* 用户气泡 - 赤褐透明 */
