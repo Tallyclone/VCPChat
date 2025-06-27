@@ -8,7 +8,7 @@ contextBridge.exposeInMainWorld('electronPath', {
 contextBridge.exposeInMainWorld('electron', {
     send: (channel, data) => {
         // whitelist channels
-        let validChannels = ['open-music-folder', 'open-music-window', 'save-music-playlist', 'music-track-changed'];
+        let validChannels = ['open-music-folder', 'open-music-window', 'save-music-playlist', 'music-track-changed', 'music-renderer-ready'];
         if (validChannels.includes(channel)) {
             ipcRenderer.send(channel, data);
         }

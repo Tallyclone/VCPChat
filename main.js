@@ -404,8 +404,8 @@ function createOrFocusMusicWindow() {
 
         console.log('[Main Process] Creating new music window instance.');
         musicWindow = new BrowserWindow({
-            width: 450,
-            height: 700,
+            width: 550,
+            height: 800,
             minWidth: 400,
             minHeight: 600,
             title: '音乐播放器',
@@ -429,9 +429,13 @@ function createOrFocusMusicWindow() {
             musicWindow.show();
         });
 
-        musicWindow.webContents.once('did-finish-load', () => {
-            console.log('[Main Process] Music window content finished loading. Resolving promise.');
-            resolve(musicWindow);
+        // Wait for the renderer to signal that it's ready
+        ipcMain.once('music-renderer-ready', (event) => {
+            // Ensure the signal is from the window we just created
+            if (event.sender === musicWindow.webContents) {
+                console.log('[Main Process] Received "music-renderer-ready" signal. Resolving promise.');
+                resolve(musicWindow);
+            }
         });
 
         musicWindow.on('closed', () => {

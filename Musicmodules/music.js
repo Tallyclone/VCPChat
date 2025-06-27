@@ -511,6 +511,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 loadTrack(0, false); // Use loadTrack to correctly initialize and send IPC
             }
         }
+        
+        // Signal to the main process that the renderer is ready to receive commands.
+        if (window.electron) {
+            window.electron.send('music-renderer-ready');
+            console.log('[Music Player] Renderer is ready. Signal sent to main process.');
+        }
     };
 
     init();
