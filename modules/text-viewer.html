@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>文本阅读模式</title>
-    <link rel="stylesheet" href="style.css"> <!-- 复用主项目的样式 -->
+    <link rel="stylesheet" href="../styles/themes.css"> <!-- 引用主题样式 -->
+    <link rel="stylesheet" href="../style.css"> <!-- 复用主项目的样式 -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.0/dist/katex.min.css" integrity="sha384-Xi8rHCmBmhbuyyhbI88391ZKP2dmfnOl4rT9ZfRI7mLTdk1wblIUnrIq35nqwEvC" crossorigin="anonymous">
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.0/dist/katex.min.js" integrity="sha384-X/XCfMm41VSsqRNQgDerQczD69XqmjOOOwYQvr/uuC+j4OPoNhVgjdGFwhvN02Ja" crossorigin="anonymous"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.0/dist/contrib/auto-render.min.js" integrity="sha384-+XBljXPPiv+OzfbB3cVmLHf4hdUFHlWNZN5spNQ7rmHTXpd7WvJum6fIACpNNfIR" crossorigin="anonymous"></script>
@@ -13,39 +14,39 @@
     <style>
         /* Define CSS variables for dark theme (default) */
         :root {
-            --viewer-bg-color: #282c34;
-            --viewer-primary-text: #abb2bf;
-            --viewer-message-bg-assistant: #32363e;
-            --viewer-code-bg: #21252b;
-            --viewer-code-text: #c8ccd4;
-            --viewer-inline-code-text: #e06c75;
-            --viewer-button-text: #abb2bf;
-            --viewer-code-bg-hover: #2a2e36;
-            --viewer-button-active-bg: #666a73;
-            --viewer-top-light-effect-bg: rgba(250, 250, 210, 0.7);
-            --viewer-heading-color: #61afef; /* 新增：深色主题下的标题颜色 */
+            --viewer-bg-color: var(--primary-bg);
+            --viewer-primary-text: var(--primary-text);
+            --viewer-message-bg-assistant: var(--tertiary-bg); /* 聊天区背景 */
+            --viewer-code-bg: var(--secondary-bg); /* 侧边栏/面板背景 */
+            --viewer-code-text: var(--primary-text);
+            --viewer-inline-code-text: var(--highlight-text);
+            --viewer-button-text: var(--primary-text);
+            --viewer-code-bg-hover: var(--accent-bg);
+            --viewer-button-active-bg: var(--accent-bg);
+            --viewer-top-light-effect-bg: var(--shimmer-color-transparent); /* 使用主题中的透明闪烁色 */
+            --viewer-heading-color: var(--highlight-text); /* 新增：深色主题下的标题颜色 */
         }
 
         /* Define CSS variables for light theme */
         body.light-theme {
-            --viewer-bg-color: #ffffff;
-            --viewer-primary-text: #2c3e50;
-            --viewer-message-bg-assistant: #f4f4f4e3;
-            --viewer-code-bg: #f1f3f5;
-            --viewer-code-text: #343a40;
-            --viewer-inline-code-text: #d6336c;
-            --viewer-button-text: #495057;
-            --viewer-code-bg-hover: #c8d4dd;
-            --viewer-button-active-bg: #ced4da;
-            --viewer-top-light-effect-bg: rgba(173, 216, 230, 0.7); /* Light blue for light theme */
-            --viewer-heading-color-light: #007bff; /* 新增：浅色主题下的标题颜色 */
+            --viewer-bg-color: var(--primary-bg);
+            --viewer-primary-text: var(--primary-text);
+            --viewer-message-bg-assistant: var(--tertiary-bg);
+            --viewer-code-bg: var(--secondary-bg);
+            --viewer-code-text: var(--primary-text);
+            --viewer-inline-code-text: var(--highlight-text);
+            --viewer-button-text: var(--primary-text);
+            --viewer-code-bg-hover: var(--accent-bg);
+            --viewer-button-active-bg: var(--accent-bg);
+            --viewer-top-light-effect-bg: var(--shimmer-color-transparent); /* 使用主题中的透明闪烁色 */
+            --viewer-heading-color-light: var(--highlight-text); /* 新增：浅色主题下的标题颜色 */
         }
 
         .custom-quote-dark {
-            color: #FFBF75; /* 米橙色 */
+            color: var(--quoted-text); /* 使用主题中的引用文本颜色 */
         }
         .custom-quote-light {
-            color: #3B9EFF; /* 根据用户反馈调整的蓝色 */
+            color: var(--quoted-text); /* 使用主题中的引用文本颜色 */
         }
 
         /* Markdown headings */
@@ -66,7 +67,7 @@
             font-family: var(--font-family-sans-serif, sans-serif);
             background-color: var(--viewer-bg-color);
             color: var(--viewer-primary-text);
-            padding: 20px;
+            padding: 20px 20px 80px 20px;
             margin: 0;
             overflow-y: auto;
             line-height: 1.6;

@@ -15,13 +15,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Theme Management
     function applyTheme(theme) {
-        document.documentElement.classList.toggle('light-theme', theme === 'light');
+        document.body.classList.toggle('light-theme', theme === 'light');
     }
 
     // Initialize theme and listen for updates
     if (window.electronAPI) {
         try {
             const initialTheme = await window.electronAPI.getCurrentTheme();
+            console.log(`Image Viewer: Initial theme received: ${initialTheme}`); // Add log
             applyTheme(initialTheme || 'dark');
         } catch (e) {
             console.error("Failed to get initial theme for image viewer", e);
@@ -30,8 +31,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.electronAPI.onThemeUpdated((theme) => {
             console.log(`Theme update received in image viewer: ${theme}`);
             applyTheme(theme);
+            console.log(`Image Viewer: Body class list after theme update: ${document.body.classList}`); // Add log
         });
     } else {
+        console.log('Image Viewer: electronAPI not found. Applying default dark theme.'); // Add log
         applyTheme('dark'); // Fallback for non-electron env
     }
 

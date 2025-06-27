@@ -1,5 +1,5 @@
 // modules/ipc/fileDialogHandlers.js
-const { ipcMain, dialog, shell, clipboard, net, nativeImage, BrowserWindow, Menu } = require('electron');
+const { ipcMain, dialog, shell, clipboard, net, nativeImage, BrowserWindow, Menu, app } = require('electron');
 const fs = require('fs-extra');
 const path = require('path');
 const sharp = require('sharp');
@@ -233,7 +233,7 @@ function initialize(mainWindow, context) {
             backgroundColor: '#28282c', // Default to dark, will be updated by JS
             icon: path.join(__dirname, '..', 'assets', 'icon.png'),
             webPreferences: {
-                preload: path.join(__dirname, '..', 'preload.js'),
+                preload: path.join(app.getAppPath(), 'preload.js'),
                 contextIsolation: true, nodeIntegration: false, devTools: true
             }
         });

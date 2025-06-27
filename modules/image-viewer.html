@@ -4,28 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>图片预览</title>
+    <link rel="stylesheet" href="../styles/themes.css">
     <style>
-        /* Theme variables are defined directly here to make the component self-contained */
         :root {
-            --secondary-bg: #28282c;
-            --primary-text: #e0e0e0;
-            --tool-bubble-bg: #3a3a3e;
-            --button-bg: #48484c;
-            --button-hover-bg: #58585e;
-            --border-color: #3a3a3e;
+            --image-viewer-border-transparent: rgba(58, 50, 75, 0.2); /* Midnight Neon border with 20% opacity */
         }
 
-        html.light-theme {
-            --secondary-bg: #ffffff;
-            --primary-text: #2c3e50;
-            --tool-bubble-bg: #e0e6eb;
-            --button-bg: #3498db;
-            --button-hover-bg: #2980b9;
-            --border-color: #e0e6eb;
+        body.light-theme {
+            --image-viewer-border-transparent: rgba(212, 196, 176, 0.2); /* Golden Dawn border with 20% opacity */
         }
 
-        body { 
-            margin: 0; 
+        body {
+            margin: 0;
             background-color: var(--secondary-bg);
             display: flex;
             justify-content: center;
@@ -67,6 +57,9 @@
             visibility: hidden;
             transition: opacity 0.3s ease-in-out, visibility 0.3s ease-in-out, background-color 0.3s ease;
             pointer-events: none;
+            backdrop-filter: blur(10px) saturate(110%);
+            -webkit-backdrop-filter: blur(10px) saturate(110%);
+            border: 1px solid var(--image-viewer-border-transparent);
         }
         .controls.active {
             opacity: 1;
@@ -76,7 +69,7 @@
         .control-button {
             background-color: var(--button-bg);
             color: var(--primary-text);
-            border: 1px solid var(--border-color);
+            border: 1px solid var(--image-viewer-border-transparent);
             padding: 10px 15px;
             border-radius: 5px;
             cursor: pointer;
