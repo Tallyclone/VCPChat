@@ -33,6 +33,7 @@
     "mammoth": "^1.9.1",
     "marked": "^12.0.0",
     "minimatch": "^9.0.0",
+    "music-metadata": "^11.4.0",
     "node-global-key-listener": "^0.3.0",
     "node-schedule": "^2.1.1",
     "pdf-parse": "^1.1.1",

@@ -527,22 +527,33 @@
             }
 
             async function runPythonLocally(code, outputContainer) {
+                console.log('[text-viewer] Entering runPythonLocally.');
                 outputContainer.textContent = 'Executing with local Python...';
                 if (window.electronAPI && window.electronAPI.executePythonCode) {
                     try {
+                        console.log('[text-viewer] Calling electronAPI.executePythonCode...');
                         const { stdout, stderr } = await window.electronAPI.executePythonCode(code);
+                        console.log('[text-viewer] electronAPI.executePythonCode returned.');
+                        console.log('[text-viewer] Python stdout (from renderer):', stdout);
+                        console.log('[text-viewer] Python stderr (from renderer):', stderr);
+
                         let result = '';
-                        if (stdout) result += `--- Output ---\n${stdout}`;
-                        if (stderr) result += `\n--- Errors ---\n${stderr}`;
+                        // Strip ANSI escape codes before displaying
+                        const cleanedStdout = stripAnsi(stdout);
+                        const cleanedStderr = stripAnsi(stderr);
+
+                        if (cleanedStdout) result += `--- Output ---\n${cleanedStdout}`;
+                        if (cleanedStderr) result += `\n--- Errors ---\n${cleanedStderr}`;
                         outputContainer.textContent = result.trim() || 'Execution finished with no output.';
                     } catch (error) {
-                        console.error("Local Python execution error:", error);
+                        console.error("[text-viewer] Local Python execution error (in renderer):", error);
                         outputContainer.textContent = `Local Execution Error:\n${error.toString()}`;
                     }
                 } else {
                     outputContainer.textContent = 'Error: electronAPI.executePythonCode is not available.';
-                    console.error('electronAPI.executePythonCode is not available.');
+                    console.error('[text-viewer] electronAPI.executePythonCode is not available.');
                 }
+                console.log('[text-viewer] Exiting runPythonLocally.');
             }
 
             async function runPythonCode(code, outputContainer) {
@@ -556,6 +567,12 @@
                 }
             }
             // --- End Dual-Mode Python Execution ---
+
+            // Function to strip ANSI escape codes
+            function stripAnsi(str) {
+                // eslint-disable-next-line no-control-regex
+                return str.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-PRZcf-nqry=><]/g, '');
+            }
 
             function removeBoldMarkersAroundQuotes(text) {
                 if (typeof text !== 'string') return text;

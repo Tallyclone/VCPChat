@@ -81,18 +81,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- Theme Management ---
     function applyTheme(theme) {
-        const params = new URLSearchParams(window.location.search);
-        const currentTheme = theme || params.get('theme') || 'dark';
+        const currentTheme = theme || 'dark'; // Fallback to dark if theme is null/undefined
         const highlightThemeStyle = document.getElementById('highlight-theme-style');
-        if (currentTheme === 'light') {
-            document.body.classList.add('light-theme');
-            if (highlightThemeStyle) highlightThemeStyle.href = "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-light.min.css";
-        } else {
-            document.body.classList.remove('light-theme');
-            if (highlightThemeStyle) highlightThemeStyle.href = "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css";
+        
+        document.body.classList.toggle('light-theme', currentTheme === 'light');
+
+        if (highlightThemeStyle) {
+            highlightThemeStyle.href = currentTheme === 'light'
+                ? "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-light.min.css"
+                : "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css";
         }
     }
-    window.electronAPI.onThemeUpdated(applyTheme);
+    
+    if (window.electronAPI) {
+        window.electronAPI.onThemeUpdated(applyTheme);
+    }
 
     // --- Markdown & Preview Rendering ---
     function renderMarkdown(markdown) {
@@ -866,6 +869,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- Initialization ---
     async function initializeApp() {
+        // Initialize theme first to prevent flash of unstyled content
+        if (window.electronAPI) {
+            try {
+                const initialTheme = await window.electronAPI.getCurrentTheme();
+                applyTheme(initialTheme);
+            } catch (e) {
+                console.error("Failed to get initial theme", e);
+                applyTheme('dark'); // Fallback
+            }
+        } else {
+            applyTheme('dark'); // Fallback for non-electron env
+        }
+
         initResizer();
         searchInput.addEventListener('input', debounce(renderTree, 300));
 
@@ -899,7 +915,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.error('加载用户设置或根目录失败:', error);
         }
         
-        applyTheme();
         await loadNoteTree();
 
         window.electronAPI.onSharedNoteData(async (data) => {

@@ -5,6 +5,29 @@ contextBridge.exposeInMainWorld('electronPath', {
     dirname: (p) => ipcRenderer.invoke('path:dirname', p),
 });
 
+contextBridge.exposeInMainWorld('electron', {
+    send: (channel, data) => {
+        // whitelist channels
+        let validChannels = ['open-music-folder', 'open-music-window', 'save-music-playlist'];
+        if (validChannels.includes(channel)) {
+            ipcRenderer.send(channel, data);
+        }
+    },
+    invoke: (channel, data) => {
+        let validChannels = ['get-music-playlist'];
+        if (validChannels.includes(channel)) {
+            return ipcRenderer.invoke(channel, data);
+        }
+    },
+    on: (channel, func) => {
+        let validChannels = ['music-files', 'scan-started', 'scan-progress', 'scan-finished'];
+        if (validChannels.includes(channel)) {
+            // Deliberately strip event as it includes `sender`
+            ipcRenderer.on(channel, (event, ...args) => func(...args));
+        }
+    }
+});
+
 contextBridge.exposeInMainWorld('electronAPI', {
     // Settings
     loadSettings: () => ipcRenderer.invoke('load-settings'),
@@ -169,6 +192,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getAssistantBarInitialData: () => ipcRenderer.invoke('get-assistant-bar-initial-data'), // New: For renderer to request data
     onAssistantData: (callback) => ipcRenderer.on('assistant-data', (_event, data) => callback(data)),
     onThemeUpdated: (callback) => ipcRenderer.on('theme-updated', (_event, theme) => callback(theme)),
+    getCurrentTheme: () => ipcRenderer.invoke('get-current-theme'), // Add this
     setTheme: (theme) => ipcRenderer.send('set-theme', theme),
     removeVcpStreamChunkListener: (callback) => ipcRenderer.removeListener('vcp-stream-chunk', callback),
 

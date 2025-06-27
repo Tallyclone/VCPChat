@@ -2,7 +2,7 @@
 
 const sharp = require('sharp'); // 确保在文件顶部引入
 
-const { app, BrowserWindow, ipcMain, nativeTheme, globalShortcut, screen, clipboard, shell } = require('electron'); // Added screen, clipboard, and shell
+const { app, BrowserWindow, ipcMain, nativeTheme, globalShortcut, screen, clipboard, shell, dialog } = require('electron'); // Added screen, clipboard, and shell
 // selection-hook for non-clipboard text capture on Windows
 let SelectionHook = null;
 try {
@@ -19,6 +19,7 @@ const path = require('path');
 const fs = require('fs-extra'); // Using fs-extra for convenience
 const os = require('os');
 const { spawn } = require('child_process'); // For executing local python
+const { Worker } = require('worker_threads');
 const WebSocket = require('ws'); // For VCPLog notifications
 const { GlobalKeyboardListener } = require('node-global-key-listener');
 const fileManager = require('./modules/fileManager'); // Import the new file manager
@@ -30,6 +31,7 @@ const fileDialogHandlers = require('./modules/ipc/fileDialogHandlers'); // Impor
 const { getAgentConfigById, ...agentHandlers } = require('./modules/ipc/agentHandlers'); // Import agent handlers
 const chatHandlers = require('./modules/ipc/chatHandlers'); // Import chat handlers
 const groupChatHandlers = require('./modules/ipc/groupChatHandlers'); // Import group chat handlers
+const musicMetadata = require('music-metadata');
 
 // --- Configuration Paths ---
 // Data storage will be within the project's 'AppData' directory
@@ -40,6 +42,8 @@ const AGENT_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Agents');
 const USER_DATA_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'UserData'); // For chat histories and attachments
 const SETTINGS_FILE = path.join(APP_DATA_ROOT_IN_PROJECT, 'settings.json');
 const USER_AVATAR_FILE = path.join(USER_DATA_DIR, 'user_avatar.png'); // Standardized user avatar file
+const MUSIC_PLAYLIST_FILE = path.join(APP_DATA_ROOT_IN_PROJECT, 'songlist.json');
+const MUSIC_COVER_CACHE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'MusicCoverCache');
 
 // Define a specific agent ID for notes attachments
 const NOTES_AGENT_ID = 'notes_attachments_agent';
@@ -275,7 +279,6 @@ function createAssistantWindow(data) {
         minWidth: 350,
         minHeight: 400,
         title: '划词助手',
-        parent: mainWindow,
         modal: false,
         frame: false,
         titleBarStyle: 'hidden',
@@ -408,15 +411,12 @@ if (!gotTheLock) {
     fs.ensureDirSync(TRANSLATOR_DIR); // Ensure the Translator directory exists
 
     ipcMain.handle('open-translator-window', async (event) => {
-        const currentTheme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
-        console.log(`[Main Process] Received open-translator-window. Current theme is: ${currentTheme}`);
         const translatorWindow = new BrowserWindow({
             width: 1000,
             height: 700,
             minWidth: 800,
             minHeight: 600,
             title: '翻译',
-            parent: mainWindow,
             modal: false,
             webPreferences: {
                 preload: path.join(__dirname, 'preload.js'),
@@ -440,7 +440,7 @@ if (!gotTheLock) {
         const vcpServerUrl = settings.vcpServerUrl || '';
         const vcpApiKey = settings.vcpApiKey || '';
 
-        const translatorUrl = `file://${path.join(__dirname, 'Translatormodules', 'translator.html')}?theme=${encodeURIComponent(currentTheme)}&vcpServerUrl=${encodeURIComponent(vcpServerUrl)}&vcpApiKey=${encodeURIComponent(vcpApiKey)}`;
+        const translatorUrl = `file://${path.join(__dirname, 'Translatormodules', 'translator.html')}?vcpServerUrl=${encodeURIComponent(vcpServerUrl)}&vcpApiKey=${encodeURIComponent(vcpApiKey)}`;
         console.log(`[Main Process] Attempting to load URL in translator window: ${translatorUrl.substring(0, 200)}...`);
         
         translatorWindow.webContents.on('did-start-loading', () => {
@@ -892,15 +892,12 @@ if (!gotTheLock) {
         }
 
         console.log('[Main Process] Creating new notes window instance.');
-        const currentTheme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
-        
         notesWindow = new BrowserWindow({
             width: 1000,
             height: 700,
             minWidth: 800,
             minHeight: 600,
             title: '我的笔记',
-            parent: mainWindow,
             modal: false,
             webPreferences: {
                 preload: path.join(__dirname, 'preload.js'),
@@ -912,9 +909,10 @@ if (!gotTheLock) {
             show: false
         });
 
-        const notesUrl = `file://${path.join(__dirname, 'Notemodules', 'notes.html')}?theme=${encodeURIComponent(currentTheme)}`;
+        const notesUrl = `file://${path.join(__dirname, 'Notemodules', 'notes.html')}`;
         notesWindow.loadURL(notesUrl);
         
+        openChildWindows.push(notesWindow); // Add to the broadcast list
         notesWindow.setMenu(null);
 
         notesWindow.once('ready-to-show', () => {
@@ -923,6 +921,7 @@ if (!gotTheLock) {
 
         notesWindow.on('closed', () => {
             console.log('[Main Process] Notes window has been closed.');
+            openChildWindows = openChildWindows.filter(win => win !== notesWindow); // Remove from broadcast list
             notesWindow = null; // Clear the reference
         });
         
@@ -1027,8 +1026,146 @@ if (!gotTheLock) {
         }
     });
 
+    ipcMain.on('open-music-window', (event) => {
+        const musicWindow = new BrowserWindow({
+            width: 500,
+            height: 807,
+            minWidth: 400,
+            minHeight: 600,
+            title: '音乐播放器',
+            modal: false,
+            webPreferences: {
+                preload: path.join(__dirname, 'preload.js'),
+                contextIsolation: true,
+                nodeIntegration: false,
+                devTools: true
+            },
+            icon: path.join(__dirname, 'assets', 'icon.png'),
+            show: false
+        });
 
-    // --- Assistant IPC Handlers ---
+        musicWindow.loadFile(path.join(__dirname, 'Musicmodules', 'music.html'));
+        
+        openChildWindows.push(musicWindow);
+        musicWindow.setMenu(null);
+
+        musicWindow.once('ready-to-show', () => {
+            musicWindow.show();
+        });
+
+        musicWindow.on('closed', () => {
+            openChildWindows = openChildWindows.filter(win => win !== musicWindow);
+        });
+    });
+    
+    // --- Music Player IPC Handlers ---
+    ipcMain.on('open-music-folder', async (event) => {
+        const result = await dialog.showOpenDialog(mainWindow, {
+            properties: ['openDirectory']
+        });
+
+        if (result.canceled || result.filePaths.length === 0) {
+            return;
+        }
+
+        const folderPath = result.filePaths[0];
+        const supportedFormats = new Set(['.mp3', '.wav', '.ogg', '.flac', '.m4a']);
+        const fileList = [];
+
+        // Pass 1: Collect all file paths first
+        async function collectFilePaths(dir) {
+            try {
+                const files = await fs.readdir(dir, { withFileTypes: true });
+                for (const file of files) {
+                    const fullPath = path.join(dir, file.name);
+                    if (file.isDirectory()) {
+                        await collectFilePaths(fullPath);
+                    } else if (supportedFormats.has(path.extname(file.name).toLowerCase())) {
+                        fileList.push(fullPath);
+                    }
+                }
+            } catch (err) {
+                console.error(`Error collecting file paths in ${dir}:`, err);
+            }
+        }
+
+        try {
+            await collectFilePaths(folderPath);
+            event.sender.send('scan-started', { total: fileList.length });
+
+            // Ensure the cache directory exists before starting the worker
+            await fs.ensureDir(MUSIC_COVER_CACHE_DIR);
+
+            // Pass 2: Process files using a worker
+            const worker = new Worker(path.join(__dirname, 'modules', 'musicScannerWorker.js'), {
+                workerData: {
+                    coverCachePath: MUSIC_COVER_CACHE_DIR
+                }
+            });
+            const finalPlaylist = [];
+            let processedCount = 0;
+
+            worker.on('message', (result) => {
+                if (result.status === 'success') {
+                    finalPlaylist.push(result.data);
+                } else {
+                    console.error(result.error); // Log the specific file error
+                }
+                
+                processedCount++;
+                event.sender.send('scan-progress');
+
+                if (processedCount === fileList.length) {
+                    // All files have been processed
+                    event.sender.send('scan-finished', finalPlaylist);
+                    worker.terminate();
+                }
+            });
+
+            worker.on('error', (error) => {
+                console.error('Worker thread error:', error);
+                // In case of a worker crash, send what we have so far
+                event.sender.send('scan-finished', finalPlaylist);
+                worker.terminate();
+            });
+
+            worker.on('exit', (code) => {
+                if (code !== 0) {
+                    console.error(`Worker stopped with exit code ${code}`);
+                }
+            });
+
+            // Send files to the worker one by one
+            fileList.forEach(filePath => worker.postMessage(filePath));
+
+        } catch (err) {
+            console.error("Error during music scan setup:", err);
+            event.sender.send('scan-finished', []); // Send empty list on error
+        }
+    });
+
+    ipcMain.handle('get-music-playlist', async () => {
+        try {
+            if (await fs.pathExists(MUSIC_PLAYLIST_FILE)) {
+                return await fs.readJson(MUSIC_PLAYLIST_FILE);
+            }
+            return [];
+        } catch (error) {
+            console.error('Error reading music playlist:', error);
+            return [];
+        }
+    });
+
+    ipcMain.on('save-music-playlist', async (event, playlist) => {
+        try {
+            await fs.writeJson(MUSIC_PLAYLIST_FILE, playlist, { spaces: 2 });
+        } catch (error) {
+            console.error('Error saving music playlist:', error);
+        }
+    });
+
+
+     // --- Assistant IPC Handlers ---
     ipcMain.handle('get-assistant-bar-initial-data', async () => {
         try {
             const settings = await fs.readJson(SETTINGS_FILE);
@@ -1119,6 +1256,10 @@ if (!gotTheLock) {
         }
     });
 
+    // Add the central theme getter
+    ipcMain.handle('get-current-theme', () => {
+        return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+    });
 });
 
     // --- Python Execution IPC Handler ---
@@ -1126,7 +1267,8 @@ if (!gotTheLock) {
         return new Promise((resolve) => {
             // Use '-u' for unbuffered output and set PYTHONIOENCODING for proper UTF-8 handling
             const pythonProcess = spawn('python', ['-u'], {
-                env: { ...process.env, PYTHONIOENCODING: 'UTF-8' }
+                env: { ...process.env, PYTHONIOENCODING: 'UTF-8' },
+                maxBuffer: 10 * 1024 * 1024 // Increase buffer to 10MB
             });
 
             let stdout = '';
@@ -1142,6 +1284,8 @@ if (!gotTheLock) {
 
             pythonProcess.on('close', (exitCode) => {
                 console.log(`Python process exited with code ${exitCode}`);
+                console.log('Python stdout:', stdout); // Log full stdout
+                console.log('Python stderr:', stderr); // Log full stderr
                 resolve({ stdout, stderr });
             });
 

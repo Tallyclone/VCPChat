@@ -1009,12 +1009,8 @@ function setupEventListeners() {
     if (openTranslatorBtn) {
         console.log('[Renderer] openTranslatorBtn found. Adding event listener.');
         openTranslatorBtn.addEventListener('click', async () => {
-            console.log('[Renderer] openTranslatorBtn clicked!');
-            const currentTheme = document.body.classList.contains('light-theme') ? 'light' : 'dark';
             if (window.electronAPI && window.electronAPI.openTranslatorWindow) {
-                console.log('[Renderer] Calling electronAPI.openTranslatorWindow with theme:', currentTheme);
-                await window.electronAPI.openTranslatorWindow(currentTheme);
-                console.log('[Renderer] electronAPI.openTranslatorWindow call completed.');
+                await window.electronAPI.openTranslatorWindow();
             } else {
                 console.warn('[Renderer] electronAPI.openTranslatorWindow is not available.');
                 uiHelperFunctions.showToastNotification('无法打开翻译助手：功能不可用。', 'error');
@@ -1024,12 +1020,23 @@ function setupEventListeners() {
 
     if (openNotesBtn) {
         openNotesBtn.addEventListener('click', async () => {
-            const currentTheme = document.body.classList.contains('light-theme') ? 'light' : 'dark';
             if (window.electronAPI && window.electronAPI.openNotesWindow) {
-                await window.electronAPI.openNotesWindow(currentTheme);
+                await window.electronAPI.openNotesWindow();
             } else {
                 console.warn('[Renderer] electronAPI.openNotesWindow is not available.');
                 uiHelperFunctions.showToastNotification('无法打开笔记：功能不可用。', 'error');
+            }
+        });
+    }
+
+    const openMusicBtn = document.getElementById('openMusicBtn');
+    if (openMusicBtn) {
+        openMusicBtn.addEventListener('click', () => {
+            // Correct way to send IPC message via preload script
+            if (window.electron) {
+                window.electron.send('open-music-window');
+            } else {
+                console.error('Music Player: electron context bridge not found.');
             }
         });
     }

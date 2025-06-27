@@ -25,14 +25,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentTheme = theme;
     };
 
-    // 解析 URL 参数以获取配置和主题
+    // 解析 URL 参数以获取配置
     const urlParams = new URLSearchParams(window.location.search);
-    const themeParam = urlParams.get('theme');
-    if (themeParam) {
-        // 主程序会传递 'light' 或 'dark'
-        applyTheme(themeParam);
-    }
-
     const vcpServerUrlParam = urlParams.get('vcpServerUrl');
     if (vcpServerUrlParam) {
         vcpServerUrl = decodeURIComponent(vcpServerUrlParam);
@@ -118,8 +112,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    // 初始化主题
-    applyTheme(currentTheme);
+    // --- Theme Handling ---
+    async function initializeTheme() {
+        try {
+            const theme = await window.electronAPI.getCurrentTheme();
+            applyTheme(theme || 'dark');
+        } catch (error) {
+            console.error('Failed to get initial theme:', error);
+            applyTheme('dark'); // Fallback
+        }
+    }
+
+    if (window.electronAPI) {
+        initializeTheme();
+        window.electronAPI.onThemeUpdated((theme) => {
+            console.log(`Theme update received in translator: ${theme}`);
+            applyTheme(theme);
+        });
+    } else {
+        console.warn('electronAPI not found. Theme updates will not work.');
+        applyTheme('dark');
+    }
 
     // --- 为复制按钮添加点击事件 ---
     copyBtn.addEventListener('click', () => {

@@ -65,8 +65,8 @@
     --scrollbar-thumb-hover: rgba(255, 71, 133, 0.6);
 
     /* --- 流式输出动画光晕 Shimmer Effect for Loading --- */
-    --shimmer-color-transparent: rgba(220, 221, 225, 0.974);
-    --shimmer-color-highlight: rgba(220, 221, 225, 0.14);
+    --shimmer-color-transparent: rgba(220, 221, 225, 0.163);
+    --shimmer-color-highlight: rgba(220, 221, 225, 0.962);
 }
 
 /* * =================================================================
@@ -119,7 +119,7 @@ body.light-theme {
 
     /* --- 流式输出动画光晕 Shimmer Effect --- */
     --shimmer-color-transparent: rgba(45, 41, 34, 0.04);
-    --shimmer-color-highlight: rgba(45, 41, 34, 0.08);
+    --shimmer-color-highlight: rgba(45, 41, 34, 0.958);
 }
 
 /* * =================================================================
