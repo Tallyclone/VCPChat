@@ -29,8 +29,8 @@
     --input-bg: #1a1b22;        /* 输入框背景 */
 
     /* --- Text Colors --- */
-    --primary-text: #dcdde1;    /* 主要文字 - 柔和的银灰色 */
-    --secondary-text: #8c8d93;  /* 次要/标题文字 - 中性灰 */
+    --primary-text: #e8e9ed;    /* 主要文字 - 柔和的银灰色 */
+    --secondary-text: #d1d1db;  /* 次要/标题文字 - 中性灰 */
     --highlight-text: #ff4785;  /* 高亮文字 - 赛博粉 */
     --text-on-accent: #ffffff;  /* 在强调色背景上的文字 */
     --placeholder-text: #6c6d75; /* 输入框占位文字 */

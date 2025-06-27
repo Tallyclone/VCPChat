@@ -95,10 +95,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Core Player Logic ---
 
-    const loadTrack = (trackIndex) => {
-        if (playlist.length === 0) return;
+    const loadTrack = (trackIndex, andPlay = true) => {
+        if (playlist.length === 0) {
+            // If playlist is empty, clear info and notify main process
+            trackTitle.textContent = '未选择歌曲';
+            trackArtist.textContent = '未知艺术家';
+            const defaultArtUrl = `url('../assets/${currentTheme === 'light' ? 'musiclight.jpeg' : 'musicdark.jpeg'}')`;
+            albumArt.style.backgroundImage = defaultArtUrl;
+            updateBlurredBackground(defaultArtUrl);
+            audio.src = '';
+            if (window.electron) {
+                window.electron.send('music-track-changed', null);
+            }
+            renderPlaylist();
+            return;
+        }
         currentTrackIndex = trackIndex;
         const track = playlist[trackIndex];
+
+        // Send track info to the main process
+        if (window.electron) {
+            window.electron.send('music-track-changed', {
+                title: track.title,
+                artist: track.artist,
+                album: track.album
+            });
+        }
 
         trackTitle.textContent = track.title || '未知标题';
         trackArtist.textContent = track.artist || '未知艺术家';
@@ -111,7 +133,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         audio.src = track.path;
         renderPlaylist(); // Re-render to update active track highlight
-        playTrack();
+        if (andPlay) {
+            playTrack();
+        }
     };
 
     const playTrack = () => {
@@ -351,6 +375,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         addFolderBtn.addEventListener('click', () => {
             playlist = [];
+            if (window.electron) {
+                window.electron.send('music-track-changed', null);
+            }
             renderPlaylist();
             loadingIndicator.style.display = 'flex';
             scanProgressContainer.style.display = 'none';
@@ -379,8 +406,43 @@ document.addEventListener('DOMContentLoaded', () => {
             renderPlaylist();
             window.electron.send('save-music-playlist', playlist);
             if (playlist.length > 0 && !audio.src) {
-                loadTrack(0);
-                pauseTrack(); // Load first track but don't play
+                loadTrack(0, false); // Load first track but don't play
+            }
+        });
+
+        // Listen for commands from the main process (sent via the plugin)
+        window.electronAPI.onMusicCommand(({ command, target }) => {
+            console.log(`[Music Player] Received command: ${command}, Target: ${target}`);
+            switch (command) {
+                case 'play':
+                    if (target) {
+                        const targetLower = target.toLowerCase();
+                        const trackIndex = playlist.findIndex(track =>
+                            (track.title || '').toLowerCase().includes(targetLower) ||
+                            (track.artist || '').toLowerCase().includes(targetLower)
+                        );
+
+                        if (trackIndex > -1) {
+                            loadTrack(trackIndex, true);
+                        } else {
+                            console.warn(`[Music Player] Track containing "${target}" not found.`);
+                            // Optionally, send a notification back to the user? For now, just log.
+                        }
+                    } else {
+                        playTrack();
+                    }
+                    break;
+                case 'pause':
+                    pauseTrack();
+                    break;
+                case 'next':
+                    nextTrack();
+                    break;
+                case 'prev':
+                    prevTrack();
+                    break;
+                default:
+                    console.warn(`[Music Player] Unknown command received: ${command}`);
             }
         });
     };
@@ -446,17 +508,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (savedPlaylist && savedPlaylist.length > 0) {
                 playlist = savedPlaylist;
                 renderPlaylist();
-                currentTrackIndex = 0;
-                const track = playlist[0];
-                trackTitle.textContent = track.title || '未知标题';
-                trackArtist.textContent = track.artist || '未知艺术家';
-                
-                const defaultArtUrl = `url('../assets/${currentTheme === 'light' ? 'musiclight.jpeg' : 'musicdark.jpeg'}')`;
-                const albumArtUrl = track.albumArt ? `url('file://${track.albumArt.replace(/\\/g, '/')}')` : defaultArtUrl;
-                
-                albumArt.style.backgroundImage = albumArtUrl;
-                updateBlurredBackground(albumArtUrl);
-                audio.src = track.path;
+                loadTrack(0, false); // Use loadTrack to correctly initialize and send IPC
             }
         }
     };

@@ -401,14 +401,13 @@ ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelCo
             // --- Agent Music Control Injection ---
             if (getMusicState) {
                 const settingsPath = path.join(APP_DATA_ROOT_IN_PROJECT, 'settings.json');
-                const { musicWindow, currentSongInfo } = getMusicState();
-                
                 try {
                     const settings = await fs.readJson(settingsPath);
-                    if (settings.agentMusicControl && musicWindow && !musicWindow.isDestroyed()) {
+                    if (settings.agentMusicControl) { // 优化点1：只要开关开启就注入
                         const systemPromptParts = [];
+                        const { musicWindow, currentSongInfo } = getMusicState();
 
-                        // 1. Build Playlist Info
+                        // 1. 构建播放列表信息 (无条件)
                         const songlistPath = path.join(APP_DATA_ROOT_IN_PROJECT, 'songlist.json');
                         if (await fs.pathExists(songlistPath)) {
                             const songlistJson = await fs.readJson(songlistPath);
@@ -420,21 +419,22 @@ ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelCo
                             }
                         }
 
-                        // 2. Build Current Song Info
-                        if (currentSongInfo) {
+                        // 2. 注入插件权限 (无条件)
+                        systemPromptParts.push(`点歌台{{VCPMusicController}}`);
+
+                        // 3. 构建当前歌曲信息 (仅当播放器打开时)
+                        if (musicWindow && !musicWindow.isDestroyed() && currentSongInfo) {
                             systemPromptParts.push(`[当前播放音乐：${currentSongInfo.title} - ${currentSongInfo.artist} (${currentSongInfo.album || '未知专辑'})]`);
                         }
 
-                        // 3. Inject into messages array
+                        // 4. 注入到消息数组
                         if (systemPromptParts.length > 0) {
-                            const injectionText = systemPromptParts.join('\n');
+                            const injectionText = systemPromptParts.join('\n\n'); // 使用双换行增加可读性
                             const systemMsgIndex = messages.findIndex(m => m.role === 'system');
 
                             if (systemMsgIndex !== -1) {
-                                // Prepend to existing system message
                                 messages[systemMsgIndex].content = `${injectionText}\n${messages[systemMsgIndex].content}`;
                             } else {
-                                // Create a new system message at the beginning
                                 messages.unshift({ role: 'system', content: injectionText });
                             }
                         }

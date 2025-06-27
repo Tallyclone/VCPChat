@@ -392,23 +392,80 @@ if (!gotTheLock) {
     }
   });
 
+// --- Singleton Music Window Creation Function ---
+function createOrFocusMusicWindow() {
+    return new Promise((resolve, reject) => {
+        if (musicWindow && !musicWindow.isDestroyed()) {
+            console.log('[Main Process] Music window already exists. Focusing it.');
+            musicWindow.focus();
+            resolve(musicWindow);
+            return;
+        }
+
+        console.log('[Main Process] Creating new music window instance.');
+        musicWindow = new BrowserWindow({
+            width: 450,
+            height: 700,
+            minWidth: 400,
+            minHeight: 600,
+            title: '音乐播放器',
+            modal: false,
+            webPreferences: {
+                preload: path.join(__dirname, 'preload.js'),
+                contextIsolation: true,
+                nodeIntegration: false,
+                devTools: true
+            },
+            icon: path.join(__dirname, 'assets', 'icon.png'),
+            show: false
+        });
+
+        musicWindow.loadFile(path.join(__dirname, 'Musicmodules', 'music.html'));
+        
+        openChildWindows.push(musicWindow);
+        musicWindow.setMenu(null);
+
+        musicWindow.once('ready-to-show', () => {
+            musicWindow.show();
+        });
+
+        musicWindow.webContents.once('did-finish-load', () => {
+            console.log('[Main Process] Music window content finished loading. Resolving promise.');
+            resolve(musicWindow);
+        });
+
+        musicWindow.on('closed', () => {
+            openChildWindows = openChildWindows.filter(win => win !== musicWindow);
+            musicWindow = null;
+        });
+
+        musicWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+            console.error(`[Main Process] Music window failed to load: ${errorDescription} (code: ${errorCode})`);
+            reject(new Error(`Music window failed to load: ${errorDescription}`));
+        });
+    });
+}
+
 // --- Music Control Handler ---
 async function handleMusicControl(args) {
     const { command, target } = args;
     console.log(`[MusicControl] Received command: ${command}, Target: ${target}`);
 
-    if (!musicWindow || musicWindow.isDestroyed()) {
-        const errorMsg = '音乐播放器未打开，无法执行命令。';
-        console.warn(`[MusicControl] ${errorMsg}`);
+    try {
+        // 优化点3: 确保音乐窗口存在，如果不存在则创建并等待其加载完成
+        const targetWindow = await createOrFocusMusicWindow();
+
+        // 窗口已加载完成，可以直接发送命令
+        targetWindow.webContents.send('music-command', { command, target });
+
+        const successMsg = `指令 '${command}' 已成功发送给播放器。`;
+        console.log(`[MusicControl] ${successMsg}`);
+        return { status: 'success', message: successMsg };
+    } catch (error) {
+        const errorMsg = `处理音乐指令失败: ${error.message}`;
+        console.error(`[MusicControl] ${errorMsg}`, error);
         return { status: 'error', message: errorMsg };
     }
-
-    // Forward the command to the music player window's renderer process
-    musicWindow.webContents.send('music-command', { command, target });
-
-    const successMsg = `指令 '${command}' 已成功发送给播放器。`;
-    console.log(`[MusicControl] ${successMsg}`);
-    return { status: 'success', message: successMsg };
 }
 
   app.whenReady().then(async () => { // Make the function async
@@ -1055,41 +1112,12 @@ async function handleMusicControl(args) {
         }
     });
 
-    ipcMain.on('open-music-window', (event) => {
-        if (musicWindow && !musicWindow.isDestroyed()) {
-            musicWindow.focus();
-            return;
+    ipcMain.on('open-music-window', async (event) => {
+        try {
+            await createOrFocusMusicWindow();
+        } catch (error) {
+            console.error("Failed to open or focus music window from IPC:", error);
         }
-        musicWindow = new BrowserWindow({
-            width: 450,
-            height: 700,
-            minWidth: 400,
-            minHeight: 600,
-            title: '音乐播放器',
-            modal: false,
-            webPreferences: {
-                preload: path.join(__dirname, 'preload.js'),
-                contextIsolation: true,
-                nodeIntegration: false,
-                devTools: true
-            },
-            icon: path.join(__dirname, 'assets', 'icon.png'),
-            show: false
-        });
-
-        musicWindow.loadFile(path.join(__dirname, 'Musicmodules', 'music.html'));
-        
-        openChildWindows.push(musicWindow);
-        musicWindow.setMenu(null);
-
-        musicWindow.once('ready-to-show', () => {
-            musicWindow.show();
-        });
-
-        musicWindow.on('closed', () => {
-            openChildWindows = openChildWindows.filter(win => win !== musicWindow);
-            musicWindow = null;
-        });
     });
     
     // --- Music Player IPC Handlers ---
