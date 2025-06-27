@@ -17,7 +17,7 @@ const fileManager = require('../fileManager');
  * @param {function} context.startSelectionListener - Function to start the selection listener.
  */
 function initialize(mainWindow, context) {
-    const { AGENT_DIR, USER_DATA_DIR, APP_DATA_ROOT_IN_PROJECT, NOTES_AGENT_ID } = context;
+    const { AGENT_DIR, USER_DATA_DIR, APP_DATA_ROOT_IN_PROJECT, NOTES_AGENT_ID, getMusicState } = context;
 
     ipcMain.handle('save-topic-order', async (event, agentId, orderedTopicIds) => {
         if (!agentId || !Array.isArray(orderedTopicIds)) {
@@ -398,6 +398,53 @@ ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelCo
         console.log(`[Main - sendToVCP] ***** sendToVCP HANDLER EXECUTED for messageId: ${messageId}, isGroupCall: ${isGroupCall} *****`);
         const streamChannel = isGroupCall ? 'vcp-group-stream-chunk' : 'vcp-stream-chunk';
         try {
+            // --- Agent Music Control Injection ---
+            if (getMusicState) {
+                const settingsPath = path.join(APP_DATA_ROOT_IN_PROJECT, 'settings.json');
+                const { musicWindow, currentSongInfo } = getMusicState();
+                
+                try {
+                    const settings = await fs.readJson(settingsPath);
+                    if (settings.agentMusicControl && musicWindow && !musicWindow.isDestroyed()) {
+                        const systemPromptParts = [];
+
+                        // 1. Build Playlist Info
+                        const songlistPath = path.join(APP_DATA_ROOT_IN_PROJECT, 'songlist.json');
+                        if (await fs.pathExists(songlistPath)) {
+                            const songlistJson = await fs.readJson(songlistPath);
+                            if (Array.isArray(songlistJson) && songlistJson.length > 0) {
+                                const titles = songlistJson.map(song => song.title).filter(Boolean);
+                                if (titles.length > 0) {
+                                    systemPromptParts.push(`[播放列表——\n${titles.join('\n')}\n]`);
+                                }
+                            }
+                        }
+
+                        // 2. Build Current Song Info
+                        if (currentSongInfo) {
+                            systemPromptParts.push(`[当前播放音乐：${currentSongInfo.title} - ${currentSongInfo.artist} (${currentSongInfo.album || '未知专辑'})]`);
+                        }
+
+                        // 3. Inject into messages array
+                        if (systemPromptParts.length > 0) {
+                            const injectionText = systemPromptParts.join('\n');
+                            const systemMsgIndex = messages.findIndex(m => m.role === 'system');
+
+                            if (systemMsgIndex !== -1) {
+                                // Prepend to existing system message
+                                messages[systemMsgIndex].content = `${injectionText}\n${messages[systemMsgIndex].content}`;
+                            } else {
+                                // Create a new system message at the beginning
+                                messages.unshift({ role: 'system', content: injectionText });
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error('[Agent Music Control] Failed to inject music info:', e);
+                }
+            }
+            // --- End of Injection ---
+
             console.log(`发送到VCP服务器: ${vcpUrl} for messageId: ${messageId}`);
             console.log('VCP API Key:', vcpApiKey ? '已设置' : '未设置');
             console.log('模型配置:', modelConfig);

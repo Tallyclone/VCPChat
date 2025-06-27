@@ -8,7 +8,7 @@ contextBridge.exposeInMainWorld('electronPath', {
 contextBridge.exposeInMainWorld('electron', {
     send: (channel, data) => {
         // whitelist channels
-        let validChannels = ['open-music-folder', 'open-music-window', 'save-music-playlist'];
+        let validChannels = ['open-music-folder', 'open-music-window', 'save-music-playlist', 'music-track-changed'];
         if (validChannels.includes(channel)) {
             ipcRenderer.send(channel, data);
         }
@@ -195,6 +195,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getCurrentTheme: () => ipcRenderer.invoke('get-current-theme'), // Add this
     setTheme: (theme) => ipcRenderer.send('set-theme', theme),
     removeVcpStreamChunkListener: (callback) => ipcRenderer.removeListener('vcp-stream-chunk', callback),
+
+    // Music Player Control
+    onMusicCommand: (callback) => ipcRenderer.on('music-command', (_event, command) => callback(command)),
 
     // Local Python Execution
     executePythonCode: (code) => ipcRenderer.invoke('execute-python-code', code),

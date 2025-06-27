@@ -2,6 +2,7 @@
 // VCPDistributedServer.js
 const WebSocket = require('ws');
 const path = require('path');
+// const { ipcMain } = require('electron'); // This was incorrect. ipcMain should be injected.
 const pluginManager = require('./Plugin.js');
 
 // DEBUG_MODE is now passed in config
@@ -14,6 +15,7 @@ class DistributedServer {
         this.serverName = config.serverName || 'Unnamed-Distributed-Server';
         this.debugMode = config.debugMode || false;
         this.rendererProcess = config.rendererProcess; // To communicate with the renderer
+        this.handleMusicControl = config.handleMusicControl; // Inject the music control handler
         this.ws = null;
         this.reconnectInterval = 5000;
         this.maxReconnectInterval = 60000;
@@ -145,16 +147,51 @@ class DistributedServer {
 
         let responsePayload;
         try {
-            // Use the new processToolCall method to handle argument formatting
             const result = await pluginManager.processToolCall(toolName, toolArgs);
-            
-            let parsedResult;
-            try {
-                // The result from the plugin is expected to be a JSON string.
-                parsedResult = JSON.parse(result);
-            } catch (e) {
-                // If not JSON, wrap it.
-                parsedResult = { original_plugin_output: result };
+            let finalResult;
+
+            // --- Special Handling for MusicController ---
+            if (toolName === 'MusicController') {
+                const commandPayload = JSON.parse(result);
+                if (commandPayload.status === 'error') {
+                    throw new Error(commandPayload.error);
+                }
+                
+                if (typeof this.handleMusicControl !== 'function') {
+                    throw new Error('Music control handler is not configured for the Distributed Server.');
+                }
+
+                // Directly call the injected handler function from main.js
+                const resultFromMain = await this.handleMusicControl(commandPayload);
+
+                if (resultFromMain.status === 'error') {
+                    throw new Error(resultFromMain.message);
+                }
+                
+                // For AI, we want a simple, natural language response.
+                let naturalResponse = `指令 '${commandPayload.command}' 已成功执行。`;
+                if (commandPayload.command === 'play' && commandPayload.target) {
+                    naturalResponse = `已为您播放歌曲: ${commandPayload.target}`;
+                } else if (commandPayload.command === 'play') {
+                    naturalResponse = `已恢复播放。`;
+                } else if (commandPayload.command === 'pause') {
+                    naturalResponse = `已暂停播放。`;
+                } else if (commandPayload.command === 'next') {
+                    naturalResponse = `已切换到下一首。`;
+                } else if (commandPayload.command === 'prev') {
+                    naturalResponse = `已切换到上一首。`;
+                }
+                finalResult = { message: naturalResponse };
+
+            } else {
+                // --- Default Handling for all other plugins ---
+                try {
+                    // The result from other plugins is expected to be a JSON string.
+                    finalResult = JSON.parse(result);
+                } catch (e) {
+                    // If not JSON, wrap it for safety.
+                    finalResult = { original_plugin_output: result };
+                }
             }
 
             responsePayload = {
@@ -162,7 +199,7 @@ class DistributedServer {
                 data: {
                     requestId,
                     status: 'success',
-                    result: parsedResult
+                    result: finalResult
                 }
             };
         } catch (error) {

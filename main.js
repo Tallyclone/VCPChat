@@ -62,6 +62,7 @@ let hideBarTimeout = null; // Timer for delayed hiding of the assistant bar
 let distributedServer = null; // To hold the distributed server instance
 let notesWindow = null; // To hold the single instance of the notes window
 let musicWindow = null; // To hold the single instance of the music window
+let currentSongInfo = null; // To store currently playing song info
 let translatorWindow = null; // To hold the single instance of the translator window
 
 
@@ -385,11 +386,30 @@ if (!gotTheLock) {
 } else {
   app.on('second-instance', (event, commandLine, workingDirectory) => {
     // 有人试图运行第二个实例，我们应该聚焦于我们的窗口
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
     }
   });
+
+// --- Music Control Handler ---
+async function handleMusicControl(args) {
+    const { command, target } = args;
+    console.log(`[MusicControl] Received command: ${command}, Target: ${target}`);
+
+    if (!musicWindow || musicWindow.isDestroyed()) {
+        const errorMsg = '音乐播放器未打开，无法执行命令。';
+        console.warn(`[MusicControl] ${errorMsg}`);
+        return { status: 'error', message: errorMsg };
+    }
+
+    // Forward the command to the music player window's renderer process
+    musicWindow.webContents.send('music-command', { command, target });
+
+    const successMsg = `指令 '${command}' 已成功发送给播放器。`;
+    console.log(`[MusicControl] ${successMsg}`);
+    return { status: 'success', message: successMsg };
+}
 
   app.whenReady().then(async () => { // Make the function async
     fs.ensureDirSync(APP_DATA_ROOT_IN_PROJECT); // Ensure the main AppData directory in project exists
@@ -992,7 +1012,8 @@ if (!gotTheLock) {
         NOTES_AGENT_ID,
         selectionListenerActive,
         stopSelectionListener,
-        startSelectionListener
+        startSelectionListener,
+        getMusicState: () => ({ musicWindow, currentSongInfo })
     });
     createAssistantBarWindow(); // Pre-create the assistant bar window for performance
 
@@ -1007,7 +1028,8 @@ if (!gotTheLock) {
                     vcpKey: settings.vcpLogKey,
                     serverName: 'VCP-Desktop-Client-Distributed-Server',
                     debugMode: true, // Or read from settings if you add this option
-                    rendererProcess: mainWindow.webContents // Pass the renderer process object
+                    rendererProcess: mainWindow.webContents, // Pass the renderer process object
+                    handleMusicControl: handleMusicControl // Inject the music control handler
                 };
                 distributedServer = new DistributedServer(config);
                 distributedServer.initialize();
@@ -1071,6 +1093,10 @@ if (!gotTheLock) {
     });
     
     // --- Music Player IPC Handlers ---
+    ipcMain.on('music-track-changed', (event, songInfo) => {
+        currentSongInfo = songInfo;
+    });
+
     ipcMain.on('open-music-folder', async (event) => {
         const result = await dialog.showOpenDialog(mainWindow, {
             properties: ['openDirectory']

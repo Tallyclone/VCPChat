@@ -683,6 +683,7 @@ async function loadAndApplyGlobalSettings() {
 
         // Load distributed server setting
         document.getElementById('enableDistributedServer').checked = globalSettings.enableDistributedServer === true;
+        document.getElementById('agentMusicControl').checked = globalSettings.agentMusicControl === true;
 
 
     } else {
@@ -810,6 +811,7 @@ function setupEventListeners() {
             // assistantEnabled is no longer part of the form, it's managed by the toggle button
             assistantAgent: assistantAgentSelect.value,
             enableDistributedServer: document.getElementById('enableDistributedServer').checked,
+            agentMusicControl: document.getElementById('agentMusicControl').checked,
         };
 
         const userAvatarCropped = getCroppedFile('user'); // Use central getter
