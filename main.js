@@ -61,6 +61,8 @@ let mouseListener = null; // To hold the global mouse listener instance
 let hideBarTimeout = null; // Timer for delayed hiding of the assistant bar
 let distributedServer = null; // To hold the distributed server instance
 let notesWindow = null; // To hold the single instance of the notes window
+let musicWindow = null; // To hold the single instance of the music window
+let translatorWindow = null; // To hold the single instance of the translator window
 
 
 function processSelectedText(selectionData) {
@@ -411,7 +413,11 @@ if (!gotTheLock) {
     fs.ensureDirSync(TRANSLATOR_DIR); // Ensure the Translator directory exists
 
     ipcMain.handle('open-translator-window', async (event) => {
-        const translatorWindow = new BrowserWindow({
+        if (translatorWindow && !translatorWindow.isDestroyed()) {
+            translatorWindow.focus();
+            return;
+        }
+        translatorWindow = new BrowserWindow({
             width: 1000,
             height: 700,
             minWidth: 800,
@@ -479,6 +485,7 @@ if (!gotTheLock) {
         translatorWindow.on('closed', () => {
             console.log('[Main Process] translatorWindow has been closed.');
             openChildWindows = openChildWindows.filter(win => win !== translatorWindow);
+            translatorWindow = null;
             if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.focus(); // 聚焦主窗口
             }
@@ -1027,9 +1034,13 @@ if (!gotTheLock) {
     });
 
     ipcMain.on('open-music-window', (event) => {
-        const musicWindow = new BrowserWindow({
-            width: 500,
-            height: 807,
+        if (musicWindow && !musicWindow.isDestroyed()) {
+            musicWindow.focus();
+            return;
+        }
+        musicWindow = new BrowserWindow({
+            width: 450,
+            height: 700,
             minWidth: 400,
             minHeight: 600,
             title: '音乐播放器',
@@ -1055,6 +1066,7 @@ if (!gotTheLock) {
 
         musicWindow.on('closed', () => {
             openChildWindows = openChildWindows.filter(win => win !== musicWindow);
+            musicWindow = null;
         });
     });
     
