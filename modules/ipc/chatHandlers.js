@@ -403,40 +403,52 @@ ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelCo
                 const settingsPath = path.join(APP_DATA_ROOT_IN_PROJECT, 'settings.json');
                 try {
                     const settings = await fs.readJson(settingsPath);
-                    if (settings.agentMusicControl) { // 优化点1：只要开关开启就注入
-                        const systemPromptParts = [];
+                    if (settings.agentMusicControl) {
                         const { musicWindow, currentSongInfo } = getMusicState();
+                        const topParts = [];
+                        const bottomParts = [];
 
-                        // 1. 构建播放列表信息 (无条件)
+                        // 1. 构建播放列表信息 (注入到顶部)
                         const songlistPath = path.join(APP_DATA_ROOT_IN_PROJECT, 'songlist.json');
                         if (await fs.pathExists(songlistPath)) {
                             const songlistJson = await fs.readJson(songlistPath);
                             if (Array.isArray(songlistJson) && songlistJson.length > 0) {
                                 const titles = songlistJson.map(song => song.title).filter(Boolean);
                                 if (titles.length > 0) {
-                                    systemPromptParts.push(`[播放列表——\n${titles.join('\n')}\n]`);
+                                    topParts.push(`[播放列表——\n${titles.join('\n')}\n]`);
                                 }
                             }
                         }
 
-                        // 2. 注入插件权限 (无条件)
-                        systemPromptParts.push(`点歌台{{VCPMusicController}}`);
+                        // 2. 构建注入到底部的信息
+                        // 2a. 插件权限
+                        bottomParts.push(`点歌台{{VCPMusicController}}`);
 
-                        // 3. 构建当前歌曲信息 (仅当播放器打开时)
+                        // 2b. 当前歌曲信息 (仅当播放器打开且有歌曲信息时)
                         if (musicWindow && !musicWindow.isDestroyed() && currentSongInfo) {
-                            systemPromptParts.push(`[当前播放音乐：${currentSongInfo.title} - ${currentSongInfo.artist} (${currentSongInfo.album || '未知专辑'})]`);
+                            bottomParts.push(`[当前播放音乐：${currentSongInfo.title} - ${currentSongInfo.artist} (${currentSongInfo.album || '未知专辑'})]`);
                         }
 
-                        // 4. 注入到消息数组
-                        if (systemPromptParts.length > 0) {
-                            const injectionText = systemPromptParts.join('\n\n'); // 使用双换行增加可读性
-                            const systemMsgIndex = messages.findIndex(m => m.role === 'system');
+                        // 3. 组合并注入到消息数组
+                        if (topParts.length > 0 || bottomParts.length > 0) {
+                            let systemMsgIndex = messages.findIndex(m => m.role === 'system');
+                            let originalContent = '';
 
                             if (systemMsgIndex !== -1) {
-                                messages[systemMsgIndex].content = `${injectionText}\n${messages[systemMsgIndex].content}`;
+                                originalContent = messages[systemMsgIndex].content;
                             } else {
-                                messages.unshift({ role: 'system', content: injectionText });
+                                // 如果没有系统消息，则创建一个以便注入
+                                messages.unshift({ role: 'system', content: '' });
+                                systemMsgIndex = 0;
                             }
+                            
+                            const finalParts = [];
+                            if (topParts.length > 0) finalParts.push(topParts.join('\n'));
+                            if (originalContent) finalParts.push(originalContent);
+                            if (bottomParts.length > 0) finalParts.push(bottomParts.join('\n'));
+
+                            // 用换行符连接各个部分，确保格式正确
+                            messages[systemMsgIndex].content = finalParts.join('\n\n').trim();
                         }
                     }
                 } catch (e) {

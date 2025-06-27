@@ -1319,7 +1319,6 @@ async function handleMusicControl(args) {
                 selectedText: lastProcessedSelection,
                 action: action,
                 agentId: settings.assistantAgent, // Pass only the ID
-                theme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
             });
         } catch (error) {
             console.error('[Main] Error creating assistant window from action:', error);

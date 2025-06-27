@@ -226,22 +226,11 @@ function initialize(mainWindow, context) {
     });
 
     ipcMain.on('open-image-in-new-window', async (event, imageUrl, imageTitle) => {
-        // Directly get the theme from the main window's renderer process
-        let theme = 'dark'; // Default theme
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            try {
-                theme = await mainWindow.webContents.executeJavaScript('document.body.classList.contains("light-theme") ? "light" : "dark"');
-            } catch (e) {
-                console.error('[Main Process] Failed to get theme from main window, defaulting to dark.', e);
-            }
-        }
-
-        const isLightTheme = theme === 'light';
         const imageViewerWindow = new BrowserWindow({
             width: 800, height: 600, minWidth: 400, minHeight: 300,
             title: imageTitle || '图片预览',
             parent: mainWindow, modal: false, show: false,
-            backgroundColor: isLightTheme ? '#ffffff' : '#28282c', // Match the viewer's actual bg color
+            backgroundColor: '#28282c', // Default to dark, will be updated by JS
             icon: path.join(__dirname, '..', 'assets', 'icon.png'),
             webPreferences: {
                 preload: path.join(__dirname, '..', 'preload.js'),
@@ -249,7 +238,7 @@ function initialize(mainWindow, context) {
             }
         });
 
-        const viewerUrl = `file://${path.join(__dirname, '..', 'image-viewer.html')}?src=${encodeURIComponent(imageUrl)}&title=${encodeURIComponent(imageTitle || '图片预览')}&theme=${encodeURIComponent(theme)}`;
+        const viewerUrl = `file://${path.join(__dirname, '..', 'image-viewer.html')}?src=${encodeURIComponent(imageUrl)}&title=${encodeURIComponent(imageTitle || '图片预览')}`;
         imageViewerWindow.loadURL(viewerUrl);
         openChildWindows.push(imageViewerWindow);
         
@@ -263,7 +252,7 @@ function initialize(mainWindow, context) {
         });
     });
 
-    ipcMain.handle('display-text-content-in-viewer', async (event, textContent, windowTitle, theme) => {
+    ipcMain.handle('display-text-content-in-viewer', async (event, textContent, windowTitle) => {
         const textViewerWindow = new BrowserWindow({
             width: 800, height: 700, minWidth: 500, minHeight: 400,
             title: decodeURIComponent(windowTitle) || '阅读模式',
@@ -276,7 +265,7 @@ function initialize(mainWindow, context) {
         });
 
         const base64Text = Buffer.from(textContent).toString('base64');
-        const viewerUrl = `file://${path.join(__dirname, '..', 'text-viewer.html')}?text=${encodeURIComponent(base64Text)}&title=${encodeURIComponent(windowTitle || '阅读模式')}&theme=${encodeURIComponent(theme || 'dark')}&encoding=base64`;
+        const viewerUrl = `file://${path.join(__dirname, '..', 'text-viewer.html')}?text=${encodeURIComponent(base64Text)}&title=${encodeURIComponent(windowTitle || '阅读模式')}&encoding=base64`;
         
         textViewerWindow.loadURL(viewerUrl).catch(err => console.error(`[Main Process] textViewerWindow FAILED to initiate URL loading`, err));
         
