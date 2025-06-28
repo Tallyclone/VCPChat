@@ -182,26 +182,29 @@ export function appendStreamChunk(messageId, chunkData, agentNameForGroup, agent
 
     if (!textToAppend) return;
 
+    // 【关键修正】无论是否开启平滑流，都维护一份完整的文本记录
+    let currentAccumulated = accumulatedStreamText.get(messageId) || "";
+    currentAccumulated += textToAppend;
+    accumulatedStreamText.set(messageId, currentAccumulated);
+
+    // 更新群聊消息的发送者信息（如果需要）
+    const messageIndexForMeta = currentChatHistoryArray.findIndex(msg => msg.id === messageId);
+    if (messageIndexForMeta > -1 && currentChatHistoryArray[messageIndexForMeta].isGroupMessage) {
+        if (agentNameForGroup && !currentChatHistoryArray[messageIndexForMeta].name) currentChatHistoryArray[messageIndexForMeta].name = agentNameForGroup;
+        if (agentIdForGroup && !currentChatHistoryArray[messageIndexForMeta].agentId) currentChatHistoryArray[messageIndexForMeta].agentId = agentIdForGroup;
+        refs.currentChatHistoryRef.set([...currentChatHistoryArray]);
+    }
+
     if (shouldEnableSmoothStreaming(messageId)) {
         const queue = streamingChunkQueues.get(messageId);
         if (queue) {
             const chars = textToAppend.split('');
             for (const char of chars) queue.push(char);
         } else {
+            // 如果队列不存在，但平滑流是开启的，这是一种边缘情况，直接渲染
             renderChunkDirectlyToDOM(messageId, textToAppend, agentNameForGroup, agentIdForGroup);
             return;
         }
-        
-        let currentAccumulated = accumulatedStreamText.get(messageId) || "";
-        currentAccumulated += textToAppend;
-        accumulatedStreamText.set(messageId, currentAccumulated);
-
-        const messageIndex = currentChatHistoryArray.findIndex(msg => msg.id === messageId);
-        if (messageIndex > -1 && currentChatHistoryArray[messageIndex].isGroupMessage) {
-            if (agentNameForGroup && !currentChatHistoryArray[messageIndex].name) currentChatHistoryArray[messageIndex].name = agentNameForGroup;
-            if (agentIdForGroup && !currentChatHistoryArray[messageIndex].agentId) currentChatHistoryArray[messageIndex].agentId = agentIdForGroup;
-        }
-        refs.currentChatHistoryRef.set([...currentChatHistoryArray]);
 
         if (!streamingTimers.has(messageId)) {
             const globalSettings = refs.globalSettingsRef.get();
@@ -216,39 +219,8 @@ export function appendStreamChunk(messageId, chunkData, agentNameForGroup, agent
                     const finalMessageItem = refs.chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
                     if (finalMessageItem) finalMessageItem.classList.remove('streaming');
                     
-                    const finalHistory = refs.currentChatHistoryRef.get();
-                    const finalMsgIdx = finalHistory.findIndex(m => m.id === messageId);
-                    const completeAccumulatedText = accumulatedStreamText.get(messageId) || "";
-
-                    if (finalMsgIdx > -1 && finalHistory[finalMsgIdx].content !== completeAccumulatedText) {
-                        finalHistory[finalMsgIdx].content = completeAccumulatedText;
-                        refs.currentChatHistoryRef.set([...finalHistory]);
-                    }
-                    
-                    const textForFinalPass = completeAccumulatedText;
-
-                    if (finalMessageItem) {
-                        const finalContentDiv = finalMessageItem.querySelector('.md-content');
-                        if (finalContentDiv && typeof textForFinalPass === 'string') {
-                           // Clear any pending debounced timers since we are doing the final render now.
-                           if (refs.enhancedRenderDebounceTimers.has(finalMessageItem)) {
-                               clearTimeout(refs.enhancedRenderDebounceTimers.get(finalMessageItem));
-                               refs.enhancedRenderDebounceTimers.delete(finalMessageItem);
-                           }
-
-                           // Perform the final, definitive render.
-                           let processedText = refs.preprocessFullContent(textForFinalPass);
-                           const rawHtml = refs.markedInstance.parse(processedText);
-                           refs.setContentAndProcessImages(finalContentDiv, rawHtml, messageId);
-                           
-                           // Now, run the full, unified content processor.
-                           refs.processRenderedContent(finalContentDiv);
-                           
-                           refs.uiHelper.scrollToBottom();
-                       }
-                    }
+                    // 最终渲染的逻辑已移至 finalizeStreamedMessage
                     streamingChunkQueues.delete(messageId);
-                    accumulatedStreamText.delete(messageId);
                 }
             }, globalSettings.smoothStreamIntervalMs !== undefined && globalSettings.smoothStreamIntervalMs >= 1 ? globalSettings.smoothStreamIntervalMs : 25);
             streamingTimers.set(messageId, timerId);
@@ -258,7 +230,13 @@ export function appendStreamChunk(messageId, chunkData, agentNameForGroup, agent
     }
 }
 
-export async function finalizeStreamedMessage(messageId, finishReason, fullResponseText, agentNameForGroup, agentIdForGroup) {
+export async function finalizeStreamedMessage(messageId, finishReason, agentNameForGroup, agentIdForGroup) { // <--- fullResponseText 已被移除
+    // 停止所有与此消息相关的定时器
+    if (streamingTimers.has(messageId)) {
+        clearInterval(streamingTimers.get(messageId));
+        streamingTimers.delete(messageId);
+    }
+
     const { chatMessagesDiv, electronAPI, uiHelper, markedInstance } = refs;
     const currentSelectedItem = refs.currentSelectedItemRef.get();
     const currentTopicIdVal = refs.currentTopicIdRef.get();
@@ -266,49 +244,33 @@ export async function finalizeStreamedMessage(messageId, finishReason, fullRespo
 
     const messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
     if (!messageItem) {
-        if (streamingTimers.has(messageId)) {
-            clearInterval(streamingTimers.get(messageId));
-            streamingTimers.delete(messageId);
-        }
+        console.warn(`[StreamManager] Finalize: Message item ${messageId} not found in DOM.`);
+        // 清理内存中的残留数据
         streamingChunkQueues.delete(messageId);
         accumulatedStreamText.delete(messageId);
         return;
     }
 
-    // Always remove streaming and thinking classes on finalization, regardless of mode.
     messageItem.classList.remove('streaming', 'thinking');
-    
+
+    // 【决定性逻辑】无条件地从内部状态获取最终文本
+    const finalFullText = accumulatedStreamText.get(messageId) || "";
+
     const messageIndex = currentChatHistoryArray.findIndex(msg => msg.id === messageId);
-    let finalFullTextForRender;
 
     if (messageIndex > -1) {
         const message = currentChatHistoryArray[messageIndex];
+        message.content = finalFullText; // 使用内部权威文本更新历史记录
         message.finishReason = finishReason;
         message.isThinking = false;
 
-        let authoritativeTextForHistory = message.content;
-
-        if (typeof fullResponseText === 'string' && fullResponseText.trim() !== '') {
-            const correctedText = fullResponseText.replace(/^重新生成中\.\.\./, '').trim();
-            authoritativeTextForHistory = correctedText;
-            if (shouldEnableSmoothStreaming(messageId)) {
-                accumulatedStreamText.set(messageId, correctedText);
-            }
-        } else if (shouldEnableSmoothStreaming(messageId)) {
-            const accumulated = accumulatedStreamText.get(messageId);
-            if (typeof accumulated === 'string' && accumulated.length > 0) {
-                authoritativeTextForHistory = accumulated;
-            }
-        }
-        
-        message.content = authoritativeTextForHistory;
-        finalFullTextForRender = message.content;
-
+        // 更新元数据
         if (message.isGroupMessage) {
             message.name = agentNameForGroup || message.name;
             message.agentId = agentIdForGroup || message.agentId;
         }
 
+        // 确保时间戳和上下文菜单存在
         const nameTimeBlock = messageItem.querySelector('.name-time-block');
         if (nameTimeBlock && !nameTimeBlock.querySelector('.message-timestamp')) {
             const timestampDiv = document.createElement('div');
@@ -316,18 +278,15 @@ export async function finalizeStreamedMessage(messageId, finishReason, fullRespo
             timestampDiv.textContent = new Date(message.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             nameTimeBlock.appendChild(timestampDiv);
         }
+        messageItem.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            refs.showContextMenu(e, messageItem, message);
+        });
 
-        if (message.role !== 'system' && !messageItem.classList.contains('thinking')) {
-            messageItem.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
-                refs.showContextMenu(e, messageItem, message);
-            });
-        }
-        
+        // 更新并保存最终历史记录
         refs.currentChatHistoryRef.set([...currentChatHistoryArray]);
-
+        const historyToSave = currentChatHistoryArray.filter(msg => !msg.isThinking);
         if (currentSelectedItem && currentSelectedItem.id && currentTopicIdVal) {
-            const historyToSave = currentChatHistoryArray.filter(msg => !msg.isThinking);
             if (currentSelectedItem.type === 'agent') {
                 await electronAPI.saveChatHistory(currentSelectedItem.id, currentTopicIdVal, historyToSave);
             } else if (currentSelectedItem.type === 'group' && electronAPI.saveGroupChatHistory) {
@@ -335,49 +294,23 @@ export async function finalizeStreamedMessage(messageId, finishReason, fullRespo
             }
         }
     } else {
-        if (shouldEnableSmoothStreaming(messageId)) {
-            if (streamingTimers.has(messageId)) {
-                clearInterval(streamingTimers.get(messageId));
-                streamingTimers.delete(messageId);
-            }
-        }
-        finalFullTextForRender = (typeof fullResponseText === 'string' && fullResponseText.trim() !== '')
-                               ? fullResponseText.replace(/^重新生成中\.\.\./, '').trim()
-                               : accumulatedStreamText.get(messageId) || `(消息 ${messageId} 历史记录未找到)`;
-        const directContentDiv = messageItem.querySelector('.md-content');
-        if(directContentDiv && (finishReason === 'error' || !fullResponseText || !shouldEnableSmoothStreaming(messageId))) {
-             const rawHtml = markedInstance.parse(finalFullTextForRender);
-             refs.setContentAndProcessImages(directContentDiv, rawHtml, messageId);
-        }
+        console.error(`[StreamManager] Finalize: Message ${messageId} not found in history array.`);
+    }
+
+    // 执行最终的、权威的DOM渲染
+    const contentDiv = messageItem.querySelector('.md-content');
+    if (contentDiv) {
+        let processedFinalText = refs.preprocessFullContent(finalFullText);
+        const rawHtml = markedInstance.parse(processedFinalText);
+        refs.setContentAndProcessImages(contentDiv, rawHtml, messageId);
+        refs.processRenderedContent(contentDiv);
     }
     
-    if (!shouldEnableSmoothStreaming(messageId)) {
-        const contentDiv = messageItem.querySelector('.md-content');
-        if (contentDiv) {
-            const thinkingIndicator = contentDiv.querySelector('.thinking-indicator, .streaming-indicator');
-            if (thinkingIndicator) thinkingIndicator.remove();
-            
-            let textForNonSmoothRender = finalFullTextForRender;
-            if (messageIndex > -1) {
-                textForNonSmoothRender = currentChatHistoryArray[messageIndex].content;
-            }
+    // 清理工作
+    streamingChunkQueues.delete(messageId);
+    accumulatedStreamText.delete(messageId);
 
-            let processedFinalText = refs.removeSpeakerTags(textForNonSmoothRender);
-            processedFinalText = refs.ensureNewlineAfterCodeBlock(processedFinalText);
-            processedFinalText = refs.ensureSpaceAfterTilde(processedFinalText);
-            processedFinalText = refs.removeIndentationFromCodeBlockMarkers(processedFinalText);
-            processedFinalText = refs.ensureSeparatorBetweenImgAndCode(processedFinalText);
-           const rawHtml = markedInstance.parse(processedFinalText);
-           refs.setContentAndProcessImages(contentDiv, rawHtml, messageId);
-           
-           // Use the full, unified content processor for the final render.
-           refs.processRenderedContent(contentDiv);
-       }
-    }
-
-    if (!shouldEnableSmoothStreaming(messageId)) {
-        uiHelper.scrollToBottom();
-    }
+    uiHelper.scrollToBottom();
 }
 
 // Expose to global scope for classic scripts

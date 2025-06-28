@@ -516,12 +516,26 @@ ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelCo
                 console.log(`VCP响应: 开始流式处理 for ${messageId} on channel ${streamChannel}`);
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
-    
-                async function processStream() {
+
+                // 【全新的、修正后的 processStream 函数】
+                // 它现在接收 reader 和 decoder 作为参数
+                async function processStream(reader, decoder) {
+                    // 引入一个字符串缓冲区，用于存储不完整的行
+                    let buffer = '';
+                    
+                    // 从此处的上下文中获取 event, isGroupCall, groupContext 等变量
+                    // 如果这些变量的作用域只在 ipcMain.handle 内，您需要将它们也作为参数传递进来
+                    // 为了简化，我们假设这些变量在更高层的作用域中可访问，或者您可以将此函数定义在ipcMain.handle内部
+                    const streamChannel = isGroupCall ? 'vcp-group-stream-chunk' : 'vcp-stream-chunk';
+
                     try {
                         while (true) {
+                            // 使用传入的 reader
                             const { done, value } = await reader.read();
                             if (done) {
+                                if (buffer.trim()) {
+                                    console.warn(`VCP流结束，但缓冲区中仍有未处理的数据: ${buffer}`);
+                                }
                                 console.log(`VCP流结束 for messageId: ${messageId}`);
                                 const endPayload = { type: 'end', messageId: messageId };
                                 if (isGroupCall && groupContext) {
@@ -530,18 +544,26 @@ ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelCo
                                 event.sender.send(streamChannel, endPayload);
                                 break;
                             }
-                            const chunkString = decoder.decode(value, { stream: true });
-                            const lines = chunkString.split('\n').filter(line => line.trim() !== '');
+                            
+                            // 使用传入的 decoder
+                            buffer += decoder.decode(value, { stream: true });
+
+                            const lines = buffer.split('\n');
+                            buffer = lines.pop(); // 关键的缓冲逻辑保留
+
                             for (const line of lines) {
+                                if (line.trim() === '') continue;
+
                                 if (line.startsWith('data: ')) {
                                     const jsonData = line.substring(5).trim();
                                     if (jsonData === '[DONE]') {
                                         console.log(`VCP流明确[DONE] for messageId: ${messageId}`);
-                                        const donePayload = { type: 'end', messageId: messageId }; // Treat [DONE] as end
+                                        const donePayload = { type: 'end', messageId: messageId };
                                         if (isGroupCall && groupContext) {
                                             Object.assign(donePayload, groupContext);
                                         }
                                         event.sender.send(streamChannel, donePayload);
+                                        // [DONE]后，函数可以结束了
                                         return;
                                     }
                                     try {
@@ -570,10 +592,20 @@ ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelCo
                         }
                         event.sender.send(streamChannel, streamErrPayload);
                     } finally {
+                        // 当循环结束（无论是正常完成还是出错），都确保释放锁
                         reader.releaseLock();
+                        console.log(`ReadableStream's lock released for messageId: ${messageId}`);
                     }
                 }
-                processStream();
+
+                // 将 reader 和 decoder 作为参数传递给 processStream
+                // 并且我们依然需要 await 来等待流处理完成
+                processStream(reader, decoder).then(() => {
+                    console.log(`[Main - sendToVCP] 流处理函数 processStream 已正常结束 for ${messageId}`);
+                }).catch(err => {
+                    console.error(`[Main - sendToVCP] processStream 内部抛出未捕获的错误 for ${messageId}:`, err);
+                });
+
                 return { streamingStarted: true };
             } else { // Non-streaming
                 console.log('VCP响应: 非流式处理');

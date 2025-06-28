@@ -288,7 +288,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (eventData.type === 'data') {
             window.messageRenderer.appendStreamChunk(streamMessageId, eventData.chunk);
         } else if (eventData.type === 'end') {
-            window.messageRenderer.finalizeStreamedMessage(streamMessageId, eventData.finish_reason || 'completed', eventData.fullResponse);
+            window.messageRenderer.finalizeStreamedMessage(streamMessageId, eventData.finish_reason || 'completed');
             if (currentSelectedItem.type === 'agent') { // Only summarize for agents
                 await window.chatManager.attemptTopicSummarizationIfNeeded();
             }
@@ -370,7 +370,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             window.messageRenderer.appendStreamChunk(streamMessageId, chunk, agentName, agentId);
         } else if (type === 'end') {
             // When the stream ends, finalize the message and save it to history
-            window.messageRenderer.finalizeStreamedMessage(streamMessageId, 'completed', fullResponse, agentName, agentId);
+            window.messageRenderer.finalizeStreamedMessage(streamMessageId, 'completed', agentName, agentId);
             // The history saving logic is now handled by groupchat.js in the main process.
             // The renderer's responsibility is to finalize the UI display.
         } else if (type === 'full_response') {

@@ -456,10 +456,10 @@ function appendStreamChunk(messageId, chunkData, agentNameForGroup, agentIdForGr
     streamManager.appendStreamChunk(messageId, chunkData, agentNameForGroup, agentIdForGroup);
 }
 
-async function finalizeStreamedMessage(messageId, finishReason, fullResponseText, agentNameForGroup, agentIdForGroup) {
-    // The responsibility for final rendering is now fully delegated to streamManager.
-    // This function just acts as a passthrough.
-    await streamManager.finalizeStreamedMessage(messageId, finishReason, fullResponseText, agentNameForGroup, agentIdForGroup);
+async function finalizeStreamedMessage(messageId, finishReason, agentNameForGroup, agentIdForGroup) { // <--- fullResponseText 参数已被移除
+    // 责任完全在 streamManager 内部，它应该使用自己拼接好的文本。
+    // 我们现在只传递必要的元数据。
+    await streamManager.finalizeStreamedMessage(messageId, finishReason, agentNameForGroup, agentIdForGroup);
 }
 
 /**
