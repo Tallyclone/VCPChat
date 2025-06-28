@@ -34,7 +34,7 @@ body.light-theme .notifications-header {
     box-sizing: border-box;
     margin-left: 4px; /* 间距缩小1px */
     position: relative; /* 为文字上移做准备 */
-    top: -1px; /* 清空文字上移1px */
+    top: 0px; /* 清空文字下挪1px */
 }
 
 #clearNotificationsBtn:hover,
