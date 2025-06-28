@@ -9,14 +9,41 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-bottom: 1px solid var(--border-color); /* 保留底边框以示区分 */
+    border-bottom: none;
     flex-shrink: 0;
+    padding: 10px 13px 10px 17px; /* 整体向右移动2px */
 }
 /* 为亮色主题添加对应样式 */
 body.light-theme .notifications-header {
     background-color: var(--panel-bg-light) !important;
 }
+#clearNotificationsBtn,
+.notifications-header .header-button {
+    background-color: var(--button-bg);
+    color: var(--secondary-text);
+    border: 1px solid var(--button-bg);
+    padding: 0 8px;
+    height: 30px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9em;
+    transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    margin-left: 4px; /* 间距缩小1px */
+}
+
+#clearNotificationsBtn:hover,
+.notifications-header .header-button:hover {
+    background-color: var(--button-hover-bg);
+    border-color: var(--button-hover-bg);
+    color: var(--primary-text);
+}
+
 body.light-theme #clearNotificationsBtn, body.light-theme .notifications-header .header-button {
+    background-color: var(--button-bg-light);
     color: var(--button-bg);
 }
 body.light-theme #clearNotificationsBtn:hover, body.light-theme .notifications-header .header-button:hover {
@@ -24,12 +51,17 @@ body.light-theme #clearNotificationsBtn:hover, body.light-theme .notifications-h
 }
 
 .notifications-header .header-button#openAdminPanelBtn {
-    padding: 0 8px; 
+    width: 30px;
+    padding: 0;
+    position: relative;
+    top: 1px;
 }
 .notifications-header .header-button svg {
     stroke: currentColor;
-    width: 18px; 
-    height: 18px; 
+    width: 18px;
+    height: 18px;
+    position: relative;
+    top: 1.5px;
 }
 
 .notifications-status {
