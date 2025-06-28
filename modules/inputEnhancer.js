@@ -107,7 +107,7 @@ function initializeInputEnhancer(refs) {
 
                         resolve({
                             name: file.name,
-                            type: file.type,
+                            type: file.type || 'application/octet-stream',
                             data: fileBuffer, // Send the buffer data
                             size: file.size
                         });
