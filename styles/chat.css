@@ -2,19 +2,27 @@
 
 .chat-header {
     padding: 12px 20px;
-    background-color: var(--secondary-bg);
+    /* CHANGE background-color */
+    background-color: var(--panel-bg-dark);
+    /* ADD frosted glass effect */
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     border-bottom: 1px solid var(--border-color);
     display: flex;
     justify-content: space-between;
     align-items: center;
-    min-height: 36px; 
-    flex-shrink: 0; 
+    min-height: 36px;
+    flex-shrink: 0;
+}
+body.light-theme .chat-header {
+    background-color: var(--panel-bg-light);
 }
 .chat-header h3 {
     margin: 0;
     font-size: 1.2em;
     color: var(--highlight-text);
     font-weight: 500;
+    text-shadow: var(--panel-text-shadow);
 }
 
 .theme-icon {
@@ -328,16 +336,23 @@ body.light-theme .message-item.system.welcome-bubble {
 
 
 .chat-input-area {
-    padding-top: 8px; 
+    padding-top: 8px;
     padding-right: 15px;
-    padding-bottom: 12px; 
+    padding-bottom: 12px;
     padding-left: 15px;
-    background-color: var(--secondary-bg);
-    border-top: 1px solid var(--border-color);
+    /* CHANGE background-color */
+    background-color: var(--panel-bg-dark);
+    /* ADD frosted glass effect */
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    /* REMOVE border-top */
     display: flex;
-    align-items: flex-end; 
-    flex-wrap: wrap; 
+    align-items: flex-end;
+    flex-wrap: wrap;
     flex-shrink: 0; /* Prevent input area from shrinking */
+}
+body.light-theme .chat-input-area {
+    background-color: var(--panel-bg-light);
 }
 
 .attachment-preview-area .file-preview { /* This is the old attachment preview style in input area */

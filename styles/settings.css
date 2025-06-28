@@ -661,7 +661,13 @@ body.light-theme input[type="file"]::file-selector-button:hover {
     padding: 10px 15px; /* 容器的内边距，与 notifications-list 保持一致 */
     /* border-top: 1px solid var(--border-color); /* 在main.html中已通过style添加 */
     /* margin-top: 10px; /* 在main.html中已通过style添加 */
-    background-color: var(--secondary-bg); /* 与通知区域背景协调 */
+    background-color: var(--panel-bg-dark); /* 与通知区域背景协调 */
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+body.light-theme .invite-agent-buttons-container {
+    background-color: var(--panel-bg-light);
 }
 
 .invite-agent-button {

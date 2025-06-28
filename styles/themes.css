@@ -28,6 +28,9 @@
     --border-color: #3a324b;    /* 边框颜色 */
     --input-bg: #1a1b22;        /* 输入框背景 */
 
+    /* ADD THIS NEW VARIABLE for frosted panels */
+    --panel-bg-dark: rgba(26, 27, 34, 0.75); /* 基于--secondary-bg，增加75%不透明度 */
+
     /* --- Text Colors --- */
     --primary-text: #e8e9ed;    /* 主要文字 - 柔和的银灰色 */
     --secondary-text: #d1d1db;  /* 次要/标题文字 - 中性灰 */
@@ -67,6 +70,9 @@
     /* --- 流式输出动画光晕 Shimmer Effect for Loading --- */
     --shimmer-color-transparent: rgba(220, 221, 225, 0.163);
     --shimmer-color-highlight: rgba(220, 221, 225, 0.962);
+
+    /* ADD text-shadow for frosted panels */
+    --panel-text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
 /* * =================================================================
@@ -76,6 +82,9 @@
  * =================================================================
  */
 body.light-theme {
+    /* ADD this line */
+    background-image: var(--chat-wallpaper-light);
+
     /* --- Wallpaper Interface --- */
     --chat-wallpaper-light: url('../assets/light.jpeg');
 
@@ -86,6 +95,9 @@ body.light-theme {
     --accent-bg: #e8ddd4;       /* 悬停背景 - 温润土色 */
     --border-color: #d4c4b0;    /* 边框 - 秋叶金棕 */
     --input-bg: #ffffff;        /* 输入框 */
+
+    /* ADD THIS NEW VARIABLE for frosted panels */
+    --panel-bg-light: rgba(255, 249, 240, 0.8); /* 基于--secondary-bg，增加80%不透明度 */
 
     /* --- Text Colors --- */
     --primary-text: #2d2922;    /* 主要文字 - 深咖啡色 */
@@ -166,3 +178,4 @@ body.light-theme .message-bubble {
         0 4px 20px rgba(45, 41, 34, 0.08),
         inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
+

@@ -117,12 +117,19 @@ body.light-theme #clearNotificationsBtn:hover, body.light-theme .notifications-h
 .notes-section {
     padding: 10px 8px;
     display: flex;
-    justify-content: flex-end; 
+    justify-content: flex-end;
     align-items: center;
-    background-color: var(--secondary-bg); 
-    padding-top: 10px; 
+    background-color: var(--panel-bg-dark);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    padding-top: 10px;
     padding-bottom: 10px;
     flex-shrink: 0; /* Prevent notes section from shrinking */
+    background-color: transparent;
+}
+
+body.light-theme .notes-section {
+    background-color: transparent;
 }
 
 .notifications-sidebar > .section-divider { 

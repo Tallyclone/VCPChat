@@ -2,14 +2,18 @@
 
 /* --- Custom Title Bar --- */
 .title-bar {
-    height: 30px; /* Adjust as needed */
-    background-color: var(--secondary-bg);
+    height: 30px;
+    /* CHANGE background-color */
+    background-color: var(--panel-bg-dark);
+    /* ADD frosted glass effect */
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    /* REMOVE border-bottom */
     color: var(--primary-text);
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 0 5px 0 10px; /* Reduced right padding slightly */
-    /* border-bottom: 1px solid var(--border-color); */
     -webkit-app-region: drag;
     flex-shrink: 0;
     position: fixed;
@@ -18,6 +22,9 @@
     right: 0;
     z-index: 1001;
     box-sizing: border-box; /* Added */
+}
+body.light-theme .title-bar {
+    background-color: var(--panel-bg-light);
 }
 
 .title-bar-text {
@@ -29,6 +36,7 @@
     flex-grow: 1;
     min-width: 0; /* Allow shrinking */
     margin-right: 10px; /* Add some space between text and controls */
+    text-shadow: var(--panel-text-shadow);
 }
 
 .title-bar-logo {
@@ -71,17 +79,26 @@
 
 /* --- Sidebar (Agent List) --- */
 .sidebar {
-    width: 260px; /* Default width */
-    min-width: 180px; 
-    max-width: 600px; 
-    background-color: var(--secondary-bg);
-    padding: 15px 15px 15px 17px; 
+    width: 260px;
+    /* CHANGE background-color */
+    background-color: var(--panel-bg-dark);
+    /* ADD frosted glass effect */
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    /* REMOVE border-right */
+    min-width: 180px;
+    max-width: 600px;
+    padding: 15px 15px 15px 17px;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    transition: width 0.3s cubic-bezier(0.25, 0.1, 0.25, 1); 
-    overflow-x: hidden; 
-    flex-shrink: 0; 
+    transition: width 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+    overflow-x: hidden;
+    flex-shrink: 0;
+    text-shadow: var(--panel-text-shadow);
+}
+body.light-theme .sidebar {
+    background-color: var(--panel-bg-light);
 }
 
 /* --- Main Content (Chat Area) --- */
@@ -89,31 +106,36 @@
     flex-grow: 1;
     display: flex;
     flex-direction: column;
-    background-color: var(--tertiary-bg); 
-    background-image: var(--chat-wallpaper-dark);
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
-    overflow: hidden; 
+    background-color: transparent; /* 改为透明 */
+    overflow: hidden;
+    /* ADD THIS LINE - 让主内容区的尺寸变化也变得平滑 */
+    transition: width 0.3s ease-out;
 }
 
 /* --- Notifications Sidebar --- */
 .notifications-sidebar {
-    width: 300px; /* Default width */
+    width: 300px;
+    /* CHANGE background-color */
+    background-color: var(--panel-bg-dark);
+    /* ADD frosted glass effect */
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     min-width: 220px; /* Adjusted min-width */
     max-width: 600px; /* Added max-width */
-    background-color: var(--secondary-bg);
-    border-left: 1px solid var(--border-color);
+    /* REMOVE border-left */
     display: flex;
     flex-direction: column;
-    padding: 0; 
-    transition: width 0.3s cubic-bezier(0.25, 0.1, 0.25, 1), 
-                min-width 0.3s cubic-bezier(0.25, 0.1, 0.25, 1), 
-                padding 0.3s cubic-bezier(0.25, 0.1, 0.25, 1),
-                opacity 0.3s ease-out, 
-                transform 0.3s ease-out;
-    overflow: hidden; 
+    padding: 0;
+    transition: width 0.3s ease-out,
+                min-width 0.3s ease-out,
+                padding 0.3s ease-out,
+                border-left-width 0.3s ease-out,
+                opacity 0.3s ease-out;
+    overflow: hidden;
     flex-shrink: 0; /* Prevent shrinking */
+}
+body.light-theme .notifications-sidebar {
+    background-color: var(--panel-bg-light);
 }
 
 .notifications-sidebar:not(.active) {
@@ -123,7 +145,7 @@
     padding-right: 0 !important; 
     border-left-width: 0 !important; 
     opacity: 0;
-    transform: translateX(100%); /* Slide out to the right */
+    /* transform: translateX(100%); */ /* Removed to prevent animation gap */
 }
 
 @media (max-width: 768px) {
