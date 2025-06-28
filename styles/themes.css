@@ -73,6 +73,15 @@
 
     /* ADD text-shadow for frosted panels */
     --panel-text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+
+body {
+    background-image: var(--chat-wallpaper-dark);
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+}
+    /* --- Unified Panel Background --- */
+    --panel-bg: var(--panel-bg-dark);
 }
 
 /* * =================================================================
@@ -82,8 +91,11 @@
  * =================================================================
  */
 body.light-theme {
-    /* ADD this line */
+    /* Wallpaper and background properties */
     background-image: var(--chat-wallpaper-light);
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
 
     /* --- Wallpaper Interface --- */
     --chat-wallpaper-light: url('../assets/light.jpeg');
@@ -132,6 +144,9 @@ body.light-theme {
     /* --- 流式输出动画光晕 Shimmer Effect --- */
     --shimmer-color-transparent: rgba(45, 41, 34, 0.04);
     --shimmer-color-highlight: rgba(45, 41, 34, 0.958);
+
+    /* --- Unified Panel Background --- */
+    --panel-bg: var(--panel-bg-light);
 }
 
 /* * =================================================================

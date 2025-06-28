@@ -8,10 +8,13 @@ body {
     padding: 0;
     height: 100vh;
     overflow: hidden;
-    background-color: var(--primary-bg);
+    /* background-color: var(--primary-bg); */ /* Let the wallpaper show through */
     color: var(--primary-text);
     display: flex; /* 使用 Flexbox 布局 */
     flex-direction: column;
+    /* Add some padding to the body to create space around the container */
+    padding: 15px;
+    box-sizing: border-box;
 }
 
 .translator-container {
@@ -20,7 +23,15 @@ body {
     height: 100%;
     padding: 20px;
     box-sizing: border-box;
-    gap: 20px; /* 增加元素间距 */
+    gap: 15px; /* 调整元素间距 */
+
+    /* --- Frosted Glass Effect --- */
+    background-color: var(--panel-bg);
+    backdrop-filter: blur(12px) saturate(150%);
+    -webkit-backdrop-filter: blur(12px) saturate(150%);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
 }
 
 /* 头部样式 */
@@ -101,7 +112,8 @@ body {
     padding: 12px;
     border: 1px solid var(--border-color);
     border-radius: 8px;
-    background-color: var(--input-bg);
+    /* Use a more solid background for readability on a frosted panel */
+    background-color: var(--secondary-bg);
     color: var(--primary-text);
     font-size: 1em;
     line-height: 1.6;

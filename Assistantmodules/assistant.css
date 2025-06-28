@@ -8,7 +8,7 @@ html, body {
     padding: 0;
     overflow: hidden;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    background-color: var(--tertiary-bg);
+    background-color: transparent;
     color: var(--primary-text);
     display: flex;
     flex-direction: column;
@@ -109,8 +109,10 @@ html, body {
     display: flex;
     align-items: flex-end;
     padding: 10px 15px;
-    border-top: 1px solid var(--border-color);
-    background-color: var(--secondary-bg);
+    border-top: none;
+    background-color: var(--panel-bg-dark); /* Use semi-transparent panel color */
+    -webkit-backdrop-filter: blur(12px) saturate(120%);
+    backdrop-filter: blur(12px) saturate(120%);
     flex-shrink: 0;
 }
 
@@ -225,4 +227,9 @@ body.light-theme #selection-assistant-bar .assistant-button {
 body.light-theme #selection-assistant-bar .assistant-button:hover {
     background-color: var(--highlight-text);
     color: var(--text-on-accent);
+}
+
+/* Light theme override for input area */
+body.light-theme .chat-input-area {
+    background-color: var(--panel-bg-light);
 }
