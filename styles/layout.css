@@ -3,12 +3,10 @@
 /* --- Custom Title Bar --- */
 .title-bar {
     height: 30px;
-    /* CHANGE background-color */
-    background-color: var(--panel-bg-dark);
-    /* ADD frosted glass effect */
+    height: 30px;
+    background-color: var(--panel-bg-dark); /* 使用半透明变量 */
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    /* REMOVE border-bottom */
     color: var(--primary-text);
     display: flex;
     justify-content: space-between;
@@ -80,12 +78,10 @@ body.light-theme .title-bar {
 /* --- Sidebar (Agent List) --- */
 .sidebar {
     width: 260px;
-    /* CHANGE background-color */
-    background-color: var(--panel-bg-dark);
-    /* ADD frosted glass effect */
+    width: 260px;
+    background-color: var(--panel-bg-dark); /* 使用半透明变量 */
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    /* REMOVE border-right */
     min-width: 180px;
     max-width: 600px;
     padding: 15px 15px 15px 17px;
@@ -106,18 +102,20 @@ body.light-theme .sidebar {
     flex-grow: 1;
     display: flex;
     flex-direction: column;
-    background-color: transparent; /* 改为透明 */
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    /* 关键修改：确保主内容区完全透明，让body的背景透出来 */
+    background-color: transparent;
     overflow: hidden;
-    /* ADD THIS LINE - 让主内容区的尺寸变化也变得平滑 */
     transition: width 0.3s ease-out;
 }
 
 /* --- Notifications Sidebar --- */
 .notifications-sidebar {
     width: 300px;
-    /* CHANGE background-color */
-    background-color: var(--panel-bg-dark);
-    /* ADD frosted glass effect */
+    width: 300px;
+    background-color: var(--panel-bg-dark); /* 使用半透明变量 */
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     min-width: 220px; /* Adjusted min-width */

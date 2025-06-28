@@ -30,5 +30,5 @@ body {
 }
 
 body.light-theme .main-content {
-    background-image: var(--chat-wallpaper-light);
+    /* background-image: var(--chat-wallpaper-light); */ /* <-- 移除或注释掉这一行 */
 }

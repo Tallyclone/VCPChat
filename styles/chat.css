@@ -2,9 +2,8 @@
 
 .chat-header {
     padding: 12px 20px;
-    /* CHANGE background-color */
-    background-color: var(--panel-bg-dark);
-    /* ADD frosted glass effect */
+    padding: 12px 20px;
+    background-color: var(--panel-bg-dark); /* 使用半透明变量 */
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border-bottom: 1px solid var(--border-color);
@@ -340,12 +339,13 @@ body.light-theme .message-item.system.welcome-bubble {
     padding-right: 15px;
     padding-bottom: 12px;
     padding-left: 15px;
-    /* CHANGE background-color */
-    background-color: var(--panel-bg-dark);
-    /* ADD frosted glass effect */
+    padding-top: 8px;
+    padding-right: 15px;
+    padding-bottom: 12px;
+    padding-left: 15px;
+    background-color: var(--panel-bg-dark); /* 使用半透明变量 */
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    /* REMOVE border-top */
     display: flex;
     align-items: flex-end;
     flex-wrap: wrap;
