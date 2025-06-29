@@ -314,6 +314,15 @@
             height: 16px;
             margin-right: 8px;
         }
+
+        /* Force spacer with content to prevent collapsing */
+        .force-spacer {
+            height: 40px;
+            font-size: 1px; /* Make content invisible */
+            color: transparent; /* Make content invisible */
+            user-select: none; /* Prevent selection */
+        }
+
         .content-container.editing-all {
             outline: 2px solid var(--viewer-inline-code-text); /* Visual cue for editing */
             box-shadow: 0 0 10px var(--viewer-inline-code-text); /* Enhanced visual cue */
@@ -437,6 +446,7 @@
             <label for="sandbox-toggle" class="sandbox-toggle-label"></label>
         </div>
     </div>
+    <div class="force-spacer">&nbsp;</div>
     <script src="https://cdn.jsdelivr.net/npm/mermaid@latest/dist/mermaid.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
