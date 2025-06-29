@@ -288,21 +288,23 @@
 
         /* Common style for global action buttons */
         .global-action-button {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 2px 18px; /* Adjusted padding for better width consistency */
-            background-color: var(--viewer-code-bg);
-            color: var(--viewer-button-text);
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: background-color 0.3s;
-            font-size: 14px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-            min-width: 130px; /* Ensure a minimum width for consistency */
-            text-align: center;
-        }
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 2px 18px; /* Adjusted padding for better width consistency */
+                    background-color: rgba(255, 255, 255, 0.05); /* Frosted glass background */
+                    backdrop-filter: blur(10px);
+                    -webkit-backdrop-filter: blur(10px);
+                    color: var(--viewer-button-text);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border-radius: 6px;
+                    cursor: pointer;
+                    transition: background-color 0.3s;
+                    font-size: 14px;
+                    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+                    min-width: 130px; /* Ensure a minimum width for consistency */
+                    text-align: center;
+                }
         .global-action-button:hover {
             background-color: var(--viewer-code-bg-hover);
         }
@@ -370,20 +372,23 @@
 
         /* Styles for Sandbox Toggle Switch */
         .sandbox-toggle-container {
-            display: flex;
-            align-items: center;
-            justify-content: center; /* To align items like other buttons */
-            gap: 8px;
-            color: var(--viewer-button-text);
-            padding: 8px 12px; /* Reduced horizontal padding to compensate for width */
-            background-color: var(--viewer-code-bg);
-            border-radius: 6px;
-            cursor: pointer;
-            transition: background-color 0.3s;
-            font-size: 14px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-            min-width: 130px;
-        }
+                    display: flex;
+                    align-items: center;
+                    justify-content: center; /* To align items like other buttons */
+                    gap: 8px;
+                    color: var(--viewer-button-text);
+                    padding: 8px 12px; /* Reduced horizontal padding to compensate for width */
+                    background-color: rgba(255, 255, 255, 0.05); /* Frosted glass background */
+                    backdrop-filter: blur(10px);
+                    -webkit-backdrop-filter: blur(10px);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border-radius: 6px;
+                    cursor: pointer;
+                    transition: background-color 0.3s;
+                    font-size: 14px;
+                    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+                    min-width: 130px;
+                }
         .sandbox-toggle-container:hover {
             background-color: var(--viewer-code-bg-hover);
         }
