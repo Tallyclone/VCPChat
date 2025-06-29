@@ -284,16 +284,16 @@
 }
 
 body.light-theme #agentSettingsForm .form-actions button[type="submit"] {
-    background-color: var(--user-bubble-bg-light); 
+    background-color: var(--button-bg);
 }
 body.light-theme #agentSettingsForm .form-actions button[type="submit"]:hover {
-    background-color: var(--button-hover-bg-light);
+    background-color: var(--button-hover-bg);
 }
 body.light-theme #agentSettingsForm .form-actions .danger-button {
-    background-color: var(--danger-color-light); 
+    background-color: var(--danger-color);
 }
 body.light-theme #agentSettingsForm .form-actions .danger-button:hover {
-    background-color: var(--danger-hover-bg-light);
+    background-color: var(--danger-hover-bg);
 }
 
 #selectAgentPromptForSettings {
@@ -410,16 +410,16 @@ body.light-theme #agentSettingsForm .form-actions .danger-button:hover {
 }
 
 body.light-theme #groupSettingsForm .form-actions button[type="submit"] {
-    background-color: var(--user-bubble-bg-light);
+    background-color: var(--button-bg);
 }
 body.light-theme #groupSettingsForm .form-actions button[type="submit"]:hover {
-    background-color: var(--button-hover-bg-light);
+    background-color: var(--button-hover-bg);
 }
 body.light-theme #groupSettingsForm .form-actions #deleteGroupBtn {
-    background-color: var(--danger-color-light);
+    background-color: var(--danger-color);
 }
 body.light-theme #groupSettingsForm .form-actions #deleteGroupBtn:hover {
-    background-color: var(--danger-hover-bg-light);
+    background-color: var(--danger-hover-bg);
 }
 
 
