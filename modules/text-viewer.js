@@ -290,14 +290,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return htmlBlocks[parseInt(index, 10)];
             });
 
-            // Prepare Mermaid diagrams before Markdown rendering
-            const mermaidRegex = /```\s*mermaid\n([\s\S]*?)```/gi;
-            let mermaidProcessedText = processedText.replace(mermaidRegex, (match, mermaidContent) => {
-                // Create a unique ID for each diagram to avoid conflicts if multiple diagrams exist
-                const diagramId = `mermaid-diagram-${Math.random().toString(36).substring(2, 15)}`;
-                return `<div class="mermaid" id="${diagramId}">${mermaidContent.trim()}</div>`;
-            });
-
             // Render Markdown
             if (window.marked) {
                 marked.setOptions({
@@ -309,7 +301,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     smartLists: true,
                     smartypants: false
                 });
-                contentDiv.innerHTML = marked.parse(mermaidProcessedText); // Use mermaidProcessedText
+                contentDiv.innerHTML = marked.parse(processedText);
 
                 // Apply syntax highlighting after Markdown is rendered
                 if (window.hljs) {
@@ -487,6 +479,20 @@ document.addEventListener('DOMContentLoaded', async () => {
                         preElement.appendChild(copyButton);
                     });
                 }
+                // After markdown rendering and syntax highlighting, specifically handle Mermaid blocks
+                document.querySelectorAll('pre code.language-mermaid').forEach((block) => {
+                    const preElement = block.parentElement;
+                    const mermaidContent = block.textContent || block.innerText;
+                    const diagramId = `mermaid-diagram-${Math.random().toString(36).substring(2, 15)}`;
+                    
+                    const mermaidContainer = document.createElement('div');
+                    mermaidContainer.className = 'mermaid';
+                    mermaidContainer.id = diagramId;
+                    mermaidContainer.textContent = decodeHtmlEntities(mermaidContent);
+                    
+                    preElement.parentNode.replaceChild(mermaidContainer, preElement);
+                });
+
                 // Render Mermaid diagrams
                 if (window.mermaid) {
                     try {
@@ -501,18 +507,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             } else {
                 // Fallback if marked is not loaded
                 const pre = document.createElement('pre');
-                pre.textContent = mermaidProcessedText; // Use mermaidProcessedText
+                pre.textContent = processedText; // Use processedText
                 contentDiv.appendChild(pre);
-                 // Render Mermaid diagrams even in fallback
-                if (window.mermaid) {
-                    try {
-                        mermaid.run({
-                            nodes: document.querySelectorAll('.mermaid')
-                        });
-                    } catch (e) {
-                        console.error("Mermaid rendering error (fallback):", e);
-                    }
-                }
+                 // In fallback mode, advanced rendering like Mermaid is not supported
+                 // as the structure is just a single <pre> block.
             }
 
             // Render LaTeX if KaTeX is available
