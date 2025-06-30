@@ -8,7 +8,7 @@ const sharp = require('sharp');
  * Initializes file and dialog related IPC handlers.
  * @param {BrowserWindow} mainWindow The main window instance.
  * @param {object} context - An object containing necessary context.
- * @param {boolean} context.selectionListenerActive - A flag indicating if the selection listener is active.
+ * @param {function} context.getSelectionListenerStatus - Function to get the current status of the selection listener.
  * @param {function} context.stopSelectionListener - Function to stop the selection listener.
  * @param {function} context.startSelectionListener - Function to start the selection listener.
  * @param {Array<BrowserWindow>} context.openChildWindows - Array of open child windows.
@@ -17,7 +17,7 @@ function initialize(mainWindow, context) {
     let { openChildWindows } = context;
 
     ipcMain.handle('select-avatar', async () => {
-        const listenerWasActive = context.selectionListenerActive;
+        const listenerWasActive = context.getSelectionListenerStatus();
         if (listenerWasActive) {
             context.stopSelectionListener();
             console.log('[Main] Temporarily stopped selection listener for avatar dialog.');

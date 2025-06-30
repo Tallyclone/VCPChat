@@ -12,7 +12,7 @@ const fileManager = require('../fileManager');
  * @param {string} context.USER_DATA_DIR - The path to the user data directory.
  * @param {string} context.APP_DATA_ROOT_IN_PROJECT - The path to the app data root.
  * @param {string} context.NOTES_AGENT_ID - The agent ID for notes.
- * @param {boolean} context.selectionListenerActive - A flag indicating if the selection listener is active.
+ * @param {function} context.getSelectionListenerStatus - Function to get the current status of the selection listener.
  * @param {function} context.stopSelectionListener - Function to stop the selection listener.
  * @param {function} context.startSelectionListener - Function to start the selection listener.
  */
@@ -285,7 +285,7 @@ function initialize(mainWindow, context) {
             return { error: "Agent ID and Topic ID are required to select files." };
         }
 
-        const listenerWasActive = context.selectionListenerActive;
+        const listenerWasActive = context.getSelectionListenerStatus();
         if (listenerWasActive) {
             context.stopSelectionListener();
             console.log('[Main] Temporarily stopped selection listener for file dialog.');

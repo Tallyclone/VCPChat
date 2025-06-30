@@ -10,12 +10,12 @@ const groupChat = require('../../Groupmodules/groupchat');
  * @param {object} context - An object containing necessary context.
  * @param {string} context.AGENT_DIR - The path to the agents directory.
  * @param {string} context.USER_DATA_DIR - The path to the user data directory.
- * @param {boolean} context.selectionListenerActive - A flag indicating if the selection listener is active.
+ * @param {function} context.getSelectionListenerStatus - Function to get the current status of the selection listener.
  * @param {function} context.stopSelectionListener - Function to stop the selection listener.
  * @param {function} context.startSelectionListener - Function to start the selection listener.
  */
 function initialize(mainWindow, context) {
-    const { AGENT_DIR, USER_DATA_DIR, selectionListenerActive, stopSelectionListener, startSelectionListener } = context;
+    const { AGENT_DIR, USER_DATA_DIR, getSelectionListenerStatus, stopSelectionListener, startSelectionListener } = context;
 
     // Helper function to get agent config, needed by multiple handlers
     const getAgentConfigById = async (agentId) => {
@@ -66,7 +66,7 @@ function initialize(mainWindow, context) {
     });
     
     ipcMain.handle('save-agent-group-avatar', async (event, groupId, avatarData) => {
-        const listenerWasActive = selectionListenerActive;
+        const listenerWasActive = getSelectionListenerStatus();
         if (listenerWasActive) {
             stopSelectionListener();
             console.log('[Main] Temporarily stopped selection listener for group avatar dialog.');

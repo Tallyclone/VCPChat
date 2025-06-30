@@ -1045,7 +1045,7 @@ async function handleMusicControl(args) {
     createWindow();
     windowHandlers.initialize(mainWindow);
     fileDialogHandlers.initialize(mainWindow, {
-        selectionListenerActive,
+        getSelectionListenerStatus: () => selectionListenerActive,
         stopSelectionListener,
         startSelectionListener,
         openChildWindows
@@ -1053,7 +1053,7 @@ async function handleMusicControl(args) {
     groupChatHandlers.initialize(mainWindow, {
         AGENT_DIR,
         USER_DATA_DIR,
-        selectionListenerActive,
+        getSelectionListenerStatus: () => selectionListenerActive,
         stopSelectionListener,
         startSelectionListener
     });
@@ -1062,7 +1062,7 @@ async function handleMusicControl(args) {
         USER_DATA_DIR,
         SETTINGS_FILE,
         USER_AVATAR_FILE,
-        selectionListenerActive,
+        getSelectionListenerStatus: () => selectionListenerActive,
         stopSelectionListener,
         startSelectionListener
     });
@@ -1071,7 +1071,7 @@ async function handleMusicControl(args) {
         USER_DATA_DIR,
         APP_DATA_ROOT_IN_PROJECT,
         NOTES_AGENT_ID,
-        selectionListenerActive,
+        getSelectionListenerStatus: () => selectionListenerActive,
         stopSelectionListener,
         startSelectionListener,
         getMusicState: () => ({ musicWindow, currentSongInfo })
