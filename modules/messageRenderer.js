@@ -46,12 +46,71 @@ function injectEnhancedStyles() {
 // --- Core Logic ---
 
 /**
+ * Wraps raw tool calls in markdown code fences if they aren't already.
+ * This makes the rendering of tool calls more robust by ensuring they are treated as code blocks.
+ * @param {string} text The text content.
+ * @returns {string} The processed text.
+ */
+function ensureToolCallFenced(text) {
+    const toolRequestStart = '<<<[TOOL_REQUEST]>>>';
+    const toolRequestEnd = '<<<[END_TOOL_REQUEST]>>>';
+
+    // Quick exit if no tool call is present.
+    if (!text.includes(toolRequestStart)) {
+        return text;
+    }
+
+    let result = '';
+    let lastIndex = 0;
+    while (true) {
+        const startIndex = text.indexOf(toolRequestStart, lastIndex);
+
+        // Append the segment of text before the current tool block.
+        // If no more blocks are found, this appends the rest of the string.
+        const textSegment = text.substring(lastIndex, startIndex === -1 ? text.length : startIndex);
+        result += textSegment;
+
+        if (startIndex === -1) {
+            break; // Exit loop if no more start markers are found.
+        }
+
+        const endIndex = text.indexOf(toolRequestEnd, startIndex + toolRequestStart.length);
+        if (endIndex === -1) {
+            // Malformed tool call (no end tag), append the rest of the string and stop.
+            result += text.substring(startIndex);
+            break;
+        }
+
+        const block = text.substring(startIndex, endIndex + toolRequestEnd.length);
+        
+        // Check if we are currently inside an open code block by counting fences in the processed result.
+        const fencesInResult = (result.match(/```/g) || []).length;
+
+        if (fencesInResult % 2 === 0) {
+            // Even number of fences means we are outside a code block.
+            // Wrap the tool call in new fences.
+            result += `\n\`\`\`\n${block}\n\`\`\`\n`;
+        } else {
+            // Odd number of fences means we are inside a code block.
+            // Append the tool call as is.
+            result += block;
+        }
+
+        // Move past the current tool block.
+        lastIndex = endIndex + toolRequestEnd.length;
+    }
+
+    return result;
+}
+
+/**
 * A helper function to preprocess the full message content string before parsing.
 * @param {string} text The raw text content.
 * @returns {string} The processed text.
 */
 function preprocessFullContent(text) {
    let processed = text;
+   processed = ensureToolCallFenced(processed);
    processed = contentProcessor.ensureNewlineAfterCodeBlock(processed);
    processed = contentProcessor.ensureSpaceAfterTilde(processed);
    processed = contentProcessor.removeIndentationFromCodeBlockMarkers(processed);
