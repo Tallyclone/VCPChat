@@ -23,6 +23,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let deleteTimer = null;
     let currentUsername = 'defaultUser';
     let collapsedFolders = new Set(); // Stores IDs of collapsed folders to persist state
+    let wasSelectionListenerActive = false; // To store the state of the selection listener before dragging
     // --- Drag & Drop State ---
     let dragState = {
         sourceIds: null,
@@ -560,7 +561,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    function handleListDragStart(e) {
+    async function handleListDragStart(e) {
         const dragElement = e.target.closest('li[draggable="true"]');
         if (!dragElement) {
             e.preventDefault();
@@ -593,8 +594,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }, 0);
         
-        // Disable global selection listener during drag
-        window.electronAPI.toggleSelectionListener(false);
+        // Check original state, store it, and then disable if it was active.
+        wasSelectionListenerActive = await window.electronAPI.getSelectionListenerStatus();
+        if (wasSelectionListenerActive) {
+            window.electronAPI.toggleSelectionListener(false);
+        }
     }
 
     const throttledUpdateDragOverVisuals = throttle((targetElement, event) => {
@@ -715,8 +719,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         dragState = { sourceIds: null, lastDragOverElement: null, dropAction: null };
 
-        // Re-enable global selection listener after drag
-        window.electronAPI.toggleSelectionListener(true);
+        // Re-enable global selection listener only if it was active before the drag.
+        if (wasSelectionListenerActive) {
+            window.electronAPI.toggleSelectionListener(true);
+        }
+        wasSelectionListenerActive = false; // Reset state
     }
 
     let NOTES_DIR_CACHE = null; // Cache for the root directory

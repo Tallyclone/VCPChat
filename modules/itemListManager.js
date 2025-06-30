@@ -6,6 +6,7 @@ window.itemListManager = (() => {
     let electronAPI;
     let currentSelectedItemRef;
     let mainRendererFunctions; // To call back into renderer.js for actions like selectItem
+    let wasSelectionListenerActive = false; // To store the state of the selection listener before dragging
 
     /**
      * Initializes the ItemListManager module.
@@ -79,16 +80,22 @@ window.itemListManager = (() => {
             ghostClass: 'sortable-ghost-main',
             chosenClass: 'sortable-chosen-main',
             dragClass: 'sortable-drag-main',
-            onStart: function(evt) {
-                // Disable selection hook during drag to prevent conflicts
-                if (window.electronAPI && window.electronAPI.toggleSelectionListener) {
-                    window.electronAPI.toggleSelectionListener(false);
+            onStart: async function(evt) {
+                // Check original state, store it, and then disable if it was active.
+                if (window.electronAPI && window.electronAPI.getSelectionListenerStatus) {
+                    wasSelectionListenerActive = await window.electronAPI.getSelectionListenerStatus();
+                    if (wasSelectionListenerActive) {
+                        window.electronAPI.toggleSelectionListener(false);
+                    }
                 }
             },
             onEnd: async function (evt) {
-                // Re-enable selection hook after drag
+                // Re-enable selection hook only if it was active before the drag.
                 if (window.electronAPI && window.electronAPI.toggleSelectionListener) {
-                    window.electronAPI.toggleSelectionListener(true);
+                    if (wasSelectionListenerActive) {
+                        window.electronAPI.toggleSelectionListener(true);
+                    }
+                    wasSelectionListenerActive = false; // Reset state
                 }
 
                 const allListItems = Array.from(evt.to.children);

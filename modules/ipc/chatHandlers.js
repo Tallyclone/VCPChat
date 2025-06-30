@@ -520,36 +520,20 @@ ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelCo
                 // 【全新的、修正后的 processStream 函数】
                 // 它现在接收 reader 和 decoder 作为参数
                 async function processStream(reader, decoder) {
-                    // 引入一个字符串缓冲区，用于存储不完整的行
                     let buffer = '';
-                    
-                    // 从此处的上下文中获取 event, isGroupCall, groupContext 等变量
-                    // 如果这些变量的作用域只在 ipcMain.handle 内，您需要将它们也作为参数传递进来
-                    // 为了简化，我们假设这些变量在更高层的作用域中可访问，或者您可以将此函数定义在ipcMain.handle内部
                     const streamChannel = isGroupCall ? 'vcp-group-stream-chunk' : 'vcp-stream-chunk';
 
                     try {
                         while (true) {
-                            // 使用传入的 reader
                             const { done, value } = await reader.read();
-                            if (done) {
-                                if (buffer.trim()) {
-                                    console.warn(`VCP流结束，但缓冲区中仍有未处理的数据: ${buffer}`);
-                                }
-                                console.log(`VCP流结束 for messageId: ${messageId}`);
-                                const endPayload = { type: 'end', messageId: messageId };
-                                if (isGroupCall && groupContext) {
-                                    Object.assign(endPayload, groupContext);
-                                }
-                                event.sender.send(streamChannel, endPayload);
-                                break;
+                            if (value) {
+                                buffer += decoder.decode(value, { stream: true });
                             }
-                            
-                            // 使用传入的 decoder
-                            buffer += decoder.decode(value, { stream: true });
 
                             const lines = buffer.split('\n');
-                            buffer = lines.pop(); // 关键的缓冲逻辑保留
+                            
+                            // 如果流已结束，则处理所有行。否则，保留最后一行（可能不完整）。
+                            buffer = done ? '' : lines.pop();
 
                             for (const line of lines) {
                                 if (line.trim() === '') continue;
@@ -563,8 +547,7 @@ ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelCo
                                             Object.assign(donePayload, groupContext);
                                         }
                                         event.sender.send(streamChannel, donePayload);
-                                        // [DONE]后，函数可以结束了
-                                        return;
+                                        return; // [DONE] 是明确的结束信号，退出函数
                                     }
                                     try {
                                         const parsedChunk = JSON.parse(jsonData);
@@ -583,6 +566,18 @@ ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelCo
                                     }
                                 }
                             }
+
+                            if (done) {
+                                // 流因连接关闭而结束，而不是[DONE]消息。
+                                // 缓冲区已被处理，现在发送最终的 'end' 信号。
+                                console.log(`VCP流结束 for messageId: ${messageId}`);
+                                const endPayload = { type: 'end', messageId: messageId };
+                                if (isGroupCall && groupContext) {
+                                    Object.assign(endPayload, groupContext);
+                                }
+                                event.sender.send(streamChannel, endPayload);
+                                break; // 退出 while 循环
+                            }
                         }
                     } catch (streamError) {
                         console.error(`VCP流读取错误 for messageId: ${messageId}:`, streamError);
@@ -592,7 +587,6 @@ ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelCo
                         }
                         event.sender.send(streamChannel, streamErrPayload);
                     } finally {
-                        // 当循环结束（无论是正常完成还是出错），都确保释放锁
                         reader.releaseLock();
                         console.log(`ReadableStream's lock released for messageId: ${messageId}`);
                     }

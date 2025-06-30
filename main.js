@@ -1265,6 +1265,10 @@ async function handleMusicControl(args) {
         }
     });
 
+    ipcMain.handle('get-selection-listener-status', () => {
+        return selectionListenerActive;
+    });
+
     ipcMain.on('assistant-action', async (event, action) => {
         // IMPORTANT: The click on the bar has happened.
         // First, cancel any pending hide operation from the global listener.

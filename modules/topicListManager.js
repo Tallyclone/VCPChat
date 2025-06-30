@@ -8,6 +8,7 @@ window.topicListManager = (() => {
     let currentTopicIdRef;
     let uiHelper;
     let mainRendererFunctions;
+    let wasSelectionListenerActive = false; // To store the state of the selection listener before dragging
 
     /**
      * Initializes the TopicListManager module.
@@ -233,7 +234,24 @@ window.topicListManager = (() => {
             ghostClass: 'sortable-ghost-topic',
             chosenClass: 'sortable-chosen-topic',
             dragClass: 'sortable-drag-topic',
+            onStart: async function(evt) {
+                // Check original state, store it, and then disable if it was active.
+                if (window.electronAPI && window.electronAPI.getSelectionListenerStatus) {
+                    wasSelectionListenerActive = await window.electronAPI.getSelectionListenerStatus();
+                    if (wasSelectionListenerActive) {
+                        window.electronAPI.toggleSelectionListener(false);
+                    }
+                }
+            },
             onEnd: async function (evt) {
+                // Re-enable selection hook only if it was active before the drag.
+                if (window.electronAPI && window.electronAPI.toggleSelectionListener) {
+                    if (wasSelectionListenerActive) {
+                        window.electronAPI.toggleSelectionListener(true);
+                    }
+                    wasSelectionListenerActive = false; // Reset state
+                }
+
                 const topicItems = Array.from(evt.to.children);
                 const orderedTopicIds = topicItems.map(item => item.dataset.topicId);
                 try {
