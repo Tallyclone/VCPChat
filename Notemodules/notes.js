@@ -595,9 +595,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         }, 0);
         
         // Check original state, store it, and then disable if it was active.
-        wasSelectionListenerActive = await window.electronAPI.getSelectionListenerStatus();
-        if (wasSelectionListenerActive) {
-            window.electronAPI.toggleSelectionListener(false);
+        if (window.electronAPI && window.electronAPI.getSelectionListenerStatus) {
+            wasSelectionListenerActive = await window.electronAPI.getSelectionListenerStatus();
+            if (wasSelectionListenerActive) {
+                window.electronAPI.toggleSelectionListener(false);
+            }
         }
     }
 
@@ -720,10 +722,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         dragState = { sourceIds: null, lastDragOverElement: null, dropAction: null };
 
         // Re-enable global selection listener only if it was active before the drag.
-        if (wasSelectionListenerActive) {
-            window.electronAPI.toggleSelectionListener(true);
+        if (window.electronAPI && window.electronAPI.toggleSelectionListener) {
+            if (wasSelectionListenerActive) {
+                window.electronAPI.toggleSelectionListener(true);
+            }
+            wasSelectionListenerActive = false; // Reset state
         }
-        wasSelectionListenerActive = false; // Reset state
     }
 
     let NOTES_DIR_CACHE = null; // Cache for the root directory
