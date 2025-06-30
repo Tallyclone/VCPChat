@@ -33,7 +33,7 @@
 
     /* --- Text Colors --- */
     --primary-text: #eaeef9;    /* 主要文字 - 柔和的银白色 */
-    --secondary-text: #d5deea;  /* 次要/标题文字 - 中性灰蓝 */
+    --secondary-text: #a8b2c0;  /* 次要/标题文字 - 中性灰蓝 */
     --highlight-text: #33c1ff;  /* 高亮文字 - 核心电光蓝 */
     --text-on-accent: #ffffff;  /* 在强调色背景上的文字 */
     --placeholder-text: #6a7889; /* 输入框占位文字 */
@@ -45,7 +45,7 @@
     --assistant-bubble-bg: rgba(168, 178, 192, 0.1); /* AI气泡 - 半透明灰蓝 */
 
     /* --- UI Element Colors --- */
-    --button-bg: #229bcf;           /* 按钮背景 - 电光蓝 */
+    --button-bg: #33c1ff;           /* 按钮背景 - 电光蓝 */
     --button-hover-bg: #66d3ff;      /* 按钮悬停 */
     --danger-color: #e74c3c;        /* 危险操作 - 经典红 */
     --danger-hover-bg: #c0392b;
@@ -79,9 +79,9 @@ body {
 }
 
 /* * =================================================================
- * Light Theme: Garden Maiden Palette (花园少女)
- * Inspired by a gentle maiden in a warm, beige-toned garden.
- * A soft, warm, and natural theme.
+ * Light Theme: Maiden in the Sun Palette (阳光少女)
+ * Inspired by a gentle maiden resting in a sun-drenched garden.
+ * A bright, fresh, and heartwarming theme.
  * =================================================================
  */
 body.light-theme {
@@ -96,49 +96,49 @@ body.light-theme {
     --chat-wallpaper-light: url('../assets/cartethyia.png');
 
     /* --- Base Colors --- */
-    --primary-bg: #fbf8f0;      /* 主背景 - 暖米色 */
-    --secondary-bg: #f4f0e8;    /* 侧边栏/面板 - 亚麻色 */
-    --tertiary-bg: #fffdfa;     /* 聊天区 - 奶油白 */
-    --accent-bg: #e9e5d9;       /* 悬停背景 - 浅米灰 */
-    --border-color: #d8d0c0;    /* 边框 - 柔和米色 */
-    --input-bg: #fffdfa;        /* 输入框 */
+    --primary-bg: #fdfaf2;      /* 主背景 - 阳光暖白 */
+    --secondary-bg: #f5f8f0;    /* 侧边栏 - 嫩芽白 */
+    --tertiary-bg: #ffffff;     /* 聊天区 - 纯净白 */
+    --accent-bg: #e0e8f5;       /* 悬停背景 - 浅天蓝 */
+    --border-color: #cce0d0;    /* 边框 - 薄荷绿 */
+    --input-bg: #ffffff;        /* 输入框 */
 
     /* --- Frosted Panel Background --- */
-    --panel-bg-light: rgba(244, 240, 232, 0.88); /* 基于--secondary-bg，增加88%不透明度 */
+    --panel-bg-light: rgba(245, 248, 240, 0.85); /* 基于--secondary-bg，增加85%不透明度 */
 
     /* --- Text Colors --- */
-    --primary-text: #6b5d4f;    /* 主要文字 - 暖棕色 */
-    --secondary-text: #9c8f7e;  /* 次要文字 - 灰褐色 */
-    --highlight-text: #8fbc8f;  /* 高亮文字 - 暗海绿色 (花园感) */
-    --text-on-accent: #6b5d4f;  /* 强调背景文字 */
-    --placeholder-text: #b8b0a2; /* 占位文字 */
-    --quoted-text: #8fbc8f;     /* 引用文字 - 暗海绿色 */
-    --user-text: #6b5d4f;       /* 用户气泡文字 - 暖棕色 */
+    --primary-text: #4a443a;    /* 主要文字 - 深茶色 */
+    --secondary-text: #8a7e6d;  /* 次要文字 - 暖灰褐 */
+    --highlight-text: #00aaff;  /* 高亮文字 - 圣泉蓝 */
+    --text-on-accent: #4a443a;  /* 强调背景文字 */
+    --placeholder-text: #b0a89a; /* 占位文字 */
+    --quoted-text: #00aaff;     /* 引用文字 - 圣泉蓝 */
+    --user-text: #4a443a;       /* 用户气泡文字 - 深茶色 */
 
     /* --- Bubble Colors --- */
-    --user-bubble-bg: rgba(143, 188, 143, 0.12); /* 用户气泡 - 半透明暗海绿色 */
-    --assistant-bubble-bg: rgba(107, 93, 79, 0.06); /* AI气泡 - 半透明暖棕色 */
+    --user-bubble-bg: rgba(0, 170, 255, 0.1);     /* 用户气泡 - 半透明圣泉蓝 */
+    --assistant-bubble-bg: rgba(74, 68, 58, 0.05); /* AI气泡 - 半透明深茶色 */
 
     /* --- UI Element Colors --- */
-    --button-bg: #8fbc8f;           /* 按钮 - 暗海绿色 */
-    --button-hover-bg: #a1c9a1;     /* 按钮悬停 */
+    --button-bg: #00aaff;           /* 按钮 - 圣泉蓝 */
+    --button-hover-bg: #33bbff;     /* 按钮悬停 */
     --danger-color: #e57373;        /* 危险色 - 温和红 */
     --danger-hover-bg: #ef5350;
     --success-color: #81c784;       /* 成功色 - 柔和绿 */
-    --notification-bg: #f4f0e8;
-    --notification-header-bg: #fbf8f0;
-    --notification-border: #8fbc8f;
+    --notification-bg: #f5f8f0;
+    --notification-header-bg: #fdfaf2;
+    --notification-border: #00aaff;
     --tool-bubble-bg: rgba(129, 199, 132, 0.1);
     --tool-bubble-border: #81c784;
 
     /* --- Scrollbar --- */
-    --scrollbar-track: rgba(244, 240, 232, 0.7);
-    --scrollbar-thumb: rgba(216, 208, 192, 0.8);
-    --scrollbar-thumb-hover: rgba(143, 188, 143, 0.7);
+    --scrollbar-track: rgba(245, 248, 240, 0.7);
+    --scrollbar-thumb: rgba(204, 224, 208, 0.8);
+    --scrollbar-thumb-hover: rgba(0, 170, 255, 0.6);
 
     /* --- 流式输出动画光晕 Shimmer Effect --- */
-    --shimmer-color-transparent: rgba(107, 93, 79, 0.04);
-    --shimmer-color-highlight: rgba(107, 93, 79, 0.8);
+    --shimmer-color-transparent: rgba(74, 68, 58, 0.04);
+    --shimmer-color-highlight: rgba(74, 68, 58, 0.8);
 
     /* --- Unified Panel Background --- */
     --panel-bg: var(--panel-bg-light);

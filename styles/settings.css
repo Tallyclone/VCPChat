@@ -71,7 +71,7 @@
     margin-top: 5px;
     margin-bottom: 15px;
     font-size: 1.4em;
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: none;
     padding-bottom: 10px;
 }
 
@@ -176,7 +176,7 @@
 .sidebar-actions {
     margin-top: auto;
     padding-top: 10px;
-    border-top: 1px solid var(--border-color);
+    border-top: none;
     display: flex;
     flex-direction: row; /* Changed to row for horizontal buttons */
     gap: 8px;
@@ -577,7 +577,7 @@ body.light-theme input[type="file"]::file-selector-button:hover {
     display: flex;
     flex-direction: column;
     padding-bottom: 10px;
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: none;
     margin-bottom: 15px;
 }
 

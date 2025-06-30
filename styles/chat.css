@@ -6,7 +6,7 @@
     background-color: var(--panel-bg-dark); /* 使用半透明变量 */
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: none;
     display: flex;
     justify-content: space-between;
     align-items: center;
