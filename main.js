@@ -65,6 +65,7 @@ let notesWindow = null; // To hold the single instance of the notes window
 let musicWindow = null; // To hold the single instance of the music window
 let currentSongInfo = null; // To store currently playing song info
 let translatorWindow = null; // To hold the single instance of the translator window
+let themesWindow = null; // To hold the single instance of the themes window
 let networkNotesTreeCache = null; // In-memory cache for the network notes
 
 
@@ -473,6 +474,38 @@ async function handleMusicControl(args) {
         return { status: 'error', message: errorMsg };
     }
 }
+
+  function createThemesWindow() {
+      if (themesWindow && !themesWindow.isDestroyed()) {
+          themesWindow.focus();
+          return;
+      }
+      themesWindow = new BrowserWindow({
+          width: 850,
+          height: 700,
+          title: '主题选择',
+          modal: false,
+          webPreferences: {
+              preload: path.join(__dirname, 'preload.js'),
+              contextIsolation: true,
+          },
+          icon: path.join(__dirname, 'assets', 'icon.png'),
+          show: false,
+      });
+
+      themesWindow.loadFile(path.join(__dirname, 'Themesmodules/themes.html'));
+      themesWindow.setMenu(null); // 移除应用程序菜单栏
+      openChildWindows.push(themesWindow); // Add to broadcast list
+      
+      themesWindow.once('ready-to-show', () => {
+          themesWindow.show();
+      });
+
+      themesWindow.on('closed', () => {
+          openChildWindows = openChildWindows.filter(win => win !== themesWindow); // Remove from broadcast list
+          themesWindow = null;
+      });
+  }
 
   app.whenReady().then(async () => { // Make the function async
     fs.ensureDirSync(APP_DATA_ROOT_IN_PROJECT); // Ensure the main AppData directory in project exists
@@ -1456,6 +1489,77 @@ async function handleMusicControl(args) {
     // Add the central theme getter
     ipcMain.handle('get-current-theme', () => {
         return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+    });
+
+    ipcMain.on('open-themes-window', () => {
+        createThemesWindow();
+    });
+
+    ipcMain.handle('get-themes', async () => {
+        const themesDir = path.join(__dirname, 'styles', 'themes');
+        const files = await fs.readdir(themesDir);
+        const themePromises = files
+            .filter(file => file.startsWith('themes') && file.endsWith('.css'))
+            .map(async (file) => {
+                const filePath = path.join(themesDir, file);
+                const content = await fs.readFile(filePath, 'utf-8');
+                
+                const nameMatch = content.match(/\* Theme Name: (.*)/);
+                const name = nameMatch ? nameMatch[1].trim() : path.basename(file, '.css').replace('themes', '');
+
+                // Helper to extract variables from a specific CSS scope (e.g., :root or body.light-theme)
+                const extractVariables = (scopeRegex) => {
+                    const scopeMatch = content.match(scopeRegex);
+                    if (!scopeMatch || !scopeMatch[1]) return {};
+                    
+                    const variables = {};
+                    const varRegex = /(--[\w-]+)\s*:\s*(.*?);/g;
+                    let match;
+                    // Execute regex on the captured group which contains the CSS rules
+                    while ((match = varRegex.exec(scopeMatch[1])) !== null) {
+                        variables[match[1]] = match[2].trim();
+                    }
+                    return variables;
+                };
+
+                // Regex to capture content within :root { ... } and body.light-theme { ... }
+                const rootScopeRegex = /:root\s*\{([\s\S]*?)\}/;
+                const lightThemeScopeRegex = /body\.light-theme\s*\{([\s\S]*?)\}/;
+
+                const darkVariables = extractVariables(rootScopeRegex);
+                const lightVariables = extractVariables(lightThemeScopeRegex);
+
+                return {
+                    fileName: file,
+                    name: name,
+                    // Organize variables by dark and light mode
+                    variables: {
+                        dark: darkVariables,
+                        light: lightVariables
+                    }
+                };
+            });
+        return Promise.all(themePromises);
+    });
+
+    ipcMain.on('apply-theme', async (event, themeFileName) => {
+        try {
+            const sourcePath = path.join(__dirname, 'styles', 'themes', themeFileName);
+            const targetPath = path.join(__dirname, 'styles', 'themes.css');
+            const themeContent = await fs.readFile(sourcePath, 'utf-8');
+            await fs.writeFile(targetPath, themeContent, 'utf-8');
+            
+            // Reload the main window to apply the new theme
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.reload();
+            }
+            // Reload the themes window as well to reflect the change
+            if (themesWindow && !themesWindow.isDestroyed()) {
+                themesWindow.reload();
+            }
+        } catch (error) {
+            console.error('Failed to apply theme:', error);
+        }
     });
 });
 

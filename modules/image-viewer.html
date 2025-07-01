@@ -26,6 +26,18 @@
             color: var(--primary-text);
             transition: background-color 0.3s ease, color 0.3s ease;
         }
+
+        body::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: inherit;
+            filter: blur(10px) brightness(0.8);
+            z-index: -1;
+        }
         img {
             max-width: 98vw;
             max-height: 90vh;

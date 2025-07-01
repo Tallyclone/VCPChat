@@ -199,6 +199,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onThemeUpdated: (callback) => ipcRenderer.on('theme-updated', (_event, theme) => callback(theme)),
     getCurrentTheme: () => ipcRenderer.invoke('get-current-theme'), // Add this
     setTheme: (theme) => ipcRenderer.send('set-theme', theme),
+
+    // Themes
+    openThemesWindow: () => ipcRenderer.send('open-themes-window'),
+    getThemes: () => ipcRenderer.invoke('get-themes'),
+    applyTheme: (fileName) => ipcRenderer.send('apply-theme', fileName),
+
     removeVcpStreamChunkListener: (callback) => ipcRenderer.removeListener('vcp-stream-chunk', callback),
 
     // Music Player Control

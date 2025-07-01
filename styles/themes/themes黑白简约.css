@@ -18,7 +18,7 @@
      * it's recommended to set a wallpaper.
      * 使用方法: 将 'none' 替换为 url('您的图片链接')
      */
-    --chat-wallpaper-dark: url('../assets/dark.jpg');
+    --chat-wallpaper-dark: url('../assets/wallpaper/dark.jpg');
 
     /* --- Base Colors --- */
     --primary-bg: #1c1c1e;      /* 主背景 - 深墨灰 - 近黑 */
@@ -28,8 +28,7 @@
     --border-color: #3a3a3e;    /* 边框颜色 */
     --input-bg: #222225;        /* 输入框背景 */
 
-    /* ADD THIS NEW VARIABLE for frosted panels */
-    --panel-bg-dark: rgba(40, 40, 44, 0.75); /* 基于--secondary-bg，增加75%不透明度 */
+--panel-bg-dark: rgba(40, 40, 44, 0.75); /* 基于--secondary-bg，增加75%不透明度 */
 
     /* --- Text Colors --- */
     --primary-text: #e0e0e0;    /* 主要文字 - 浅灰 */
@@ -41,12 +40,6 @@
     --user-text: #e0e0e0;       /* 用户气泡文字 - 浅灰 (与 primary-text 相同) */
 
     /* --- Bubble Colors (Frosted Glass Ready) --- */
-    /*
-     * These are now semi-transparent.
-     * To achieve the full frosted glass effect, add the following CSS rule
-     * to your chat bubble class (e.g., in chat.css):
-     * .message-bubble { backdrop-filter: blur(10px); }
-    */
     --user-bubble-bg: rgba(56, 120, 173, 0.15); /* 用户气泡 - 柔和蓝 (点缀色) - 半透明 */
     --assistant-bubble-bg: rgba(47, 47, 51, 0.1); /* AI气泡 - 深墨灰 - 半透明 */
 
@@ -71,7 +64,7 @@
     --shimmer-color-transparent: rgba(224, 224, 224, 0.1);
     --shimmer-color-highlight: rgba(224, 224, 224, 0.2);
 
-    /* ADD text-shadow for frosted panels */
+    /* --- Text Shadow for Frosted Panels --- */
     --panel-text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 
     /* --- Unified Panel Background --- */
@@ -98,7 +91,7 @@ body.light-theme {
     background-position: center;
     background-attachment: fixed;
     /* --- Wallpaper Interface --- */
-    --chat-wallpaper-light: url('../assets/light.jpeg');
+    --chat-wallpaper-light: url('../assets/wallpaper/light.jpeg');
 
     /* --- Base Colors --- */
     --primary-bg: #f4f6f8;      /* 主背景 - 非常浅的灰蓝色 */
@@ -108,8 +101,7 @@ body.light-theme {
     --border-color: #e0e6eb;    /* 边框 - 调整为更浅的颜色 */
     --input-bg: #ffffff;        /* 输入框 */
 
-    /* ADD THIS NEW VARIABLE for frosted panels */
-    --panel-bg-light: rgba(255, 255, 255, 0.8); /* 基于--secondary-bg，增加80%不透明度 */
+--panel-bg-light: rgba(255, 255, 255, 0.8); /* 基于--secondary-bg，增加80%不透明度 */
 
     /* --- Text Colors --- */
     --primary-text: #2c3e50;    /* 主要文字 - 深灰蓝 */

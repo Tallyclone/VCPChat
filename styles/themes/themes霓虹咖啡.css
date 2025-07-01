@@ -18,7 +18,7 @@
      * it's recommended to set a wallpaper.
      * 使用方法: 将 'none' 替换为 url('您的图片链接')
      */
-    --chat-wallpaper-dark: url('../assets/sakuranight.png');
+    --chat-wallpaper-dark: url('../assets/wallpaper/sakuranight.png');
 
     /* --- Base Colors --- */
     --primary-bg: #101116;      /* 主背景 - 带微弱紫调的午夜蓝 */
@@ -28,8 +28,7 @@
     --border-color: #3a324b;    /* 边框颜色 */
     --input-bg: #1a1b22;        /* 输入框背景 */
 
-    /* ADD THIS NEW VARIABLE for frosted panels */
-    --panel-bg-dark: rgba(26, 27, 34, 0.75); /* 基于--secondary-bg，增加75%不透明度 */
+--panel-bg-dark: rgba(26, 27, 34, 0.75); /* 基于--secondary-bg，增加75%不透明度 */
 
     /* --- Text Colors --- */
     --primary-text: #e8e9ed;    /* 主要文字 - 柔和的银灰色 */
@@ -41,12 +40,6 @@
     --user-text: #e0f2f7;       /* 用户气泡文字 - 很浅的淡蓝色 */
 
     /* --- Bubble Colors (Frosted Glass Ready) --- */
-    /*
-     * These are now semi-transparent.
-     * To achieve the full frosted glass effect, add the following CSS rule
-     * to your chat bubble class (e.g., in chat.css):
-     * .message-bubble { backdrop-filter: blur(10px); }
-    */
     --user-bubble-bg: rgba(255, 71, 133, 0.15); /* 用户气泡 - 半透明赛博粉 */
     --assistant-bubble-bg: rgba(219, 220, 225, 0.1); /* AI气泡 - 半透明银灰色 */
 
@@ -71,17 +64,18 @@
     --shimmer-color-transparent: rgba(220, 221, 225, 0.163);
     --shimmer-color-highlight: rgba(220, 221, 225, 0.962);
 
-    /* ADD text-shadow for frosted panels */
+    /* --- Text Shadow for Frosted Panels --- */
     --panel-text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+
+    /* --- Unified Panel Background --- */
+    --panel-bg: var(--panel-bg-dark);
+}
 
 body {
     background-image: var(--chat-wallpaper-dark);
     background-size: cover;
     background-position: center;
     background-attachment: fixed;
-}
-    /* --- Unified Panel Background --- */
-    --panel-bg: var(--panel-bg-dark);
 }
 
 /* * =================================================================
@@ -98,7 +92,7 @@ body.light-theme {
     background-attachment: fixed;
 
     /* --- Wallpaper Interface --- */
-    --chat-wallpaper-light: url('../assets/light.jpeg');
+    --chat-wallpaper-light: url('../assets/wallpaper/wincoffee.png');
 
     /* --- Base Colors --- */
     --primary-bg: #faf8f5;      /* 主背景 - 晨曦米白 */
@@ -108,8 +102,7 @@ body.light-theme {
     --border-color: #d4c4b0;    /* 边框 - 秋叶金棕 */
     --input-bg: #ffffff;        /* 输入框 */
 
-    /* ADD THIS NEW VARIABLE for frosted panels */
-    --panel-bg-light: rgba(255, 249, 240, 0.8); /* 基于--secondary-bg，增加80%不透明度 */
+--panel-bg-light: rgba(255, 249, 240, 0.8); /* 基于--secondary-bg，增加80%不透明度 */
 
     /* --- Text Colors --- */
     --primary-text: #2d2922;    /* 主要文字 - 深咖啡色 */
@@ -144,7 +137,7 @@ body.light-theme {
     /* --- 流式输出动画光晕 Shimmer Effect --- */
     --shimmer-color-transparent: rgba(45, 41, 34, 0.04);
     --shimmer-color-highlight: rgba(45, 41, 34, 0.958);
-
+    
     /* --- Unified Panel Background --- */
     --panel-bg: var(--panel-bg-light);
 }

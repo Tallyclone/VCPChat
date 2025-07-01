@@ -26,7 +26,7 @@ const uiManager = (() => {
         if (maximizeBtn) maximizeBtn.addEventListener('click', () => electronAPI.maximizeWindow());
         if (restoreBtn) restoreBtn.addEventListener('click', () => electronAPI.unmaximizeWindow());
         if (closeBtn) closeBtn.addEventListener('click', () => electronAPI.closeWindow());
-        if (settingsBtn) settingsBtn.addEventListener('click', () => electronAPI.openDevTools()); // DevTools button
+        // if (settingsBtn) settingsBtn.addEventListener('click', () => electronAPI.openDevTools()); // This is now handled by the theme module
 
         if (electronAPI && typeof electronAPI.onWindowMaximized === 'function') {
             electronAPI.onWindowMaximized(() => {

@@ -18,7 +18,7 @@
      * 使用方法: 确认图片路径正确, 建议将图片放入 ../assets/ 文件夹
      * 例如: url('../assets/cartesia-dark.png')
      */
-    --chat-wallpaper-dark: url('../assets/fleurdelys.png');
+    --chat-wallpaper-dark: url('../assets/wallpaper/fleurdelys.png');
 
     /* --- Base Colors --- */
     --primary-bg: #0a0f14;      /* 主背景 - 深邃近黑的夜空 */
@@ -33,7 +33,7 @@
 
     /* --- Text Colors --- */
     --primary-text: #eaeef9;    /* 主要文字 - 柔和的银白色 */
-    --secondary-text: #a8b2c0;  /* 次要/标题文字 - 中性灰蓝 */
+    --secondary-text: #c8d1df;  /* 次要/标题文字 - 中性灰蓝 */
     --highlight-text: #33c1ff;  /* 高亮文字 - 核心电光蓝 */
     --text-on-accent: #ffffff;  /* 在强调色背景上的文字 */
     --placeholder-text: #6a7889; /* 输入框占位文字 */
@@ -93,7 +93,7 @@ body.light-theme {
 
     /* --- Wallpaper Interface --- */
     /* 请将 'cartesia-garden.png' 替换为您新图片的文件名 */
-    --chat-wallpaper-light: url('../assets/cartethyia.png');
+    --chat-wallpaper-light: url('../assets/wallpaper/cartethyia.png');
 
     /* --- Base Colors --- */
     --primary-bg: #fdfaf2;      /* 主背景 - 阳光暖白 */
