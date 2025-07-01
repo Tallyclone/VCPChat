@@ -1,0 +1,109 @@
+/* * =================================================================
+ * Light Theme: Starry Maiden Palette (星海少女卡提西亚)
+ * Inspired by a celestial maiden amidst a sea of stars.
+ * A serene, divine, and dreamy theme.
+ * =================================================================
+ */
+body.light-theme {
+    /* Wallpaper and background properties */
+    background-image: var(--chat-wallpaper-light);
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+
+    /* --- Wallpaper Interface --- */
+    --chat-wallpaper-light: url('../assets/cartethyia.png');
+
+    /* --- Base Colors --- */
+    --primary-bg: #1a2035;      /* 主背景 - 静谧星空蓝 */
+    --secondary-bg: #252f49;    /* 侧边栏 - 深海蓝 */
+    --tertiary-bg: #151a2c;     /* 聊天区 - 更深邃的夜空 */
+    --accent-bg: #3a4c7a;       /* 悬停背景 - 柔和的星光蓝 */
+    --border-color: #5a7fb8;    /* 边框 - 梦幻蓝 */
+    --input-bg: #252f49;        /* 输入框 */
+
+    /* --- Frosted Panel Background --- */
+    --panel-bg-light: rgba(37, 47, 73, 0.85); /* 基于--secondary-bg，增加85%不透明度 */
+
+    /* --- Text Colors --- */
+    --primary-text: #f0e6d2;    /* 主要文字 - 柔和星光白 */
+    --secondary-text: #a0b0c8;  /* 次要文字 - 灰蓝色 */
+    --highlight-text: #f8d57e;  /* 高亮文字 - 璀璨星光金 */
+    --text-on-accent: #ffffff;  /* 强调背景文字 */
+    --placeholder-text: #7a8aa2; /* 占位文字 - 柔和灰蓝 */
+    --quoted-text: #f8d57e;     /* 引用文字 - 星光金 */
+    --user-text: #f0e6d2;       /* 用户气泡文字 - 星光白 */
+
+    /* --- Bubble Colors --- */
+    --user-bubble-bg: rgba(248, 213, 126, 0.12);     /* 用户气泡 - 半透明星光金 */
+    --assistant-bubble-bg: rgba(160, 176, 200, 0.1); /* AI气泡 - 半透明灰蓝 */
+
+    /* --- UI Element Colors --- */
+    --button-bg: #f8d57e;           /* 按钮 - 星光金 */
+    --button-hover-bg: #fadf9d;     /* 按钮悬停 */
+    --danger-color: #e57373;        /* 危险色 - 温和红 */
+    --danger-hover-bg: #ef5350;
+    --success-color: #66bb6a;       /* 成功色 - 柔和绿 */
+    --notification-bg: #151a2c;
+    --notification-header-bg: #1a2035;
+    --notification-border: #f8d57e;
+    --tool-bubble-bg: rgba(160, 176, 200, 0.15);
+    --tool-bubble-border: #a0b0c8;
+
+    /* --- Scrollbar --- */
+    --scrollbar-track: rgba(21, 26, 44, 0.7);
+    --scrollbar-thumb: rgba(90, 127, 184, 0.7);
+    --scrollbar-thumb-hover: rgba(248, 213, 126, 0.7);
+
+    /* --- 流式输出动画光晕 Shimmer Effect --- */
+    --shimmer-color-transparent: rgba(240, 230, 210, 0.2);
+    --shimmer-color-highlight: rgba(240, 230, 210, 0.8);
+
+    /* --- Unified Panel Background --- */
+    --panel-bg: var(--panel-bg-light);
+}
+
+/* * =================================================================
+ * Enhanced Frosted Glass Effect
+ * 增强磨砂玻璃效果 - 小灵特制
+ * =================================================================
+ */
+
+/* 为聊天气泡添加更强的磨砂玻璃效果 */
+.message-bubble {
+    backdrop-filter: blur(12px) saturate(120%);
+    -webkit-backdrop-filter: blur(12px) saturate(120%);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 悬停时的微妙发光效果 */
+.message-bubble:hover {
+    backdrop-filter: blur(16px) saturate(130%);
+    -webkit-backdrop-filter: blur(16px) saturate(130%);
+    transform: translateY(-1px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+}
+
+/* 为工具调用气泡添加特殊效果 */
+.tool-bubble {
+    backdrop-filter: blur(10px) saturate(110%);
+    -webkit-backdrop-filter: blur(10px) saturate(110%);
+    border: 1px solid var(--tool-bubble-border);
+    background: var(--tool-bubble-bg);
+}
+
+/* 深色主题下的特殊光效 */
+:root .message-bubble {
+    box-shadow: 
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* 浅色主题下的柔和阴影 */
+body.light-theme .message-bubble {
+    box-shadow: 
+        0 4px 20px rgba(44, 62, 80, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
