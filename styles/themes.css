@@ -1,14 +1,14 @@
 /*
- * styles/themes.css
- * Curated by 小吉 for Professor Ryan
- * New Palette Set 5: "Fluorescent Forest" and "Cotton Candy Clouds"
- * A theme dedicated to childhood dreams and whimsical adventures.
+ * styles/themes黑白.css
+ * Curated by Roo for Professor Ryan
+ * Black and White Theme
+ * A classic, clean, and focused theme.
  */
 
 /* * =================================================================
- * Dark Theme (Default): Fluorescent Forest Palette (荧光森林)
- * Inspired by a curious fox in a forest of glowing mushrooms.
- * A theme of magical nights, gentle discovery, and cozy mystery.
+ * Dark Theme (Default): Classic Black & White (经典黑白)
+ * Inspired by traditional monochrome aesthetics.
+ * A sharp, clear, and professional theme.
  * =================================================================
  */
 :root {
@@ -16,57 +16,63 @@
     /*
      * For the frosted glass effect on chat bubbles to be prominent,
      * it's recommended to set a wallpaper.
-     * 使用方法: 将 'none' 替换为您的壁纸文件路径, 例如 url('ComfyUI_023649_425368703954853_00019.jpg')
+     * 使用方法: 将 'none' 替换为 url('您的图片链接')
      */
-    --chat-wallpaper-dark: url('../assets/wallpaper/ComfyUI_023649_425368703954853_00019.png');
+    --chat-wallpaper-dark: url('../assets/dark.jpg');
 
     /* --- Base Colors --- */
-    --primary-bg: #0A192F;      /* 主背景 - 深邃午夜蓝 */
-    --secondary-bg: #172A46;    /* 侧边栏/面板背景 - 森林蓝 */
-    --tertiary-bg: #020C1B;     /* 聊天区背景 - 最深的夜 */
-    --accent-bg: #3A4C6D;       /* 悬停/选中背景 - 柔和的蓝灰色 */
-    --border-color: #00F6FF;    /* 边框颜色 - 蘑菇荧光青 */
-    --input-bg: #172A46;        /* 输入框背景 */
+    --primary-bg: #1c1c1e;      /* 主背景 - 深墨灰 - 近黑 */
+    --secondary-bg: #28282c;    /* 侧边栏/面板背景 - 略浅的墨灰 */
+    --tertiary-bg: #121212;     /* 聊天区背景 - 纯黑に近い */
+    --accent-bg: #3a3a3e;       /* 悬停/选中背景 - 中墨灰 */
+    --border-color: #3a3a3e;    /* 边框颜色 */
+    --input-bg: #222225;        /* 输入框背景 */
 
-    /* --- Frosted Panel Background --- */
-    --panel-bg-dark: rgba(23, 42, 70, 0.85); /* 基于--secondary-bg, 磨砂玻璃效果 */
+    /* ADD THIS NEW VARIABLE for frosted panels */
+    --panel-bg-dark: rgba(40, 40, 44, 0.75); /* 基于--secondary-bg，增加75%不透明度 */
 
     /* --- Text Colors --- */
-    --primary-text: #dce2f7;    /* 主要文字 - 柔和的星光白 */
-    --secondary-text: #b6bfda;  /* 次要/标题文字 - 中性石板灰 */
-    --highlight-text: #E8793A;  /* 高亮文字 - 温暖的狐狸橙 */
-    --text-on-accent: #FFFFFF;  /* 在强调色背景上的文字 */
-    --placeholder-text: #5A6988; /* 输入框占位文字 */
-    --quoted-text: #00F6FF;     /* 引用文本颜色 - 荧光青 */
-    --user-text: #FFFFFF;       /* 用户气泡文字 */
+    --primary-text: #e0e0e0;    /* 主要文字 - 浅灰 */
+    --secondary-text: #a0a0a0;  /* 次要/标题文字 - 中灰 */
+    --highlight-text: #6fa8dc;  /* 高亮文字 - 柔和蓝 (点缀色) */
+    --text-on-accent: #ffffff;  /* 在强调色背景上的文字 */
+    --placeholder-text: #6a6a6e; /* 输入框占位文字 */
+    --quoted-text: #FFB74D;     /* 引用文本颜色 - 柔和橙色 */
+    --user-text: #e0e0e0;       /* 用户气泡文字 - 浅灰 (与 primary-text 相同) */
 
     /* --- Bubble Colors (Frosted Glass Ready) --- */
-    --user-bubble-bg: rgba(232, 121, 58, 0.15);    /* 用户气泡 - 半透明狐狸橙 */
-    --assistant-bubble-bg: rgba(0, 246, 255, 0.1); /* AI气泡 - 半透明荧光青 */
+    /*
+     * These are now semi-transparent.
+     * To achieve the full frosted glass effect, add the following CSS rule
+     * to your chat bubble class (e.g., in chat.css):
+     * .message-bubble { backdrop-filter: blur(10px); }
+    */
+    --user-bubble-bg: rgba(56, 120, 173, 0.15); /* 用户气泡 - 柔和蓝 (点缀色) - 半透明 */
+    --assistant-bubble-bg: rgba(47, 47, 51, 0.1); /* AI气泡 - 深墨灰 - 半透明 */
 
     /* --- UI Element Colors --- */
-    --button-bg: #f58a4b;           /* 按钮背景 - 狐狸橙 */
-    --button-hover-bg: #F08E56;      /* 按钮悬停 */
-    --danger-color: #FF6B6B;        /* 危险操作 - 柔和的莓红色 */
-    --danger-hover-bg: #D9534F;
-    --success-color: #4DCC7D;       /* 成功操作 - 森林绿 */
-    --notification-bg: #172A46;
-    --notification-header-bg: #0A192F;
-    --notification-border: #E8793A;
-    --tool-bubble-bg: rgba(77, 204, 125, 0.1);
-    --tool-bubble-border: #4DCC7D;
+    --button-bg: #48484c;           /* 按钮背景 - 中墨灰 */
+    --button-hover-bg: #58585e;      /* 按钮悬停 - 略亮的墨灰 */
+    --danger-color: #e57373;        /* 危险操作 - 柔和红 */
+    --danger-hover-bg: #ef5350;
+    --success-color: #66bb6a;       /* 成功操作 - 柔和绿 */
+    --notification-bg: #2f2f33;
+    --notification-header-bg: #303034;
+    --notification-border: #48484c;
+    --tool-bubble-bg: rgba(58, 58, 62, 0.15); /* VCP工具调用气泡背景 - 半透明中墨灰 */
+    --tool-bubble-border: #6fa8dc; /* VCP工具调用气泡边框 - 柔和蓝 */
 
     /* --- Scrollbar --- */
-    --scrollbar-track: rgba(23, 42, 70, 0.5);
-    --scrollbar-thumb: rgba(136, 146, 176, 0.6);
-    --scrollbar-thumb-hover: rgba(232, 121, 58, 0.8);
+    --scrollbar-track: rgba(40, 40, 40, 0.5);
+    --scrollbar-thumb: rgba(100, 100, 100, 0.7);
+    --scrollbar-thumb-hover: rgba(120, 120, 120, 0.6);
 
     /* --- Shimmer Effect for Loading --- */
-    --shimmer-color-transparent: rgba(204, 214, 246, 0.1);
-    --shimmer-color-highlight: rgba(204, 214, 246, 0.4);
+    --shimmer-color-transparent: rgba(224, 224, 224, 0.1);
+    --shimmer-color-highlight: rgba(224, 224, 224, 0.2);
 
-    /* --- Text Shadow for Frosted Panels --- */
-    --panel-text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    /* ADD text-shadow for frosted panels */
+    --panel-text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 
     /* --- Unified Panel Background --- */
     --panel-bg: var(--panel-bg-dark);
@@ -80,75 +86,76 @@ body {
 }
 
 /* * =================================================================
- * Light Theme: Cotton Candy Clouds Palette (棉花糖云)
- * Inspired by a happy girl running in a sky of pink clouds.
- * A theme of pure joy, sweet dreams, and boundless imagination.
+ * Light Theme: Classic White & Black (经典白黑)
+ * Inspired by traditional monochrome aesthetics.
+ * A sharp, clear, and professional theme.
  * =================================================================
  */
 body.light-theme {
-    /* --- Wallpaper Interface --- */
-    /*
-     * 使用方法: 将 'none' 替换为您的壁纸文件路径, 例如 url('ComfyUI_010842_894361418827477_00027.jpg')
-     */
-    --chat-wallpaper-light: url('../assets/wallpaper/ComfyUI_010842_894361418827477_00027.png');
+    /* Wallpaper and background properties */
     background-image: var(--chat-wallpaper-light);
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+    /* --- Wallpaper Interface --- */
+    --chat-wallpaper-light: url('../assets/light.jpeg');
 
     /* --- Base Colors --- */
-    --primary-bg: #F0F8FF;      /* 主背景 - 天蓝白 (AliceBlue) */
-    --secondary-bg: #FFFFFF;    /* 侧边栏 - 纯净云朵白 */
-    --tertiary-bg: #FFF0F5;     /* 聊天区 - 薰衣草粉红 (LavenderBlush) */
-    --accent-bg: #FFE4E1;       /* 悬停背景 - 雾玫瑰色 (MistyRose) */
-    --border-color: #FFB6C1;    /* 边框 - 浅粉红 (LightPink) */
-    --input-bg: #FFFFFF;        /* 输入框 */
+    --primary-bg: #f4f6f8;      /* 主背景 - 非常浅的灰蓝色 */
+    --secondary-bg: #ffffff;    /* 侧边栏 - 白色 */
+    --tertiary-bg: #e9edf0;     /* 聊天区 - 浅灰 */
+    --accent-bg: #e0e6eb;       /* 悬停/选中背景 */
+    --border-color: #e0e6eb;    /* 边框 - 调整为更浅的颜色 */
+    --input-bg: #ffffff;        /* 输入框 */
 
-    /* --- Frosted Panel Background --- */
-    --panel-bg-light: rgba(255, 255, 255, 0.8); /* 基于--secondary-bg, 磨砂玻璃效果 */
+    /* ADD THIS NEW VARIABLE for frosted panels */
+    --panel-bg-light: rgba(255, 255, 255, 0.8); /* 基于--secondary-bg，增加80%不透明度 */
 
     /* --- Text Colors --- */
-    --primary-text: #2F4F4F;    /* 主要文字 - 深石板灰 (DarkSlateGray) */
-    --secondary-text: #778899;  /* 次要文字 - 亮石板灰 (LightSlateGray) */
-    --highlight-text: #FF69B4;  /* 高亮文字 - 亮粉色 (HotPink) */
-    --text-on-accent: #2F4F4F;  /* 强调背景文字 */
-    --placeholder-text: #B0C4DE; /* 占位文字 - 亮钢蓝 (LightSteelBlue) */
-    --quoted-text: #4682B4;     /* 引用文字 - 钢蓝色 (SteelBlue) */
-    --user-text: #2F4F4F;       /* 用户气泡文字 */
+    --primary-text: #2c3e50;    /* 主要文字 - 深灰蓝 */
+    --secondary-text: #5a6f80;  /* 次要/标题文字 - 中灰蓝 */
+    --highlight-text: #3498db;  /* 高亮文字 - 清爽蓝 */
+    --text-on-accent: #ffffff;  /* 强调背景文字 */
+    --placeholder-text: #a0aab3; /* 占位文字 */
+    --quoted-text: #007bff;     /* 引用文字 - 蓝色 */
+    --user-text: #2c3e50;       /* 用户气泡文字 - 深灰蓝 (与 primary-text 相同) */
 
     /* --- Bubble Colors --- */
-    --user-bubble-bg: rgba(135, 206, 235, 0.25);  /* 用户气泡 - 半透明天空蓝 */
-    --assistant-bubble-bg: rgba(255, 105, 180, 0.15);/* AI气泡 - 半透明亮粉色 */
+    --user-bubble-bg: rgba(52, 152, 219, 0.08);     /* 用户气泡 - 清爽蓝 - 半透明 */
+    --assistant-bubble-bg: rgba(232, 244, 248, 0.05); /* AI气泡 - 非常浅的蓝 - 半透明 */
 
     /* --- UI Element Colors --- */
-    --button-bg: #FF69B4;           /* 按钮 - 亮粉色 */
-    --button-hover-bg: #FF85C1;     /* 按钮悬停 */
-    --danger-color: #FF7F50;        /* 危险色 - 珊瑚色 (Coral) */
-    --danger-hover-bg: #E9967A;
-    --success-color: #3CB371;       /* 成功色 - 中海洋绿 (MediumSeaGreen) */
-    --notification-bg: #FFF0F5;
-    --notification-header-bg: #F0F8FF;
-    --notification-border: #FF69B4;
-    --tool-bubble-bg: rgba(60, 179, 113, 0.1);
-    --tool-bubble-border: #3CB371;
+    --button-bg: #3498db;           /* 按钮 - 清爽蓝 */
+    --button-hover-bg: #2980b9;     /* 按钮悬停 - 深一点的蓝 */
+    --danger-color: #e74c3c;        /* 危险色 - 红色 */
+    --danger-hover-bg: #c0392b;
+    --success-color: #4caf50;       /* 成功色 - 绿色 */
+    --notification-bg: #e8f4f8;
+    --notification-header-bg: #f0f0f0;
+    --notification-border: #3498db;
+    --tool-bubble-bg: rgba(224, 230, 235, 0.08); /* VCP工具调用气泡背景 - 半透明浅灰 */
+    --tool-bubble-border: #3498db; /* VCP工具调用气泡边框 - 清爽蓝 */
 
     /* --- Scrollbar --- */
-    --scrollbar-track: rgba(255, 240, 245, 0.8);
-    --scrollbar-thumb: rgba(255, 182, 193, 0.9); /* 浅粉红 */
-    --scrollbar-thumb-hover: rgba(255, 105, 180, 1); /* 亮粉色 */
+    --scrollbar-track: rgba(200, 200, 200, 0.7);
+    --scrollbar-thumb: rgba(150, 150, 150, 0.8);
+    --scrollbar-thumb-hover: rgba(120, 120, 120, 0.6);
 
-    /* --- Shimmer Effect for Loading --- */
-    --shimmer-color-transparent: rgba(47, 79, 79, 0.05);
-    --shimmer-color-highlight: rgba(47, 79, 79, 0.15);
-    
-    /* --- Text Shadow for Frosted Panels --- */
-    --panel-text-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
+    /* --- Shimmer Effect --- */
+    --shimmer-color-transparent: rgba(44, 62, 80, 0.04);
+    --shimmer-color-highlight: rgba(44, 62, 80, 0.08);
 
     /* --- Unified Panel Background --- */
     --panel-bg: var(--panel-bg-light);
 }
 
 /* * =================================================================
- * Enhanced Frosted Glass Effect (通用增强)
+ * Enhanced Frosted Glass Effect
+ * 增强磨砂玻璃效果 - 小灵特制
  * =================================================================
  */
+
+/* 为聊天气泡添加更强的磨砂玻璃效果 */
 .message-bubble {
     backdrop-filter: blur(12px) saturate(120%);
     -webkit-backdrop-filter: blur(12px) saturate(120%);
@@ -157,6 +164,7 @@ body.light-theme {
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* 悬停时的微妙发光效果 */
 .message-bubble:hover {
     backdrop-filter: blur(16px) saturate(130%);
     -webkit-backdrop-filter: blur(16px) saturate(130%);
@@ -164,6 +172,7 @@ body.light-theme {
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
 }
 
+/* 为工具调用气泡添加特殊效果 */
 .tool-bubble {
     backdrop-filter: blur(10px) saturate(110%);
     -webkit-backdrop-filter: blur(10px) saturate(110%);
