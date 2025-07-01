@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronPath', {
     dirname: (p) => ipcRenderer.invoke('path:dirname', p),
+    extname: (p) => ipcRenderer.invoke('path:extname', p)
 });
 
 contextBridge.exposeInMainWorld('electron', {
@@ -73,6 +74,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     savePastedImageToFile: (imageData, noteId) => ipcRenderer.invoke('save-pasted-image-to-file', imageData, noteId),
     getNotesRootDir: () => ipcRenderer.invoke('get-notes-root-dir'),
     copyNoteContent: (filePath) => ipcRenderer.invoke('copy-note-content', filePath),
+    scanNetworkNotes: () => ipcRenderer.send('scan-network-notes'),
+    onNetworkNotesScanned: (callback) => ipcRenderer.on('network-notes-scanned', (_event, networkTree) => callback(networkTree)),
+    getCachedNetworkNotes: () => ipcRenderer.invoke('get-cached-network-notes'), // Added for getting cached notes
+
 
     // Open Notes Window
     openNotesWindow: (theme) => ipcRenderer.invoke('open-notes-window', theme),

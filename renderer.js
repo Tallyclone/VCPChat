@@ -625,6 +625,7 @@ async function loadAndApplyGlobalSettings() {
         document.getElementById('vcpApiKey').value = globalSettings.vcpApiKey || '';
         document.getElementById('vcpLogUrl').value = globalSettings.vcpLogUrl || '';
         document.getElementById('vcpLogKey').value = globalSettings.vcpLogKey || '';
+        document.getElementById('networkNotesPath').value = globalSettings.networkNotesPath || '';
 
         // Load smooth streaming settings
         document.getElementById('enableSmoothStreaming').checked = globalSettings.enableSmoothStreaming === true;
@@ -802,6 +803,7 @@ function setupEventListeners() {
             vcpApiKey: document.getElementById('vcpApiKey').value,
             vcpLogUrl: document.getElementById('vcpLogUrl').value.trim(),
             vcpLogKey: document.getElementById('vcpLogKey').value.trim(),
+            networkNotesPath: document.getElementById('networkNotesPath').value.trim(),
             sidebarWidth: globalSettings.sidebarWidth, // Keep existing value if not changed by resizer
             notificationsSidebarWidth: globalSettings.notificationsSidebarWidth, // Keep existing
             // userAvatarUrl and userAvatarCalculatedColor are handled by saveUserAvatar

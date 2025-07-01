@@ -1,7 +1,8 @@
 document.addEventListener('DOMContentLoaded', async () => {
     // --- DOM Element References ---
     const noteList = document.getElementById('noteList');
-    const newNoteBtn = document.getElementById('newNoteBtn');
+    const newMdBtn = document.getElementById('newMdBtn');
+    const newTxtBtn = document.getElementById('newTxtBtn');
     const newFolderBtn = document.getElementById('newFolderBtn');
     const saveNoteBtn = document.getElementById('saveNoteBtn');
     const deleteNoteBtn = document.getElementById('deleteNoteBtn');
@@ -16,13 +17,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     const sidebar = document.querySelector('.sidebar');
 
     // --- State Management ---
-    let noteTree = []; // Stores the entire folder/note hierarchy
+    let localNoteTree = []; // Stores the local note hierarchy
+    let networkNoteTree = null; // Stores the network note hierarchy
     let activeNoteId = null; // ID of the note currently being edited
     let activeItemId = null; // ID of the last clicked item (note or folder)
     let selectedItems = new Set(); // Stores IDs of all selected items for multi-select
     let deleteTimer = null;
     let currentUsername = 'defaultUser';
-    let collapsedFolders = new Set(); // Stores IDs of collapsed folders to persist state
+    let expandedFolders = new Set(); // Stores IDs of EXPANDED folders to persist state
     let wasSelectionListenerActive = false; // To store the state of the selection listener before dragging
     // --- Drag & Drop State ---
     let dragState = {
@@ -222,6 +224,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    function getCombinedTree() {
+        return networkNoteTree ? [networkNoteTree, ...localNoteTree] : localNoteTree;
+    }
+
     function findItemById(tree, id) {
         for (const item of tree) {
             if (item.id === id) return item;
@@ -234,7 +240,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     async function getParentPath(itemId) {
-        const item = findItemById(noteTree, itemId);
+        const item = findItemById(getCombinedTree(), itemId);
         if (!item || !item.path) return null;
         return await window.electronPath.dirname(item.path);
     }
@@ -243,7 +249,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     function renderTree() {
         noteList.innerHTML = '';
         const filter = searchInput.value.toLowerCase();
-        const filteredTree = filter ? filterTree(noteTree, filter) : noteTree;
+        const combinedTree = getCombinedTree();
+        const filteredTree = filter ? filterTree(combinedTree, filter) : combinedTree;
         
         const fragment = document.createDocumentFragment();
         filteredTree.forEach(item => fragment.appendChild(createTreeElement(item)));
@@ -277,7 +284,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (isFolder) {
             li.className = 'folder-item';
             li.setAttribute('draggable', true); // Make the entire <li> draggable
-            const isCollapsed = collapsedFolders.has(item.id);
+            const isCollapsed = !expandedFolders.has(item.id);
     
             const folderHeader = document.createElement('div');
             folderHeader.className = 'folder-header-row';
@@ -318,10 +325,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function toggleFolder(folderId) {
-        if (collapsedFolders.has(folderId)) {
-            collapsedFolders.delete(folderId);
+        if (expandedFolders.has(folderId)) {
+            expandedFolders.delete(folderId);
         } else {
-            collapsedFolders.add(folderId);
+            expandedFolders.add(folderId);
         }
         renderTree(); // Re-render to reflect the change
     }
@@ -369,7 +376,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         activeNoteId = id;
         localStorage.setItem('lastActiveNoteId', id);
         
-        const note = findItemById(noteTree, id);
+        const note = findItemById(getCombinedTree(), id);
         if (note) {
             noteTitleInput.value = note.title;
             noteContentInput.value = note.content;
@@ -391,12 +398,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         noteContentInput.disabled = true;
     }
 
-    newNoteBtn.addEventListener('click', () => createNewItem('note'));
+    newMdBtn.addEventListener('click', () => createNewItem('note', '.md'));
+    newTxtBtn.addEventListener('click', () => createNewItem('note', '.txt'));
     newFolderBtn.addEventListener('click', () => createNewItem('folder'));
 
-    async function createNewItem(type) {
+    async function createNewItem(type, ext = '.md') { // Default to .md for backward compatibility if needed
         let parentPath;
-        const activeItem = activeItemId ? findItemById(noteTree, activeItemId) : null;
+        const activeItem = activeItemId ? findItemById(getCombinedTree(), activeItemId) : null;
 
         if (activeItem) {
             if (activeItem.type === 'folder') {
@@ -419,7 +427,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 content: '',
                 username: currentUsername,
                 timestamp: Date.now(),
-                directoryPath: parentPath
+                directoryPath: parentPath,
+                ext: ext // Pass the extension to the backend
             };
             const result = await window.electronAPI.writeTxtNote(newNote);
             if (result.success) {
@@ -444,7 +453,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!isAutoSave) showButtonFeedback(saveNoteBtn, '保存', '无活动笔记', false);
             return;
         }
-        const noteInTree = findItemById(noteTree, activeNoteId);
+        const noteInTree = findItemById(getCombinedTree(), activeNoteId);
         if (!noteInTree) return;
 
         const newTitle = noteTitleInput.value.trim() || '无标题笔记';
@@ -458,12 +467,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         let result;
+        const extension = await window.electronPath.extname(noteInTree.path);
+
         if (titleChanged) {
             // If title changes, we must use rename-item to change filename and content
             result = await window.electronAPI.renameItem({
                 oldPath: noteInTree.path,
                 newName: newTitle,
-                newContentBody: newContent
+                newContentBody: newContent,
+                ext: extension
             });
             if (result.success && result.newId) {
                 // IMPORTANT: Update the activeNoteId to the new ID before reloading the tree
@@ -479,6 +491,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 username: currentUsername,
                 timestamp: Date.now(),
                 oldFilePath: noteInTree.path, // Pass the path to identify the file
+                ext: extension
             };
             result = await window.electronAPI.writeTxtNote(noteData);
         }
@@ -493,7 +506,31 @@ document.addEventListener('DOMContentLoaded', async () => {
                 showButtonFeedback(saveNoteBtn, '保存', '已保存', true);
             }
             // Always reload the tree to ensure consistency from the single source of truth
-            await loadNoteTree();
+            // Instead of a full reload which can cause a flicker or lose state,
+            // we perform an in-place update of the model and re-render the tree.
+            // The background rescan will bring the authoritative state later.
+            const noteToUpdate = findItemById(getCombinedTree(), activeNoteId);
+            if (noteToUpdate) {
+                noteToUpdate.title = newTitle;
+                noteToUpdate.content = newContent;
+                noteToUpdate.timestamp = Date.now(); // Update timestamp for immediate UI feedback
+
+                // If the save/rename resulted in a new ID (from a title change), update our state
+                if (result.newId && result.newId !== activeNoteId) {
+                    const oldId = activeNoteId;
+                    noteToUpdate.id = result.newId;
+                    noteToUpdate.path = result.newPath || result.filePath;
+                    
+                    // Update the global state trackers
+                    activeNoteId = result.newId;
+                    activeItemId = result.newId;
+                    if (selectedItems.has(oldId)) {
+                        selectedItems.delete(oldId);
+                        selectedItems.add(result.newId);
+                    }
+                }
+            }
+            renderTree(); // Re-render the list with the updated data, keeping the editor intact.
         } else {
             if (!isAutoSave) showButtonFeedback(saveNoteBtn, '保存', `保存失败: ${result.error}`, false);
         }
@@ -511,7 +548,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             deleteNoteBtn.classList.remove('button-confirm-delete');
 
             for (const id of selectedItems) {
-                const item = findItemById(noteTree, id);
+                const item = findItemById(getCombinedTree(), id);
                 if (item) await window.electronAPI.deleteItem(item.path);
             }
             
@@ -545,7 +582,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
         
-        const item = findItemById(noteTree, itemElement.dataset.id);
+        const item = findItemById(getCombinedTree(), itemElement.dataset.id);
         if (item) {
             handleItemClick(e, item);
         }
@@ -555,7 +592,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const itemElement = e.target.closest('[data-id]');
         if (!itemElement) return;
         
-        const item = findItemById(noteTree, itemElement.dataset.id);
+        const item = findItemById(getCombinedTree(), itemElement.dataset.id);
         if (item) {
             handleItemContextMenu(e, item);
         }
@@ -686,11 +723,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
     
-        const sourcePaths = sourceIds.map(id => findItemById(noteTree, id)?.path).filter(Boolean);
+        const sourcePaths = sourceIds.map(id => findItemById(getCombinedTree(), id)?.path).filter(Boolean);
         if (sourcePaths.length === 0) return;
     
         const targetId = dropTargetElement.dataset.id;
-        const targetItem = findItemById(noteTree, targetId);
+        const targetItem = findItemById(getCombinedTree(), targetId);
         if (!targetItem) return;
     
         // --- Build Intent ---
@@ -811,8 +848,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             const newName = input.value.trim();
             cleanup();
             if (newName && newName !== currentName) {
-                const item = findItemById(noteTree, itemId);
-                await window.electronAPI.renameItem({ oldPath: item.path, newName });
+                const item = findItemById(getCombinedTree(), itemId);
+                const extension = await window.electronPath.extname(item.path);
+                await window.electronAPI.renameItem({ oldPath: item.path, newName: newName, ext: extension });
                 await loadNoteTree();
             }
         };
@@ -839,7 +877,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (selectedItems.size === 0) return;
 
         for (const id of selectedItems) {
-            const item = findItemById(noteTree, id);
+            const item = findItemById(getCombinedTree(), id);
             if (item) {
                 await window.electronAPI.deleteItem(item.path);
             }
@@ -926,7 +964,33 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.error('加载用户设置或根目录失败:', error);
         }
         
-        await loadNoteTree();
+        // No longer need to clear collapsed state, as the default is now collapsed.
+        // --- New Initialization Logic ---
+        // 1. Load local notes first for immediate display
+        const localResult = await window.electronAPI.readNotesTree();
+        if (localResult.error) {
+            console.error('加载本地笔记失败:', localResult.error);
+        } else {
+            localNoteTree = localResult;
+        }
+
+        // 2. Try to load network notes from cache for faster startup
+        const cachedNetworkNotes = await window.electronAPI.getCachedNetworkNotes();
+        if (cachedNetworkNotes) {
+            networkNoteTree = cachedNetworkNotes;
+        }
+
+        // 3. Initial render with whatever we have so far
+        renderTree();
+
+        // 4. Asynchronously ask the main process to scan for fresh network notes
+        window.electronAPI.scanNetworkNotes();
+
+        // 5. Listen for the updated network notes to be returned
+        window.electronAPI.onNetworkNotesScanned((freshNetworkTree) => {
+            networkNoteTree = freshNetworkTree; // This could be null if the network drive is empty/gone
+            renderTree(); // Re-render with the fresh data
+        });
 
         window.electronAPI.onSharedNoteData(async (data) => {
             // Generate a robust, unique title based on date and time, as suggested.

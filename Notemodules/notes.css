@@ -75,7 +75,9 @@ body {
 }
 
 .sidebar-actions .button {
-    flex: 1; /* Each button takes half the space */
+    flex: 1; /* Each button takes a third of the space */
+    padding: 8px 10px; /* Reduced padding for a more compact look */
+    font-size: 0.9em; /* Slightly smaller font size */
 }
 
 /* Common input styling */

@@ -44,6 +44,7 @@ const SETTINGS_FILE = path.join(APP_DATA_ROOT_IN_PROJECT, 'settings.json');
 const USER_AVATAR_FILE = path.join(USER_DATA_DIR, 'user_avatar.png'); // Standardized user avatar file
 const MUSIC_PLAYLIST_FILE = path.join(APP_DATA_ROOT_IN_PROJECT, 'songlist.json');
 const MUSIC_COVER_CACHE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'MusicCoverCache');
+const NETWORK_NOTES_CACHE_FILE = path.join(APP_DATA_ROOT_IN_PROJECT, 'network-notes-cache.json'); // Cache for network notes
 
 // Define a specific agent ID for notes attachments
 const NOTES_AGENT_ID = 'notes_attachments_agent';
@@ -64,6 +65,7 @@ let notesWindow = null; // To hold the single instance of the notes window
 let musicWindow = null; // To hold the single instance of the music window
 let currentSongInfo = null; // To store currently playing song info
 let translatorWindow = null; // To hold the single instance of the translator window
+let networkNotesTreeCache = null; // In-memory cache for the network notes
 
 
 function processSelectedText(selectionData) {
@@ -485,6 +487,10 @@ async function handleMusicControl(args) {
     ipcMain.handle('path:dirname', (event, p) => {
         return path.dirname(p);
     });
+    // Add IPC handler for getting the extension name of a path
+    ipcMain.handle('path:extname', (event, p) => {
+        return path.extname(p);
+    });
 
 
     // Group Chat IPC Handlers are now in modules/ipc/groupChatHandlers.js
@@ -579,6 +585,21 @@ async function handleMusicControl(args) {
 
     // --- Start of New/Updated Notes IPC Handlers ---
 
+    // Helper to check if a file path is on the network notes drive
+    async function isNetworkNote(filePath) {
+        try {
+            if (await fs.pathExists(SETTINGS_FILE)) {
+                const settings = await fs.readJson(SETTINGS_FILE);
+                const networkPath = settings.networkNotesPath;
+                // Check if a network path is configured and the file path starts with it
+                if (networkPath && filePath.startsWith(networkPath)) {
+                    return true;
+                }
+            }
+        } catch (e) { console.error("Error checking for network note:", e); }
+        return false;
+    }
+
     // Helper function to recursively read the directory structure
     async function readDirectoryStructure(dirPath) {
         const items = [];
@@ -611,32 +632,45 @@ async function handleMusicControl(args) {
                 try {
                     const content = await fs.readFile(fullPath, 'utf8');
                     const lines = content.split('\n');
-                    if (lines.length < 1) continue;
+                    const id = `note-${Buffer.from(fullPath).toString('hex')}`;
 
+                    let title, username, timestamp, noteContent;
+
+                    // Always use the filename (without extension) as the default title.
+                    title = path.basename(file.name, path.extname(file.name));
+
+                    // Check if the first line is a valid header that should be stripped.
                     const header = lines[0];
-                    const noteContent = lines.slice(1).join('\n');
-                    const parts = header.split('-');
+                    const parts = header ? header.split('-') : [];
+                    const potentialTimestamp = parts.length > 0 ? parseInt(parts[parts.length - 1], 10) : NaN;
 
-                    if (parts.length >= 3) {
-                        const timestampStr = parts.pop();
-                        const username = parts.pop();
-                        const title = parts.join('-');
-                        const timestamp = parseInt(timestampStr, 10);
-                        const id = `note-${Buffer.from(fullPath).toString('hex')}`;
-
-                        items.push({
-                            id,
-                            type: 'note',
-                            title,
-                            username,
-                            timestamp,
-                            content: noteContent,
-                            fileName: file.name,
-                            path: fullPath
-                        });
+                    // A header is valid if it has >= 3 parts & the last part is a number (our timestamp).
+                    if (parts.length >= 3 && !isNaN(potentialTimestamp) && potentialTimestamp > 0) {
+                        // It's a valid header. Use its metadata and strip it from the content.
+                        username = parts[parts.length - 2]; // Second to last part is username
+                        timestamp = potentialTimestamp;
+                        noteContent = lines.slice(1).join('\n');
+                        
+                        // Use the title from the header, but fall back to filename if header title is empty.
+                        const headerTitle = parts.slice(0, -2).join('-');
+                        title = headerTitle || path.basename(file.name, path.extname(file.name));
                     } else {
-                        console.warn(`Skipping improperly formatted note file: ${file.name}`);
+                        // It's not a valid header. Use the full content and file mtime.
+                        noteContent = content;
+                        username = 'unknown';
+                        timestamp = (await fs.stat(fullPath)).mtime.getTime();
                     }
+
+                    items.push({
+                        id,
+                        type: 'note',
+                        title,
+                        username,
+                        timestamp,
+                        content: noteContent,
+                        fileName: file.name,
+                        path: fullPath
+                    });
                 } catch (readError) {
                     console.error(`Error reading note file ${file.name}:`, readError);
                 }
@@ -666,19 +700,76 @@ async function handleMusicControl(args) {
     }
 
     // IPC handler to read the entire note tree structure
+    // IPC handler to read only the LOCAL note tree structure for fast initial load
     ipcMain.handle('read-notes-tree', async () => {
         try {
             return await readDirectoryStructure(NOTES_DIR);
         } catch (error) {
-            console.error('读取笔记结构失败:', error);
+            console.error('读取本地笔记结构失败:', error);
             return { error: error.message };
         }
+    });
+
+    // Centralized function to scan network notes, update cache, and notify renderer
+    async function scanAndCacheNetworkNotes() {
+        try {
+            if (await fs.pathExists(SETTINGS_FILE)) {
+                const settings = await fs.readJson(SETTINGS_FILE);
+                const networkPath = settings.networkNotesPath;
+
+                if (networkPath && await fs.pathExists(networkPath)) {
+                    console.log(`[scanAndCacheNetworkNotes] Starting async scan of: ${networkPath}`);
+                    const networkNotes = await readDirectoryStructure(networkPath);
+                    let networkTree = null;
+
+                    if (networkNotes.length > 0) {
+                        networkTree = {
+                            id: 'folder-network-notes-root',
+                            type: 'folder',
+                            name: '云笔记dailynote',
+                            path: networkPath,
+                            children: networkNotes,
+                            isNetwork: true
+                        };
+                    }
+
+                    // Update cache (in-memory and on-disk)
+                    networkNotesTreeCache = networkTree;
+                    if (networkTree) {
+                        await fs.writeJson(NETWORK_NOTES_CACHE_FILE, networkTree);
+                    } else {
+                        // If network folder is empty or inaccessible, clear the cache
+                        await fs.remove(NETWORK_NOTES_CACHE_FILE);
+                    }
+
+                    // Push the result to the notes window when done
+                    if (notesWindow && !notesWindow.isDestroyed()) {
+                        notesWindow.webContents.send('network-notes-scanned', networkTree);
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('Error during async network notes scan:', e);
+            if (notesWindow && !notesWindow.isDestroyed()) {
+                notesWindow.webContents.send('network-notes-scan-error', { error: e.message });
+            }
+        }
+    }
+
+    // IPC handler to trigger the ASYNCHRONOUS scanning of network notes
+    ipcMain.on('scan-network-notes', () => {
+        scanAndCacheNetworkNotes();
+    });
+
+    // IPC handler to get the cached network notes tree for faster startup
+    ipcMain.handle('get-cached-network-notes', async () => {
+        return await fs.pathExists(NETWORK_NOTES_CACHE_FILE) ? await fs.readJson(NETWORK_NOTES_CACHE_FILE) : null;
     });
 
     // IPC handler to write a note file
     ipcMain.handle('write-txt-note', async (event, noteData) => {
         try {
-            const { title, username, timestamp, content, oldFilePath, directoryPath } = noteData;
+            const { title, username, timestamp, content, oldFilePath, directoryPath, ext } = noteData;
             
             let filePath;
             let isNewNote = false;
@@ -691,7 +782,7 @@ async function handleMusicControl(args) {
                 isNewNote = true;
                 const targetDir = directoryPath || NOTES_DIR;
                 await fs.ensureDir(targetDir);
-                const extension = '.md';
+                const extension = ext || '.md'; // Use provided ext, or default to .md
                 const newFileName = `${title}${extension}`;
                 filePath = path.join(targetDir, newFileName);
 
@@ -703,6 +794,12 @@ async function handleMusicControl(args) {
             const fileContent = `${title}-${username}-${timestamp}\n${content}`;
             await fs.writeFile(filePath, fileContent, 'utf8');
             console.log(`Note content saved to: ${filePath}`);
+
+            // If it's a network note, trigger a background rescan
+            if (await isNetworkNote(filePath)) {
+                console.log(`Network note saved: ${filePath}. Triggering background rescan.`);
+                setImmediate(scanAndCacheNetworkNotes);
+            }
             
             const newId = `note-${Buffer.from(filePath).toString('hex')}`;
             return {
@@ -724,6 +821,12 @@ async function handleMusicControl(args) {
             if (await fs.pathExists(itemPath)) {
                 await shell.trashItem(itemPath);
                 console.log(`Item moved to trash: ${itemPath}`);
+
+                // If it's a network item, trigger a background rescan
+                if (await isNetworkNote(itemPath)) {
+                    console.log(`Network item deleted: ${itemPath}. Triggering background rescan.`);
+                    setImmediate(scanAndCacheNetworkNotes);
+                }
                 return { success: true };
             }
             return { success: false, error: 'Item not found.' };
@@ -742,6 +845,13 @@ async function handleMusicControl(args) {
             }
             await fs.ensureDir(newFolderPath);
             console.log(`Folder created: ${newFolderPath}`);
+
+            // If it's a network folder, trigger a background rescan
+            if (await isNetworkNote(newFolderPath)) {
+                console.log(`Network folder created: ${newFolderPath}. Triggering background rescan.`);
+                setImmediate(scanAndCacheNetworkNotes);
+            }
+
             const newId = `folder-${Buffer.from(newFolderPath).toString('hex')}`;
             return { success: true, path: newFolderPath, id: newId };
         } catch (error) {
@@ -751,7 +861,7 @@ async function handleMusicControl(args) {
     });
 
     // IPC handler to rename a file or folder
-    ipcMain.handle('rename-item', async (event, { oldPath, newName, newContentBody }) => {
+    ipcMain.handle('rename-item', async (event, { oldPath, newName, newContentBody, ext }) => {
         try {
             const parentDir = path.dirname(oldPath);
             const stat = await fs.stat(oldPath);
@@ -764,7 +874,7 @@ async function handleMusicControl(args) {
 
             const newPath = isDirectory
                 ? path.join(parentDir, sanitizedNewName)
-                : path.join(parentDir, sanitizedNewName + path.extname(oldPath));
+                : path.join(parentDir, sanitizedNewName + (ext || path.extname(oldPath)));
 
             if (oldPath === newPath) {
                 // If only content is changing, not the name, we should still proceed.
@@ -844,6 +954,12 @@ async function handleMusicControl(args) {
             }
 
             console.log(`Renamed/Updated successfully: from ${oldPath} to ${newPath}`);
+
+            // If it's a network item, trigger a background rescan
+            if (await isNetworkNote(newPath)) {
+                console.log(`Network item renamed/moved: ${newPath}. Triggering background rescan.`);
+                setImmediate(scanAndCacheNetworkNotes);
+            }
             
             const type = isDirectory ? 'folder' : 'note';
             const newId = `${type}-${Buffer.from(newPath).toString('hex')}`;
@@ -944,6 +1060,14 @@ async function handleMusicControl(args) {
             
             // Write the final order to the destination
             await fs.writeJson(destOrderPath, { order: finalOrder }, { spaces: 2 });
+
+            // Trigger a rescan if the move involved a network directory
+            const isMovingToNetwork = await isNetworkNote(destPath);
+            const isMovingFromNetwork = await isNetworkNote(sourceDir);
+            if (isMovingToNetwork || isMovingFromNetwork) {
+                console.log(`Network items moved. Triggering background rescan.`);
+                setImmediate(scanAndCacheNetworkNotes);
+            }
 
             return { success: true };
         } catch (error) {
