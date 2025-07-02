@@ -62,8 +62,8 @@
     --scrollbar-thumb-hover: rgba(255, 36, 0, 0.9);
 
     /* --- Shimmer Effect for Loading --- */
-    --shimmer-color-transparent: rgba(245, 235, 235, 0.753);
-    --shimmer-color-highlight: rgba(245, 235, 235, 0.873);
+    --shimmer-color-transparent: rgba(255, 233, 233, 0.825);
+    --shimmer-color-highlight: rgba(255, 185, 35, 0.947);
 
     /* --- Text Shadow for Frosted Panels --- */
     --panel-text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
