@@ -41,8 +41,8 @@
     --user-text: #FFFFFF;       /* 用户气泡文字 */
 
     /* --- Bubble Colors (Frosted Glass Ready) --- */
-    --user-bubble-bg: rgba(255, 36, 0, 0.18);    /* 用户气泡 - 半透明猩红色 */
-    --assistant-bubble-bg: rgba(45, 42, 42, 0.3); /* AI气泡 - 半透明炭灰色 */
+    --user-bubble-bg: rgba(155, 38, 20, 0.423);    /* 用户气泡 - 半透明猩红色 */
+    --assistant-bubble-bg: rgba(45, 42, 42, 0.433); /* AI气泡 - 半透明炭灰色 */
 
     /* --- UI Element Colors --- */
     --button-bg: #D70000;           /* 按钮背景 - 鲜血红 */
@@ -62,8 +62,8 @@
     --scrollbar-thumb-hover: rgba(255, 36, 0, 0.9);
 
     /* --- Shimmer Effect for Loading --- */
-    --shimmer-color-transparent: rgba(245, 235, 235, 0.1);
-    --shimmer-color-highlight: rgba(245, 235, 235, 0.4);
+    --shimmer-color-transparent: rgba(245, 235, 235, 0.753);
+    --shimmer-color-highlight: rgba(245, 235, 235, 0.873);
 
     /* --- Text Shadow for Frosted Panels --- */
     --panel-text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
@@ -135,8 +135,8 @@ body.light-theme {
     --scrollbar-thumb-hover: rgba(30, 144, 255, 1); /* 道奇蓝 */
 
     /* --- Shimmer Effect for Loading --- */
-    --shimmer-color-transparent: rgba(44, 62, 80, 0.05);
-    --shimmer-color-highlight: rgba(44, 62, 80, 0.15);
+    --shimmer-color-transparent: rgba(44, 62, 80, 0.667);
+    --shimmer-color-highlight: rgba(44, 62, 80, 0.923);
     
     /* --- Text Shadow for Frosted Panels --- */
     --panel-text-shadow: 0 1px 1px rgba(0, 0, 0, 0.08);
@@ -152,7 +152,7 @@ body.light-theme {
 .message-bubble {
     backdrop-filter: blur(12px) saturate(120%);
     -webkit-backdrop-filter: blur(12px) saturate(120%);
-    border: 1px solid rgba(255, 255, 255, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.175);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
