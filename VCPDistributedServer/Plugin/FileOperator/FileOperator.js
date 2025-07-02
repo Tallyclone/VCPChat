@@ -69,6 +69,26 @@ function formatFileSize(bytes) {
   return Math.round((bytes / Math.pow(1024, i)) * 100) / 100 + ' ' + sizes[i];
 }
 
+function getUniqueFilePath(filePath) {
+  if (!fsSync.existsSync(filePath)) {
+    return { newPath: filePath, renamed: false };
+  }
+
+  let counter = 1;
+  const dir = path.dirname(filePath);
+  const ext = path.extname(filePath);
+  const baseName = path.basename(filePath, ext);
+  let newPath;
+
+  while (true) {
+    newPath = path.join(dir, `${baseName}(${counter})${ext}`);
+    if (!fsSync.existsSync(newPath)) {
+      return { newPath: newPath, renamed: true };
+    }
+    counter++;
+  }
+}
+
 // File operation functions
 async function readFile(filePath, encoding = 'utf8') {
   try {
@@ -162,13 +182,22 @@ async function writeFile(filePath, content, encoding = 'utf8') {
       throw new Error(`Content too large: exceeds limit of ${formatFileSize(MAX_FILE_SIZE)}`);
     }
 
-    await fs.writeFile(filePath, content, encoding);
-    const stats = await fs.stat(filePath);
+    const { newPath, renamed } = getUniqueFilePath(filePath);
+
+    await fs.writeFile(newPath, content, encoding);
+    const stats = await fs.stat(newPath);
+
+    const message = renamed
+      ? `已存在同名文件 "${path.basename(filePath)}"，已为您创建为 "${path.basename(newPath)}"`
+      : '文件写入成功';
 
     return {
       success: true,
       data: {
-        message: 'File written successfully',
+        message: message,
+        path: newPath,
+        originalPath: filePath,
+        renamed: renamed,
         size: stats.size,
         sizeFormatted: formatFileSize(stats.size),
         lastModified: stats.mtime.toISOString(),
@@ -219,6 +248,53 @@ async function appendFile(filePath, content, encoding = 'utf8') {
     };
   } catch (error) {
     debugLog('Error appending to file', { filePath, error: error.message });
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+}
+
+async function editFile(filePath, content, encoding = 'utf8') {
+  try {
+    debugLog('Editing file', { filePath, contentLength: content.length, encoding });
+
+    if (!isPathAllowed(filePath, 'EditFile')) {
+      throw new Error(`Access denied: Path '${filePath}' is not in allowed directories`);
+    }
+
+    // Ensure the file exists before attempting to edit it.
+    try {
+      const stats = await fs.stat(filePath);
+      if (stats.isDirectory()) {
+        throw new Error(`Path points to a directory, not a file. Cannot edit.`);
+      }
+    } catch (e) {
+      if (e.code === 'ENOENT') {
+        throw new Error(`File not found at '${filePath}'. Use WriteFile to create a new file.`);
+      }
+      throw e; // Re-throw other errors
+    }
+
+    if (Buffer.byteLength(content, encoding) > MAX_FILE_SIZE) {
+      throw new Error(`Content too large: exceeds limit of ${formatFileSize(MAX_FILE_SIZE)}`);
+    }
+
+    await fs.writeFile(filePath, content, encoding);
+    const stats = await fs.stat(filePath);
+
+    return {
+      success: true,
+      data: {
+        message: 'File edited successfully',
+        path: filePath,
+        size: stats.size,
+        sizeFormatted: formatFileSize(stats.size),
+        lastModified: stats.mtime.toISOString(),
+      },
+    };
+  } catch (error) {
+    debugLog('Error editing file', { filePath, error: error.message });
     return {
       success: false,
       error: error.message,
@@ -332,15 +408,23 @@ async function copyFile(sourcePath, destinationPath) {
       );
     }
 
-    await fs.copyFile(sourcePath, destinationPath);
-    const destStats = await fs.stat(destinationPath);
+    const { newPath, renamed } = getUniqueFilePath(destinationPath);
+
+    await fs.copyFile(sourcePath, newPath);
+    const destStats = await fs.stat(newPath);
+
+    const message = renamed
+      ? `已存在同名文件 "${path.basename(destinationPath)}"，已为您复制为 "${path.basename(newPath)}"`
+      : '文件复制成功';
 
     return {
       success: true,
       data: {
-        message: 'File copied successfully',
+        message: message,
         source: sourcePath,
-        destination: destinationPath,
+        destination: newPath,
+        originalDestination: destinationPath,
+        renamed: renamed,
         size: destStats.size,
         sizeFormatted: formatFileSize(destStats.size),
       },
@@ -362,13 +446,66 @@ async function moveFile(sourcePath, destinationPath) {
       throw new Error('Access denied: One or both paths are not in allowed directories');
     }
 
+    const { newPath, renamed } = getUniqueFilePath(destinationPath);
+
+    await fs.rename(sourcePath, newPath);
+    const stats = await fs.stat(newPath);
+
+    const message = renamed
+      ? `移动目标位置已存在同名文件 "${path.basename(destinationPath)}"，已为您移动并重命名为 "${path.basename(newPath)}"`
+      : '文件移动成功';
+
+    return {
+      success: true,
+      data: {
+        message: message,
+        source: sourcePath,
+        destination: newPath,
+        originalDestination: destinationPath,
+        renamed: renamed,
+        size: stats.size,
+        sizeFormatted: formatFileSize(stats.size),
+      },
+    };
+  } catch (error) {
+    debugLog('Error moving file', { sourcePath, destinationPath, error: error.message });
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+}
+
+async function renameFile(sourcePath, destinationPath) {
+  try {
+    debugLog('Renaming file', { sourcePath, destinationPath });
+
+    if (!isPathAllowed(sourcePath, 'RenameFile') || !isPathAllowed(destinationPath, 'RenameFile')) {
+      throw new Error('Access denied: One or both paths are not in allowed directories');
+    }
+
+    // Check if source file exists
+    try {
+      await fs.stat(sourcePath);
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        throw new Error(`Source file not found: '${sourcePath}'`);
+      }
+      throw error;
+    }
+
+    // Check if destination file already exists
+    if (fsSync.existsSync(destinationPath)) {
+      throw new Error(`Destination file already exists: '${destinationPath}'. Please choose a different name.`);
+    }
+
     await fs.rename(sourcePath, destinationPath);
     const stats = await fs.stat(destinationPath);
 
     return {
       success: true,
       data: {
-        message: 'File moved successfully',
+        message: 'File renamed successfully',
         source: sourcePath,
         destination: destinationPath,
         size: stats.size,
@@ -376,7 +513,7 @@ async function moveFile(sourcePath, destinationPath) {
       },
     };
   } catch (error) {
-    debugLog('Error moving file', { sourcePath, destinationPath, error: error.message });
+    debugLog('Error renaming file', { sourcePath, destinationPath, error: error.message });
     return {
       success: false,
       error: error.message,
@@ -573,6 +710,9 @@ async function processRequest(request) {
     case 'AppendFile':
       return await appendFile(parameters.filePath, parameters.content, parameters.encoding);
 
+    case 'EditFile':
+      return await editFile(parameters.filePath, parameters.content, parameters.encoding);
+
     case 'ListDirectory':
       return await listDirectory(parameters.directoryPath, parameters.showHidden);
 
@@ -584,6 +724,9 @@ async function processRequest(request) {
 
     case 'MoveFile':
       return await moveFile(parameters.sourcePath, parameters.destinationPath);
+
+    case 'RenameFile':
+      return await renameFile(parameters.sourcePath, parameters.destinationPath);
 
     case 'DeleteFile':
       return await deleteFile(parameters.filePath);
