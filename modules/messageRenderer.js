@@ -104,13 +104,72 @@ function ensureToolCallFenced(text) {
 }
 
 /**
-* A helper function to preprocess the full message content string before parsing.
-* @param {string} text The raw text content.
-* @returns {string} The processed text.
-*/
+ * Wraps raw HTML documents in markdown code fences if they aren't already.
+ * An HTML document is identified by the `<!DOCTYPE html>` declaration.
+ * @param {string} text The text content.
+ * @returns {string} The processed text.
+ */
+function ensureHtmlFenced(text) {
+    const doctypeTag = '<!DOCTYPE html>';
+    const htmlCloseTag = '</html>';
+
+    // Quick exit if no doctype is present.
+    if (!text.toLowerCase().includes(doctypeTag.toLowerCase())) {
+        return text;
+    }
+
+    let result = '';
+    let lastIndex = 0;
+    while (true) {
+        const startIndex = text.toLowerCase().indexOf(doctypeTag.toLowerCase(), lastIndex);
+
+        // Append the segment of text before the current HTML block.
+        const textSegment = text.substring(lastIndex, startIndex === -1 ? text.length : startIndex);
+        result += textSegment;
+
+        if (startIndex === -1) {
+            break; // Exit loop if no more doctype markers are found.
+        }
+
+        // Find the corresponding </html> tag.
+        const endIndex = text.toLowerCase().indexOf(htmlCloseTag.toLowerCase(), startIndex + doctypeTag.length);
+        if (endIndex === -1) {
+            // Malformed HTML (no closing tag), append the rest of the string and stop.
+            result += text.substring(startIndex);
+            break;
+        }
+
+        const block = text.substring(startIndex, endIndex + htmlCloseTag.length);
+        
+        // Check if we are currently inside an open code block by counting fences in the processed result.
+        const fencesInResult = (result.match(/```/g) || []).length;
+
+        if (fencesInResult % 2 === 0) {
+            // Even number of fences means we are outside a code block.
+            // Wrap the HTML block in new fences.
+            result += `\n\`\`\`html\n${block}\n\`\`\`\n`;
+        } else {
+            // Odd number of fences means we are inside a code block.
+            // Append the HTML block as is.
+            result += block;
+        }
+
+        // Move past the current HTML block.
+        lastIndex = endIndex + htmlCloseTag.length;
+    }
+
+    return result;
+}
+
+/**
+ * A helper function to preprocess the full message content string before parsing.
+ * @param {string} text The raw text content.
+ * @returns {string} The processed text.
+ */
 function preprocessFullContent(text) {
    let processed = text;
    processed = ensureToolCallFenced(processed);
+   processed = ensureHtmlFenced(processed);
    processed = contentProcessor.ensureNewlineAfterCodeBlock(processed);
    processed = contentProcessor.ensureSpaceAfterTilde(processed);
    processed = contentProcessor.removeIndentationFromCodeBlockMarkers(processed);
