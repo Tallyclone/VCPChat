@@ -355,27 +355,41 @@ function initialize(mainWindow, context) {
         const storedFilesInfo = [];
         for (const fileData of droppedFilesData) {
             try {
-                if (!fileData.data || !fileData.name || !fileData.type) {
-                    console.warn('[Main - handle-file-drop] Skipping a dropped file due to missing data, name, or type. fileData:', JSON.stringify(fileData));
-                    storedFilesInfo.push({ name: fileData.name || '未知文件（数据缺失）', error: '文件内容、名称或类型缺失' });
+                // Check if we have a path or data. One of them must exist.
+                if (!fileData.data && !fileData.path) {
+                    console.warn('[Main - handle-file-drop] Skipping a dropped file due to missing data and path. fileData:', JSON.stringify(fileData));
+                    storedFilesInfo.push({ name: fileData.name || '未知文件', error: '文件内容或路径缺失' });
                     continue;
+                }
+
+                let fileSource;
+                if (fileData.path) {
+                    // If path is provided, use it as the source.
+                    fileSource = fileData.path;
+                } else {
+                    // Otherwise, use the buffer from data.
+                    fileSource = Buffer.isBuffer(fileData.data) ? fileData.data : Buffer.from(fileData.data);
                 }
 
                 let fileTypeHint = fileData.type;
                 const fileExtension = path.extname(fileData.name).toLowerCase();
 
-                // 如果文件类型未知，但扩展名是 .md，则将其视为纯文本
-                if (!fileTypeHint && fileExtension === '.md') {
-                    fileTypeHint = 'text/plain';
-                    console.log(`[Main - handle-file-drop] Markdown file detected. Overriding fileTypeHint to 'text/plain'.`);
+                // If file type is generic, try to guess from extension.
+                if (fileTypeHint === 'application/octet-stream' || !fileTypeHint) {
+                    if (['.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(fileExtension)) {
+                        fileTypeHint = `image/${fileExtension.substring(1).replace('jpg', 'jpeg')}`;
+                    } else if (['.mp3', '.wav', '.ogg'].includes(fileExtension)) {
+                        fileTypeHint = `audio/${fileExtension.substring(1)}`;
+                    } else if (['.md', '.txt'].includes(fileExtension)) {
+                        fileTypeHint = 'text/plain';
+                    }
                 }
-
-                console.log(`[Main - handle-file-drop] Attempting to store dropped file: ${fileData.name} (Type: ${fileTypeHint}, Size: ${fileData.size}) for Agent: ${agentId}, Topic: ${topicId}`);
-                const fileBuffer = Buffer.isBuffer(fileData.data) ? fileData.data : Buffer.from(fileData.data);
-
-                console.log(`[Main - handle-file-drop] Calling fileManager.storeFile with buffer for ${fileData.name}, size: ${fileBuffer.length}`);
-                const storedFile = await fileManager.storeFile(fileBuffer, fileData.name, agentId, topicId, fileTypeHint);
+                
+                console.log(`[Main - handle-file-drop] Attempting to store dropped file: ${fileData.name} (Type: ${fileTypeHint}) for Agent: ${agentId}, Topic: ${topicId}`);
+                
+                const storedFile = await fileManager.storeFile(fileSource, fileData.name, agentId, topicId, fileTypeHint);
                 storedFilesInfo.push({ success: true, attachment: storedFile, name: fileData.name });
+
             } catch (error) {
                 console.error(`[Main - handle-file-drop] Error storing dropped file ${fileData.name || 'unknown'}:`, error);
                 console.error(`[Main - handle-file-drop] Full error details:`, error.stack);

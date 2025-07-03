@@ -77,6 +77,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     scanNetworkNotes: () => ipcRenderer.send('scan-network-notes'),
     onNetworkNotesScanned: (callback) => ipcRenderer.on('network-notes-scanned', (_event, networkTree) => callback(networkTree)),
     getCachedNetworkNotes: () => ipcRenderer.invoke('get-cached-network-notes'), // Added for getting cached notes
+    searchNotes: (query) => ipcRenderer.invoke('search-notes', query), // For @note functionality
 
 
     // Open Notes Window

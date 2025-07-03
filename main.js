@@ -67,6 +67,7 @@ let currentSongInfo = null; // To store currently playing song info
 let translatorWindow = null; // To hold the single instance of the translator window
 let themesWindow = null; // To hold the single instance of the themes window
 let networkNotesTreeCache = null; // In-memory cache for the network notes
+const NOTES_MODULE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Notemodules');
 
 
 function processSelectedText(selectionData) {
@@ -1207,6 +1208,39 @@ async function handleMusicControl(args) {
                 wc.send('shared-note-data', data);
             }
         });
+    });
+
+    // IPC handler for searching notes
+    ipcMain.handle('search-notes', async (event, query) => {
+        if (!query) {
+            return [];
+        }
+        const lowerCaseQuery = query.toLowerCase();
+        const results = [];
+
+        async function searchInDirectory(directory) {
+            try {
+                const files = await fs.readdir(directory, { withFileTypes: true });
+                for (const file of files) {
+                    const fullPath = path.join(directory, file.name);
+                    if (file.isDirectory()) {
+                        await searchInDirectory(fullPath);
+                    } else if (file.isFile() && (file.name.endsWith('.md') || file.name.endsWith('.txt'))) {
+                        if (file.name.toLowerCase().includes(lowerCaseQuery)) {
+                            results.push({
+                                name: file.name,
+                                path: fullPath,
+                            });
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error(`Error searching for notes in directory ${directory}:`, error);
+            }
+        }
+
+        await searchInDirectory(NOTES_MODULE_DIR);
+        return results;
     });
 
     createWindow();

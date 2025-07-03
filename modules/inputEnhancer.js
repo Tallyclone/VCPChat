@@ -354,6 +354,140 @@ function initializeInputEnhancer(refs) {
     });
 
     console.log('[InputEnhancer] Event listeners attached to message input.');
+
+    // --- @note Mention Functionality ---
+    let noteSuggestionPopup = null;
+    let activeSuggestionIndex = -1;
+
+    messageInput.addEventListener('input', async () => {
+        const text = messageInput.value;
+        const cursorPos = messageInput.selectionStart;
+        const atMatch = text.substring(0, cursorPos).match(/@([\w\u4e00-\u9fa5]*)$/);
+
+        if (atMatch) {
+            const query = atMatch[1];
+            const notes = await localElectronAPI.searchNotes(query);
+            if (notes.length > 0) {
+                showNoteSuggestions(notes, query);
+            } else {
+                hideNoteSuggestions();
+            }
+        } else {
+            hideNoteSuggestions();
+        }
+    });
+
+    messageInput.addEventListener('keydown', (e) => {
+        if (noteSuggestionPopup && noteSuggestionPopup.style.display === 'block') {
+            const items = noteSuggestionPopup.querySelectorAll('.suggestion-item');
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                activeSuggestionIndex = (activeSuggestionIndex + 1) % items.length;
+                updateSuggestionHighlight();
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                activeSuggestionIndex = (activeSuggestionIndex - 1 + items.length) % items.length;
+                updateSuggestionHighlight();
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (activeSuggestionIndex > -1) {
+                    items[activeSuggestionIndex].click();
+                }
+            } else if (e.key === 'Escape') {
+                hideNoteSuggestions();
+            }
+        }
+    });
+
+    function showNoteSuggestions(notes, query) {
+        if (!noteSuggestionPopup) {
+            noteSuggestionPopup = document.createElement('div');
+            noteSuggestionPopup.id = 'note-suggestion-popup';
+            document.body.appendChild(noteSuggestionPopup);
+        }
+
+        noteSuggestionPopup.innerHTML = '';
+        notes.forEach((note, index) => {
+            const item = document.createElement('div');
+            item.className = 'suggestion-item';
+            item.textContent = note.name;
+            item.dataset.filePath = note.path;
+            item.addEventListener('click', () => selectNoteSuggestion(note));
+            noteSuggestionPopup.appendChild(item);
+        });
+
+        const rect = messageInput.getBoundingClientRect();
+        noteSuggestionPopup.style.left = `${rect.left}px`;
+        noteSuggestionPopup.style.bottom = `${window.innerHeight - rect.top}px`;
+        noteSuggestionPopup.style.display = 'block';
+        activeSuggestionIndex = 0;
+        updateSuggestionHighlight();
+    }
+
+    function hideNoteSuggestions() {
+        if (noteSuggestionPopup) {
+            noteSuggestionPopup.style.display = 'none';
+        }
+        activeSuggestionIndex = -1;
+    }
+
+    function updateSuggestionHighlight() {
+        const items = noteSuggestionPopup.querySelectorAll('.suggestion-item');
+        items.forEach((item, index) => {
+            item.classList.toggle('active', index === activeSuggestionIndex);
+        });
+    }
+
+    async function selectNoteSuggestion(note) {
+        const agentId = currentAgentIdRef();
+        const topicId = currentTopicIdRef();
+        if (!agentId || !topicId) {
+            alert("请先选择一个Agent和话题才能附加笔记。");
+            return;
+        }
+
+        // Replace the @mention text
+        const text = messageInput.value;
+        const cursorPos = messageInput.selectionStart;
+        const textBeforeCursor = text.substring(0, cursorPos);
+        const atMatch = textBeforeCursor.match(/@([\w\u4e00-\u9fa5]*)$/);
+        if (atMatch) {
+            const mentionLength = atMatch[0].length;
+            const newText = text.substring(0, cursorPos - mentionLength) + text.substring(cursorPos);
+            messageInput.value = newText;
+        }
+
+        hideNoteSuggestions();
+
+        // Attach the file using existing logic
+        try {
+            const results = await localElectronAPI.handleFileDrop(agentId, topicId, [{
+                path: note.path, // Pass the full path
+                name: note.name
+                // No need to specify type or data, main process will handle it
+            }]);
+
+            if (results && results.length > 0 && results[0].success && results[0].attachment) {
+                const att = results[0].attachment;
+                const currentFiles = attachedFilesRef.get();
+                currentFiles.push({
+                    file: { name: att.name, type: att.type, size: att.size },
+                    localPath: att.internalPath,
+                    originalName: att.name,
+                    _fileManagerData: att
+                });
+                attachedFilesRef.set(currentFiles);
+                updateAttachmentPreviewRef();
+                console.log(`[InputEnhancer] Successfully attached note: ${att.name}`);
+            } else {
+                const errorMsg = results && results.length > 0 && results[0].error ? results[0].error : '未知错误';
+                alert(`附加笔记 "${note.name}" 失败: ${errorMsg}`);
+            }
+        } catch (err) {
+            console.error('[InputEnhancer] Error attaching note file:', err);
+            alert(`附加笔记 "${note.name}" 时发生意外错误。`);
+        }
+    }
 }
 
 window.inputEnhancer = {
