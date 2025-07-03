@@ -852,19 +852,29 @@ async function handleMusicControl(args) {
     ipcMain.handle('delete-item', async (event, itemPath) => {
         try {
             if (await fs.pathExists(itemPath)) {
-                await shell.trashItem(itemPath);
-                console.log(`Item moved to trash: ${itemPath}`);
+                const isNetwork = await isNetworkNote(itemPath);
 
-                // If it's a network item, trigger a background rescan
-                if (await isNetworkNote(itemPath)) {
+                if (isNetwork) {
+                    // For network paths, use direct deletion as trashItem can be unreliable.
+                    await fs.remove(itemPath);
+                    console.log(`Item permanently deleted (network): ${itemPath}`);
+                } else {
+                    // For local paths, move to trash.
+                    await shell.trashItem(itemPath);
+                    console.log(`Item moved to trash (local): ${itemPath}`);
+                }
+
+                if (isNetwork) {
                     console.log(`Network item deleted: ${itemPath}. Triggering background rescan.`);
                     setImmediate(scanAndCacheNetworkNotes);
                 }
-                return { success: true };
+                
+                // Let the renderer know if it should wait for a network scan or reload local immediately.
+                return { success: true, networkRescanTriggered: isNetwork };
             }
             return { success: false, error: 'Item not found.' };
         } catch (error) {
-            console.error('Failed to move item to trash:', error);
+            console.error('Failed to delete item:', error);
             return { success: false, error: error.message };
         }
     });

@@ -203,14 +203,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             const result = await window.electronAPI.readNotesTree();
             if (result.error) {
                 console.error('加载笔记树失败:', result.error);
-                noteTree = [];
+                localNoteTree = [];
             } else {
-                noteTree = result;
+                localNoteTree = result;
             }
             renderTree();
             // Restore active/selected state if needed
             if (activeNoteId) {
-                const item = findItemById(noteTree, activeNoteId);
+                const item = findItemById(getCombinedTree(), activeNoteId);
                 if (item) {
                     selectNote(item.id, item.path);
                 } else {
@@ -530,10 +530,25 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                 }
             }
-            renderTree(); // Re-render the list with the updated data, keeping the editor intact.
+            await loadNoteTree(); // Re-render the list with the updated data, keeping the editor intact.
         } else {
             if (!isAutoSave) showButtonFeedback(saveNoteBtn, '保存', `保存失败: ${result.error}`, false);
         }
+    }
+
+    function removeItemById(tree, id) {
+        for (let i = 0; i < tree.length; i++) {
+            if (tree[i].id === id) {
+                tree.splice(i, 1);
+                return true;
+            }
+            if (tree[i].type === 'folder' && tree[i].children) {
+                if (removeItemById(tree[i].children, id)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     deleteNoteBtn.addEventListener('click', async () => {
@@ -549,13 +564,26 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             for (const id of selectedItems) {
                 const item = findItemById(getCombinedTree(), id);
-                if (item) await window.electronAPI.deleteItem(item.path);
+                if (item) {
+                    const result = await window.electronAPI.deleteItem(item.path);
+                    if (result.success) {
+                        // Immediate UI update
+                        removeItemById(localNoteTree, id);
+                        if (networkNoteTree) {
+                            removeItemById(networkNoteTree.children, id);
+                        }
+                    } else {
+                        console.error(`Failed to delete item ${item.path}:`, result.error);
+                        // Optionally, show an error to the user
+                    }
+                }
             }
             
             selectedItems.clear();
             activeItemId = null;
-            activeNoteId = null;
-            await loadNoteTree();
+            clearNoteEditor(); // Clear editor in case the active note was deleted
+            renderTree(); // Re-render with the item removed from memory
+            
             showButtonFeedback(deleteNoteBtn, '删除', '已删除', true, 1000);
 
         } else {
@@ -879,14 +907,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         for (const id of selectedItems) {
             const item = findItemById(getCombinedTree(), id);
             if (item) {
-                await window.electronAPI.deleteItem(item.path);
+                const result = await window.electronAPI.deleteItem(item.path);
+                if (result.success) {
+                    // Immediate UI update
+                    removeItemById(localNoteTree, id);
+                    if (networkNoteTree) {
+                        removeItemById(networkNoteTree.children, id);
+                    }
+                } else {
+                    console.error(`Failed to delete item ${item.path}:`, result.error);
+                    // Optionally, show an error to the user
+                }
             }
         }
         
         selectedItems.clear();
         activeItemId = null;
-        activeNoteId = null;
-        await loadNoteTree();
+        clearNoteEditor(); // Clear editor in case the active note was deleted
+        renderTree(); // Re-render with the item removed from memory
     }
 
     // --- Resizer Logic ---
