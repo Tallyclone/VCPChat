@@ -154,14 +154,34 @@ async function searchHistories(vchatPath, agentUuid, keywords, windowSize, userN
     const topicsDir = path.join(vchatPath, 'UserData', agentUuid, 'topics');
     let allMemories = [];
     let memoryIndex = 1; // 为回忆片段添加索引
+
     try {
         const topicFolders = await fs.readdir(topicsDir);
+
+        // 1. 获取所有 history.json 的路径及其最后修改时间
+        let historyFiles = [];
         for (const topic of topicFolders) {
             const historyPath = path.join(topicsDir, topic, 'history.json');
             try {
-                const content = await fs.readFile(historyPath, 'utf-8');
+                const stats = await fs.stat(historyPath);
+                historyFiles.push({ path: historyPath, mtime: stats.mtime });
+            } catch (e) {
+                // 忽略无法获取状态的文件 (例如，目录中没有 history.json)
+            }
+        }
+
+        // 2. 按修改时间降序排序
+        historyFiles.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
+
+        // 3. 排除最新的一个文件进行搜索 (如果只有一个或没有文件，则不搜索)
+        const filesToSearch = historyFiles.slice(1);
+
+        // 4. 遍历剩余的文件进行搜索
+        for (const fileInfo of filesToSearch) {
+            try {
+                const content = await fs.readFile(fileInfo.path, 'utf-8');
                 const history = JSON.parse(content);
-                
+
                 for (let i = 0; i < history.length; i++) {
                     const entry = history[i];
                     if (entry.content && typeof entry.content === 'string') {
@@ -170,9 +190,9 @@ async function searchHistories(vchatPath, agentUuid, keywords, windowSize, userN
                             const start = Math.max(0, i - windowSize);
                             const end = Math.min(history.length, i + windowSize + 1);
                             const contextSlice = history.slice(start, end);
-                            
+
                             const formattedMemory = formatMemory(contextSlice, userName, agentName, memoryIndex);
-                            if(formattedMemory) {
+                            if (formattedMemory) {
                                 allMemories.push(formattedMemory);
                                 memoryIndex++;
                             }
@@ -180,14 +200,14 @@ async function searchHistories(vchatPath, agentUuid, keywords, windowSize, userN
                     }
                 }
             } catch (e) {
-                // 忽略无法读取或解析的history.json
+                // 忽略无法读取或解析的单个history.json
             }
         }
     } catch (error) {
         if (error.code !== 'ENOENT') {
             throw new Error("读取用户聊天记录时出错。");
         }
-        // 如果目录不存在，说明没有历史记录，返回空数组
+        // 如果topics目录不存在，说明没有历史记录，返回空数组
     }
     return allMemories;
 }
