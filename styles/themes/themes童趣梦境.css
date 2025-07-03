@@ -39,6 +39,7 @@
     --placeholder-text: #5A6988; /* 输入框占位文字 */
     --quoted-text: #00F6FF;     /* 引用文本颜色 - 荧光青 */
     --user-text: #FFFFFF;       /* 用户气泡文字 */
+    --agent-text: #dce2f7;      /* Agent气泡文字 - 柔和的星光白 */
 
     /* --- Bubble Colors (Frosted Glass Ready) --- */
     --user-bubble-bg: rgba(232, 121, 58, 0.15);    /* 用户气泡 - 半透明狐狸橙 */
@@ -112,6 +113,7 @@ body.light-theme {
     --placeholder-text: #B0C4DE; /* 占位文字 - 亮钢蓝 (LightSteelBlue) */
     --quoted-text: #4682B4;     /* 引用文字 - 钢蓝色 (SteelBlue) */
     --user-text: #2F4F4F;       /* 用户气泡文字 */
+    --agent-text: #2F4F4F;      /* Agent气泡文字 - 深石板灰 */
 
     /* --- Bubble Colors --- */
     --user-bubble-bg: rgba(135, 206, 235, 0.25);  /* 用户气泡 - 半透明天空蓝 */
@@ -184,3 +186,4 @@ body.light-theme .message-bubble {
         0 4px 20px rgba(45, 41, 34, 0.08),
         inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
+

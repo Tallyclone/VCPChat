@@ -163,18 +163,18 @@ body.light-theme .chat-header {
     border-bottom-right-radius: 4px;
 }
 body.light-theme .message-item.user .md-content {
-    background-color: var(--user-bubble-bg-light);
+    background-color: var(--user-bubble-bg);
     color: var(--user-text);
 }
 
 .message-item.assistant .md-content {
     background-color: var(--assistant-bubble-bg);
-    color: var(--primary-text); 
+    color: var(--agent-text);
     border-bottom-left-radius: 4px; 
 }
 body.light-theme .message-item.assistant .md-content {
-    background-color: var(--assistant-bubble-bg-light);
-    color: var(--primary-text-light); 
+    background-color: var(--assistant-bubble-bg);
+    color: var(--agent-text);
     border: 1px solid #d0d8e0; 
 }
 

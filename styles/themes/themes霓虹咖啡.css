@@ -38,6 +38,7 @@
     --placeholder-text: #6c6d75; /* 输入框占位文字 */
     --quoted-text: #ff4785;     /* 引用文本颜色 */
     --user-text: #e0f2f7;       /* 用户气泡文字 - 很浅的淡蓝色 */
+    --agent-text: #e8e9ed;      /* Agent气泡文字 - 柔和的银灰色 */
 
     /* --- Bubble Colors (Frosted Glass Ready) --- */
     --user-bubble-bg: rgba(255, 71, 133, 0.15); /* 用户气泡 - 半透明赛博粉 */
@@ -112,6 +113,7 @@ body.light-theme {
     --placeholder-text: #a0927f; /* 占位文字 - 暖灰褐 */
     --quoted-text: #228b22;     /* 引用文字 - 森林绿 */
     --user-text: #854914;       /* 用户气泡文字 - 米黄色 */
+    --agent-text: #2d2922;      /* Agent气泡文字 - 深咖啡色 */
 
     /* --- Bubble Colors --- */
     --user-bubble-bg: rgba(139, 69, 19, 0.08);     /* 用户气泡 - 赤褐透明 */
@@ -140,50 +142,5 @@ body.light-theme {
     
     /* --- Unified Panel Background --- */
     --panel-bg: var(--panel-bg-light);
-}
-
-/* * =================================================================
- * Enhanced Frosted Glass Effect
- * 增强磨砂玻璃效果 - 小灵特制
- * =================================================================
- */
-
-/* 为聊天气泡添加更强的磨砂玻璃效果 */
-.message-bubble {
-    backdrop-filter: blur(12px) saturate(120%);
-    -webkit-backdrop-filter: blur(12px) saturate(120%);
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* 悬停时的微妙发光效果 */
-.message-bubble:hover {
-    backdrop-filter: blur(16px) saturate(130%);
-    -webkit-backdrop-filter: blur(16px) saturate(130%);
-    transform: translateY(-1px);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
-}
-
-/* 为工具调用气泡添加特殊效果 */
-.tool-bubble {
-    backdrop-filter: blur(10px) saturate(110%);
-    -webkit-backdrop-filter: blur(10px) saturate(110%);
-    border: 1px solid var(--tool-bubble-border);
-    background: var(--tool-bubble-bg);
-}
-
-/* 深色主题下的特殊光效 */
-:root .message-bubble {
-    box-shadow: 
-        0 8px 32px rgba(0, 0, 0, 0.3),
-        inset 0 1px 0 rgba(255, 255, 255, 0.1);
-}
-
-/* 浅色主题下的柔和阴影 */
-body.light-theme .message-bubble {
-    box-shadow: 
-        0 4px 20px rgba(45, 41, 34, 0.08),
-        inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 

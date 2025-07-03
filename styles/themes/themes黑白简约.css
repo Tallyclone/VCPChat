@@ -15,8 +15,6 @@
     /* --- Wallpaper Interface --- */
     /*
      * For the frosted glass effect on chat bubbles to be prominent,
-     * it's recommended to set a wallpaper.
-     * 使用方法: 将 'none' 替换为 url('您的图片链接')
      */
     --chat-wallpaper-dark: url('../assets/wallpaper/dark.jpg');
 
@@ -38,6 +36,7 @@
     --placeholder-text: #6a6a6e; /* 输入框占位文字 */
     --quoted-text: #FFB74D;     /* 引用文本颜色 - 柔和橙色 */
     --user-text: #e0e0e0;       /* 用户气泡文字 - 浅灰 (与 primary-text 相同) */
+    --agent-text: #e0e0e0;      /* Agent气泡文字 - 浅灰 */
 
     /* --- Bubble Colors (Frosted Glass Ready) --- */
     --user-bubble-bg: rgba(56, 120, 173, 0.15); /* 用户气泡 - 柔和蓝 (点缀色) - 半透明 */
@@ -61,8 +60,9 @@
     --scrollbar-thumb-hover: rgba(120, 120, 120, 0.6);
 
     /* --- Shimmer Effect for Loading --- */
-    --shimmer-color-transparent: rgba(224, 224, 224, 0.1);
-    --shimmer-color-highlight: rgba(224, 224, 224, 0.2);
+      /* --- 流式输出动画部分，分别定义了光影闪烁时最低透明度的transparent色和高光动画色highlignt色 --- */
+    --shimmer-color-transparent: rgba(224, 224, 224, 0.408);
+    --shimmer-color-highlight: rgba(224, 224, 224, 0.867);
 
     /* --- Text Shadow for Frosted Panels --- */
     --panel-text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -111,6 +111,7 @@ body.light-theme {
     --placeholder-text: #a0aab3; /* 占位文字 */
     --quoted-text: #007bff;     /* 引用文字 - 蓝色 */
     --user-text: #2c3e50;       /* 用户气泡文字 - 深灰蓝 (与 primary-text 相同) */
+    --agent-text: #2c3e50;      /* Agent气泡文字 - 深灰蓝 */
 
     /* --- Bubble Colors --- */
     --user-bubble-bg: rgba(52, 152, 219, 0.08);     /* 用户气泡 - 清爽蓝 - 半透明 */
@@ -134,6 +135,7 @@ body.light-theme {
     --scrollbar-thumb-hover: rgba(120, 120, 120, 0.6);
 
     /* --- Shimmer Effect --- */
+    
     --shimmer-color-transparent: rgba(44, 62, 80, 0.04);
     --shimmer-color-highlight: rgba(44, 62, 80, 0.08);
 
@@ -185,3 +187,4 @@ body.light-theme .message-bubble {
         0 4px 20px rgba(45, 41, 34, 0.08),
         inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
+

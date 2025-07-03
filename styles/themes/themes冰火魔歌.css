@@ -33,12 +33,13 @@
 
     /* --- Text Colors --- */
     --primary-text: #F5EBEB;    /* 主要文字 - 烟灰白 */
-    --secondary-text: #B8AFAF;  /* 次要/标题文字 - 灰烬色 */
+    --secondary-text: #c3aeae;  /* 次要/标题文字 - 灰烬色 */
     --highlight-text: #FF2400;  /* 高亮文字 - 猩红色 (Scarlet) */
     --text-on-accent: #FFFFFF;  /* 在强调色背景上的文字 */
     --placeholder-text: #6B5B5B; /* 输入框占位文字 */
     --quoted-text: #FF4500;     /* 引用文本颜色 - 橙红色 */
     --user-text: #FFFFFF;       /* 用户气泡文字 */
+    --agent-text: #F5EBEB;      /* Agent气泡文字 - 烟灰白 */
 
     /* --- Bubble Colors (Frosted Glass Ready) --- */
     --user-bubble-bg: rgba(155, 38, 20, 0.423);    /* 用户气泡 - 半透明猩红色 */
@@ -62,7 +63,8 @@
     --scrollbar-thumb-hover: rgba(255, 36, 0, 0.9);
 
     /* --- Shimmer Effect for Loading --- */
-    --shimmer-color-transparent: rgba(255, 233, 233, 0.825);
+    /* --- 流式输出动画部分，分别定义了光影闪烁时最低透明度的transparent色和高光动画色highlignt色 --- */
+    --shimmer-color-transparent: rgba(255, 233, 233, 0.533);
     --shimmer-color-highlight: rgba(255, 185, 35, 0.947);
 
     /* --- Text Shadow for Frosted Panels --- */
@@ -112,6 +114,7 @@ body.light-theme {
     --placeholder-text: #9FB3C8; /* 占位文字 - 浅灰蓝 */
     --quoted-text: #4682B4;     /* 引用文字 - 钢蓝色 */
     --user-text: #2C3E50;       /* 用户气泡文字 */
+    --agent-text: #2C3E50;      /* Agent气泡文字 - 深邃的午夜蓝 */
 
     /* --- Bubble Colors --- */
     --user-bubble-bg: rgba(30, 144, 255, 0.12);  /* 用户气泡 - 半透明道奇蓝 */
@@ -135,7 +138,7 @@ body.light-theme {
     --scrollbar-thumb-hover: rgba(30, 144, 255, 1); /* 道奇蓝 */
 
     /* --- Shimmer Effect for Loading --- */
-    --shimmer-color-transparent: rgba(235, 245, 255, 0.832);
+    --shimmer-color-transparent: rgba(140, 172, 204, 0.663);
     --shimmer-color-highlight: rgba(48, 140, 232, 0.923);
     
     /* --- Text Shadow for Frosted Panels --- */
@@ -184,3 +187,4 @@ body.light-theme .message-bubble {
         0 4px 20px rgba(45, 41, 34, 0.08),
         inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
+
