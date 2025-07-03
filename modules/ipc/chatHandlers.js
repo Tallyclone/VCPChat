@@ -260,8 +260,13 @@ function initialize(mainWindow, context) {
                 const originalFileName = path.basename(fileData.path);
                 const ext = path.extname(fileData.path).toLowerCase();
                 let fileTypeHint = 'application/octet-stream';
-                if (['.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(ext)) fileTypeHint = `image/${ext.substring(1)}`;
-                else if (['.mp3', '.wav', '.ogg'].includes(ext)) fileTypeHint = `audio/${ext.substring(1)}`;
+                if (['.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(ext)) {
+                    let mimeExt = ext.substring(1);
+                    if (mimeExt === 'jpg') mimeExt = 'jpeg';
+                    fileTypeHint = `image/${mimeExt}`;
+                } else if (['.mp3', '.wav', '.ogg'].includes(ext)) {
+                    fileTypeHint = `audio/${ext.substring(1)}`;
+                }
 
                 storedFileObject = await fileManager.storeFile(fileData.path, originalFileName, agentId, topicId, fileTypeHint);
             } else if (fileData.type === 'base64') {
@@ -308,8 +313,13 @@ function initialize(mainWindow, context) {
                     const originalName = path.basename(filePath);
                     const ext = path.extname(filePath).toLowerCase();
                     let fileTypeHint = 'application/octet-stream';
-                    if (['.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(ext)) fileTypeHint = `image/${ext.substring(1)}`;
-                    else if (['.mp3', '.wav', '.ogg'].includes(ext)) fileTypeHint = `audio/${ext.substring(1)}`;
+                    if (['.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(ext)) {
+                        let mimeExt = ext.substring(1);
+                        if (mimeExt === 'jpg') mimeExt = 'jpeg';
+                        fileTypeHint = `image/${mimeExt}`;
+                    } else if (['.mp3', '.wav', '.ogg'].includes(ext)) {
+                        fileTypeHint = `audio/${ext.substring(1)}`;
+                    }
 
                     const storedFile = await fileManager.storeFile(filePath, originalName, agentId, topicId, fileTypeHint);
                     storedFilesInfo.push(storedFile);
@@ -386,7 +396,7 @@ function initialize(mainWindow, context) {
                 `pasted_image_${Date.now()}.${imageData.extension}`,
                 NOTES_AGENT_ID, 
                 noteId,         
-                `image/${imageData.extension}`
+                `image/${imageData.extension === 'jpg' ? 'jpeg' : imageData.extension}`
             );
             return { success: true, attachment: storedFileObject };
         } catch (error) {
