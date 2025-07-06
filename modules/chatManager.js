@@ -423,7 +423,7 @@ window.chatManager = (() => {
         if (attachedFiles.length > 0) {
             for (const af of attachedFiles) {
                 uiAttachments.push({
-                    type: af.file.type,
+                    type: af._fileManagerData.type,
                     src: af.localPath,
                     name: af.originalName,
                     size: af.file.size,
@@ -431,7 +431,7 @@ window.chatManager = (() => {
                 });
                 if (af._fileManagerData && af._fileManagerData.extractedText) {
                     contentForVCP += `\n\n[附加文件: ${af.originalName}]\n${af._fileManagerData.extractedText}\n[/附加文件结束: ${af.originalName}]`;
-                } else if (af._fileManagerData && af._fileManagerData.type && !af._fileManagerData.type.startsWith('image/')) {
+                } else if (af._fileManagerData && af._fileManagerData.type && !af._fileManagerData.type.startsWith('image/') && !af._fileManagerData.type.startsWith('audio/') && !af._fileManagerData.type.startsWith('video/')) {
                     contentForVCP += `\n\n[附加文件: ${af.originalName} (无法预览文本内容)]`;
                 }
             }
@@ -479,6 +479,8 @@ window.chatManager = (() => {
 
             const messagesForVCP = await Promise.all(historySnapshotForVCP.map(async msg => {
                 let vcpImageAttachmentsPayload = [];
+                let vcpAudioAttachmentsPayload = [];
+                let vcpVideoAttachmentsPayload = [];
                 let currentMessageTextContent = msg.content;
 
                 if (msg.role === 'user' && msg.id === userMessage.id) {
@@ -488,7 +490,7 @@ window.chatManager = (() => {
                     for (const att of msg.attachments) {
                         if (att._fileManagerData && typeof att._fileManagerData.extractedText === 'string' && att._fileManagerData.extractedText.trim() !== '') {
                             historicalAppendedText += `\n\n[附加文件: ${att.name || '未知文件'}]\n${att._fileManagerData.extractedText}\n[/附加文件结束: ${att.name || '未知文件'}]`;
-                        } else if (att._fileManagerData && att.type && !att.type.startsWith('image/')) {
+                        } else if (att._fileManagerData && att.type && !att.type.startsWith('image/') && !att.type.startsWith('audio/') && !att.type.startsWith('video/')) {
                             historicalAppendedText += `\n\n[附加文件: ${att.name || '未知文件'} (无法预览文本内容)]`;
                         } else if (!att._fileManagerData) {
                             console.warn(`[VCP Context] Historical message attachment for "${att.name}" is missing _fileManagerData. Text content cannot be appended.`);
@@ -498,6 +500,7 @@ window.chatManager = (() => {
                 }
 
                 if (msg.attachments && msg.attachments.length > 0) {
+                    // --- IMAGE PROCESSING ---
                     const imageAttachments = await Promise.all(msg.attachments
                         .filter(att => att.type.startsWith('image/'))
                         .map(async att => {
@@ -526,6 +529,69 @@ window.chatManager = (() => {
                         })
                     );
                     vcpImageAttachmentsPayload.push(...imageAttachments.filter(Boolean));
+
+                    // --- AUDIO PROCESSING ---
+                    const supportedAudioTypes = ['audio/wav', 'audio/mp3', 'audio/aiff', 'audio/aac', 'audio/ogg', 'audio/flac'];
+                    const audioAttachments = await Promise.all(msg.attachments
+                        .filter(att => supportedAudioTypes.includes(att.type))
+                        .map(async att => {
+                            try {
+                                const base64Data = await electronAPI.getFileAsBase64(att.src);
+                                if (base64Data && typeof base64Data === 'string') {
+                                    return {
+                                        type: 'source',
+                                        source: {
+                                            media_type: att.type,
+                                            data: base64Data,
+                                        }
+                                    };
+                                } else if (base64Data && base64Data.error) {
+                                    console.error(`Failed to get Base64 for audio ${att.name}: ${base64Data.error}`);
+                                    uiHelper.showToastNotification(`处理音频 ${att.name} 失败: ${base64Data.error}`, 'error');
+                                    return null;
+                                } else {
+                                    console.error(`Unexpected return from getFileAsBase64 for audio ${att.name}:`, base64Data);
+                                    return null;
+                                }
+                            } catch (processingError) {
+                                console.error(`Exception during getBase64 for audio ${att.name} (internal: ${att.src}):`, processingError);
+                                uiHelper.showToastNotification(`处理音频 ${att.name} 时发生异常: ${processingError.message}`, 'error');
+                                return null;
+                            }
+                        })
+                    );
+                    vcpAudioAttachmentsPayload.push(...audioAttachments.filter(Boolean));
+
+                    // --- VIDEO PROCESSING ---
+                    const videoAttachments = await Promise.all(msg.attachments
+                        .filter(att => att.type.startsWith('video/'))
+                        .map(async att => {
+                            try {
+                                const base64Data = await electronAPI.getFileAsBase64(att.src);
+                                if (base64Data && typeof base64Data === 'string') {
+                                    return {
+                                        type: 'source',
+                                        source: {
+                                            media_type: att.type,
+                                            data: base64Data,
+                                        }
+                                    };
+                                } else if (base64Data && base64Data.error) {
+                                    console.error(`Failed to get Base64 for video ${att.name}: ${base64Data.error}`);
+                                    uiHelper.showToastNotification(`处理视频 ${att.name} 失败: ${base64Data.error}`, 'error');
+                                    return null;
+                                } else {
+                                    console.error(`Unexpected return from getFileAsBase64 for video ${att.name}:`, base64Data);
+                                    return null;
+                                }
+                            } catch (processingError) {
+                                console.error(`Exception during getBase64 for video ${att.name} (internal: ${att.src}):`, processingError);
+                                uiHelper.showToastNotification(`处理视频 ${att.name} 时发生异常: ${processingError.message}`, 'error');
+                                return null;
+                            }
+                        })
+                    );
+                    vcpVideoAttachmentsPayload.push(...videoAttachments.filter(Boolean));
                 }
 
                 let finalContentPartsForVCP = [];
@@ -533,6 +599,8 @@ window.chatManager = (() => {
                     finalContentPartsForVCP.push({ type: 'text', text: currentMessageTextContent });
                 }
                 finalContentPartsForVCP.push(...vcpImageAttachmentsPayload);
+                finalContentPartsForVCP.push(...vcpAudioAttachmentsPayload);
+                finalContentPartsForVCP.push(...vcpVideoAttachmentsPayload);
 
                 if (finalContentPartsForVCP.length === 0 && msg.role === 'user') {
                      finalContentPartsForVCP.push({ type: 'text', text: '(用户发送了附件，但无文本或图片内容)' });

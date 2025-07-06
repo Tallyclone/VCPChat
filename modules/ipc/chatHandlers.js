@@ -264,8 +264,11 @@ function initialize(mainWindow, context) {
                     let mimeExt = ext.substring(1);
                     if (mimeExt === 'jpg') mimeExt = 'jpeg';
                     fileTypeHint = `image/${mimeExt}`;
-                } else if (['.mp3', '.wav', '.ogg'].includes(ext)) {
-                    fileTypeHint = `audio/${ext.substring(1)}`;
+                } else if (['.mp3', '.wav', '.ogg', '.flac', '.aac', '.aiff'].includes(ext)) {
+                    const mimeExt = ext.substring(1);
+                    fileTypeHint = `audio/${mimeExt}`;
+                } else if (['.mp4', '.webm'].includes(ext)) {
+                    fileTypeHint = `video/${ext.substring(1)}`;
                 }
 
                 storedFileObject = await fileManager.storeFile(fileData.path, originalFileName, agentId, topicId, fileTypeHint);
@@ -317,8 +320,11 @@ function initialize(mainWindow, context) {
                         let mimeExt = ext.substring(1);
                         if (mimeExt === 'jpg') mimeExt = 'jpeg';
                         fileTypeHint = `image/${mimeExt}`;
-                    } else if (['.mp3', '.wav', '.ogg'].includes(ext)) {
-                        fileTypeHint = `audio/${ext.substring(1)}`;
+                    } else if (['.mp3', '.wav', '.ogg', '.flac', '.aac', '.aiff'].includes(ext)) {
+                        const mimeExt = ext.substring(1);
+                        fileTypeHint = `audio/${mimeExt}`;
+                    } else if (['.mp4', '.webm'].includes(ext)) {
+                        fileTypeHint = `video/${ext.substring(1)}`;
                     }
 
                     const storedFile = await fileManager.storeFile(filePath, originalName, agentId, topicId, fileTypeHint);
@@ -378,8 +384,11 @@ function initialize(mainWindow, context) {
                 if (fileTypeHint === 'application/octet-stream' || !fileTypeHint) {
                     if (['.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(fileExtension)) {
                         fileTypeHint = `image/${fileExtension.substring(1).replace('jpg', 'jpeg')}`;
-                    } else if (['.mp3', '.wav', '.ogg'].includes(fileExtension)) {
-                        fileTypeHint = `audio/${fileExtension.substring(1)}`;
+                    } else if (['.mp3', '.wav', '.ogg', '.flac', '.aac', '.aiff'].includes(fileExtension)) {
+                        const mimeExt = fileExtension.substring(1);
+                        fileTypeHint = `audio/${mimeExt}`;
+                    } else if (['.mp4', '.webm'].includes(fileExtension)) {
+                        fileTypeHint = `video/${fileExtension.substring(1)}`;
                     } else if (['.md', '.txt'].includes(fileExtension)) {
                         fileTypeHint = 'text/plain';
                     }

@@ -85,8 +85,12 @@ async function storeFile(sourcePathOrBuffer, originalName, agentId, topicId, fil
             case '.png': mimeType = 'image/png'; break;
             case '.gif': mimeType = 'image/gif'; break;
             case '.svg': mimeType = 'image/svg+xml'; break;
-            case '.mp3': mimeType = 'audio/mpeg'; break;
+            case '.mp3': mimeType = 'audio/mp3'; break;
             case '.wav': mimeType = 'audio/wav'; break;
+            case '.ogg': mimeType = 'audio/ogg'; break;
+            case '.flac': mimeType = 'audio/flac'; break;
+            case '.aac': mimeType = 'audio/aac'; break;
+            case '.aiff': mimeType = 'audio/aiff'; break;
             case '.mp4': mimeType = 'video/mp4'; break;
             case '.webm': mimeType = 'video/webm'; break;
             case '.bat': case '.sh': case '.py': case '.java': case '.c': case '.cpp': case '.h': case '.hpp': case '.cs': case '.go': case '.rb': case '.php': case '.swift': case '.kt': case '.ts': case '.tsx': case '.jsx': case '.vue': case '.yml': case '.yaml': case '.toml': case '.ini': case '.log': case '.sql': case '.jsonc':
@@ -95,6 +99,11 @@ async function storeFile(sourcePathOrBuffer, originalName, agentId, topicId, fil
             default:
                 mimeType = fileTypeHint || 'application/octet-stream';
         }
+    }
+
+    // 强制修正MP3的MIME类型，因为浏览器或系统有时会错误地报告为 audio/mpeg
+    if (path.extname(originalName).toLowerCase() === '.mp3') {
+        mimeType = 'audio/mp3';
     }
 
     // 5. Construct the structured data object to return
