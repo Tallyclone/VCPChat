@@ -1110,7 +1110,11 @@ function determineNatureRandomSpeakers(activeMembersConfigs, history, groupConfi
     const CONTEXT_WINDOW = 8; // 定义上下文窗口大小，例如最近5条消息
     const recentHistory = history.slice(-CONTEXT_WINDOW);
     const contextText = recentHistory
-        .map(msg => (typeof msg.content === 'string' ? msg.content : (msg.content?.text || ''))) // 兼容不同消息格式
+        .map(msg => {
+            const rawContent = typeof msg.content === 'string' ? msg.content : (msg.content?.text || '');
+            // 新增：移除发言者标记，避免角色名自我匹配导致循环发言
+            return rawContent.replace(/^\[.*?的发言\]:\s*/, '');
+        })
         .join(' \n ') // 使用换行符连接，更清晰
         .toLowerCase();
     // --- 修改结束 ---
@@ -1157,7 +1161,7 @@ function determineNatureRandomSpeakers(activeMembersConfigs, history, groupConfi
 
     // 优先级4: 概率发言 (对于未被上述规则触发的)
     const nonTriggeredMembers = activeMembersConfigs.filter(member => !spokenThisTurn.has(member.id));
-    const baseRandomSpeakProbability = 0.10; // 10% 的基础概率，避免群里太安静
+    const baseRandomSpeakProbability = 0.15; // 10% 的基础概率，避免群里太安静
     
     nonTriggeredMembers.forEach(memberConfig => {
         // 检查此成员的tag是否在上下文中，如果是，则提高发言概率
