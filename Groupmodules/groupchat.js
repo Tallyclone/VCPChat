@@ -1170,7 +1170,7 @@ function determineNatureRandomSpeakers(activeMembersConfigs, history, groupConfi
         if (tagsString) {
             const tags = tagsString.split(/,|，/).map(t => t.trim().toLowerCase()).filter(t => t);
             if (tags.some(tag => contextText.includes(tag))) {
-                speakChance = 0.95; // 如果话题相关，概率大幅提升到 65%
+                speakChance = 0.85; // 如果话题相关，概率大幅提升到 85%
                 console.log(`[NatureRandom] Increased speak probability for relevant agent ${memberConfig.name}.`);
             }
         }
@@ -1215,8 +1215,32 @@ function determineNatureRandomSpeakers(activeMembersConfigs, history, groupConfi
         }
     }
     
-    // 可以根据需要对 speakers 数组进行排序，例如按成员列表中的顺序，或者保持触发顺序
-    // speakers.sort((a, b) => groupConfig.members.indexOf(a.id) - groupConfig.members.indexOf(b.id));
+    // --- 新增：优化发言顺序，将Tag在用户最新发言中命中的角色排在最前 ---
+    speakers.sort((a, b) => {
+        const getRelevance = (memberConfig) => {
+            const tagsString = groupConfig.memberTags ? groupConfig.memberTags[memberConfig.id] : '';
+            if (!tagsString) return 0;
+            const tags = tagsString.split(/,|，/).map(t => t.trim().toLowerCase()).filter(t => t);
+            // 如果tag在最新用户消息中，则相关性最高
+            if (tags.some(tag => userMessageText.includes(tag))) {
+                return 2;
+            }
+            // 如果tag在上下文中，则相关性次之
+            if (tags.some(tag => contextText.includes(tag))) {
+                return 1;
+            }
+            return 0;
+        };
+
+        const relevanceA = getRelevance(a);
+        const relevanceB = getRelevance(b);
+
+        // 相关性高的排在前面
+        return relevanceB - relevanceA;
+    });
+    
+    console.log(`[NatureRandom] Sorted speakers by relevance. New order: ${speakers.map(s => s.name).join(', ')}`);
+    // --- 排序优化结束 ---
 
     console.log(`[GroupChat - NatureRandom] Determined speakers: ${speakers.map(s => s.name).join(', ')}`);
     return speakers; // 返回的是 Agent 配置对象的数组
