@@ -581,6 +581,10 @@ ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelCo
                                         }
                                         event.sender.send(streamChannel, donePayload);
                                         return; // [DONE] 是明确的结束信号，退出函数
+                                    }                                                                       
+                                    // 如果 jsonData 为空，则忽略该行，这可能是网络波动或心跳信号
+                                    if (jsonData === '') {
+                                        continue;
                                     }
                                     try {
                                         const parsedChunk = JSON.parse(jsonData);
