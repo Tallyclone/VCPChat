@@ -11,7 +11,7 @@ const DEFAULT_TOPIC_NAMES = ["主要群聊"]; // 也可以包含 "新话题" 的
 const SUMMARY_MODEL_CONFIG = { // 可以根据需要调整
     model: 'gemini-2.5-flash-preview-05-20', // 或者其他合适的模型
     temperature: 0.3,
-    max_tokens: 50 // 标题通常较短
+    max_tokens: 4000 // 标题通常较短
 };
 
 
@@ -1102,40 +1102,49 @@ async function triggerTopicSummarizationIfNeeded(groupId, topicId, groupHistory,
 function determineNatureRandomSpeakers(activeMembersConfigs, history, groupConfig, userMessageEntry) {
     const speakers = [];
     const spokenThisTurn = new Set(); // 存储已确定发言的 Agent ID
-    const userMessageText = (userMessageEntry.content && typeof userMessageEntry.content === 'string') 
-                            ? userMessageEntry.content.toLowerCase() 
+    const userMessageText = (userMessageEntry.content && typeof userMessageEntry.content === 'string')
+                            ? userMessageEntry.content.toLowerCase()
                             : "";
 
-    // 优先级1: @角色名 (直接匹配 Agent.name)
+    // --- 主要修改点：定义并使用上下文进行话题分析 ---
+    const CONTEXT_WINDOW = 8; // 定义上下文窗口大小，例如最近5条消息
+    const recentHistory = history.slice(-CONTEXT_WINDOW);
+    const contextText = recentHistory
+        .map(msg => (typeof msg.content === 'string' ? msg.content : (msg.content?.text || ''))) // 兼容不同消息格式
+        .join(' \n ') // 使用换行符连接，更清晰
+        .toLowerCase();
+    // --- 修改结束 ---
+
+    // 优先级1: @角色名 (直接在最新消息中匹配)
     activeMembersConfigs.forEach(memberConfig => {
         if (userMessageText.includes(`@${memberConfig.name.toLowerCase()}`)) {
             if (!spokenThisTurn.has(memberConfig.id)) {
                 speakers.push(memberConfig);
                 spokenThisTurn.add(memberConfig.id);
-                console.log(`[NatureRandom] @${memberConfig.name} triggered.`);
+                console.log(`[NatureRandom] @${memberConfig.name} triggered by direct mention.`);
             }
         }
     });
 
-    // 优先级2: @角色Tag 或 关键词匹配 Tag
-    // 需要遍历 groupConfig.memberTags，其键是 agentId
+    // 优先级2: @角色Tag 或 关键词匹配 Tag (在上下文中匹配)
     activeMembersConfigs.forEach(memberConfig => {
         if (spokenThisTurn.has(memberConfig.id)) return; // 如果已因@角色名被选中，则跳过
 
         const tagsString = groupConfig.memberTags ? groupConfig.memberTags[memberConfig.id] : '';
         if (tagsString) {
             const tags = tagsString.split(/,|，/).map(t => t.trim().toLowerCase()).filter(t => t);
-            if (tags.some(tag => userMessageText.includes(tag) || userMessageText.includes(`@${tag}`))) {
-                 if (!spokenThisTurn.has(memberConfig.id)) { // 再次检查，以防万一
+            // 使用 contextText 进行关键词匹配，但 @tag 还是检查最新消息以示区别
+            if (tags.some(tag => contextText.includes(tag) || userMessageText.includes(`@${tag}`))) {
+                 if (!spokenThisTurn.has(memberConfig.id)) {
                     speakers.push(memberConfig);
                     spokenThisTurn.add(memberConfig.id);
-                    console.log(`[NatureRandom] Tag match for ${memberConfig.name} (tags: ${tags.join('/')}).`);
+                    console.log(`[NatureRandom] Tag match for ${memberConfig.name} in recent context (tags: ${tags.join('/')}).`);
                 }
             }
         }
     });
     
-    // 优先级3: @所有人 (如果用户消息包含 "@所有人" 且未被前述规则触发)
+    // 优先级3: @所有人 (在最新消息中匹配)
     if (userMessageText.includes('@所有人')) {
         activeMembersConfigs.forEach(memberConfig => {
             if (!spokenThisTurn.has(memberConfig.id)) {
@@ -1146,30 +1155,60 @@ function determineNatureRandomSpeakers(activeMembersConfigs, history, groupConfi
         });
     }
 
-    // 优先级4: 随机发言 (对于未被上述规则触发的)
+    // 优先级4: 概率发言 (对于未被上述规则触发的)
     const nonTriggeredMembers = activeMembersConfigs.filter(member => !spokenThisTurn.has(member.id));
-    // 简单随机：每个未触发的成员有一定概率发言，例如 1/N 或固定概率
-    const randomSpeakProbability = activeMembersConfigs.length > 0 ? (1 / Math.max(1, activeMembersConfigs.length - spokenThisTurn.size)) : 0.1;
-    // 或者，更复杂的：考虑最近发言情况，避免同一人连续随机发言等
+    const baseRandomSpeakProbability = 0.10; // 10% 的基础概率，避免群里太安静
     
     nonTriggeredMembers.forEach(memberConfig => {
-        if (Math.random() < randomSpeakProbability) { // 举例：25%的概率发言
+        // 检查此成员的tag是否在上下文中，如果是，则提高发言概率
+        const tagsString = groupConfig.memberTags ? groupConfig.memberTags[memberConfig.id] : '';
+        let speakChance = baseRandomSpeakProbability;
+        if (tagsString) {
+            const tags = tagsString.split(/,|，/).map(t => t.trim().toLowerCase()).filter(t => t);
+            if (tags.some(tag => contextText.includes(tag))) {
+                speakChance = 0.95; // 如果话题相关，概率大幅提升到 65%
+                console.log(`[NatureRandom] Increased speak probability for relevant agent ${memberConfig.name}.`);
+            }
+        }
+
+        if (Math.random() < speakChance) {
             if (!spokenThisTurn.has(memberConfig.id)) {
                 speakers.push(memberConfig);
                 spokenThisTurn.add(memberConfig.id);
-                console.log(`[NatureRandom] Random speak triggered for ${memberConfig.name}.`);
+                console.log(`[NatureRandom] Random/Probabilistic speak triggered for ${memberConfig.name} with chance ${speakChance.toFixed(2)}.`);
             }
         }
     });
 
-    // 优先级4: 保底发言 (如果以上都没有触发任何Agent)
+    // 优先级5: 保底发言 (如果以上都没有触发任何Agent)
     if (speakers.length === 0 && activeMembersConfigs.length > 0) {
-        // 从所有 activeMembers 中随机选一个 (确保是从配置对象数组中选)
-        const randomIndex = Math.floor(Math.random() * activeMembersConfigs.length);
-        const fallbackSpeaker = activeMembersConfigs[randomIndex];
-        speakers.push(fallbackSpeaker); // 直接加入配置对象
-        // spokenThisTurn.add(fallbackSpeaker.id); // 记录，虽然是最后添加
-        console.log(`[NatureRandom] Fallback speaker triggered: ${fallbackSpeaker.name}.`);
+        // 保底发言也优先选择话题相关的
+        const relevantMembers = activeMembersConfigs.filter(m => {
+            if (spokenThisTurn.has(m.id)) return false; // 确保没被选中过
+            const tagsString = groupConfig.memberTags ? groupConfig.memberTags[m.id] : '';
+            if (!tagsString) return false;
+            const tags = tagsString.split(/,|，/).map(t => t.trim().toLowerCase()).filter(t => t);
+            return tags.some(tag => contextText.includes(tag));
+        });
+
+        let fallbackSpeaker;
+        if (relevantMembers.length > 0) {
+            // 从相关成员中随机选一个
+            const randomIndex = Math.floor(Math.random() * relevantMembers.length);
+            fallbackSpeaker = relevantMembers[randomIndex];
+            console.log(`[NatureRandom] Fallback speaker triggered (relevant): ${fallbackSpeaker.name}.`);
+        } else {
+            // 从所有未发言成员中随机选一个
+            const fallbackCandidates = activeMembersConfigs.filter(m => !spokenThisTurn.has(m.id));
+            if (fallbackCandidates.length > 0) {
+                const randomIndex = Math.floor(Math.random() * fallbackCandidates.length);
+                fallbackSpeaker = fallbackCandidates[randomIndex];
+                console.log(`[NatureRandom] Fallback speaker triggered (random): ${fallbackSpeaker.name}.`);
+            }
+        }
+        if (fallbackSpeaker) {
+            speakers.push(fallbackSpeaker);
+        }
     }
     
     // 可以根据需要对 speakers 数组进行排序，例如按成员列表中的顺序，或者保持触发顺序
