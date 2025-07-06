@@ -1676,7 +1676,7 @@ app.on('will-quit', () => {
         vcpLogWebSocket.close();
     }
     if (vcpLogReconnectInterval) {
-        clearInterval(vcpLogReconnectInterval);
+        clearTimeout(vcpLogReconnectInterval);
     }
     
     // 4. Stop the distributed server
@@ -1719,7 +1719,7 @@ function formatTimestampForFilename(timestamp) {
 // VCPLog WebSocket Connection
 function connectVcpLog(wsUrl, wsKey) {
     if (!wsUrl || !wsKey) {
-        if (mainWindow) mainWindow.webContents.send('vcp-log-status', { status: 'error', message: 'VCPLog URL或KEY未配置。' });
+        if (mainWindow) mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'error', message: 'URL或KEY未配置。' });
         return;
     }
 
@@ -1731,7 +1731,7 @@ function connectVcpLog(wsUrl, wsKey) {
     }
 
     console.log(`尝试连接 VCPLog WebSocket: ${fullWsUrl}`);
-    if (mainWindow) mainWindow.webContents.send('vcp-log-status', { status: 'connecting', message: '连接中...' });
+    if (mainWindow) mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'connecting', message: '连接中...' });
 
     vcpLogWebSocket = new WebSocket(fullWsUrl);
 
@@ -1739,14 +1739,14 @@ function connectVcpLog(wsUrl, wsKey) {
         console.log('[MAIN_VCP_LOG] WebSocket onopen event triggered.'); 
         if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
             console.log('[MAIN_VCP_LOG] Attempting to send vcp-log-status "open" to renderer.'); 
-            mainWindow.webContents.send('vcp-log-status', { status: 'open', message: '已连接' });
-            console.log('[MAIN_VCP_LOG] vcp-log-status "open" sent.'); 
+            mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'open', message: '已连接' });
+            console.log('[MAIN_VCP_LOG] vcp-log-status "open" sent.');
             mainWindow.webContents.send('vcp-log-message', { type: 'connection_ack', message: 'VCPLog 连接成功！' });
         } else {
-            console.error('[MAIN_VCP_LOG] mainWindow or webContents not available in onopen. Cannot send status.'); 
+            console.error('[MAIN_VCP_LOG] mainWindow or webContents not available in onopen. Cannot send status.');
         }
         if (vcpLogReconnectInterval) {
-            clearInterval(vcpLogReconnectInterval);
+            clearTimeout(vcpLogReconnectInterval); // Corrected: Use clearTimeout for setTimeout
             vcpLogReconnectInterval = null;
         }
     };
@@ -1764,17 +1764,20 @@ function connectVcpLog(wsUrl, wsKey) {
 
     vcpLogWebSocket.onclose = (event) => {
         console.log('VCPLog WebSocket 连接已关闭:', event.code, event.reason);
-        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('vcp-log-status', { status: 'closed', message: `连接已断开 (${event.code})` });
-        if (!vcpLogReconnectInterval && wsUrl && wsKey) { 
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'closed', message: `连接已断开 (${event.code})` });
+        if (!vcpLogReconnectInterval && wsUrl && wsKey) {
             console.log('将在5秒后尝试重连 VCPLog...');
-            vcpLogReconnectInterval = setTimeout(() => connectVcpLog(wsUrl, wsKey), 5000);
+            vcpLogReconnectInterval = setTimeout(() => {
+                vcpLogReconnectInterval = null;
+                connectVcpLog(wsUrl, wsKey);
+            }, 5000);
         }
     };
 
     vcpLogWebSocket.onerror = (error) => {
         console.error('[MAIN_VCP_LOG] WebSocket onerror event:', error.message); 
         if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
-            mainWindow.webContents.send('vcp-log-status', { status: 'error', message: `连接错误: ${error.message}` });
+            mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'error', message: '连接错误' });
         } else {
             console.error('[MAIN_VCP_LOG] mainWindow or webContents not available in onerror.'); 
         }
@@ -1786,7 +1789,7 @@ ipcMain.on('connect-vcplog', (event, { url, key }) => {
         vcpLogWebSocket.close(); 
     }
     if (vcpLogReconnectInterval) {
-        clearInterval(vcpLogReconnectInterval);
+        clearTimeout(vcpLogReconnectInterval);
         vcpLogReconnectInterval = null;
     }
     connectVcpLog(url, key);
@@ -1797,10 +1800,10 @@ ipcMain.on('disconnect-vcplog', () => {
         vcpLogWebSocket.close();
     }
     if (vcpLogReconnectInterval) {
-        clearInterval(vcpLogReconnectInterval);
+        clearTimeout(vcpLogReconnectInterval);
         vcpLogReconnectInterval = null;
     }
-    if (mainWindow) mainWindow.webContents.send('vcp-log-status', { status: 'closed', message: '已手动断开' });
+    if (mainWindow) mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'closed', message: '已手动断开' });
     console.log('VCPLog 已手动断开');
 });
 }
