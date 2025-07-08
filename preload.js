@@ -44,6 +44,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     saveAvatar: (agentId, avatarData) => ipcRenderer.invoke('save-avatar', agentId, avatarData), // For agent avatar
     createAgent: (agentName, initialConfig) => ipcRenderer.invoke('create-agent', agentName, initialConfig),
     deleteAgent: (agentId) => ipcRenderer.invoke('delete-agent', agentId),
+    getCachedModels: () => ipcRenderer.invoke('get-cached-models'),
+    refreshModels: () => ipcRenderer.send('refresh-models'),
+    onModelsUpdated: (callback) => ipcRenderer.on('models-updated', (_event, models) => callback(models)),
 
     // Topic related
     getAgentTopics: (agentId) => ipcRenderer.invoke('get-agent-topics', agentId),

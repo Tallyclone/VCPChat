@@ -101,6 +101,13 @@ const toggleAssistantBtn = document.getElementById('toggleAssistantBtn'); // New
 const assistantAgentContainer = document.getElementById('assistantAgentContainer');
 const assistantAgentSelect = document.getElementById('assistantAgent');
 
+// Model selection elements
+const openModelSelectBtn = document.getElementById('openModelSelectBtn');
+const modelSelectModal = document.getElementById('modelSelectModal');
+const modelList = document.getElementById('modelList');
+const modelSearchInput = document.getElementById('modelSearchInput');
+const refreshModelsBtn = document.getElementById('refreshModelsBtn');
+
 // UI Helper functions to be passed to modules
 // The main uiHelperFunctions object is now defined in modules/ui-helpers.js
 // We can reference it directly from the window object.
@@ -544,6 +551,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 agentTemperatureInput: document.getElementById('agentTemperature'),
                 agentContextTokenLimitInput: document.getElementById('agentContextTokenLimit'),
                 agentMaxOutputTokensInput: document.getElementById('agentMaxOutputTokens'),
+                // Model selection elements
+                openModelSelectBtn: openModelSelectBtn,
+                modelSelectModal: modelSelectModal,
+                modelList: modelList,
+                modelSearchInput: modelSearchInput,
+                refreshModelsBtn: refreshModelsBtn,
             },
             mainRendererFunctions: {
                 setCroppedFile: setCroppedFile,

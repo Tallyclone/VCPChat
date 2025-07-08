@@ -20,7 +20,8 @@
  */
 function updateVCPLogStatus(statusUpdate, vcpLogConnectionStatusDiv) {
     if (!vcpLogConnectionStatusDiv) return;
-    vcpLogConnectionStatusDiv.textContent = `VCPLog: ${statusUpdate.message}`;
+    const prefix = statusUpdate.source || 'VCPLog';
+    vcpLogConnectionStatusDiv.textContent = `${prefix}: ${statusUpdate.message}`;
     vcpLogConnectionStatusDiv.className = `notifications-status status-${statusUpdate.status}`;
 }
 

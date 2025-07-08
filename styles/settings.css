@@ -748,3 +748,118 @@ textarea::placeholder {
     color: var(--placeholder-text);
     opacity: 1; /* Override default opacity */
 }
+
+/* --- Model Selection Styles --- */
+
+.model-input-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+#agentModel {
+    padding-right: 35px; /* Make space for the button */
+}
+
+#openModelSelectBtn {
+    position: absolute;
+    right: 5px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 28px;
+    height: 28px;
+    padding: 4px;
+    border: none;
+    background-color: transparent;
+    cursor: pointer;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s ease;
+}
+
+#openModelSelectBtn:hover {
+    background-color: var(--accent-bg);
+}
+
+#openModelSelectBtn svg {
+    stroke: var(--secondary-text);
+}
+
+.model-search-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.model-search-input {
+    flex-grow: 1;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background-color: var(--input-bg);
+    color: var(--primary-text);
+    box-sizing: border-box;
+    height: 36px;
+}
+
+#refreshModelsBtn {
+    flex-shrink: 0;
+    padding: 0;
+    background-color: var(--button-bg);
+    border: 1px solid var(--button-bg);
+    color: var(--primary-text);
+    border-radius: 6px; /* Match search input border-radius */
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+    box-sizing: border-box;
+    height: 36px;
+    width: 36px;
+    position: relative;
+    top: -7.5px;
+}
+
+#refreshModelsBtn:hover {
+    background-color: var(--button-hover-bg);
+    border-color: var(--button-hover-bg);
+}
+
+#refreshModelsBtn svg {
+    stroke: var(--primary-text);
+    transition: transform 0.5s ease;
+}
+
+#refreshModelsBtn:active svg {
+    transform: rotate(360deg);
+}
+
+.model-list {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+    max-height: 40vh;
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+}
+
+.model-list li {
+    padding: 10px 15px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border-color);
+    transition: background-color 0.2s ease;
+}
+
+.model-list li:last-child {
+    border-bottom: none;
+}
+
+.model-list li:hover {
+    background-color: var(--accent-bg);
+    color: var(--highlight-text);
+}

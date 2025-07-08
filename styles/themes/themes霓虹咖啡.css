@@ -62,8 +62,8 @@
     --scrollbar-thumb-hover: rgba(255, 71, 133, 0.6);
 
     /* --- 流式输出动画光晕 Shimmer Effect for Loading --- */
-    --shimmer-color-transparent: rgba(220, 221, 225, 0.163);
-    --shimmer-color-highlight: rgba(220, 221, 225, 0.962);
+    --shimmer-color-transparent: rgba(220, 221, 225, 0.721);
+    --shimmer-color-highlight: rgb(255, 78, 146);
 
     /* --- Text Shadow for Frosted Panels --- */
     --panel-text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -137,8 +137,8 @@ body.light-theme {
     --scrollbar-thumb-hover: rgba(139, 69, 19, 0.6);
 
     /* --- 流式输出动画光晕 Shimmer Effect --- */
-    --shimmer-color-transparent: rgba(45, 41, 34, 0.04);
-    --shimmer-color-highlight: rgba(45, 41, 34, 0.958);
+    --shimmer-color-transparent: rgba(254, 250, 244, 0.892);
+    --shimmer-color-highlight: rgba(255, 174, 35, 0.973);
     
     /* --- Unified Panel Background --- */
     --panel-bg: var(--panel-bg-light);

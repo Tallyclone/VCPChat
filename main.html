@@ -103,7 +103,14 @@
                         </div>
                         <div>
                             <label for="agentModel">模型名称:</label>
-                            <input type="text" id="agentModel" name="model" placeholder="例如 gemini-2.5-flash-preview-05-20">
+                            <div class="model-input-container">
+                                <input type="text" id="agentModel" name="model" placeholder="例如 gemini-2.5-flash-preview-05-20">
+                                <button type="button" id="openModelSelectBtn" class="small-button" title="选择模型">
+                                    <svg data-slot="icon" fill="none" stroke-width="1.5" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="16" height="16">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 15L12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9"></path>
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
                         <div>
                             <label for="agentTemperature">Temperature (0-1):</label>
@@ -383,6 +390,25 @@
     <script type="module" src="modules/renderer/contentProcessor.js"></script>
     <script type="module" src="modules/renderer/messageContextMenu.js"></script>
     <script src="renderer.js" defer></script>
+
+    <!-- Model Selection Modal -->
+    <div class="modal" id="modelSelectModal">
+        <div class="modal-content">
+            <span class="close-button" onclick="uiHelperFunctions.closeModal('modelSelectModal')">×</span>
+            <h2>选择模型</h2>
+            <div class="model-search-container">
+                <input type="text" id="modelSearchInput" placeholder="搜索模型..." class="model-search-input">
+                <button type="button" id="refreshModelsBtn" class="small-button" title="刷新模型列表">
+                    <svg data-slot="icon" fill="none" stroke-width="1.5" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="16" height="16">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 11.667 0l3.181-3.183m-4.991-2.691v-2.985h-4.992v2.985h4.992Zm-4.993 0v4.992h4.992v-4.992h-4.992Z"></path>
+                    </svg>
+                </button>
+            </div>
+            <ul id="modelList" class="model-list">
+                <!-- Models will be dynamically loaded here -->
+            </ul>
+        </div>
+    </div>
 </body>
 </html>
 <div id="floating-toast-notifications-container"></div>

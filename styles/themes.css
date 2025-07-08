@@ -1,68 +1,69 @@
 /*
- * styles/themes黑白.css
- * Curated by Roo for Professor Ryan
- * Black and White Theme
- * A classic, clean, and focused theme.
+ * styles/themes.css
+ * Curated by Gemini for Professor Ryan
+ * New Palette Set 3: "Midnight Neon" and "Artisan Coffee"
+ * Elegance and Atmosphere are the core principles of this design.
  */
 
 /* * =================================================================
- * Dark Theme (Default): Classic Black & White (经典黑白)
- * Inspired by traditional monochrome aesthetics.
- * A sharp, clear, and professional theme.
+ * Dark Theme (Default): Midnight Neon Palette (午夜霓虹)
+ * Inspired by neon lights reflecting through a rain-streaked window at night.
+ * A mysterious, focused, and high-fashion theme.
  * =================================================================
  */
 :root {
     /* --- Wallpaper Interface --- */
     /*
      * For the frosted glass effect on chat bubbles to be prominent,
+     * it's recommended to set a wallpaper.
+     * 使用方法: 将 'none' 替换为 url('您的图片链接')
      */
-    --chat-wallpaper-dark: url('../assets/wallpaper/dark.jpg');
+    --chat-wallpaper-dark: url('../assets/wallpaper/sakuranight.png');
 
     /* --- Base Colors --- */
-    --primary-bg: #1c1c1e;      /* 主背景 - 深墨灰 - 近黑 */
-    --secondary-bg: #28282c;    /* 侧边栏/面板背景 - 略浅的墨灰 */
-    --tertiary-bg: #121212;     /* 聊天区背景 - 纯黑に近い */
-    --accent-bg: #3a3a3e;       /* 悬停/选中背景 - 中墨灰 */
-    --border-color: #3a3a3e;    /* 边框颜色 */
-    --input-bg: #222225;        /* 输入框背景 */
+    --primary-bg: #101116;      /* 主背景 - 带微弱紫调的午夜蓝 */
+    --secondary-bg: #1a1b22;    /* 侧边栏/面板背景 - 深石板色 */
+    --tertiary-bg: #0b0c10;     /* 聊天区背景 - 近乎纯黑 */
+    --accent-bg: #3a324b;       /* 悬停/选中背景 - 柔和的霓虹紫 */
+    --border-color: #3a324b;    /* 边框颜色 */
+    --input-bg: #1a1b22;        /* 输入框背景 */
 
---panel-bg-dark: rgba(40, 40, 44, 0.75); /* 基于--secondary-bg，增加75%不透明度 */
+--panel-bg-dark: rgba(26, 27, 34, 0.75); /* 基于--secondary-bg，增加75%不透明度 */
 
     /* --- Text Colors --- */
-    --primary-text: #e0e0e0;    /* 主要文字 - 浅灰 */
-    --secondary-text: #a0a0a0;  /* 次要/标题文字 - 中灰 */
-    --highlight-text: #6fa8dc;  /* 高亮文字 - 柔和蓝 (点缀色) */
+    --primary-text: #e8e9ed;    /* 主要文字 - 柔和的银灰色 */
+    --secondary-text: #d1d1db;  /* 次要/标题文字 - 中性灰 */
+    --highlight-text: #ff4785;  /* 高亮文字 - 赛博粉 */
     --text-on-accent: #ffffff;  /* 在强调色背景上的文字 */
-    --placeholder-text: #6a6a6e; /* 输入框占位文字 */
-    --quoted-text: #FFB74D;     /* 引用文本颜色 - 柔和橙色 */
-    --user-text: #e0e0e0;       /* 用户气泡文字 - 浅灰 (与 primary-text 相同) */
-    --agent-text: #e0e0e0;      /* Agent气泡文字 - 浅灰 */
+    --placeholder-text: #6c6d75; /* 输入框占位文字 */
+    --quoted-text: #ff4785;     /* 引用文本颜色 */
+    --user-text: #e0f2f7;       /* 用户气泡文字 - 很浅的淡蓝色 */
+    --agent-text: #e8e9ed;      /* Agent气泡文字 - 柔和的银灰色 */
 
     /* --- Bubble Colors (Frosted Glass Ready) --- */
-    --user-bubble-bg: rgba(56, 120, 173, 0.15); /* 用户气泡 - 柔和蓝 (点缀色) - 半透明 */
-    --assistant-bubble-bg: rgba(47, 47, 51, 0.1); /* AI气泡 - 深墨灰 - 半透明 */
+    --user-bubble-bg: rgba(255, 71, 133, 0.15); /* 用户气泡 - 半透明赛博粉 */
+    --assistant-bubble-bg: rgba(219, 220, 225, 0.1); /* AI气泡 - 半透明银灰色 */
 
     /* --- UI Element Colors --- */
-    --button-bg: #48484c;           /* 按钮背景 - 中墨灰 */
-    --button-hover-bg: #58585e;      /* 按钮悬停 - 略亮的墨灰 */
-    --danger-color: #e57373;        /* 危险操作 - 柔和红 */
-    --danger-hover-bg: #ef5350;
-    --success-color: #66bb6a;       /* 成功操作 - 柔和绿 */
-    --notification-bg: #2f2f33;
-    --notification-header-bg: #303034;
-    --notification-border: #48484c;
-    --tool-bubble-bg: rgba(58, 58, 62, 0.15); /* VCP工具调用气泡背景 - 半透明中墨灰 */
-    --tool-bubble-border: #6fa8dc; /* VCP工具调用气泡边框 - 柔和蓝 */
+    --button-bg: #ff4785;           /* 按钮背景 - 赛博粉 */
+    --button-hover-bg: #ff6b9c;      /* 按钮悬停 */
+    --danger-color: #e74c3c;        /* 危险操作 - 经典红 */
+    --danger-hover-bg: #c0392b;
+    --success-color: #00cec9;       /* 成功操作 - 薄荷青 */
+    --notification-bg: #1a1b22;
+    --notification-header-bg: #101116;
+    --notification-border: #ff4785;
+    --tool-bubble-bg: rgba(219, 220, 225, 0.15);
+    --tool-bubble-border: #ff4785;
 
     /* --- Scrollbar --- */
-    --scrollbar-track: rgba(40, 40, 40, 0.5);
-    --scrollbar-thumb: rgba(100, 100, 100, 0.7);
-    --scrollbar-thumb-hover: rgba(120, 120, 120, 0.6);
+    --scrollbar-track: rgba(26, 27, 34, 0.5);
+    --scrollbar-thumb: rgba(58, 50, 75, 0.7);
+    --scrollbar-thumb-hover: rgba(255, 71, 133, 0.6);
 
-    /* --- Shimmer Effect for Loading --- */
-      /* --- 流式输出动画部分，分别定义了光影闪烁时最低透明度的transparent色和高光动画色highlignt色 --- */
-    --shimmer-color-transparent: rgba(224, 224, 224, 0.408);
-    --shimmer-color-highlight: rgba(224, 224, 224, 0.867);
+    /* --- 流式输出动画光晕 Shimmer Effect for Loading --- */
+    --shimmer-color-transparent: rgba(220, 221, 225, 0.721);
+    --shimmer-color-highlight: rgb(255, 78, 146);
 
     /* --- Text Shadow for Frosted Panels --- */
     --panel-text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -79,9 +80,9 @@ body {
 }
 
 /* * =================================================================
- * Light Theme: Classic White & Black (经典白黑)
- * Inspired by traditional monochrome aesthetics.
- * A sharp, clear, and professional theme.
+ * Light Theme: Golden Dawn Palette (温暖晨曦)
+ * Inspired by the first light of sunrise over wheat fields
+ * Warm, nurturing, and gently energizing
  * =================================================================
  */
 body.light-theme {
@@ -90,101 +91,56 @@ body.light-theme {
     background-size: cover;
     background-position: center;
     background-attachment: fixed;
+
     /* --- Wallpaper Interface --- */
-    --chat-wallpaper-light: url('../assets/wallpaper/light.jpeg');
+    --chat-wallpaper-light: url('../assets/wallpaper/wincoffee.png');
 
     /* --- Base Colors --- */
-    --primary-bg: #f4f6f8;      /* 主背景 - 非常浅的灰蓝色 */
-    --secondary-bg: #ffffff;    /* 侧边栏 - 白色 */
-    --tertiary-bg: #e9edf0;     /* 聊天区 - 浅灰 */
-    --accent-bg: #e0e6eb;       /* 悬停/选中背景 */
-    --border-color: #e0e6eb;    /* 边框 - 调整为更浅的颜色 */
+    --primary-bg: #faf8f5;      /* 主背景 - 晨曦米白 */
+    --secondary-bg: #fff9f0;    /* 侧边栏 - 暖阳白 */
+    --tertiary-bg: #f5f0e8;     /* 聊天区 - 麦田米色 */
+    --accent-bg: #e8ddd4;       /* 悬停背景 - 温润土色 */
+    --border-color: #d4c4b0;    /* 边框 - 秋叶金棕 */
     --input-bg: #ffffff;        /* 输入框 */
 
---panel-bg-light: rgba(255, 255, 255, 0.8); /* 基于--secondary-bg，增加80%不透明度 */
+--panel-bg-light: rgba(255, 249, 240, 0.8); /* 基于--secondary-bg，增加80%不透明度 */
 
     /* --- Text Colors --- */
-    --primary-text: #2c3e50;    /* 主要文字 - 深灰蓝 */
-    --secondary-text: #5a6f80;  /* 次要/标题文字 - 中灰蓝 */
-    --highlight-text: #3498db;  /* 高亮文字 - 清爽蓝 */
-    --text-on-accent: #ffffff;  /* 强调背景文字 */
-    --placeholder-text: #a0aab3; /* 占位文字 */
-    --quoted-text: #007bff;     /* 引用文字 - 蓝色 */
-    --user-text: #2c3e50;       /* 用户气泡文字 - 深灰蓝 (与 primary-text 相同) */
-    --agent-text: #2c3e50;      /* Agent气泡文字 - 深灰蓝 */
+    --primary-text: #2d2922;    /* 主要文字 - 深咖啡色 */
+    --secondary-text: #6b5d4f;  /* 次要文字 - 暖棕色 */
+    --highlight-text: #8b4513;  /* 高亮文字 - 赤褐色 */
+    --text-on-accent: #2d2922;  /* 强调背景文字 */
+    --placeholder-text: #a0927f; /* 占位文字 - 暖灰褐 */
+    --quoted-text: #228b22;     /* 引用文字 - 森林绿 */
+    --user-text: #854914;       /* 用户气泡文字 - 米黄色 */
+    --agent-text: #2d2922;      /* Agent气泡文字 - 深咖啡色 */
 
     /* --- Bubble Colors --- */
-    --user-bubble-bg: rgba(52, 152, 219, 0.08);     /* 用户气泡 - 清爽蓝 - 半透明 */
-    --assistant-bubble-bg: rgba(232, 244, 248, 0.05); /* AI气泡 - 非常浅的蓝 - 半透明 */
+    --user-bubble-bg: rgba(139, 69, 19, 0.08);     /* 用户气泡 - 赤褐透明 */
+    --assistant-bubble-bg: rgba(45, 41, 34, 0.05); /* AI气泡 - 深咖啡透明 */
 
     /* --- UI Element Colors --- */
-    --button-bg: #3498db;           /* 按钮 - 清爽蓝 */
-    --button-hover-bg: #2980b9;     /* 按钮悬停 - 深一点的蓝 */
-    --danger-color: #e74c3c;        /* 危险色 - 红色 */
-    --danger-hover-bg: #c0392b;
-    --success-color: #4caf50;       /* 成功色 - 绿色 */
-    --notification-bg: #e8f4f8;
-    --notification-header-bg: #f0f0f0;
-    --notification-border: #3498db;
-    --tool-bubble-bg: rgba(224, 230, 235, 0.08); /* VCP工具调用气泡背景 - 半透明浅灰 */
-    --tool-bubble-border: #3498db; /* VCP工具调用气泡边框 - 清爽蓝 */
+    --button-bg: #8b4513;           /* 按钮 - 赤褐色 */
+    --button-hover-bg: #a0522d;     /* 按钮悬停 */
+    --danger-color: #cd853f;        /* 危险色 - 温和橙棕 */
+    --danger-hover-bg: #d2691e;
+    --success-color: #6b8e23;       /* 成功色 - 橄榄绿 */
+    --notification-bg: #f5f0e8;
+    --notification-header-bg: #faf8f5;
+    --notification-border: #8b4513;
+    --tool-bubble-bg: rgba(107, 142, 35, 0.08);
+    --tool-bubble-border: #6b8e23;
 
     /* --- Scrollbar --- */
-    --scrollbar-track: rgba(200, 200, 200, 0.7);
-    --scrollbar-thumb: rgba(150, 150, 150, 0.8);
-    --scrollbar-thumb-hover: rgba(120, 120, 120, 0.6);
+    --scrollbar-track: rgba(245, 240, 232, 0.7);
+    --scrollbar-thumb: rgba(212, 196, 176, 0.8);
+    --scrollbar-thumb-hover: rgba(139, 69, 19, 0.6);
 
-    /* --- Shimmer Effect --- */
+    /* --- 流式输出动画光晕 Shimmer Effect --- */
+    --shimmer-color-transparent: rgba(254, 250, 244, 0.892);
+    --shimmer-color-highlight: rgba(255, 174, 35, 0.973);
     
-    --shimmer-color-transparent: rgba(44, 62, 80, 0.04);
-    --shimmer-color-highlight: rgba(44, 62, 80, 0.08);
-
     /* --- Unified Panel Background --- */
     --panel-bg: var(--panel-bg-light);
-}
-
-/* * =================================================================
- * Enhanced Frosted Glass Effect
- * 增强磨砂玻璃效果 - 小灵特制
- * =================================================================
- */
-
-/* 为聊天气泡添加更强的磨砂玻璃效果 */
-.message-bubble {
-    backdrop-filter: blur(12px) saturate(120%);
-    -webkit-backdrop-filter: blur(12px) saturate(120%);
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* 悬停时的微妙发光效果 */
-.message-bubble:hover {
-    backdrop-filter: blur(16px) saturate(130%);
-    -webkit-backdrop-filter: blur(16px) saturate(130%);
-    transform: translateY(-1px);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
-}
-
-/* 为工具调用气泡添加特殊效果 */
-.tool-bubble {
-    backdrop-filter: blur(10px) saturate(110%);
-    -webkit-backdrop-filter: blur(10px) saturate(110%);
-    border: 1px solid var(--tool-bubble-border);
-    background: var(--tool-bubble-bg);
-}
-
-/* 深色主题下的特殊光效 */
-:root .message-bubble {
-    box-shadow: 
-        0 8px 32px rgba(0, 0, 0, 0.3),
-        inset 0 1px 0 rgba(255, 255, 255, 0.1);
-}
-
-/* 浅色主题下的柔和阴影 */
-body.light-theme .message-bubble {
-    box-shadow: 
-        0 4px 20px rgba(45, 41, 34, 0.08),
-        inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 

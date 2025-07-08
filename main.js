@@ -67,6 +67,7 @@ let currentSongInfo = null; // To store currently playing song info
 let translatorWindow = null; // To hold the single instance of the translator window
 let themesWindow = null; // To hold the single instance of the themes window
 let networkNotesTreeCache = null; // In-memory cache for the network notes
+let cachedModels = []; // Cache for models fetched from VCP server
 const NOTES_MODULE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Notemodules');
 
 
@@ -515,6 +516,59 @@ async function handleMusicControl(args) {
     fileManager.initializeFileManager(USER_DATA_DIR, AGENT_DIR); // Initialize FileManager
     groupChat.initializePaths({ APP_DATA_ROOT_IN_PROJECT, AGENT_DIR, USER_DATA_DIR, SETTINGS_FILE }); // Initialize GroupChat paths
     settingsHandlers.initialize({ SETTINGS_FILE, USER_AVATAR_FILE, AGENT_DIR }); // Initialize settings handlers
+
+   // Function to fetch and cache models from the VCP server
+   async function fetchAndCacheModels() {
+       try {
+           const settings = await fs.readJson(SETTINGS_FILE);
+           const vcpServerUrl = settings.vcpServerUrl;
+           const vcpApiKey = settings.vcpApiKey; // Get the API key
+
+           if (!vcpServerUrl) {
+               console.warn('[Main] VCP Server URL is not configured. Cannot fetch models.');
+               cachedModels = []; // Clear cache if URL is not set
+               return;
+           }
+           // Correctly construct the base URL by removing known API paths.
+           const urlObject = new URL(vcpServerUrl);
+           const baseUrl = `${urlObject.protocol}//${urlObject.host}`;
+           const modelsUrl = new URL('/v1/models', baseUrl).toString();
+
+           console.log(`[Main] Fetching models from: ${modelsUrl}`);
+           const response = await fetch(modelsUrl, {
+               headers: {
+                   'Authorization': `Bearer ${vcpApiKey}` // Add the Authorization header
+               }
+           });
+           if (!response.ok) {
+               throw new Error(`HTTP error! status: ${response.status}`);
+           }
+           const data = await response.json();
+           cachedModels = data.data || []; // Assuming the response has a 'data' field containing the models array
+           console.log('[Main] Models fetched and cached successfully:', cachedModels.map(m => m.id));
+       } catch (error) {
+           console.error('[Main] Failed to fetch and cache models:', error);
+           cachedModels = []; // Clear cache on error
+       }
+   }
+
+   // Fetch models on app startup
+   await fetchAndCacheModels();
+
+   // IPC handler to provide cached models to the renderer process
+   ipcMain.handle('get-cached-models', () => {
+       return cachedModels;
+   });
+
+   // IPC handler to trigger a refresh of the model list
+   ipcMain.on('refresh-models', async () => {
+       console.log('[Main] Received refresh-models request. Re-fetching models...');
+       await fetchAndCacheModels();
+       // Optionally, notify the renderer that models have been updated
+       if (mainWindow && !mainWindow.isDestroyed()) {
+           mainWindow.webContents.send('models-updated', cachedModels);
+       }
+   });
 
 
     // Add IPC handler for path operations

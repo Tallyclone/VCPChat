@@ -589,3 +589,44 @@ body.light-theme .highlighted-tag {
     color: var(--highlight-text-light);
     background-color: rgba(var(--rgb-secondary-bg-light, 255, 255, 255), 0.3); /* 轻微背景，亮色主题兼容 */
 }
+
+/* --- @Note Suggestion Popup --- */
+#note-suggestion-popup {
+    position: fixed;
+    background-color: var(--secondary-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+    max-height: 200px;
+    overflow-y: auto;
+    width: 300px; /* Or adjust as needed */
+    display: none; /* Initially hidden */
+}
+
+.suggestion-item {
+    padding: 8px 12px;
+    color: var(--primary-text);
+    cursor: pointer;
+    /* Default (dark theme) subtle separator */
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+body.light-theme .suggestion-item {
+    /* Light theme subtle separator */
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.suggestion-item:last-child {
+    border-bottom: none;
+}
+
+.suggestion-item:hover,
+.suggestion-item.active {
+    background-color: var(--accent-bg);
+    color: var(--highlight-text);
+}

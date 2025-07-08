@@ -110,8 +110,8 @@ body.light-theme {
     --agent-text: #ebf1fe;      /* Agent气泡文字 */
 
     /* --- Bubble Colors --- */
-    --user-bubble-bg: rgba(123, 147, 166, 0.258);     /* 用户气泡 - 雾蓝色 - 半透明 */
-    --assistant-bubble-bg: rgba(138, 153, 181, 0.3); /* AI气泡 - 极灰 - 半透明 */
+    --user-bubble-bg: rgba(171, 184, 195, 0.258);     /* 用户气泡 - 雾蓝色 - 半透明 */
+    --assistant-bubble-bg: rgba(191, 199, 213, 0.3); /* AI气泡 - 极灰 - 半透明 */
 
     /* --- UI Element Colors --- */
     --button-bg: #6e8598;           /* 按钮 - 雾蓝色 */

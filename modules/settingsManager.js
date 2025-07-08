@@ -17,6 +17,7 @@ const settingsManager = (() => {
     let agentSettingsForm, editingAgentIdInput, agentNameInput, agentAvatarInput, agentAvatarPreview;
     let agentSystemPromptTextarea, agentModelInput, agentTemperatureInput;
     let agentContextTokenLimitInput, agentMaxOutputTokensInput;
+    let openModelSelectBtn, modelSelectModal, modelList, modelSearchInput, refreshModelsBtn;
 
     /**
      * Displays the appropriate settings view (agent, group, or default prompt)
@@ -277,6 +278,11 @@ const settingsManager = (() => {
             agentTemperatureInput = options.elements.agentTemperatureInput;
             agentContextTokenLimitInput = options.elements.agentContextTokenLimitInput;
             agentMaxOutputTokensInput = options.elements.agentMaxOutputTokensInput;
+            openModelSelectBtn = options.elements.openModelSelectBtn;
+            modelSelectModal = options.elements.modelSelectModal;
+            modelList = options.elements.modelList;
+            modelSearchInput = options.elements.modelSearchInput;
+            refreshModelsBtn = options.elements.refreshModelsBtn;
 
             // Event Listeners
             if (agentSettingsForm) {
@@ -303,11 +309,96 @@ const settingsManager = (() => {
                 });
             }
 
+            if (openModelSelectBtn) {
+                openModelSelectBtn.addEventListener('click', handleOpenModelSelect);
+            }
+            if (modelSearchInput) {
+                modelSearchInput.addEventListener('input', filterModels);
+            }
+            if (refreshModelsBtn) {
+                refreshModelsBtn.addEventListener('click', handleRefreshModels);
+            }
+            if (electronAPI.onModelsUpdated) {
+                electronAPI.onModelsUpdated((models) => {
+                    console.log('[SettingsManager] Received models-updated event. Repopulating list.');
+                    populateModelList(models);
+                    uiHelper.showToastNotification('模型列表已刷新', 'success');
+                });
+            }
+
             console.log('settingsManager initialized.');
         },
         displaySettingsForItem: displaySettingsForItem,
         populateAssistantAgentSelect: populateAssistantAgentSelect,
     };
+
+    /**
+     * Opens the model selection modal and populates it with cached models.
+     */
+    async function handleOpenModelSelect() {
+        try {
+            const models = await electronAPI.getCachedModels();
+            populateModelList(models);
+            uiHelper.openModal('modelSelectModal');
+        } catch (error) {
+            console.error('Failed to get cached models:', error);
+            uiHelper.showToastNotification('获取模型列表失败', 'error');
+        }
+    }
+
+    /**
+     * Populates the model list in the modal.
+     * @param {Array} models - An array of model objects.
+     */
+    function populateModelList(models) {
+        if (!modelList) return;
+        modelList.innerHTML = ''; // Clear existing list
+
+        if (!models || models.length === 0) {
+            modelList.innerHTML = '<li>没有可用的模型。请检查您的 VCP 服务器 URL 或刷新列表。</li>';
+            return;
+        }
+
+        models.forEach(model => {
+            const li = document.createElement('li');
+            li.textContent = model.id;
+            li.dataset.modelId = model.id;
+            li.addEventListener('click', () => {
+                if (agentModelInput) {
+                    agentModelInput.value = model.id;
+                }
+                uiHelper.closeModal('modelSelectModal');
+            });
+            modelList.appendChild(li);
+        });
+    }
+
+    /**
+     * Filters the model list based on the search input.
+     */
+    function filterModels() {
+        const filter = modelSearchInput.value.toLowerCase();
+        const items = modelList.getElementsByTagName('li');
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            const txtValue = item.textContent || item.innerText;
+            if (txtValue.toLowerCase().indexOf(filter) > -1) {
+                item.style.display = "";
+            } else {
+                item.style.display = "none";
+            }
+        }
+    }
+
+    /**
+     * Handles the refresh models button click.
+     */
+    function handleRefreshModels() {
+        if (electronAPI.refreshModels) {
+            electronAPI.refreshModels();
+            uiHelper.showToastNotification('正在刷新模型列表...', 'info');
+        }
+    }
 })();
 
 window.settingsManager = settingsManager;
