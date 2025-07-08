@@ -422,16 +422,18 @@ window.chatManager = (() => {
         const uiAttachments = [];
         if (attachedFiles.length > 0) {
             for (const af of attachedFiles) {
+                const fileManagerData = af._fileManagerData || {};
                 uiAttachments.push({
-                    type: af._fileManagerData.type,
+                    type: fileManagerData.type,
                     src: af.localPath,
                     name: af.originalName,
                     size: af.file.size,
-                    _fileManagerData: af._fileManagerData
+                    _fileManagerData: fileManagerData
                 });
-                if (af._fileManagerData && af._fileManagerData.extractedText) {
-                    contentForVCP += `\n\n[附加文件: ${af.originalName}]\n${af._fileManagerData.extractedText}\n[/附加文件结束: ${af.originalName}]`;
-                } else if (af._fileManagerData && af._fileManagerData.type && !af._fileManagerData.type.startsWith('image/') && !af._fileManagerData.type.startsWith('audio/') && !af._fileManagerData.type.startsWith('video/')) {
+                // Append filename for all attachments for AI context
+                if (fileManagerData.extractedText) {
+                    contentForVCP += `\n\n[附加文件: ${af.originalName}]\n${fileManagerData.extractedText}\n[/附加文件结束: ${af.originalName}]`;
+                } else {
                     contentForVCP += `\n\n[附加文件: ${af.originalName} (无法预览文本内容)]`;
                 }
             }
@@ -440,7 +442,7 @@ window.chatManager = (() => {
         const userMessage = {
             role: 'user',
             name: globalSettings.userName || '用户',
-            content: content,
+            content: content, // Use raw content for UI
             timestamp: Date.now(),
             id: `msg_${Date.now()}_user_${Math.random().toString(36).substring(2, 9)}`,
             attachments: uiAttachments
@@ -490,10 +492,8 @@ window.chatManager = (() => {
                     for (const att of msg.attachments) {
                         if (att._fileManagerData && typeof att._fileManagerData.extractedText === 'string' && att._fileManagerData.extractedText.trim() !== '') {
                             historicalAppendedText += `\n\n[附加文件: ${att.name || '未知文件'}]\n${att._fileManagerData.extractedText}\n[/附加文件结束: ${att.name || '未知文件'}]`;
-                        } else if (att._fileManagerData && att.type && !att.type.startsWith('image/') && !att.type.startsWith('audio/') && !att.type.startsWith('video/')) {
+                        } else {
                             historicalAppendedText += `\n\n[附加文件: ${att.name || '未知文件'} (无法预览文本内容)]`;
-                        } else if (!att._fileManagerData) {
-                            console.warn(`[VCP Context] Historical message attachment for "${att.name}" is missing _fileManagerData. Text content cannot be appended.`);
                         }
                     }
                     currentMessageTextContent += historicalAppendedText;
@@ -531,7 +531,7 @@ window.chatManager = (() => {
                     vcpImageAttachmentsPayload.push(...imageAttachments.filter(Boolean));
 
                     // --- AUDIO PROCESSING ---
-                    const supportedAudioTypes = ['audio/wav', 'audio/mp3', 'audio/aiff', 'audio/aac', 'audio/ogg', 'audio/flac'];
+                    const supportedAudioTypes = ['audio/wav', 'audio/mpeg', 'audio/mp3', 'audio/aiff', 'audio/aac', 'audio/ogg', 'audio/flac'];
                     const audioAttachments = await Promise.all(msg.attachments
                         .filter(att => supportedAudioTypes.includes(att.type))
                         .map(async att => {
@@ -539,10 +539,9 @@ window.chatManager = (() => {
                                 const base64Data = await electronAPI.getFileAsBase64(att.src);
                                 if (base64Data && typeof base64Data === 'string') {
                                     return {
-                                        type: 'source',
-                                        source: {
-                                            media_type: att.type,
-                                            data: base64Data,
+                                        type: 'image_url',
+                                        image_url: {
+                                            url: `data:${att.type};base64,${base64Data}`
                                         }
                                     };
                                 } else if (base64Data && base64Data.error) {
@@ -570,10 +569,9 @@ window.chatManager = (() => {
                                 const base64Data = await electronAPI.getFileAsBase64(att.src);
                                 if (base64Data && typeof base64Data === 'string') {
                                     return {
-                                        type: 'source',
-                                        source: {
-                                            media_type: att.type,
-                                            data: base64Data,
+                                        type: 'image_url',
+                                        image_url: {
+                                            url: `data:${att.type};base64,${base64Data}`
                                         }
                                     };
                                 } else if (base64Data && base64Data.error) {

@@ -266,7 +266,7 @@ function initialize(mainWindow, context) {
                     fileTypeHint = `image/${mimeExt}`;
                 } else if (['.mp3', '.wav', '.ogg', '.flac', '.aac', '.aiff'].includes(ext)) {
                     const mimeExt = ext.substring(1);
-                    fileTypeHint = `audio/${mimeExt}`;
+                    fileTypeHint = `audio/${mimeExt === 'mp3' ? 'mpeg' : mimeExt}`;
                 } else if (['.mp4', '.webm'].includes(ext)) {
                     fileTypeHint = `video/${ext.substring(1)}`;
                 }
@@ -322,7 +322,7 @@ function initialize(mainWindow, context) {
                         fileTypeHint = `image/${mimeExt}`;
                     } else if (['.mp3', '.wav', '.ogg', '.flac', '.aac', '.aiff'].includes(ext)) {
                         const mimeExt = ext.substring(1);
-                        fileTypeHint = `audio/${mimeExt}`;
+                        fileTypeHint = `audio/${mimeExt === 'mp3' ? 'mpeg' : mimeExt}`;
                     } else if (['.mp4', '.webm'].includes(ext)) {
                         fileTypeHint = `video/${ext.substring(1)}`;
                     }
@@ -386,7 +386,7 @@ function initialize(mainWindow, context) {
                         fileTypeHint = `image/${fileExtension.substring(1).replace('jpg', 'jpeg')}`;
                     } else if (['.mp3', '.wav', '.ogg', '.flac', '.aac', '.aiff'].includes(fileExtension)) {
                         const mimeExt = fileExtension.substring(1);
-                        fileTypeHint = `audio/${mimeExt}`;
+                        fileTypeHint = `audio/${mimeExt === 'mp3' ? 'mpeg' : mimeExt}`;
                     } else if (['.mp4', '.webm'].includes(fileExtension)) {
                         fileTypeHint = `video/${fileExtension.substring(1)}`;
                     } else if (['.md', '.txt'].includes(fileExtension)) {
