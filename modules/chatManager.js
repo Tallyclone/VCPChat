@@ -694,7 +694,7 @@ window.chatManager = (() => {
                 if (messageRenderer) {
                     messageRenderer.setCurrentTopicId(result.topicId);
                     messageRenderer.clearChat();
-                    messageRenderer.renderMessage({ role: 'system', content: `新话题 "${result.topicName}" 已开始。`, timestamp: Date.now() });
+                    // messageRenderer.renderMessage({ role: 'system', content: `新话题 "${result.topicName}" 已开始。`, timestamp: Date.now() });
                 }
                 localStorage.setItem(`lastActiveTopic_${itemId}_${itemType}`, result.topicId);
                 
