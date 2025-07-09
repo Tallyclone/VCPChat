@@ -159,7 +159,7 @@ VChat 不仅仅是一个聊天界面，它是强大的 VCP 后端生态（VCPToo
 
 以下是一些客户端界面的示例截图：
 
-![示例图1](assets/E1.jpg)![示例图2](assets/E2.jpg)![示例图3](assets/E3.jpg)![示例图4](assets/E4.jpg)![示例图5](assets/E6.jpg)![示例图6](assets/E5.jpg)![示例图7](assets/E7.png)
+![示例图1](assets/E1.jpg)![示例图2](assets/E2.jpg)![示例图3](assets/E3.jpg)![示例图4](assets/E4.jpg)![示例图5](assets/E6.jpg)![示例图6](assets/E5.jpg)![示例图7](assets/E7.png)![示例图8](assets/E8.png)
 
 ## 客户端职责
 
