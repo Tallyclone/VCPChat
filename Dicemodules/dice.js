@@ -3,7 +3,7 @@ import DiceBox from "/node_modules/@3d-dice/dice-box/dist/dice-box.es.js";
 
 // 使用相对于 Web 服务器根目录的绝对路径
 const Box = new DiceBox({
-    container: "#dice-box",
+    container: "#dice-canvas-container",
     assetPath: "/assets/dice-box/",
     theme: "default",
     offscreen: true,
@@ -12,44 +12,7 @@ const Box = new DiceBox({
 
 Box.init().then(() => {
     console.log("Dice Box is ready.");
-
-// --- Begin: 限制骰子运动范围 ---
-    const containerElement = document.getElementById('dice-box');
-    const titleElement = document.querySelector('h1');
-    const uiElement = document.querySelector('.dice-ui');
-
-    const updateBounds = () => {
-        const containerRect = containerElement.getBoundingClientRect();
-        const titleRect = titleElement.getBoundingClientRect();
-        const uiRect = uiElement.getBoundingClientRect();
-
-        // 为顶部和底部添加一些额外的边距
-        const topPadding = 10; // px
-        const bottomPadding = 10; // px
-
-        const newBounds = {
-            top: (titleRect.bottom - containerRect.top) + topPadding,
-            bottom: (uiRect.top - containerRect.top) - bottomPadding,
-            left: 0,
-            right: containerRect.width
-        };
-
-        console.log("Updating dice bounds:", newBounds);
-
-        Box.updateConfig({
-            world: {
-                bounds: newBounds
-            }
-        });
-    };
-
-    // 初始化时设置边界
-    updateBounds();
-
-    // 窗口大小改变时重新设置边界
-    window.addEventListener('resize', updateBounds);
-    // --- End: 限制骰子运动范围 ---
-    const notationInput = document.getElementById('notation-input');
+const notationInput = document.getElementById('notation-input');
     const rollButton = document.getElementById('roll-button');
 
     // 新增：一个可以解析 "2d6+1d20" 这种复合表达式的函数
