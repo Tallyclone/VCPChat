@@ -1058,6 +1058,17 @@ function setupEventListeners() {
         });
     }
 
+    const openDiceBtn = document.getElementById('openDiceBtn');
+    if (openDiceBtn) {
+        openDiceBtn.addEventListener('click', () => {
+            if (window.electronAPI && window.electronAPI.openDiceWindow) {
+                window.electronAPI.openDiceWindow();
+            } else {
+                console.error('Dice Roller: electronAPI.openDiceWindow not found.');
+            }
+        });
+    }
+
     if (toggleNotificationsBtn && notificationsSidebar) {
         toggleNotificationsBtn.addEventListener('click', () => {
             window.electronAPI.sendToggleNotificationsSidebar(); // Send to main

@@ -216,6 +216,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Local Python Execution
     executePythonCode: (code) => ipcRenderer.invoke('execute-python-code', code),
+
+    // Dice Module Control
+    openDiceWindow: () => ipcRenderer.invoke('open-dice-window'),
+    onRollDice: (callback) => ipcRenderer.on('roll-dice', (_event, notation, options) => callback(notation, options)),
+    sendDiceModuleReady: () => ipcRenderer.send('dice-module-ready'),
+    sendDiceRollComplete: (results) => ipcRenderer.send('dice-roll-complete', results),
 });
 
 // Log the electronAPI object as it's defined in preload.js right after exposing it

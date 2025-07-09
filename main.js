@@ -2,7 +2,7 @@
 
 const sharp = require('sharp'); // 确保在文件顶部引入
 
-const { app, BrowserWindow, ipcMain, nativeTheme, globalShortcut, screen, clipboard, shell, dialog } = require('electron'); // Added screen, clipboard, and shell
+const { app, BrowserWindow, ipcMain, nativeTheme, globalShortcut, screen, clipboard, shell, dialog, protocol } = require('electron'); // Added screen, clipboard, and shell
 // selection-hook for non-clipboard text capture on Windows
 let SelectionHook = null;
 try {
@@ -20,6 +20,7 @@ const fs = require('fs-extra'); // Using fs-extra for convenience
 const os = require('os');
 const { spawn } = require('child_process'); // For executing local python
 const { Worker } = require('worker_threads');
+const express = require('express'); // For the dice server
 const WebSocket = require('ws'); // For VCPLog notifications
 const { GlobalKeyboardListener } = require('node-global-key-listener');
 const fileManager = require('./modules/fileManager'); // Import the new file manager
@@ -65,6 +66,8 @@ let notesWindow = null; // To hold the single instance of the notes window
 let musicWindow = null; // To hold the single instance of the music window
 let currentSongInfo = null; // To store currently playing song info
 let translatorWindow = null; // To hold the single instance of the translator window
+let diceWindow = null; // To hold the single instance of the dice window
+let diceServer = null; // To hold the dice web server instance
 let themesWindow = null; // To hold the single instance of the themes window
 let networkNotesTreeCache = null; // In-memory cache for the network notes
 let cachedModels = []; // Cache for models fetched from VCP server
@@ -477,6 +480,155 @@ async function handleMusicControl(args) {
     }
 }
 
+// --- Dice Server and Window Creation ---
+function startDiceServer() {
+    return new Promise((resolve, reject) => {
+        if (diceServer && diceServer.listening) {
+            console.log('Dice server is already running on port 6677.');
+            return resolve();
+        }
+
+        const app = express();
+        const port = 6677;
+
+        // Serve the Dicemodules directory at the root URL '/'
+        app.use('/', express.static(path.join(__dirname, 'Dicemodules')));
+        // Serve the node_modules directory at the '/node_modules' URL path
+        app.use('/node_modules', express.static(path.join(__dirname, 'node_modules')));
+        // Serve the styles directory at the '/styles' URL path
+        app.use('/styles', express.static(path.join(__dirname, 'styles')));
+        // Serve the root assets directory at the '/assets' URL path
+        app.use('/assets', express.static(path.join(__dirname, 'assets')));
+
+        diceServer = app.listen(port, () => {
+            console.log(`Dice server started on http://localhost:${port}`);
+            resolve();
+        }).on('error', (err) => {
+            console.error('Failed to start dice server:', err);
+            reject(err);
+        });
+    });
+}
+
+async function createOrFocusDiceWindow() {
+    try {
+        await startDiceServer(); // Ensure the server is running
+    } catch (error) {
+        console.error("Cannot create dice window because server failed to start.", error);
+        dialog.showErrorBox("骰子服务启动失败", "无法启动后台Web服务器，请检查端口6677是否被占用。");
+        return; // Stop if server fails
+    }
+
+    if (diceWindow && !diceWindow.isDestroyed()) {
+        console.log('[Main Process] Dice window already exists. Focusing it.');
+        diceWindow.focus();
+        return;
+    }
+
+    console.log('[Main Process] Creating new dice window instance.');
+    diceWindow = new BrowserWindow({
+        width: 400,
+        height: 600,
+        minWidth: 300,
+        minHeight: 400,
+        title: '超级骰子',
+        modal: false,
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            contextIsolation: true,
+            nodeIntegration: false,
+            devTools: true
+        },
+        icon: path.join(__dirname, 'assets', 'icon.png'),
+        show: false
+    });
+
+    // Load the dice page from our local web server
+    diceWindow.loadURL('http://localhost:6677/dice.html');
+    
+    openChildWindows.push(diceWindow);
+    diceWindow.setMenu(null);
+
+    diceWindow.once('ready-to-show', () => {
+        diceWindow.show();
+    });
+
+    diceWindow.on('closed', () => {
+        openChildWindows = openChildWindows.filter(win => win !== diceWindow);
+        diceWindow = null;
+    });
+
+    diceWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+        console.error(`[Main Process] Dice window failed to load: ${errorDescription} (code: ${errorCode})`);
+    });
+}
+
+// --- Dice Control Handler ---
+// This will be called by the distributed server
+async function handleDiceControl(args) {
+    const { notation, themecolor } = args;
+    console.log(`[DiceControl] Received command: roll, Notation: ${notation}, ThemeColor: ${themecolor}`);
+
+    // 根据新的、简化的接口，构建options对象
+    const options = {};
+    if (themecolor) {
+        options.themeColor = themecolor;
+    }
+
+    try {
+        // 确保窗口存在并已加载
+        await createOrFocusDiceWindow();
+
+        // 等待窗口和渲染器准备就绪的信号
+        if (diceWindow && !diceWindow.isDestroyed()) {
+            await new Promise(resolve => {
+                ipcMain.once('dice-module-ready', (event) => {
+                    if (event.sender === diceWindow.webContents) resolve();
+                });
+                if (diceWindow.webContents.getURL().startsWith('http')) resolve();
+            });
+
+            // 发送投掷指令到渲染进程
+            diceWindow.webContents.send('roll-dice', notation, options);
+
+            // 等待渲染进程返回投掷结果
+            return new Promise((resolve) => {
+                ipcMain.once('dice-roll-complete', (event, results) => {
+                    if (event.sender === diceWindow.webContents) {
+                        // 格式化结果为自然语言
+                        let readableResult = '';
+                        try {
+                            const totalValue = results.reduce((sum, group) => sum + group.value, 0);
+                            const parts = results.map(group => {
+                                const rollValues = group.rolls.map(r => r.value);
+                                let resultString = `[${rollValues.join(', ')}]`;
+                                if (group.modifier > 0) resultString += ` + ${group.modifier}`;
+                                else if (group.modifier < 0) resultString += ` - ${Math.abs(group.modifier)}`;
+                                return resultString;
+                            });
+                            readableResult = `AI为你投掷了 ${notation}，结果为: ${parts.join(' + ')}，总计 ${totalValue}。`;
+                        } catch (e) {
+                            console.error("Failed to parse dice results:", e);
+                            readableResult = `投掷完成，但无法解析结果: ${JSON.stringify(results)}`;
+                        }
+                        
+                        console.log(`[DiceControl] Formatted result: ${readableResult}`);
+                        resolve({ status: 'success', message: readableResult, data: readableResult });
+                    }
+                });
+            });
+        } else {
+            throw new Error("Dice window could not be created or focused.");
+        }
+
+    } catch (error) {
+        const errorMsg = `处理骰子指令失败: ${error.message}`;
+        console.error(`[DiceControl] ${errorMsg}`, error);
+        return { status: 'error', message: errorMsg };
+    }
+}
+
+
   function createThemesWindow() {
       if (themesWindow && !themesWindow.isDestroyed()) {
           themesWindow.focus();
@@ -510,6 +662,7 @@ async function handleMusicControl(args) {
   }
 
   app.whenReady().then(async () => { // Make the function async
+    // Register a custom protocol to handle loading local app files securely.
     fs.ensureDirSync(APP_DATA_ROOT_IN_PROJECT); // Ensure the main AppData directory in project exists
     fs.ensureDirSync(AGENT_DIR);
     fs.ensureDirSync(USER_DATA_DIR);
@@ -1345,7 +1498,8 @@ async function handleMusicControl(args) {
                     serverName: 'VCP-Desktop-Client-Distributed-Server',
                     debugMode: true, // Or read from settings if you add this option
                     rendererProcess: mainWindow.webContents, // Pass the renderer process object
-                    handleMusicControl: handleMusicControl // Inject the music control handler
+                    handleMusicControl: handleMusicControl, // Inject the music control handler
+                    handleDiceControl: handleDiceControl // Inject the dice control handler
                 };
                 distributedServer = new DistributedServer(config);
                 distributedServer.initialize();
@@ -1376,6 +1530,14 @@ async function handleMusicControl(args) {
             await createOrFocusMusicWindow();
         } catch (error) {
             console.error("Failed to open or focus music window from IPC:", error);
+        }
+    });
+
+    ipcMain.handle('open-dice-window', async () => {
+        try {
+            await createOrFocusDiceWindow();
+        } catch (error) {
+            console.error("Failed to open or focus dice window from IPC:", error);
         }
     });
     
@@ -1738,6 +1900,13 @@ app.on('will-quit', () => {
         console.log('[Main] Stopping distributed server...');
         distributedServer.stop();
         distributedServer = null;
+    }
+    
+    // 5. Stop the dice server
+    if (diceServer) {
+        console.log('[Main] Stopping dice server...');
+        diceServer.close();
+        diceServer = null;
     }
 
     // 5. 强制销毁所有窗口

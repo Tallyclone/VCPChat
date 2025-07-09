@@ -16,6 +16,7 @@ class DistributedServer {
         this.debugMode = config.debugMode || false;
         this.rendererProcess = config.rendererProcess; // To communicate with the renderer
         this.handleMusicControl = config.handleMusicControl; // Inject the music control handler
+        this.handleDiceControl = config.handleDiceControl; // Inject the dice control handler
         this.ws = null;
         this.reconnectInterval = 5000;
         this.maxReconnectInterval = 60000;
@@ -182,6 +183,20 @@ class DistributedServer {
                     naturalResponse = `已切换到上一首。`;
                 }
                 finalResult = { message: naturalResponse };
+
+            } else if (toolName === 'SuperDice') {
+                if (typeof this.handleDiceControl !== 'function') {
+                    throw new Error('Dice control handler is not configured for the Distributed Server.');
+                }
+                // The toolArgs are already parsed, e.g., { notation: '2d20' }
+                const resultFromMain = await this.handleDiceControl(toolArgs);
+
+                if (resultFromMain.status === 'error') {
+                    throw new Error(resultFromMain.message);
+                }
+                
+                // The result from the dice roll is already structured, so we can pass it directly.
+                finalResult = resultFromMain.data;
 
             } else {
                 // --- Default Handling for all other plugins ---

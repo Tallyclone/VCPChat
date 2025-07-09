@@ -153,7 +153,8 @@ body.light-theme .notes-section {
 
 .notes-section #openTranslatorBtn,
 .notes-section #openNotesBtn,
-.notes-section #openMusicBtn {
+.notes-section #openMusicBtn,
+.notes-section #openDiceBtn {
     background-color: var(--button-bg);
     color: var(--secondary-text);
     border: 1px solid var(--button-bg);
@@ -173,7 +174,8 @@ body.light-theme .notes-section {
 
 .notes-section #openTranslatorBtn:hover,
 .notes-section #openNotesBtn:hover,
-.notes-section #openMusicBtn:hover {
+.notes-section #openMusicBtn:hover,
+.notes-section #openDiceBtn:hover {
     background-color: var(--button-hover-bg);
     border-color: var(--button-hover-bg);
     color: var(--primary-text);
@@ -181,7 +183,8 @@ body.light-theme .notes-section {
 
 .notes-section #openTranslatorBtn svg,
 .notes-section #openNotesBtn svg,
-.notes-section #openMusicBtn svg {
+.notes-section #openMusicBtn svg,
+.notes-section #openDiceBtn svg {
     stroke: currentColor;
     width: 18px;
     height: 18px;
@@ -190,14 +193,16 @@ body.light-theme .notes-section {
 
 body.light-theme .notes-section #openTranslatorBtn,
 body.light-theme .notes-section #openNotesBtn,
-body.light-theme .notes-section #openMusicBtn {
+body.light-theme .notes-section #openMusicBtn,
+body.light-theme .notes-section #openDiceBtn {
     color: #ffffff;
     border: 1px solid var(--button-bg-light);
 }
 
 body.light-theme .notes-section #openTranslatorBtn:hover,
 body.light-theme .notes-section #openNotesBtn:hover,
-body.light-theme .notes-section #openMusicBtn:hover {
+body.light-theme .notes-section #openMusicBtn:hover,
+body.light-theme .notes-section #openDiceBtn:hover {
     color: #ffffff;
     border-color: var(--button-hover-bg-light);
 }
