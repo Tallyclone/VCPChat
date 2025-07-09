@@ -12,8 +12,41 @@ const Box = new DiceBox({
 
 Box.init().then(() => {
     console.log("Dice Box is ready.");
-const notationInput = document.getElementById('notation-input');
+    const notationInput = document.getElementById('notation-input');
     const rollButton = document.getElementById('roll-button');
+
+    // Function to apply the current theme (light/dark)
+    const applyTheme = (theme) => {
+        const isLight = theme === 'light';
+        document.body.classList.toggle('light-theme', isLight);
+
+        // Update DiceBox config for the new theme
+        // This should make DiceBox use 'diffuse-light.png' or 'diffuse-dark.png'
+        Box.updateConfig({
+            colorScheme: theme
+        });
+    };
+
+    // Listen for theme changes from the main process
+    if (window.electronAPI && window.electronAPI.onThemeUpdated) {
+        window.electronAPI.onThemeUpdated((event, theme) => applyTheme(theme));
+    }
+
+    // Get the initial theme from the main process
+    if (window.electronAPI && window.electronAPI.getCurrentTheme) {
+        window.electronAPI.getCurrentTheme().then(theme => {
+            applyTheme(theme);
+            // Now that the theme is set, we can signal readiness.
+            if (window.electronAPI.sendDiceModuleReady) {
+                window.electronAPI.sendDiceModuleReady();
+            }
+        });
+    } else {
+        // Fallback if getCurrentTheme is not available, signal ready immediately
+        if (window.electronAPI && window.electronAPI.sendDiceModuleReady) {
+            window.electronAPI.sendDiceModuleReady();
+        }
+    }
 
     // 新增：一个可以解析 "2d6+1d20" 这种复合表达式的函数
     const parseAndRoll = (notationString) => {
@@ -42,10 +75,13 @@ const notationInput = document.getElementById('notation-input');
             console.log(`Received roll from main process: ${notation}`, options);
             
             // 智能处理颜色：如果AI提供了颜色，就使用它。
-            // 如果没有，就明确地将颜色重置为默认值，避免沿用上一次的颜色。
+            // 如果没有，就根据当前主题设置一个合适的默认颜色。
+            const isLight = document.body.classList.contains('light-theme');
+            const defaultThemeColor = isLight ? '#8b4513' : '#ff4785'; // 匹配 themes.css 的高亮色
+
             const configUpdate = {
                 ...options,
-                themeColor: options?.themeColor || '#2e8555' // 默认颜色
+                themeColor: options?.themeColor || defaultThemeColor
             };
             Box.updateConfig(configUpdate);
 
@@ -62,8 +98,5 @@ const notationInput = document.getElementById('notation-input');
         }
     };
     
-    // 告诉主进程，渲染器已经准备好接收指令
-    if (window.electronAPI && window.electronAPI.sendDiceModuleReady) {
-        window.electronAPI.sendDiceModuleReady();
-    }
+    // The 'sendDiceModuleReady' is now called after the theme is set.
 });

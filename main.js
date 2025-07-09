@@ -377,6 +377,10 @@ function createWindow() {
         if (assistantWindow && !assistantWindow.isDestroyed()) {
             assistantWindow.webContents.send('theme-updated', theme);
         }
+        // Notify dice window
+        if (diceWindow && !diceWindow.isDestroyed()) {
+            diceWindow.webContents.send('theme-updated', theme);
+        }
         // Notify any other open child windows that might need theme updates
         openChildWindows.forEach(win => {
             if (win && !win.isDestroyed()) {
@@ -546,7 +550,6 @@ async function createOrFocusDiceWindow() {
     // Load the dice page from our local web server
     diceWindow.loadURL('http://localhost:6677/dice.html');
     
-    openChildWindows.push(diceWindow);
     diceWindow.setMenu(null);
 
     diceWindow.once('ready-to-show', () => {
@@ -554,7 +557,6 @@ async function createOrFocusDiceWindow() {
     });
 
     diceWindow.on('closed', () => {
-        openChildWindows = openChildWindows.filter(win => win !== diceWindow);
         diceWindow = null;
     });
 
