@@ -347,6 +347,27 @@ document.addEventListener('DOMContentLoaded', async () => {
                 contentDiv.parentNode.insertBefore(textarea, contentDiv.nextSibling);
                 textarea.focus();
 
+                // Add keyboard shortcuts for exiting edit mode
+                textarea.addEventListener('keydown', (e) => {
+                    // Ctrl+Enter to save changes
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        editAllButton.click(); // Trigger the save-and-exit logic
+                    }
+                    // Escape to cancel changes
+                    else if (e.key === 'Escape') {
+                        e.preventDefault();
+                        e.stopPropagation(); // Prevent the global Escape handler from closing the window
+                        // Manually revert the UI to its pre-edit state without saving
+                        const currentIcon = editAllButton.querySelector('svg');
+                        textarea.remove();
+                        contentDiv.style.display = '';
+                        if (currentIcon) currentIcon.outerHTML = globalEditIconSVGString;
+                        if (editAllButtonText) editAllButtonText.textContent = '编辑全文';
+                        editAllButton.setAttribute('title', '编辑全文');
+                    }
+                });
+
                 // Update button state
                 if (currentEditAllButtonIcon) currentEditAllButtonIcon.outerHTML = globalDoneIconSVGString;
                 if (editAllButtonText) editAllButtonText.textContent = '完成编辑';
@@ -513,6 +534,34 @@ document.addEventListener('DOMContentLoaded', async () => {
                 navigator.clipboard.writeText(block.innerText).catch(err => console.error('无法复制到剪贴板:', err));
             });
             preElement.appendChild(copyButton);
+        });
+// Isolate rich HTML components with their own styles using Shadow DOM
+        // to prevent CSS conflicts with the main viewer page.
+        container.querySelectorAll('div > style').forEach(styleTag => {
+            const wrapperDiv = styleTag.parentElement;
+
+            // Heuristic checks to avoid applying shadow DOM where it's not intended,
+            // such as inside code previews or on elements that have already been processed.
+            if (wrapperDiv.shadowRoot || wrapperDiv.closest('pre, .html-preview-container')) {
+                return;
+            }
+
+            // To prevent unexpected behavior, only apply this to direct children of the main content container.
+            if (wrapperDiv.parentElement !== container) {
+                return;
+            }
+
+            try {
+                const shadow = wrapperDiv.attachShadow({ mode: 'open' });
+                // Move the original content, including the <style> tag, into the shadow DOM.
+                // This scopes the styles and prevents them from affecting the main document.
+                shadow.innerHTML = wrapperDiv.innerHTML;
+                // Clear the original content of the div, as it's now in the shadow DOM.
+                wrapperDiv.innerHTML = '';
+            } catch (e) {
+                console.error('Error creating shadow DOM for rich content:', e);
+                // If shadow DOM fails, we leave the content as is to avoid breaking it.
+            }
         });
 
         // Render Mermaid diagrams
