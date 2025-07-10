@@ -55,52 +55,26 @@ function ensureToolCallFenced(text) {
     const toolRequestStart = '<<<[TOOL_REQUEST]>>>';
     const toolRequestEnd = '<<<[END_TOOL_REQUEST]>>>';
 
-    // Quick exit if no tool call is present.
     if (!text.includes(toolRequestStart)) {
         return text;
     }
 
-    let result = '';
-    let lastIndex = 0;
-    while (true) {
-        const startIndex = text.indexOf(toolRequestStart, lastIndex);
+    // This regex finds either a fully fenced block, or an unfenced block.
+    // It's robust against already-fenced content.
+    const regex = /(```[\s\S]*?<<<\[TOOL_REQUEST\]>>>[\s\S]*?<<<\[END_TOOL_REQUEST\]>>>[\s\S]*?```)|(<<<\[TOOL_REQUEST\]>>>[\s\S]*?<<<\[END_TOOL_REQUEST\]>>>)/g;
 
-        // Append the segment of text before the current tool block.
-        // If no more blocks are found, this appends the rest of the string.
-        const textSegment = text.substring(lastIndex, startIndex === -1 ? text.length : startIndex);
-        result += textSegment;
-
-        if (startIndex === -1) {
-            break; // Exit loop if no more start markers are found.
+    return text.replace(regex, (match, fencedBlock, unfencedBlock) => {
+        if (fencedBlock) {
+            // Block is already fenced. Return it untouched.
+            return fencedBlock;
         }
-
-        const endIndex = text.indexOf(toolRequestEnd, startIndex + toolRequestStart.length);
-        if (endIndex === -1) {
-            // Malformed tool call (no end tag), append the rest of the string and stop.
-            result += text.substring(startIndex);
-            break;
+        if (unfencedBlock) {
+            // Block is unfenced. Wrap it in fences for backward compatibility.
+            return `\n\`\`\`\n${unfencedBlock}\n\`\`\`\n`;
         }
-
-        const block = text.substring(startIndex, endIndex + toolRequestEnd.length);
-        
-        // Check if we are currently inside an open code block by counting fences in the processed result.
-        const fencesInResult = (result.match(/```/g) || []).length;
-
-        if (fencesInResult % 2 === 0) {
-            // Even number of fences means we are outside a code block.
-            // Wrap the tool call in new fences.
-            result += `\n\`\`\`\n${block}\n\`\`\`\n`;
-        } else {
-            // Odd number of fences means we are inside a code block.
-            // Append the tool call as is.
-            result += block;
-        }
-
-        // Move past the current tool block.
-        lastIndex = endIndex + toolRequestEnd.length;
-    }
-
-    return result;
+        // This should not be reached if regex is correct
+        return match;
+    });
 }
 
 /**
@@ -166,10 +140,68 @@ function ensureHtmlFenced(text) {
  * @param {string} text The raw text content.
  * @returns {string} The processed text.
  */
+/**
+ * Wraps raw DailyNote blocks in markdown code fences if they aren't already.
+ * This function is robust and avoids double-fencing.
+ * @param {string} text The text content.
+ * @returns {string} The processed text.
+ */
+function ensureDailyNoteFenced(text) {
+    const startTag = '<<<DailyNoteStart>>>';
+    const endTag = '<<<DailyNoteEnd>>>';
+
+    if (!text.includes(startTag)) {
+        return text;
+    }
+
+    const regex = /(```[\s\S]*?<<<DailyNoteStart>>>[\s\S]*?<<<DailyNoteEnd>>>[\s\S]*?```)|(<<<DailyNoteStart>>>[\s\S]*?<<<DailyNoteEnd>>>)/g;
+
+    return text.replace(regex, (match, fencedBlock, unfencedBlock) => {
+        if (fencedBlock) {
+            // Block is already fenced. Return it untouched.
+            return fencedBlock;
+        }
+        if (unfencedBlock) {
+            // Block is unfenced. Wrap it in fences for backward compatibility.
+            return `\n\`\`\`\n${unfencedBlock}\n\`\`\`\n`;
+        }
+        return match;
+    });
+}
+
+/**
+ * Inserts an invisible HTML comment between a closing div and a code fence
+ * to act as a "parser breaker", forcing the markdown parser to correctly
+ * separate the HTML block from the Markdown block.
+ * @param {string} text The text content.
+ * @returns {string} The processed text.
+ */
+function addParserBreakerBetweenDivAndCode(text) {
+    // Matches a </div>, optional whitespace, and a ```
+    const regex = /(<\/div>)\s*(```)/g;
+    // Replaces it with the original tags, separated by an invisible comment and newlines.
+    return text.replace(regex, '$1\n\n<!-- -->\n\n$2');
+}
+
+
+/**
+ * A helper function to preprocess the full message content string before parsing.
+ * @param {string} text The raw text content.
+ * @returns {string} The processed text.
+ */
 function preprocessFullContent(text) {
    let processed = text;
+   // The order here is important.
+
+   // 1. Add the parser breaker between HTML and Markdown blocks. This is the key fix.
+   processed = addParserBreakerBetweenDivAndCode(processed);
+
+   // 2. Ensure special blocks are fenced for backward compatibility or if AI forgets.
    processed = ensureToolCallFenced(processed);
+   processed = ensureDailyNoteFenced(processed);
    processed = ensureHtmlFenced(processed);
+
+   // 3. Run other standard content processors.
    processed = contentProcessor.ensureNewlineAfterCodeBlock(processed);
    processed = contentProcessor.ensureSpaceAfterTilde(processed);
    processed = contentProcessor.removeIndentationFromCodeBlockMarkers(processed);
