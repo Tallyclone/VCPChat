@@ -488,6 +488,28 @@ ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelCo
                     console.error('[Agent Music Control] Failed to inject music info:', e);
                 }
             }
+
+            // --- Agent Bubble Theme Injection ---
+            try {
+                const settingsPath = path.join(APP_DATA_ROOT_IN_PROJECT, 'settings.json');
+                const settings = await fs.readJson(settingsPath);
+                if (settings.enableAgentBubbleTheme) {
+                    let systemMsgIndex = messages.findIndex(m => m.role === 'system');
+                    if (systemMsgIndex === -1) {
+                        messages.unshift({ role: 'system', content: '' });
+                        systemMsgIndex = 0;
+                    }
+                    
+                    const injection = '输出规范要求：{{VarDivRender}}';
+                    if (!messages[systemMsgIndex].content.includes(injection)) {
+                        messages[systemMsgIndex].content += `\n\n${injection}`;
+                        messages[systemMsgIndex].content = messages[systemMsgIndex].content.trim();
+                    }
+                }
+            } catch (e) {
+                console.error('[Agent Bubble Theme] Failed to inject bubble theme info:', e);
+            }
+            // --- End of Injection ---
             // --- End of Injection ---
 
             console.log(`发送到VCP服务器: ${vcpUrl} for messageId: ${messageId}`);

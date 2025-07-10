@@ -641,6 +641,7 @@ async function loadAndApplyGlobalSettings() {
         document.getElementById('networkNotesPath').value = globalSettings.networkNotesPath || '';
 
         // Load smooth streaming settings
+        document.getElementById('enableAgentBubbleTheme').checked = globalSettings.enableAgentBubbleTheme === true;
         document.getElementById('enableSmoothStreaming').checked = globalSettings.enableSmoothStreaming === true;
         document.getElementById('minChunkBufferSize').value = globalSettings.minChunkBufferSize !== undefined ? globalSettings.minChunkBufferSize : 1;
         document.getElementById('smoothStreamIntervalMs').value = globalSettings.smoothStreamIntervalMs !== undefined ? globalSettings.smoothStreamIntervalMs : 25;
@@ -820,6 +821,7 @@ function setupEventListeners() {
             sidebarWidth: globalSettings.sidebarWidth, // Keep existing value if not changed by resizer
             notificationsSidebarWidth: globalSettings.notificationsSidebarWidth, // Keep existing
             // userAvatarUrl and userAvatarCalculatedColor are handled by saveUserAvatar
+            enableAgentBubbleTheme: document.getElementById('enableAgentBubbleTheme').checked,
             enableSmoothStreaming: document.getElementById('enableSmoothStreaming').checked,
             minChunkBufferSize: parseInt(document.getElementById('minChunkBufferSize').value, 10) || 1,
             smoothStreamIntervalMs: parseInt(document.getElementById('smoothStreamIntervalMs').value, 10) || 25,
