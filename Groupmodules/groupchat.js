@@ -41,13 +41,14 @@ async function getVcpGlobalSettings() {
             return {
                 vcpUrl: settings.vcpServerUrl, // 注意settings中的字段名
                 vcpApiKey: settings.vcpApiKey,
-                userName: settings.userName || '用户'
+                userName: settings.userName || '用户',
+                enableAgentBubbleTheme: settings.enableAgentBubbleTheme === true
             };
         } catch (e) {
             console.error("[GroupChat] Error reading VCP settings from settings.json", e);
         }
     }
-    return { vcpUrl: null, vcpApiKey: null, userName: '用户' };
+    return { vcpUrl: null, vcpApiKey: null, userName: '用户', enableAgentBubbleTheme: false };
 }
 
 
@@ -440,6 +441,22 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
         // 添加触发AI发言的模拟用户输入 (as text part of a content array)
         messagesForAI.push({ role: 'user', content: [{ type: 'text', text: invitePromptContent }], name: userNameForMessage });
 
+        // --- Agent Bubble Theme Injection ---
+        if (globalVcpSettings.enableAgentBubbleTheme) {
+            let systemMsgIndex = messagesForAI.findIndex(m => m.role === 'system');
+            if (systemMsgIndex === -1) {
+                messagesForAI.unshift({ role: 'system', content: '' });
+                systemMsgIndex = 0;
+            }
+            
+            const injection = '为你在群聊中构建独特的个性气泡，输出规范要求：{{VarDivRender}}';
+            if (!messagesForAI[systemMsgIndex].content.includes(injection)) {
+                messagesForAI[systemMsgIndex].content += `\n\n${injection}`;
+                messagesForAI[systemMsgIndex].content = messagesForAI[systemMsgIndex].content.trim();
+            }
+        }
+        // --- End of Injection ---
+
         if (!globalVcpSettings.vcpUrl || !agentConfig.model) {
             const errorMsg = `Agent ${agentName} (${agentId}) 无法响应：VCP URL 或模型未配置。`;
             console.error(`[GroupChat] ${errorMsg}`);
@@ -767,6 +784,22 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
     }
     messagesForAI.push(...contextForAgent);
     messagesForAI.push({ role: 'user', content: [{ type: 'text', text: invitePromptContent }], name: (globalVcpSettings.userName || '用户') }); // 模拟用户触发
+
+    // --- Agent Bubble Theme Injection ---
+    if (globalVcpSettings.enableAgentBubbleTheme) {
+        let systemMsgIndex = messagesForAI.findIndex(m => m.role === 'system');
+        if (systemMsgIndex === -1) {
+            messagesForAI.unshift({ role: 'system', content: '' });
+            systemMsgIndex = 0;
+        }
+        
+        const injection = '为你在群聊中构建独特的个性气泡，输出规范要求：{{VarDivRender}}';
+        if (!messagesForAI[systemMsgIndex].content.includes(injection)) {
+            messagesForAI[systemMsgIndex].content += `\n\n${injection}`;
+            messagesForAI[systemMsgIndex].content = messagesForAI[systemMsgIndex].content.trim();
+        }
+    }
+    // --- End of Injection ---
 
     if (!globalVcpSettings.vcpUrl || !agentConfig.model) {
         const errorMsg = `Agent ${agentName} (${invitedAgentId}) 无法响应（邀请）：VCP URL 或模型未配置。`;
