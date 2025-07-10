@@ -170,17 +170,45 @@ function ensureDailyNoteFenced(text) {
 }
 
 /**
- * Inserts an invisible HTML comment between a closing div and a code fence
- * to act as a "parser breaker", forcing the markdown parser to correctly
- * separate the HTML block from the Markdown block.
+ * Inserts an invisible HTML comment between a closing div and a special code fence
+ * (one containing a Tool Request or Daily Note). This acts as a "parser breaker",
+ * forcing the markdown parser to correctly separate the HTML block from the Markdown block.
+ * This version is more precise and avoids affecting normal code blocks.
  * @param {string} text The text content.
  * @returns {string} The processed text.
  */
 function addParserBreakerBetweenDivAndCode(text) {
-    // Matches a </div>, optional whitespace, and a ```
-    const regex = /(<\/div>)\s*(```)/g;
+    // Matches a </div>, optional whitespace, and a ``` that is FOLLOWED by a special tag.
+    // The positive lookahead `(?=...)` is the key: it checks for the special tags without consuming them,
+    // ensuring we only target ``` that are part of a Tool/Note block.
+    const regex = /(<\/div>)\s*(```(?=[\s\S]*?(?:<<<\[TOOL_REQUEST\]>>>|<<<DailyNoteStart>>>)))/g;
     // Replaces it with the original tags, separated by an invisible comment and newlines.
     return text.replace(regex, '$1\n\n<!-- -->\n\n$2');
+}
+
+
+/**
+ * Removes leading whitespace from lines that appear to be HTML tags,
+ * as long as they are not inside a fenced code block. This prevents
+ * the markdown parser from misinterpreting indented HTML as an indented code block.
+ * @param {string} text The text content.
+ * @returns {string} The processed text.
+ */
+function deIndentHtml(text) {
+    const lines = text.split('\n');
+    let inFence = false;
+    return lines.map(line => {
+        if (line.trim().startsWith('```')) {
+            inFence = !inFence;
+            return line;
+        }
+        // If we are not in a fenced block, and a line is indented and looks like HTML,
+        // remove the leading whitespace.
+        if (!inFence && line.trim().startsWith('<')) {
+            return line.trimStart();
+        }
+        return line;
+    }).join('\n');
 }
 
 
@@ -191,17 +219,21 @@ function addParserBreakerBetweenDivAndCode(text) {
  */
 function preprocessFullContent(text) {
    let processed = text;
-   // The order here is important.
+   // The order here is critical.
 
-   // 1. Add the parser breaker between HTML and Markdown blocks. This is the key fix.
+   // 1. Fix indented HTML that markdown might misinterpret as code blocks.
+   // This MUST run first to prevent indented HTML from being treated as code.
+   processed = deIndentHtml(processed);
+
+   // 2. Add a parser breaker between any remaining HTML and special code blocks.
    processed = addParserBreakerBetweenDivAndCode(processed);
 
-   // 2. Ensure special blocks are fenced for backward compatibility or if AI forgets.
+   // 3. Ensure special blocks are fenced for backward compatibility or if the AI forgets.
    processed = ensureToolCallFenced(processed);
    processed = ensureDailyNoteFenced(processed);
    processed = ensureHtmlFenced(processed);
 
-   // 3. Run other standard content processors.
+   // 4. Run other standard content processors.
    processed = contentProcessor.ensureNewlineAfterCodeBlock(processed);
    processed = contentProcessor.ensureSpaceAfterTilde(processed);
    processed = contentProcessor.removeIndentationFromCodeBlockMarkers(processed);
