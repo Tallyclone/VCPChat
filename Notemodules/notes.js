@@ -101,52 +101,119 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // --- Markdown & Preview Rendering ---
+    // --- Start: Ported Pre-processing functions ---
+    function deIndentHtml(text) {
+        if (typeof text !== 'string') return text;
+        const lines = text.split('\n');
+        let inFence = false;
+        return lines.map(line => {
+            if (line.trim().startsWith('```')) {
+                inFence = !inFence;
+                return line;
+            }
+            if (!inFence && line.trim().startsWith('<')) {
+                return line.trimStart();
+            }
+            return line;
+        }).join('\n');
+    }
+
+    function addParserBreakerBetweenDivAndCode(text) {
+        if (typeof text !== 'string') return text;
+        const regex = /(<\/div>)\s*(```(?=[\s\S]*?(?:<<<\[TOOL_REQUEST\]>>>|<<<DailyNoteStart>>>)))/g;
+        return text.replace(regex, '$1\n\n<!-- -->\n\n$2');
+    }
+
+    function ensureSpecialBlockFenced(text, startTag, endTag) {
+        if (typeof text !== 'string' || !text.includes(startTag)) return text;
+        const regex = new RegExp(`(\`\`\`[\\s\\S]*?${startTag}[\\s\\S]*?${endTag}[\\s\\S]*?\`\`\`)|(${startTag}[\\s\\S]*?${endTag})`, 'g');
+        return text.replace(regex, (match, fencedBlock, unfencedBlock) => {
+            if (fencedBlock) return fencedBlock;
+            if (unfencedBlock) return `\n\`\`\`\n${unfencedBlock}\n\`\`\`\n`;
+            return match;
+        });
+    }
+    
+    function ensureHtmlFenced(text) {
+        if (typeof text !== 'string') return text;
+        const doctypeTag = '<!DOCTYPE html>';
+        if (!text.toLowerCase().includes(doctypeTag.toLowerCase())) return text;
+        let result = '';
+        let lastIndex = 0;
+        while (true) {
+            const startIndex = text.toLowerCase().indexOf(doctypeTag.toLowerCase(), lastIndex);
+            const textSegment = text.substring(lastIndex, startIndex === -1 ? text.length : startIndex);
+            result += textSegment;
+            if (startIndex === -1) break;
+            const endIndex = text.toLowerCase().indexOf('</html>', startIndex + doctypeTag.length);
+            if (endIndex === -1) {
+                result += text.substring(startIndex);
+                break;
+            }
+            const block = text.substring(startIndex, endIndex + '</html>'.length);
+            const fencesInResult = (result.match(/```/g) || []).length;
+            if (fencesInResult % 2 === 0) {
+                result += `\n\`\`\`html\n${block}\n\`\`\`\n`;
+            } else {
+                result += block;
+            }
+            lastIndex = endIndex + '</html>'.length;
+        }
+        return result;
+    }
+
+    function preprocessFullContent(text) {
+        if (typeof text !== 'string') return text;
+        let processed = text;
+        processed = deIndentHtml(processed);
+        processed = addParserBreakerBetweenDivAndCode(processed);
+        processed = ensureSpecialBlockFenced(processed, '<<<[TOOL_REQUEST]>>>', '<<<[END_TOOL_REQUEST]>>>');
+        processed = ensureSpecialBlockFenced(processed, '<<<DailyNoteStart>>>', '<<<DailyNoteEnd>>>');
+        processed = ensureHtmlFenced(processed);
+        processed = processed.replace(/^(\s*```)(?![\r\n])/gm, '$1\n');
+        processed = processed.replace(/~(?![\s~])/g, '~ ');
+        processed = processed.replace(/^(\s*)(```.*)/gm, '$2');
+        processed = processed.replace(/(<img[^>]+>)\s*(```)/g, '$1\n\n<!-- VCP-Renderer-Separator -->\n\n$2');
+        return processed;
+    }
+    // --- End: Ported functions ---
+
     function renderMarkdown(markdown) {
         if (!window.marked || !window.hljs) {
             previewContentDiv.textContent = markdown;
             return;
         }
 
-        // 用户提出的 HTML 代码块自动包裹逻辑
-        let processedMarkdown = markdown;
-        const docTypeRegex = /<!DOCTYPE html>/i;
-        const htmlEndRegex = /<\/html>/i;
-        const codeBlockStart = '\n```html\n';
-        const codeBlockEnd = '\n```\n'; // 在这里添加了额外的换行符
+        // Use the full pre-processing pipeline
+        const processedMarkdown = preprocessFullContent(markdown);
 
-        // 检查是否包含 <!DOCTYPE html> 且前面没有代码块开始标记
-        if (docTypeRegex.test(processedMarkdown) && !processedMarkdown.includes(codeBlockStart)) {
-            const index = processedMarkdown.indexOf('<!DOCTYPE html>');
-            if (index !== -1) {
-                processedMarkdown = processedMarkdown.substring(0, index) + codeBlockStart + processedMarkdown.substring(index);
-            }
-        }
-
-        // 检查是否包含 </html> 且后面没有代码块结束标记
-        if (htmlEndRegex.test(processedMarkdown) && !processedMarkdown.includes(codeBlockEnd)) {
-            const index = processedMarkdown.lastIndexOf('</html>');
-            if (index !== -1) {
-                processedMarkdown = processedMarkdown.substring(0, index + '</html>'.length) + codeBlockEnd + processedMarkdown.substring(index + '</html>'.length);
-            }
-        }
-
-        // 修正本地图片路径：确保路径中的反斜杠转换为正斜杠，并保留 file:// 协议
+        // Sanitize local image paths (this part is specific to notes.js)
         const sanitizedMarkdown = processedMarkdown.replace(/!\[(.*?)\]\(file:\/\/([^)]+)\)/g, (match, alt, url) => {
-            // 将反斜杠转换为正斜杠
             const correctedUrl = url.replace(/\\/g, '/');
-            // 确保返回的 URL 仍然带有 file:// 协议，因为这是原始输入的一部分
             return `![${alt}](file://${correctedUrl})`;
         });
+
         const rawHtml = marked.parse(sanitizedMarkdown);
-        const cleanHtml = DOMPurify.sanitize(rawHtml, {
-            // 明确允许 img 标签和 src 属性，尽管它们通常是默认允许的
-            ADD_TAGS: ['img'],
-            ADD_ATTR: ['src'],
-            // 允许未知协议，这是最宽松的，但有安全风险
-            // 如果只针对 file://，可以考虑更精细的 hook 或自定义协议处理
-            ALLOW_UNKNOWN_PROTOCOLS: true
+        
+        // --- Style Extraction & Sanitization ---
+        // Extract <style> blocks to prevent DOMPurify from stripping their content.
+        const styleRegex = /<style\b[^>]*>[\s\S]*?<\/style>/gi;
+        const styleBlocks = rawHtml.match(styleRegex) || [];
+        const htmlWithoutStyles = rawHtml.replace(styleRegex, '');
+
+        // Sanitize the rest of the HTML.
+        const cleanHtmlBody = DOMPurify.sanitize(htmlWithoutStyles, {
+            // We don't need to allow 'style' tags here anymore as they are handled separately.
+            ADD_TAGS: ['img', 'div'],
+            ADD_ATTR: ['style'], // Still allow inline styles on elements like <div style="...">.
+            ALLOW_UNKNOWN_PROTOCOLS: true,
+            FORCE_BODY: true
         });
-        previewContentDiv.innerHTML = cleanHtml;
+
+        // Re-combine the sanitized body with the original, un-sanitized style blocks.
+        previewContentDiv.innerHTML = styleBlocks.join('\n') + cleanHtmlBody;
+
+        // Post-rendering enhancements
         if (window.renderMathInElement) {
             renderMathInElement(previewContentDiv, {
                 delimiters: [

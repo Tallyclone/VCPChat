@@ -145,32 +145,47 @@ function showContextMenu(event, messageItem, message) {
         const readModeOption = document.createElement('div');
         readModeOption.classList.add('context-menu-item', 'info-item');
         readModeOption.innerHTML = `<i class="fas fa-book-reader"></i> 阅读模式`;
-        readModeOption.onclick = () => {
-            let contentToProcess = message.content;
-            if (typeof message.content === 'object' && message.content !== null && typeof message.content.text === 'string') {
-                contentToProcess = message.content.text;
-            } else if (typeof message.content !== 'string') {
-                contentToProcess = '';
+        readModeOption.onclick = async () => { // Make it async
+            const { electronAPI, uiHelper } = mainRefs;
+            const currentSelectedItemVal = mainRefs.currentSelectedItemRef.get();
+            const currentTopicIdVal = mainRefs.currentTopicIdRef.get();
+
+            if (!currentSelectedItemVal.id || !currentTopicIdVal || !message.id) {
+                console.error("无法打开阅读模式: 缺少项目、话题或消息ID。");
+                uiHelper.showToastNotification("无法打开阅读模式: 上下文信息不完整。", "error");
+                closeContextMenu();
+                return;
             }
-            // Split content by code blocks to selectively clean media tags
-            const parts = contentToProcess.split(/(```[\s\S]*?```)/g);
-            const processedParts = parts.map(part => {
-                // If the part is a code block (starts and ends with ```), keep it as is.
-                if (part.startsWith('```') && part.endsWith('```')) {
-                    return part;
+
+            try {
+                // A new IPC call to get the raw, original content from the history file
+                const result = await electronAPI.getOriginalMessageContent(
+                    currentSelectedItemVal.id,
+                    currentSelectedItemVal.type,
+                    currentTopicIdVal,
+                    message.id
+                );
+
+                if (result.success && result.content !== undefined) {
+                    // The content from history can be a string or an object like { text: "..." }
+                    const rawContent = result.content;
+                    const contentString = (typeof rawContent === 'string') ? rawContent : (rawContent?.text || '');
+                    
+                    const windowTitle = `阅读: ${message.id.substring(0, 10)}...`;
+                    const currentTheme = document.body.classList.contains('light-theme') ? 'light' : 'dark';
+                    
+                    if (electronAPI && typeof electronAPI.openTextInNewWindow === 'function') {
+                        electronAPI.openTextInNewWindow(contentString, windowTitle, currentTheme);
+                    }
                 } else {
-                    // Otherwise, it's not a code block, so remove media tags.
-                    return part.replace(/<img[^>]*>/gi, "")
-                               .replace(/<audio[^>]*>.*?<\/audio>/gi, "[音频]")
-                               .replace(/<video[^>]*>.*?<\/video>/gi, "[视频]");
+                    console.error("获取原始消息内容失败:", result.error);
+                    uiHelper.showToastNotification(`无法加载原始消息: ${result.error || '未知错误'}`, "error");
                 }
-            });
-            const plainTextContent = processedParts.join('');
-            const windowTitle = `阅读: ${message.id.substring(0,10)}...`;
-            const currentTheme = document.body.classList.contains('light-theme') ? 'light' : 'dark';
-            if (electronAPI && typeof electronAPI.openTextInNewWindow === 'function') {
-                electronAPI.openTextInNewWindow(plainTextContent, windowTitle, currentTheme);
+            } catch (error) {
+                console.error("调用 getOriginalMessageContent 时出错:", error);
+                uiHelper.showToastNotification("加载阅读模式时发生IPC错误。", "error");
             }
+
             closeContextMenu();
         };
         menu.appendChild(readModeOption);

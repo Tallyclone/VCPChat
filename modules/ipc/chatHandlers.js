@@ -427,7 +427,39 @@ function initialize(mainWindow, context) {
             return { success: false, error: error.message };
         }
     });
-ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelConfig, messageId, isGroupCall = false, groupContext = null) => {
+ipcMain.handle('get-original-message-content', async (event, itemId, itemType, topicId, messageId) => {
+        if (!itemId || !itemType || !topicId || !messageId) {
+            return { success: false, error: '无效的参数' };
+        }
+
+        try {
+            let historyFile;
+            if (itemType === 'agent') {
+                historyFile = path.join(USER_DATA_DIR, itemId, 'topics', topicId, 'history.json');
+            } else if (itemType === 'group') {
+                historyFile = path.join(USER_DATA_DIR, itemId, 'topics', topicId, 'history.json');
+            } else {
+                return { success: false, error: '不支持的项目类型' };
+            }
+
+            if (await fs.pathExists(historyFile)) {
+                const history = await fs.readJson(historyFile);
+                const message = history.find(m => m.id === messageId);
+                if (message) {
+                    return { success: true, content: message.content };
+                } else {
+                    return { success: false, error: '在历史记录中未找到该消息' };
+                }
+            } else {
+                return { success: false, error: '聊天历史文件不存在' };
+            }
+        } catch (error) {
+            console.error(`获取原始消息内容失败 (itemId: ${itemId}, topicId: ${topicId}, messageId: ${messageId}):`, error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelConfig, messageId, isGroupCall = false, groupContext = null) => {
         console.log(`[Main - sendToVCP] ***** sendToVCP HANDLER EXECUTED for messageId: ${messageId}, isGroupCall: ${isGroupCall} *****`);
         const streamChannel = isGroupCall ? 'vcp-group-stream-chunk' : 'vcp-stream-chunk';
         try {

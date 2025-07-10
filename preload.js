@@ -58,6 +58,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getChatHistory: (agentId, topicId) => ipcRenderer.invoke('get-chat-history', agentId, topicId),
     saveChatHistory: (agentId, topicId, history) => ipcRenderer.invoke('save-chat-history', agentId, topicId, history),
 
+    getOriginalMessageContent: (itemId, itemType, topicId, messageId) => ipcRenderer.invoke('get-original-message-content', itemId, itemType, topicId, messageId),
+
     // File Handling
     handleFilePaste: (agentId, topicId, fileData) => ipcRenderer.invoke('handle-file-paste', agentId, topicId, fileData),
     selectFilesToSend: (agentId, topicId) => ipcRenderer.invoke('select-files-to-send', agentId, topicId),
