@@ -399,13 +399,58 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function enhanceRenderedContent(container) {
-        // Single pass to enhance all code blocks following the user's suggested logic
-        container.querySelectorAll('pre code').forEach((block) => {
-            const preElement = block.parentElement;
-            if (preElement.querySelector('.copy-button')) return; // Already enhanced
+        const codeBlocksToProcess = [];
+        const mermaidBlocksToRender = [];
 
-            // --- Step 1: Clean the language identifier from the text content (Simple & Direct) ---
-            // Use textContent which is safer for preserving line breaks than innerText.
+        // First pass: Separate Mermaid blocks from regular code blocks
+        container.querySelectorAll('pre code').forEach((codeBlock) => {
+            const firstLine = (codeBlock.textContent.trim().split('\n')[0] || '').trim().toLowerCase();
+            const isMermaidByClass = codeBlock.classList.contains('language-mermaid');
+            const isMermaidByContent = firstLine === 'mermaid';
+
+            if (isMermaidByClass || isMermaidByContent) {
+                mermaidBlocksToRender.push({ codeBlock, isMermaidByContent });
+            } else {
+                codeBlocksToProcess.push(codeBlock);
+            }
+        });
+
+        // --- RENDER MERMAID ---
+        if (window.mermaid && mermaidBlocksToRender.length > 0) {
+            const mermaidElements = [];
+            mermaidBlocksToRender.forEach(({ codeBlock, isMermaidByContent }) => {
+                const preElement = codeBlock.parentElement;
+                const mermaidContainer = document.createElement('div');
+                mermaidContainer.className = 'mermaid';
+
+                let mermaidText = codeBlock.textContent;
+                if (isMermaidByContent) {
+                    const newlineIndex = mermaidText.indexOf('\n');
+                    mermaidText = newlineIndex !== -1 ? mermaidText.substring(newlineIndex + 1) : '';
+                }
+                
+                mermaidContainer.textContent = mermaidText.trim();
+                
+                preElement.parentNode.replaceChild(mermaidContainer, preElement);
+                mermaidElements.push(mermaidContainer);
+            });
+
+            try {
+                mermaid.run({ nodes: mermaidElements });
+            } catch(e) {
+                console.error("Mermaid rendering error:", e);
+                mermaidElements.forEach(block => {
+                    block.innerHTML = `Mermaid Error: ${e.message}`;
+                });
+            }
+        }
+
+        // --- PROCESS REGULAR CODE BLOCKS ---
+        codeBlocksToProcess.forEach((block) => {
+            const preElement = block.parentElement;
+            if (!preElement || preElement.querySelector('.copy-button')) return; // Already enhanced or parent gone
+
+            // Step 1: Clean language identifier
             let lines = block.textContent.split('\n');
             if (lines.length > 0) {
                 const firstLine = lines[0].trim().toLowerCase();
@@ -415,21 +460,19 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             }
 
-            // --- Step 2: Apply syntax highlighting to the cleaned block ---
+            // Step 2: Apply syntax highlighting
             if (window.hljs) {
                 hljs.highlightElement(block);
             }
 
-            // --- Step 3: Add interactive buttons ---
+            // Step 3: Add interactive buttons
             preElement.style.position = 'relative';
-            const codeContent = decodeHtmlEntities(block.textContent); // Use textContent to preserve line breaks
+            const codeContent = decodeHtmlEntities(block.textContent);
             
-            // --- Robust HTML Detection Logic (User's Suggestion) ---
             const isHtmlByClass = Array.from(block.classList).some(cls => /^language-html$/i.test(cls));
             const trimmedContent = codeContent.trim().toLowerCase();
             const isHtmlByContent = trimmedContent.startsWith('<!doctype html>') || trimmedContent.startsWith('<html>');
             const isHtml = isHtmlByClass || isHtmlByContent;
-            // --- End of Robust Logic ---
 
             const isPython = Array.from(block.classList).some(cls => /^language-python$/i.test(cls));
 
@@ -468,7 +511,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     preElement.parentNode.insertBefore(previewContainer, preElement.nextSibling);
                     const iframeDoc = iframe.contentWindow.document;
                     iframeDoc.open();
-                    let finalHtml = codeContent; // codeContent is already cleaned
+                    let finalHtml = codeContent;
                     const trimmedCode = codeContent.trim().toLowerCase();
                     if (!trimmedCode.startsWith('<!doctype') && !trimmedCode.startsWith('<html>')) {
                         const bodyStyles = document.body.classList.contains('light-theme')
@@ -494,7 +537,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (outputContainer.style.display === 'block') {
                         outputContainer.style.display = 'none';
                     } else {
-                        const codeToRun = decodeHtmlEntities(block.innerText); // Get the cleaned text
+                        const codeToRun = decodeHtmlEntities(block.innerText);
                         runPythonCode(codeToRun, outputContainer);
                     }
                 });
@@ -517,7 +560,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 } else {
                     editButton.innerHTML = editIconSVG;
                     editButton.setAttribute('title', '编辑');
-                    // Re-highlight after editing is done
                     if (window.hljs) {
                         hljs.highlightElement(block);
                     }
@@ -535,48 +577,26 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
             preElement.appendChild(copyButton);
         });
-// Isolate rich HTML components with their own styles using Shadow DOM
-        // to prevent CSS conflicts with the main viewer page.
+
+        // --- PROCESS SHADOW DOM ---
         container.querySelectorAll('div > style').forEach(styleTag => {
             const wrapperDiv = styleTag.parentElement;
-
-            // Heuristic checks to avoid applying shadow DOM where it's not intended,
-            // such as inside code previews or on elements that have already been processed.
             if (wrapperDiv.shadowRoot || wrapperDiv.closest('pre, .html-preview-container')) {
                 return;
             }
-
-            // To prevent unexpected behavior, only apply this to direct children of the main content container.
             if (wrapperDiv.parentElement !== container) {
                 return;
             }
-
             try {
                 const shadow = wrapperDiv.attachShadow({ mode: 'open' });
-                // Move the original content, including the <style> tag, into the shadow DOM.
-                // This scopes the styles and prevents them from affecting the main document.
                 shadow.innerHTML = wrapperDiv.innerHTML;
-                // Clear the original content of the div, as it's now in the shadow DOM.
                 wrapperDiv.innerHTML = '';
             } catch (e) {
                 console.error('Error creating shadow DOM for rich content:', e);
-                // If shadow DOM fails, we leave the content as is to avoid breaking it.
             }
         });
 
-        // Render Mermaid diagrams
-        if (window.mermaid) {
-            container.querySelectorAll('div.mermaid').forEach((mermaidBlock) => {
-                 try {
-                    mermaid.run({ nodes: [mermaidBlock] });
-                 } catch(e) {
-                    console.error("Mermaid rendering error:", e);
-                    mermaidBlock.innerHTML = `Mermaid Error: ${e.message}`;
-                 }
-            });
-        }
-
-        // Render LaTeX
+        // --- RENDER LATEX ---
         if (window.renderMathInElement) {
             try {
                 renderMathInElement(container, {
