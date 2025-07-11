@@ -331,6 +331,20 @@ function initializeMessageRenderer(refs) {
        chatMessagesDiv: mainRendererReferences.chatMessagesDiv,
    });
 
+   // Create a new marked instance wrapper specifically for the stream manager.
+   // This ensures that any text passed to `marked.parse()` during streaming
+   // is first processed by `deIndentHtml`. This robustly fixes the issue of
+   // indented HTML being rendered as code blocks during live streaming,
+   // without needing to modify the stream manager itself.
+   const originalMarkedParse = mainRendererReferences.markedInstance.parse.bind(mainRendererReferences.markedInstance);
+   const streamingMarkedInstance = {
+       ...mainRendererReferences.markedInstance,
+       parse: (text) => {
+           const deIndentedText = deIndentHtml(text);
+           return originalMarkedParse(deIndentedText);
+       }
+   };
+
    contentProcessor.initializeContentProcessor(mainRendererReferences);
 
    contextMenu.initializeContextMenu(mainRendererReferences, {
@@ -354,7 +368,7 @@ function initializeMessageRenderer(refs) {
        
        // DOM & API Refs
        chatMessagesDiv: mainRendererReferences.chatMessagesDiv,
-       markedInstance: mainRendererReferences.markedInstance,
+       markedInstance: streamingMarkedInstance, // Use the wrapped instance
        electronAPI: mainRendererReferences.electronAPI,
        uiHelper: mainRendererReferences.uiHelper,
 
