@@ -63,7 +63,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     messages: messages,
                     model: modelConfig.model,
                     temperature: modelConfig.temperature,
-                    stream: true
+                    stream: false // Use non-streaming request
                 }),
                 signal: signal
             });
@@ -73,40 +73,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 throw new Error(`服务器错误: ${response.status} ${response.statusText} - ${errorText}`);
             }
 
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
+            const result = await response.json();
+            const translation = result.choices?.[0]?.message?.content;
 
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) {
-                    console.log('Translation stream finished.');
-                    break;
-                }
-                
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                buffer = lines.pop(); // Keep the last partial line
-
-                for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                        const jsonData = line.substring(5).trim();
-                        if (jsonData === '[DONE]') {
-                            continue;
-                        }
-                        try {
-                            const parsedChunk = JSON.parse(jsonData);
-                            const delta = parsedChunk.choices?.[0]?.delta?.content;
-                            if (delta) {
-                                fullTranslation += delta;
-                                translatedTextarea.value = fullTranslation;
-                                translatedTextarea.scrollTop = translatedTextarea.scrollHeight;
-                            }
-                        } catch (e) {
-                            console.warn('Failed to parse stream chunk:', jsonData, e);
-                        }
-                    }
-                }
+            if (translation) {
+                translatedTextarea.value = translation;
+            } else {
+                throw new Error('API 返回的响应中没有有效的翻译内容。');
             }
         } catch (error) {
             if (error.name === 'AbortError') {
