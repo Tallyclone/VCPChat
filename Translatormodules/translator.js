@@ -5,16 +5,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     const targetLanguageSelect = document.getElementById('targetLanguageSelect');
     const customPromptVarInput = document.getElementById('customPromptVar');
     const translateBtn = document.getElementById('translateBtn');
-    const copyBtn = document.getElementById('copyBtn'); 
+    const copyBtn = document.getElementById('copyBtn');
 
     // 配置和状态变量
     let vcpServerUrl = '';
     let vcpApiKey = '';
     let currentTheme = 'dark'; // 默认是暗色主题
-
-    // 用于管理翻译流的状态变量
-    let latestMessageId = null; 
-    let fullTranslation = '';
+    let abortController = null; // 用于中止 fetch 请求
 
     // 保存复制按钮原始的 SVG 图标
     const originalCopyBtnIcon = copyBtn.innerHTML;
@@ -25,56 +22,115 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentTheme = theme;
     };
 
-    // 解析 URL 参数以获取配置
-    const urlParams = new URLSearchParams(window.location.search);
-    const vcpServerUrlParam = urlParams.get('vcpServerUrl');
-    if (vcpServerUrlParam) {
-        vcpServerUrl = decodeURIComponent(vcpServerUrlParam);
-    }
-
-    const vcpApiKeyParam = urlParams.get('vcpApiKey');
-    if (vcpApiKeyParam) {
-        vcpApiKey = decodeURIComponent(vcpApiKeyParam);
-    }
-
-    console.log('Translator loaded with:', { vcpServerUrl, vcpApiKey, currentTheme });
-
-    // --- 监听流式数据 ---
-    window.electronAPI.onVCPStreamChunk((eventData) => {
-        if (eventData.messageId !== latestMessageId || !latestMessageId) {
-            return;
-        }
-
-        if (eventData.type === 'data' && eventData.chunk) {
-            const delta = eventData.chunk.choices?.[0]?.delta?.content;
-            if (delta) {
-                fullTranslation += delta;
-                translatedTextarea.value = fullTranslation;
-                translatedTextarea.scrollTop = translatedTextarea.scrollHeight;
+    // 从主进程加载配置
+    async function loadConfig() {
+        try {
+            const settings = await window.electronAPI.loadSettings();
+            if (settings.vcpServerUrl && settings.vcpApiKey) {
+                vcpServerUrl = settings.vcpServerUrl;
+                vcpApiKey = settings.vcpApiKey;
+                console.log('Translator config loaded successfully:', { vcpServerUrl, vcpApiKey });
+            } else {
+                console.error('Failed to load VCP config from settings.');
+                alert('无法从主程序加载翻译配置。');
             }
-        } 
-        else if (eventData.type === 'end') {
-            console.log('Translation stream ended.');
-            translatedTextarea.classList.remove('streaming');
-            latestMessageId = null;
-        } 
-        else if (eventData.type === 'error') {
-            console.error('Translation stream error:', eventData.error);
-            translatedTextarea.value = `翻译错误: ${eventData.error.message || eventData.error}`;
-            translatedTextarea.classList.remove('streaming');
-            latestMessageId = null;
+        } catch (error) {
+            console.error('Error loading settings via IPC:', error);
+            alert('加载配置时出错。');
         }
-    });
+    }
+
+    // --- 直接调用 VCP API 进行翻译 ---
+    async function performDirectTranslation(messages, modelConfig) {
+        if (abortController) {
+            abortController.abort(); // Abort previous request if any
+        }
+        abortController = new AbortController();
+        const signal = abortController.signal;
+
+        let fullTranslation = '';
+        translatedTextarea.value = '翻译中...';
+        translatedTextarea.classList.add('streaming');
+
+        try {
+            const response = await fetch(vcpServerUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${vcpApiKey}`
+                },
+                body: JSON.stringify({
+                    messages: messages,
+                    model: modelConfig.model,
+                    temperature: modelConfig.temperature,
+                    stream: true
+                }),
+                signal: signal
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`服务器错误: ${response.status} ${response.statusText} - ${errorText}`);
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) {
+                    console.log('Translation stream finished.');
+                    break;
+                }
+                
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop(); // Keep the last partial line
+
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        const jsonData = line.substring(5).trim();
+                        if (jsonData === '[DONE]') {
+                            continue;
+                        }
+                        try {
+                            const parsedChunk = JSON.parse(jsonData);
+                            const delta = parsedChunk.choices?.[0]?.delta?.content;
+                            if (delta) {
+                                fullTranslation += delta;
+                                translatedTextarea.value = fullTranslation;
+                                translatedTextarea.scrollTop = translatedTextarea.scrollHeight;
+                            }
+                        } catch (e) {
+                            console.warn('Failed to parse stream chunk:', jsonData, e);
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                console.log('Translation request was aborted.');
+                translatedTextarea.value = '翻译已取消。';
+            } else {
+                console.error('Error during direct translation fetch:', error);
+                translatedTextarea.value = `翻译请求失败: ${error.message}`;
+            }
+        } finally {
+            translatedTextarea.classList.remove('streaming');
+            abortController = null;
+        }
+    }
 
     // --- 为翻译按钮添加点击事件 ---
-    translateBtn.addEventListener('click', async () => {
+    translateBtn.addEventListener('click', () => {
         const sourceText = sourceTextarea.value.trim();
         if (!sourceText) {
             alert('请输入要翻译的文本。');
             return;
         }
         if (!vcpServerUrl || !vcpApiKey) {
-            alert('VCP 服务器 URL 或 API Key 未配置。');
+            alert('VCP 服务器 URL 或 API Key 未配置，请检查主程序设置。');
             return;
         }
 
@@ -88,32 +144,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         systemPrompt += ` 仅返回翻译结果，不要包含任何解释或额外信息。`;
 
         const messages = [{ role: 'system', content: systemPrompt }, { role: 'user', content: sourceText }];
-        const modelConfig = { model: 'gemini-2.5-flash-preview-05-20', temperature: 0.7, stream: true };
+        const modelConfig = { model: 'gemini-2.5-flash-preview-05-20', temperature: 0.7 };
 
-        fullTranslation = '';
-        translatedTextarea.value = '翻译中...';
-        translatedTextarea.classList.add('streaming');
-        
-        const messageId = `translator-${Date.now()}`;
-        latestMessageId = messageId;
-
-        try {
-            const response = await window.electronAPI.sendToVCP(vcpServerUrl, vcpApiKey, messages, modelConfig, messageId);
-            if (response && response.streamError) {
-                translatedTextarea.value = `翻译失败: ${response.errorDetail.message || response.error}`;
-                translatedTextarea.classList.remove('streaming');
-                latestMessageId = null;
-            }
-        } catch (error) {
-            console.error('Error sending translation request to VCP:', error);
-            translatedTextarea.value = `翻译请求失败: ${error.message}`;
-            translatedTextarea.classList.remove('streaming');
-            latestMessageId = null;
-        }
+        performDirectTranslation(messages, modelConfig);
     });
 
-    // --- Theme Handling ---
-    async function initializeTheme() {
+    // --- Initialization and Theme Handling ---
+    async function initialize() {
+        await loadConfig(); // Load VCP settings first
+
+        // Then initialize theme
         try {
             const theme = await window.electronAPI.getCurrentTheme();
             applyTheme(theme || 'dark');
@@ -121,17 +161,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.error('Failed to get initial theme:', error);
             applyTheme('dark'); // Fallback
         }
-    }
 
-    if (window.electronAPI) {
-        initializeTheme();
-        window.electronAPI.onThemeUpdated((theme) => {
-            console.log(`Theme update received in translator: ${theme}`);
-            applyTheme(theme);
-        });
-    } else {
-        console.warn('electronAPI not found. Theme updates will not work.');
-        applyTheme('dark');
+        if (window.electronAPI) {
+            window.electronAPI.onThemeUpdated((theme) => {
+                console.log(`Theme update received in translator: ${theme}`);
+                applyTheme(theme);
+            });
+        } else {
+            console.warn('electronAPI not found. Theme updates will not work.');
+        }
     }
 
     // --- 为复制按钮添加点击事件 ---
@@ -153,4 +191,5 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
+    initialize();
 });
