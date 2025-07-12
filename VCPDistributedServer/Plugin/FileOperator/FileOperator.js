@@ -6,6 +6,7 @@ const { minimatch } = require('minimatch');
 const pdf = require('pdf-parse');
 const mammoth = require('mammoth');
 const ExcelJS = require('exceljs');
+const trash = require('trash');
 
 // Load environment variables
 require('dotenv').config();
@@ -15,7 +16,7 @@ const ALLOWED_DIRECTORIES = (process.env.ALLOWED_DIRECTORIES || '')
   .split(',')
   .map(dir => dir.trim())
   .filter(dir => dir);
-const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE) || 10485760; // 10MB default
+const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE) || 20971520; // 20MB default
 const MAX_DIRECTORY_ITEMS = parseInt(process.env.MAX_DIRECTORY_ITEMS) || 1000;
 const MAX_SEARCH_RESULTS = parseInt(process.env.MAX_SEARCH_RESULTS) || 100;
 const DEBUG_MODE = process.env.DEBUG_MODE === 'true';
@@ -112,6 +113,10 @@ async function readFile(filePath, encoding = 'utf8') {
     // Read file as buffer for parsers
     const fileBuffer = await fs.readFile(filePath);
 
+    const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
+    const audioExtensions = ['.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a'];
+    const videoExtensions = ['.mp4', '.webm', '.mov'];
+
     if (extension === '.pdf') {
       const data = await pdf(fileBuffer);
       content = data.text;
@@ -123,43 +128,68 @@ async function readFile(filePath, encoding = 'utf8') {
     } else if (['.xlsx', '.xls', '.csv'].includes(extension)) {
       const workbook = new ExcelJS.Workbook();
       if (extension === '.csv') {
-        // For CSV, we need to read it into a worksheet
         const worksheet = await workbook.csv.read(new (require('stream').Readable)({
-          read() {
-            this.push(fileBuffer);
-            this.push(null);
-          }
+          read() { this.push(fileBuffer); this.push(null); }
         }));
       } else {
-        // For XLSX/XLS
         await workbook.xlsx.load(fileBuffer);
       }
-      
       let sheetContent = '';
       workbook.eachSheet((worksheet, sheetId) => {
         sheetContent += `--- Sheet: ${worksheet.name} ---\n`;
         worksheet.eachRow({ includeEmpty: true }, (row, rowNumber) => {
-          // Convert row values to a tab-separated string
           sheetContent += row.values.slice(1).join('\t') + '\n';
         });
       });
       content = sheetContent;
       isExtracted = true;
+    } else if (imageExtensions.includes(extension)) {
+        const mimeType = `image/${extension.slice(1).replace('jpg', 'jpeg')}`;
+        content = `data:${mimeType};base64,${fileBuffer.toString('base64')}`;
+        isExtracted = true;
+    } else if (audioExtensions.includes(extension)) {
+        const mimeType = `audio/${extension.slice(1).replace('mp3', 'mpeg')}`;
+        content = `data:${mimeType};base64,${fileBuffer.toString('base64')}`;
+        isExtracted = true;
+    } else if (videoExtensions.includes(extension)) {
+        const mimeType = `video/${extension.slice(1)}`;
+        content = `data:${mimeType};base64,${fileBuffer.toString('base64')}`;
+        isExtracted = true;
     } else {
       // Fallback for plain text files
       content = fileBuffer.toString(encoding);
     }
 
-    return {
-      success: true,
-      data: {
-        content: content,
+    const returnData = {
         size: stats.size,
         sizeFormatted: formatFileSize(stats.size),
         lastModified: stats.mtime.toISOString(),
-        encoding: isExtracted ? 'utf8' : encoding, // Extracted content is always utf8 text
+        encoding: isExtracted ? 'utf8' : encoding,
         isExtracted: isExtracted,
-      },
+        fileName: path.basename(filePath)
+    };
+
+    if (isExtracted && content.startsWith('data:image')) {
+        returnData.content = [
+            { type: 'text', text: `已读取图片文件 '${returnData.fileName}'。` },
+            { type: 'image_url', image_url: { url: content } }
+        ];
+    } else if (isExtracted && (content.startsWith('data:audio') || content.startsWith('data:video'))) {
+        // For audio/video, we follow the same structure as images,
+        // relying on the data URI's MIME type for the model to differentiate.
+        const fileType = content.startsWith('data:audio') ? '音频' : '视频';
+        returnData.content = [
+            { type: 'text', text: `已读取${fileType}文件 '${returnData.fileName}'。` },
+            { type: 'image_url', image_url: { url: content } }
+        ];
+    } else {
+        // For text-based files
+        returnData.content = content;
+    }
+
+    return {
+      success: true,
+      data: returnData,
     };
   } catch (error) {
     debugLog('Error reading file', { filePath, error: error.message });
@@ -537,16 +567,12 @@ async function deleteFile(filePath) {
       type: stats.isDirectory() ? 'directory' : 'file',
     };
 
-    if (stats.isDirectory()) {
-      await fs.rmdir(filePath, { recursive: ENABLE_RECURSIVE_OPERATIONS });
-    } else {
-      await fs.unlink(filePath);
-    }
+    await trash(filePath);
 
     return {
       success: true,
       data: {
-        message: `${fileInfo.type} deleted successfully`,
+        message: `${fileInfo.type} moved to trash successfully`,
         deletedItem: fileInfo,
       },
     };
@@ -775,7 +801,7 @@ function convertToVCPFormat(response) {
   if (response.success) {
     return {
       status: 'success',
-      result: JSON.stringify(response.data || response.message || 'Operation completed successfully'),
+      result: response.data || { message: response.message || 'Operation completed successfully' },
     };
   } else {
     return {
