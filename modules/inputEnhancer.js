@@ -355,6 +355,45 @@ function initializeInputEnhancer(refs) {
 
     console.log('[InputEnhancer] Event listeners attached to message input.');
 
+    // Listen for files shared from other windows (like the music player)
+    localElectronAPI.onAddFileToInput(async (filePath) => {
+        console.log(`[InputEnhancer] Received shared file path: ${filePath}`);
+        const agentId = currentAgentIdRef();
+        const topicId = currentTopicIdRef();
+
+        if (!agentId || !topicId) {
+            alert("请先选择一个Agent和话题才能分享文件。");
+            return;
+        }
+
+        // We can reuse the handleFileDrop logic. It's designed to take file paths.
+        // The main process will read the file content from the path.
+        try {
+            // We need to get the filename from the path to mimic a real File object.
+            const fileName = await window.electronPath.basename(filePath);
+            const results = await localElectronAPI.handleFileDrop(agentId, topicId, [{ path: filePath, name: fileName }]);
+            if (results && results.length > 0 && results[0].success && results[0].attachment) {
+                const att = results[0].attachment;
+                const currentFiles = attachedFilesRef.get();
+                currentFiles.push({
+                    file: { name: att.name, type: att.type, size: att.size },
+                    localPath: att.internalPath,
+                    originalName: att.name,
+                    _fileManagerData: att
+                });
+                attachedFilesRef.set(currentFiles);
+                updateAttachmentPreviewRef();
+                console.log(`[InputEnhancer] Successfully attached shared file: ${att.name}`);
+            } else {
+                const errorMsg = results && results.length > 0 && results[0].error ? results[0].error : '未知错误';
+                alert(`附加分享的文件失败: ${errorMsg}`);
+            }
+        } catch (err) {
+            console.error('[InputEnhancer] Error attaching shared file:', err);
+            alert('附加分享的文件时发生意外错误。');
+        }
+    });
+
     // --- @note Mention Functionality ---
     let noteSuggestionPopup = null;
     let activeSuggestionIndex = -1;

@@ -92,6 +92,13 @@ body {
     align-items: center;
     gap: 20px;
     margin-bottom: 20px;
+    position: relative; /* 为分享按钮定位 */
+}
+
+#share-btn {
+    position: absolute;
+    top: 25px; /* 与面板内边距对齐 */
+    right: 25px; /* 与面板内边距对齐 */
 }
 
 .album-art-wrapper {

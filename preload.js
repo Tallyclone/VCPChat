@@ -3,13 +3,17 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronPath', {
     dirname: (p) => ipcRenderer.invoke('path:dirname', p),
-    extname: (p) => ipcRenderer.invoke('path:extname', p)
+    extname: (p) => ipcRenderer.invoke('path:extname', p),
+    basename: (p) => ipcRenderer.invoke('path:basename', p)
 });
 
 contextBridge.exposeInMainWorld('electron', {
     send: (channel, data) => {
         // whitelist channels
-        let validChannels = ['open-music-folder', 'open-music-window', 'save-music-playlist', 'music-track-changed', 'music-renderer-ready'];
+        let validChannels = [
+            'open-music-folder', 'open-music-window', 'save-music-playlist',
+            'music-track-changed', 'music-renderer-ready', 'share-file-to-main'
+        ];
         if (validChannels.includes(channel)) {
             ipcRenderer.send(channel, data);
         }
@@ -21,7 +25,9 @@ contextBridge.exposeInMainWorld('electron', {
         }
     },
     on: (channel, func) => {
-        let validChannels = ['music-files', 'scan-started', 'scan-progress', 'scan-finished'];
+        let validChannels = [
+            'music-files', 'scan-started', 'scan-progress', 'scan-finished'
+        ];
         if (validChannels.includes(channel)) {
             // Deliberately strip event as it includes `sender`
             ipcRenderer.on(channel, (event, ...args) => func(...args));
@@ -67,6 +73,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getTextContent: (filePath, fileType) => ipcRenderer.invoke('get-text-content', filePath, fileType),
     handleTextPasteAsFile: (agentId, topicId, textContent) => ipcRenderer.invoke('handle-text-paste-as-file', agentId, topicId, textContent),
     handleFileDrop: (agentId, topicId, droppedFilesData) => ipcRenderer.invoke('handle-file-drop', agentId, topicId, droppedFilesData),
+    onAddFileToInput: (callback) => ipcRenderer.on('add-file-to-input', (_event, filePath) => callback(filePath)),
 
     // Notes
     // --- Notes (New Tree Structure) ---

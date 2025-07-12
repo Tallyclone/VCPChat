@@ -734,6 +734,9 @@ async function handleDiceControl(args) {
     ipcMain.handle('path:extname', (event, p) => {
         return path.extname(p);
     });
+    ipcMain.handle('path:basename', (event, p) => {
+        return path.basename(p);
+    });
 
 
     // Group Chat IPC Handlers are now in modules/ipc/groupChatHandlers.js
@@ -1650,6 +1653,17 @@ async function handleDiceControl(args) {
             await fs.writeJson(MUSIC_PLAYLIST_FILE, playlist, { spaces: 2 });
         } catch (error) {
             console.error('Error saving music playlist:', error);
+        }
+    });
+
+    // IPC handler to forward shared music file path to the main window
+    ipcMain.on('share-file-to-main', (event, filePath) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            console.log(`[Main Process] Forwarding shared file to renderer: ${filePath}`);
+            mainWindow.webContents.send('add-file-to-input', filePath);
+            // Bring main window to front
+            if (mainWindow.isMinimized()) mainWindow.restore();
+            mainWindow.focus();
         }
     });
 

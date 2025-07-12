@@ -26,6 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const playerBackground = document.getElementById('player-background');
     const visualizerCanvas = document.getElementById('visualizer'); // 新增
     const visualizerCtx = visualizerCanvas.getContext('2d'); // 新增
+    const shareBtn = document.getElementById('share-btn');
 
     // State variables
     let playlist = [];
@@ -365,6 +366,20 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('resize', () => {
         visualizerCanvas.width = visualizerCanvas.clientWidth;
         visualizerCanvas.height = visualizerCanvas.clientHeight;
+    });
+
+    shareBtn.addEventListener('click', () => {
+        if (!playlist || playlist.length === 0 || !playlist[currentTrackIndex]) {
+            console.warn('Share button clicked, but no track is loaded.');
+            return;
+        }
+        const track = playlist[currentTrackIndex];
+        const filePath = track.path;
+        if (filePath && window.electron) {
+            console.log(`Sharing music file path to main process: ${filePath}`);
+            // 将文件路径发送到主进程，由主进程转发给主窗口
+            window.electron.send('share-file-to-main', filePath);
+        }
     });
 
 
