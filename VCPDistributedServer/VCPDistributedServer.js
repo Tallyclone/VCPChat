@@ -201,11 +201,18 @@ class DistributedServer {
             } else {
                 // --- Default Handling for all other plugins ---
                 try {
-                    // The result from other plugins is expected to be a JSON string.
-                    finalResult = JSON.parse(result);
+                    // The result from other plugins is expected to be a JSON string
+                    // containing a status and a result/error field.
+                    const parsedPluginResult = JSON.parse(result);
+                    if (parsedPluginResult.status === 'success') {
+                        finalResult = parsedPluginResult.result;
+                    } else {
+                        // If the plugin itself reported an error, throw it to be caught below.
+                        throw new Error(parsedPluginResult.error || 'Plugin reported an error without a message.');
+                    }
                 } catch (e) {
-                    // If not JSON, wrap it for safety.
-                    finalResult = { original_plugin_output: result };
+                    // If parsing fails or the plugin reported an error, re-throw.
+                    throw new Error(`Failed to process plugin result for ${toolName}: ${e.message}`);
                 }
             }
 
