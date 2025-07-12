@@ -81,21 +81,30 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (event.ctrlKey) {
                     event.preventDefault(); // Prevent page zoom
 
-                    const rect = imgElement.getBoundingClientRect();
-                    const mouseX = event.clientX - rect.left; // Mouse X relative to image
-                    const mouseY = event.clientY - rect.top;  // Mouse Y relative to image
-
-                    // Set transform origin to mouse position
-                    imgElement.style.transformOrigin = `${mouseX}px ${mouseY}px`;
+                    const mouseX = event.offsetX; // Mouse X relative to image's padding edge
+                    const mouseY = event.offsetY;  // Mouse Y relative to image's padding edge
 
                     const scaleAmount = 0.1;
+                    const oldScale = currentScale;
+
+                    let newScale;
                     if (event.deltaY < 0) { // Zoom in
-                        currentScale = Math.min(maxScale, currentScale + scaleAmount);
+                        newScale = Math.min(maxScale, oldScale + scaleAmount);
                     } else { // Zoom out
-                        currentScale = Math.max(minScale, currentScale - scaleAmount);
+                        newScale = Math.max(minScale, oldScale - scaleAmount);
                     }
+
+                    if (newScale === oldScale) {
+                        return; // No change, no need to update
+                    }
+
+                    // Adjust translation to zoom around the mouse pointer
+                    imgInitialX = mouseX - ((mouseX - imgInitialX) / oldScale) * newScale;
+                    imgInitialY = mouseY - ((mouseY - imgInitialY) / oldScale) * newScale;
                     
-                    // Apply scale and keep current translation
+                    currentScale = newScale;
+
+                    // Apply new transform
                     imgElement.style.transform = `translate(${imgInitialX}px, ${imgInitialY}px) scale(${currentScale})`;
 
                     if (currentScale > 1) {
