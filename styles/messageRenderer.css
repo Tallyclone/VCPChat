@@ -73,6 +73,7 @@
     padding: 8px 15px 8px 35px !important;
     color: #ffffff !important;
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+    margin-top: 5px !important; /* Add space above the tool bubble */
     margin-bottom: 10px !important;
     position: relative;
     overflow: hidden;
