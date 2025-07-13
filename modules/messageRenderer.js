@@ -1,483 +1,779 @@
-/* Enhanced Rendering Styles for Message Renderer */
+// modules/messageRenderer.js
 
-/* Keyframes for animations */
-@keyframes vcp-bubble-background-flow-kf {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
-}
+// --- Enhanced Rendering Constants ---
+const ENHANCED_RENDER_DEBOUNCE_DELAY = 400; // ms, for general blocks during streaming
+const DIARY_RENDER_DEBOUNCE_DELAY = 1000; // ms, potentially longer for diary if complex
+const enhancedRenderDebounceTimers = new WeakMap(); // For debouncing prettify calls
 
-@keyframes vcp-bubble-border-flow-kf {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 200% 50%; } /* Adjusted for more color travel */
-    100% { background-position: 0% 50%; }
-}
 
-@keyframes vcp-icon-rotate {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
 
-@keyframes vcp-icon-heartbeat {
-    0% { transform: scale(1); opacity: 0.6; }
-    50% { transform: scale(1.15); opacity: 0.9; }
-    100% { transform: scale(1); opacity: 0.6; }
-}
+import { avatarColorCache, getDominantAvatarColor } from './renderer/colorUtils.js';
+import { initializeImageHandler, setContentAndProcessImages, clearImageState, clearAllImageStates } from './renderer/imageHandler.js';
+import { createMessageSkeleton } from './renderer/domBuilder.js';
+import * as streamManager from './renderer/streamManager.js';
 
-@keyframes vcp-toolname-color-flow-kf {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 150% 50%; } /* Adjusted for smoother flow with 300% background-size */
-    100% { background-position: 0% 50%; }
-}
 
-/* Loading dots animation */
-@keyframes vcp-loading-dots {
-  0%, 20% {
-    color: rgba(0,0,0,0);
-    text-shadow:
-      .25em 0 0 rgba(0,0,0,0),
-      .5em 0 0 rgba(0,0,0,0);
-  }
-  40% {
-    color: currentColor; /* Or a specific color */
-    text-shadow:
-      .25em 0 0 rgba(0,0,0,0),
-      .5em 0 0 rgba(0,0,0,0);
-  }
-  60% {
-    text-shadow:
-      .25em 0 0 currentColor, /* Or a specific color */
-      .5em 0 0 rgba(0,0,0,0);
-  }
-  80%, 100% {
-    text-shadow:
-      .25em 0 0 currentColor, /* Or a specific color */
-      .5em 0 0 currentColor; /* Or a specific color */
-  }
+import * as contentProcessor from './renderer/contentProcessor.js';
+import * as contextMenu from './renderer/messageContextMenu.js';
+
+
+// --- Enhanced Rendering Styles (from UserScript) ---
+function injectEnhancedStyles() {
+   try {
+       const existingStyleElement = document.getElementById('vcp-enhanced-ui-styles');
+       if (existingStyleElement) {
+           // Style element already exists, no need to recreate
+           return;
+       }
+
+       // Create link element to load external CSS
+       const linkElement = document.createElement('link');
+       linkElement.id = 'vcp-enhanced-ui-styles';
+       linkElement.rel = 'stylesheet';
+       linkElement.type = 'text/css';
+       linkElement.href = 'styles/messageRenderer.css';
+       document.head.appendChild(linkElement);
+
+       // console.log('VCPSub Enhanced UI: External styles loaded.'); // Reduced logging
+   } catch (error) {
+       console.error('VCPSub Enhanced UI: Failed to load external styles:', error);
+   }
 }
 
-.thinking-indicator-dots {
-  display: inline-block;
-  font-size: 1em; /* Match parent font-size by default */
-  line-height: 1; /* Ensure it doesn't add extra height */
-  vertical-align: baseline; /* Align with the text */
-  animation: vcp-loading-dots 1.4s infinite;
+
+
+
+// --- Core Logic ---
+
+/**
+ * A helper function to escape HTML special characters.
+ * @param {string} text The text to escape.
+ * @returns {string} The escaped text.
+ */
+function escapeHtml(text) {
+    if (typeof text !== 'string') return '';
+    return text
+        .replace(/&/g, '&')
+        .replace(/</g, '<')
+        .replace(/>/g, '>')
+        .replace(/"/g, '"')
+        .replace(/'/g, '&#039;');
 }
 
-/* 主气泡样式 - VCP ToolUse */
-.vcp-tool-use-bubble {
-    background: linear-gradient(145deg, #3a7bd5 0%, #00d2ff 100%) !important;
-    background-size: 200% 200% !important;
-    animation: vcp-bubble-background-flow-kf 20s ease-in-out infinite;
-    border-radius: 10px !important;
-    padding: 8px 15px 8px 35px !important;
-    color: #ffffff !important;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
-    margin-bottom: 10px !important;
-    position: relative;
-    overflow: hidden;
-    line-height: 1.6;
-    display: inline-block !important; /* Allow bubble to shrink to content width */
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
-    font-size: 0.95em !important;
-    white-space: pre-wrap; /* Allow wrapping but preserve whitespace */
-    word-break: break-all; /* Break long strings */
+/**
+ * Finds special VCP blocks (Tool Requests, Daily Notes) and transforms them
+ * directly into styled HTML divs, bypassing the need for markdown code fences.
+ * @param {string} text The text content.
+ * @returns {string} The processed text with special blocks as HTML.
+ */
+function transformSpecialBlocks(text) {
+    const toolRegex = /<<<\[TOOL_REQUEST\]>>>(.*?)<<<\[END_TOOL_REQUEST\]>>>/gs;
+    const noteRegex = /<<<DailyNoteStart>>>(.*?)<<<DailyNoteEnd>>>/gs;
+
+    let processed = text;
+
+    // Process Tool Requests
+    processed = processed.replace(toolRegex, (match, content) => {
+        // Regex to find tool name in either XML format (<tool_name>...</tool_name>) or key-value format (tool_name: ...)
+        const toolNameRegex = /<tool_name>([\s\S]*?)<\/tool_name>|tool_name:\s*([^\n\r]*)/;
+        const toolNameMatch = content.match(toolNameRegex);
+
+        // The tool name will be in capture group 1 or 2. Default to a fallback.
+        let toolName = 'Processing...';
+        if (toolNameMatch) {
+            // Use the first non-empty capture group
+            let extractedName = (toolNameMatch[1] || toolNameMatch[2] || '').trim();
+            
+            // Clean the extracted name: remove special markers and trailing commas
+            if (extractedName) {
+                extractedName = extractedName.replace(/「始」|「末」/g, '').replace(/,$/, '').trim();
+            }
+
+            if (extractedName) {
+                toolName = extractedName;
+            }
+        }
+
+        // Construct the simple, single-line display as requested
+        return `<div class="vcp-tool-use-bubble">` +
+               `<span class="vcp-tool-label">VCP-ToolUse:</span> ` +
+               `<span class="vcp-tool-name-highlight">${escapeHtml(toolName)}</span>` +
+               `</div>`;
+    });
+
+    // Process Daily Notes
+    processed = processed.replace(noteRegex, (match, rawContent) => {
+        const content = rawContent.trim();
+        const maidRegex = /Maid:\s*([^\n\r]*)/;
+        const dateRegex = /Date:\s*([^\n\r]*)/;
+        const contentRegex = /Content:\s*([\s\S]*)/;
+
+        const maidMatch = content.match(maidRegex);
+        const dateMatch = content.match(dateRegex);
+        const contentMatch = content.match(contentRegex);
+
+        const maid = maidMatch ? maidMatch[1].trim() : '';
+        const date = dateMatch ? dateMatch[1].trim() : '';
+        // The rest of the text after "Content:", or the full text if "Content:" is not found
+        const diaryContent = contentMatch ? contentMatch[1].trim() : content;
+
+        let html = `<div class="maid-diary-bubble">`;
+        html += `<div class="diary-header">`;
+        html += `<span class="diary-title">Maid's Diary</span>`;
+        if (date) {
+            html += `<span class="diary-date">${escapeHtml(date)}</span>`;
+        }
+        html += `</div>`;
+        
+        if (maid) {
+            html += `<div class="diary-maid-info">`;
+            html += `<span class="diary-maid-label">Maid:</span> `;
+            html += `<span class="diary-maid-name">${escapeHtml(maid)}</span>`;
+            html += `</div>`;
+        }
+
+        html += `<div class="diary-content">${escapeHtml(diaryContent)}</div>`;
+        html += `</div>`;
+
+        return html;
+    });
+
+    return processed;
 }
 
-/* Animated Border for VCP ToolUse */
-.vcp-tool-use-bubble::after {
-    content: "";
-    position: absolute;
-    box-sizing: border-box; 
-    top: 0; left: 0; width: 100%; height: 100%;
-    border-radius: inherit;
-    padding: 2px; /* Border thickness */
-    background: linear-gradient(60deg, #76c4f7, #00d2ff, #3a7bd5, #ffffff, #3a7bd5, #00d2ff, #76c4f7);
-    background-size: 300% 300%;
-    animation: vcp-bubble-border-flow-kf 7s linear infinite;
-    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
-    mask-composite: exclude;
-    z-index: 0; 
-    pointer-events: none;
+
+/**
+ * Wraps raw HTML documents in markdown code fences if they aren't already.
+ * An HTML document is identified by the `<!DOCTYPE html>` declaration.
+ * @param {string} text The text content.
+ * @returns {string} The processed text.
+ */
+function ensureHtmlFenced(text) {
+    const doctypeTag = '<!DOCTYPE html>';
+    const htmlCloseTag = '</html>';
+
+    // Quick exit if no doctype is present.
+    if (!text.toLowerCase().includes(doctypeTag.toLowerCase())) {
+        return text;
+    }
+
+    let result = '';
+    let lastIndex = 0;
+    while (true) {
+        const startIndex = text.toLowerCase().indexOf(doctypeTag.toLowerCase(), lastIndex);
+
+        // Append the segment of text before the current HTML block.
+        const textSegment = text.substring(lastIndex, startIndex === -1 ? text.length : startIndex);
+        result += textSegment;
+
+        if (startIndex === -1) {
+            break; // Exit loop if no more doctype markers are found.
+        }
+
+        // Find the corresponding </html> tag.
+        const endIndex = text.toLowerCase().indexOf(htmlCloseTag.toLowerCase(), startIndex + doctypeTag.length);
+        if (endIndex === -1) {
+            // Malformed HTML (no closing tag), append the rest of the string and stop.
+            result += text.substring(startIndex);
+            break;
+        }
+
+        const block = text.substring(startIndex, endIndex + htmlCloseTag.length);
+        
+        // Check if we are currently inside an open code block by counting fences in the processed result.
+        const fencesInResult = (result.match(/```/g) || []).length;
+
+        if (fencesInResult % 2 === 0) {
+            // Even number of fences means we are outside a code block.
+            // Wrap the HTML block in new fences.
+            result += `\n\`\`\`html\n${block}\n\`\`\`\n`;
+        } else {
+            // Odd number of fences means we are inside a code block.
+            // Append the HTML block as is.
+            result += block;
+        }
+
+        // Move past the current HTML block.
+        lastIndex = endIndex + htmlCloseTag.length;
+    }
+
+    return result;
 }
 
-/* 内部 span 的重置 - VCP ToolUse */
-.vcp-tool-use-bubble .vcp-tool-label,
-.vcp-tool-use-bubble .vcp-tool-name-highlight {
-    background: none !important;
-    border: none !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    box-shadow: none !important;
-    color: inherit !important;
-    display: inline !important;
-    font-family: inherit !important; /* Inherit from parent bubble */
-    font-size: inherit !important; /* Inherit from parent bubble */
-    vertical-align: baseline;
-    position: relative;
-    z-index: 1;
+
+/**
+ * Removes leading whitespace from lines that appear to be HTML tags,
+ * as long as they are not inside a fenced code block. This prevents
+ * the markdown parser from misinterpreting indented HTML as an indented code block.
+ * @param {string} text The text content.
+ * @returns {string} The processed text.
+ */
+function deIndentHtml(text) {
+    const lines = text.split('\n');
+    let inFence = false;
+    return lines.map(line => {
+        if (line.trim().startsWith('```')) {
+            inFence = !inFence;
+            return line;
+        }
+        // If we are not in a fenced block, and a line is indented and looks like HTML,
+        // remove the leading whitespace.
+        if (!inFence && line.trim().startsWith('<')) {
+            return line.trimStart();
+        }
+        return line;
+    }).join('\n');
 }
 
-/* "VCP-ToolUse:" 标签 */
-.vcp-tool-use-bubble .vcp-tool-label {
-    font-weight: bold; color: #f1c40f; margin-right: 6px;
+
+/**
+ * A helper function to preprocess the full message content string before parsing.
+ * @param {string} text The raw text content.
+ * @returns {string} The processed text.
+ */
+function preprocessFullContent(text) {
+   let processed = text;
+   // The order here is critical.
+
+   // 1. Fix indented HTML that markdown might misinterpret as code blocks.
+   // This MUST run first to prevent indented HTML from being treated as code.
+   processed = deIndentHtml(processed);
+
+   // 2. Directly transform special blocks (Tool/Diary) into styled HTML divs.
+   // This runs before markdown parsing, so the HTML is treated as a block.
+   processed = transformSpecialBlocks(processed);
+
+   // 3. Ensure raw HTML documents are fenced to be displayed as code.
+   processed = ensureHtmlFenced(processed);
+
+   // 4. Run other standard content processors.
+   processed = contentProcessor.ensureNewlineAfterCodeBlock(processed);
+   processed = contentProcessor.ensureSpaceAfterTilde(processed);
+   processed = contentProcessor.removeIndentationFromCodeBlockMarkers(processed);
+   processed = contentProcessor.removeSpeakerTags(processed);
+   processed = contentProcessor.ensureSeparatorBetweenImgAndCode(processed);
+   return processed;
 }
 
-/* 工具名高亮 - VCP ToolUse */
-.vcp-tool-use-bubble .vcp-tool-name-highlight {
-    background: linear-gradient(90deg, #f1c40f, #ffffff, #00d2ff, #f1c40f) !important; 
-    background-size: 300% 100% !important; 
-    -webkit-background-clip: text !important;
-    background-clip: text !important;
-    -webkit-text-fill-color: transparent !important;
-    text-fill-color: transparent !important;
-    font-style: normal !important;
-    font-weight: bold !important;
-    padding: 1px 3px !important; 
-    border-radius: 4px !important;
-    animation: vcp-toolname-color-flow-kf 4s linear infinite; 
-    margin-left: 2px; 
+/**
+ * @typedef {Object} Message
+ * @property {'user'|'assistant'|'system'} role
+ * @property {string} content
+ * @property {number} timestamp
+ * @property {string} [id] 
+ * @property {boolean} [isThinking]
+ * @property {Array<{type: string, src: string, name: string}>} [attachments]
+ * @property {string} [finishReason] 
+ * @property {boolean} [isGroupMessage] // New: Indicates if it's a group message
+ * @property {string} [agentId] // New: ID of the speaking agent in a group
+ * @property {string} [name] // New: Name of the speaking agent in a group (can override default role name)
+ * @property {string} [avatarUrl] // New: Specific avatar for this message (e.g. group member)
+ * @property {string} [avatarColor] // New: Specific avatar color for this message
+ */
+
+
+/**
+ * @typedef {Object} CurrentSelectedItem
+ * @property {string|null} id - Can be agentId or groupId
+ * @property {'agent'|'group'|null} type 
+ * @property {string|null} name
+ * @property {string|null} avatarUrl
+ * @property {object|null} config - Full config of the selected item
+ */
+
+
+let mainRendererReferences = {
+    currentChatHistoryRef: { get: () => [], set: () => {} }, // Ref to array
+    currentSelectedItemRef: { get: () => ({ id: null, type: null, name: null, avatarUrl: null, config: null }), set: () => {} }, // Ref to object
+    currentTopicIdRef: { get: () => null, set: () => {} }, // Ref to string/null
+    globalSettingsRef: { get: () => ({ userName: '用户', userAvatarUrl: 'assets/default_user_avatar.png', userAvatarCalculatedColor: null }), set: () => {} }, // Ref to object
+
+    chatMessagesDiv: null,
+    electronAPI: null,
+    markedInstance: null,
+    uiHelper: {
+        scrollToBottom: () => {},
+        openModal: () => {},
+        autoResizeTextarea: () => {},
+        // ... other uiHelper functions ...
+    },
+    summarizeTopicFromMessages: async () => "",
+    handleCreateBranch: () => {},
+    // activeStreamingMessageId: null, // ID of the message currently being streamed - REMOVED
+};
+
+function removeMessageById(messageId, saveHistory = false) {
+    const item = mainRendererReferences.chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
+    if (item) item.remove();
+    
+    const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
+    const index = currentChatHistoryArray.findIndex(m => m.id === messageId);
+    
+    if (index > -1) {
+        currentChatHistoryArray.splice(index, 1);
+        mainRendererReferences.currentChatHistoryRef.set([...currentChatHistoryArray]);
+        
+        if (saveHistory) {
+            const currentSelectedItemVal = mainRendererReferences.currentSelectedItemRef.get();
+            const currentTopicIdVal = mainRendererReferences.currentTopicIdRef.get();
+            if (currentSelectedItemVal.id && currentTopicIdVal) {
+                if (currentSelectedItemVal.type === 'agent') {
+                    mainRendererReferences.electronAPI.saveChatHistory(currentSelectedItemVal.id, currentTopicIdVal, currentChatHistoryArray);
+                } else if (currentSelectedItemVal.type === 'group' && mainRendererReferences.electronAPI.saveGroupChatHistory) {
+                    mainRendererReferences.electronAPI.saveGroupChatHistory(currentSelectedItemVal.id, currentTopicIdVal, currentChatHistoryArray);
+                }
+            }
+        }
+    }
+    clearImageState(messageId); // Clean up image state for the deleted message
 }
 
-/* 左上角齿轮图标 - VCP ToolUse */
-.vcp-tool-use-bubble::before {
-    content: "⚙️";
-    position: absolute;
-    top: 8px;
-    left: 10px;
-    font-size: 14px;
-    color: rgba(255, 255, 255, 0.75); 
-    z-index: 2; 
-    animation: vcp-icon-rotate 4s linear infinite;
-    transform-origin: center center; 
+function clearChat() {
+    if (mainRendererReferences.chatMessagesDiv) mainRendererReferences.chatMessagesDiv.innerHTML = '';
+    mainRendererReferences.currentChatHistoryRef.set([]); // Clear the history array via its ref
+    clearAllImageStates(); // Clear all image loading states
 }
 
-/* 隐藏 VCP 气泡内的复制按钮 */
-.vcp-tool-use-bubble code .code-copy { /* This might target <code> inside <pre class="vcp-tool-use-bubble"> */
-    display: none !important;
-}
- /* Also hide if copy button is direct child of the bubble (if no inner code element) */
-.vcp-tool-use-bubble > .code-copy {
-    display: none !important;
-}
-.vcp-tool-request-bubble > strong { display: none !important; } /* Hide "VCP工具调用:" strong tag if it was ever added */
 
-/* --- Maid Diary Bubble Redesign --- */
+function initializeMessageRenderer(refs) {
+   Object.assign(mainRendererReferences, refs);
 
-/* Main container for the diary entry */
-.maid-diary-bubble {
-    background: #fdfaf6 !important; /* A very light, warm parchment color */
-    border: 1px solid #eaddd0; /* A soft, paper-like border */
-    border-radius: 8px !important;
-    padding: 12px 18px 15px 48px !important; /* Adjusted padding for new icon placement */
-    color: #5d4037 !important; /* A warm, dark brown for text */
-    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
-    margin-top: 10px !important; /* Add space above the diary bubble */
-    margin-bottom: 12px !important;
-    position: relative;
-    overflow: visible; /* Allow for potential pseudo-elements to peek out */
-    line-height: 1.7;
-    display: block !important;
-    font-family: 'Georgia', 'Times New Roman', serif !important;
-    font-size: 1em !important;
-}
+   initializeImageHandler({
+       electronAPI: mainRendererReferences.electronAPI,
+       uiHelper: mainRendererReferences.uiHelper,
+       chatMessagesDiv: mainRendererReferences.chatMessagesDiv,
+   });
 
-/* The decorative icon on the top left, changed to a quill */
-.maid-diary-bubble::before {
-    content: "✒️";
-    position: absolute;
-    top: 14px;
-    left: 16px;
-    font-size: 22px;
-    opacity: 0.6;
-    z-index: 2;
-    transform: rotate(-15deg); /* Tilted for a more dynamic look */
-    animation: none !important; /* Removing previous animation for a more static, elegant feel */
-}
+   // Create a new marked instance wrapper specifically for the stream manager.
+   // This ensures that any text passed to `marked.parse()` during streaming
+   // is first processed by `deIndentHtml`. This robustly fixes the issue of
+   // indented HTML being rendered as code blocks during live streaming,
+   // without needing to modify the stream manager itself.
+   const originalMarkedParse = mainRendererReferences.markedInstance.parse.bind(mainRendererReferences.markedInstance);
+   const streamingMarkedInstance = {
+       ...mainRendererReferences.markedInstance,
+       parse: (text) => {
+           // First, de-indent raw HTML to prevent it from being parsed as a code block.
+           let processedText = deIndentHtml(text);
+           // Second, transform our custom blocks (Tool/Diary) into direct HTML divs during the stream.
+           processedText = transformSpecialBlocks(processedText);
+           // Finally, parse the remaining markdown.
+           return originalMarkedParse(processedText);
+       }
+   };
 
-/* Removing the animated border for a cleaner look */
-.maid-diary-bubble::after {
-    display: none !important;
-}
+   contentProcessor.initializeContentProcessor(mainRendererReferences);
 
-/* Header section containing title and date */
-.diary-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    border-bottom: 1px solid #d7ccc8; /* A subtle separator line */
-    padding-bottom: 6px;
-    margin-bottom: 10px;
-}
+   contextMenu.initializeContextMenu(mainRendererReferences, {
+       // Pass functions that the context menu needs to call back into the main renderer
+       removeMessageById: removeMessageById,
+       finalizeStreamedMessage: finalizeStreamedMessage,
+       renderMessage: renderMessage,
+       startStreamingMessage: startStreamingMessage,
+       setContentAndProcessImages: setContentAndProcessImages,
+       processRenderedContent: contentProcessor.processRenderedContent,
+       preprocessFullContent: preprocessFullContent,
+       renderAttachments: renderAttachments,
+   });
 
-/* "Maid's Diary" title */
-.diary-title {
-    font-weight: bold;
-    font-size: 1.1em;
-    color: #6d4c41; /* A rich, brownish color */
-    font-family: 'Georgia', 'Times New Roman', serif !important;
-}
+   streamManager.initStreamManager({
+       // Core Refs
+       globalSettingsRef: mainRendererReferences.globalSettingsRef,
+       currentChatHistoryRef: mainRendererReferences.currentChatHistoryRef,
+       currentSelectedItemRef: mainRendererReferences.currentSelectedItemRef,
+       currentTopicIdRef: mainRendererReferences.currentTopicIdRef,
+       
+       // DOM & API Refs
+       chatMessagesDiv: mainRendererReferences.chatMessagesDiv,
+       markedInstance: streamingMarkedInstance, // Use the wrapped instance
+       electronAPI: mainRendererReferences.electronAPI,
+       uiHelper: mainRendererReferences.uiHelper,
 
-/* Date on the top right */
-.diary-date {
-    font-size: 0.85em;
-    color: #a1887f; /* Lighter brown for secondary info */
-    font-style: italic;
-}
+       // Rendering & Utility Functions
+       renderMessage: renderMessage,
+       showContextMenu: contextMenu.showContextMenu,
+       setContentAndProcessImages: setContentAndProcessImages,
+       processRenderedContent: contentProcessor.processRenderedContent,
+       preprocessFullContent: preprocessFullContent,
+       // Pass individual processors needed by streamManager
+       removeSpeakerTags: contentProcessor.removeSpeakerTags,
+       ensureNewlineAfterCodeBlock: contentProcessor.ensureNewlineAfterCodeBlock,
+       ensureSpaceAfterTilde: contentProcessor.ensureSpaceAfterTilde,
+       removeIndentationFromCodeBlockMarkers: contentProcessor.removeIndentationFromCodeBlockMarkers,
+       ensureSeparatorBetweenImgAndCode: contentProcessor.ensureSeparatorBetweenImgAndCode,
 
-/* Container for the Maid's name info */
-.diary-maid-info {
-    margin-bottom: 12px;
-    font-size: 0.9em;
-    color: #8d6e63;
-}
+       // Pass the main processor function
+       processRenderedContent: contentProcessor.processRenderedContent,
 
-.diary-maid-label {
-    font-weight: bold;
+       // Debouncing and Timers
+       enhancedRenderDebounceTimers: enhancedRenderDebounceTimers,
+       ENHANCED_RENDER_DEBOUNCE_DELAY: ENHANCED_RENDER_DEBOUNCE_DELAY,
+       DIARY_RENDER_DEBOUNCE_DELAY: DIARY_RENDER_DEBOUNCE_DELAY,
+   });
+
+
+   injectEnhancedStyles();
+   console.log("[MessageRenderer] Initialized. Current selected item type on init:", mainRendererReferences.currentSelectedItemRef.get()?.type);
 }
 
-.diary-maid-name {
-    font-style: italic;
-    color: #a1887f;
-    background: rgba(161, 136, 127, 0.08);
-    padding: 1px 5px;
-    border-radius: 4px;
+
+function setCurrentSelectedItem(item) {
+    // This function is mainly for renderer.js to update the shared state.
+    // messageRenderer will read from currentSelectedItemRef.get() when rendering.
+    // console.log("[MessageRenderer] setCurrentSelectedItem called with:", item);
 }
 
-/* The main content of the diary entry */
-.diary-content {
-    font-size: 0.95em;
-    color: #4e342e; /* A dark, rich brown for readability */
-    white-space: pre-wrap;
-    word-break: break-word;
+function setCurrentTopicId(topicId) {
+    // console.log("[MessageRenderer] setCurrentTopicId called with:", topicId);
 }
 
-/* Hide copy button as it's not a code block */
-.maid-diary-bubble > .code-copy {
-    display: none !important;
+// These are for specific avatar of the current *context* (agent or user), not for individual group member messages
+function setCurrentItemAvatar(avatarUrl) { // Renamed from setCurrentAgentAvatar
+    // This updates the avatar for the main selected agent/group, not individual group members in a message.
+    // The currentSelectedItemRef should hold the correct avatar for the overall context.
 }
 
-/* HTML5 音频播放器样式 */
-audio[controls] {
-    background: transparent !important; /* 将背景设置为透明 */
-    border: none !important; /* 移除边框 */
-    border-radius: 10px !important;
-    padding: 10px 15px !important;
-    color: #ffffff !important;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
-    margin-bottom: 10px !important;
-    display: block;
-    width: 350px;
-    position: relative; /* Added for pseudo-element positioning */
-    overflow: hidden; /* Added to contain the pseudo-element */
-    z-index: 1; /* Ensure audio player is above the pseudo-element */
+function setUserAvatar(avatarUrl) { // For the user's global avatar
+    const globalSettings = mainRendererReferences.globalSettingsRef.get();
+    const oldUrl = globalSettings.userAvatarUrl;
+    if (oldUrl && oldUrl !== (avatarUrl || 'assets/default_user_avatar.png')) {
+        avatarColorCache.delete(oldUrl.split('?')[0]);
+    }
+    mainRendererReferences.globalSettingsRef.set({...globalSettings, userAvatarUrl: avatarUrl || 'assets/default_user_avatar.png' });
 }
 
-/* Animated Border for Audio Player */
-audio[controls]::after {
-    content: "";
-    position: absolute;
-    box-sizing: border-box;
-    top: 0; left: 0; width: 100%; height: 100%;
-    border-radius: inherit;
-    padding: 2px; /* Border thickness */
-    background: linear-gradient(60deg, #76c4f7, #00d2ff, #3a7bd5, #ffffff, #3a7bd5, #00d2ff, #76c4f7); /* Same gradient as VCP ToolUse bubble */
-    background-size: 300% 300%;
-    animation: vcp-bubble-border-flow-kf 7s linear infinite; /* Same animation as VCP ToolUse bubble */
-    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
-    mask-composite: exclude;
-    z-index: 0; /* Place behind the actual audio controls */
-    pointer-events: none;
+function setCurrentItemAvatarColor(color) { // Renamed from setCurrentAgentAvatarColor
+    // For the main selected agent/group
 }
 
-audio[controls]::-webkit-media-controls-panel {
-    background: #ffffff !important;
-    border-radius: 9px !important;
-    margin: 5px !important;
-    padding: 5px !important;
-    box-sizing: border-box !important;
-    position: relative; /* Ensure panel is above the pseudo-element */
-    z-index: 2; /* Increase z-index for the panel to be on top of the pseudo-element */
+function setUserAvatarColor(color) { // For the user's global avatar
+    const globalSettings = mainRendererReferences.globalSettingsRef.get();
+    mainRendererReferences.globalSettingsRef.set({...globalSettings, userAvatarCalculatedColor: color });
 }
 
-audio[controls]::-webkit-media-controls-play-button,
-audio[controls]::-webkit-media-controls-mute-button,
-audio[controls]::-webkit-media-controls-fullscreen-button,
-audio[controls]::-webkit-media-controls-overflow-button {
-    filter: brightness(0.3) contrast(1.5) !important;
+
+async function renderAttachments(message, contentDiv) {
+    const { electronAPI } = mainRendererReferences;
+    if (message.attachments && message.attachments.length > 0) {
+        const attachmentsContainer = document.createElement('div');
+        attachmentsContainer.classList.add('message-attachments');
+        message.attachments.forEach(att => {
+            let attachmentElement;
+            if (att.type.startsWith('image/')) {
+                attachmentElement = document.createElement('img');
+                attachmentElement.src = att.src; // This src should be usable (e.g., file:// or data:)
+                attachmentElement.alt = `附件图片: ${att.name}`;
+                attachmentElement.title = `点击在新窗口预览: ${att.name}`;
+                attachmentElement.classList.add('message-attachment-image-thumbnail');
+                attachmentElement.onclick = (e) => {
+                    e.stopPropagation();
+                    const currentTheme = document.body.classList.contains('light-theme') ? 'light' : 'dark';
+                    electronAPI.openImageInNewWindow(att.src, att.name, currentTheme);
+                };
+                 attachmentElement.addEventListener('contextmenu', (e) => { // Use attachmentElement here
+                    e.preventDefault(); e.stopPropagation();
+                    electronAPI.showImageContextMenu(att.src);
+                });
+            } else if (att.type.startsWith('audio/')) {
+                attachmentElement = document.createElement('audio');
+                attachmentElement.src = att.src;
+                attachmentElement.controls = true;
+            } else if (att.type.startsWith('video/')) {
+                attachmentElement = document.createElement('video');
+                attachmentElement.src = att.src;
+                attachmentElement.controls = true;
+                attachmentElement.style.maxWidth = '300px';
+            } else { // Generic file
+                attachmentElement = document.createElement('a');
+                attachmentElement.href = att.src;
+                attachmentElement.textContent = `📄 ${att.name}`;
+                attachmentElement.title = `点击打开文件: ${att.name}`;
+                attachmentElement.onclick = (e) => {
+                    e.preventDefault();
+                    if (electronAPI.sendOpenExternalLink && att.src.startsWith('file://')) {
+                         electronAPI.sendOpenExternalLink(att.src);
+                    } else {
+                        console.warn("Cannot open local file attachment, API missing or path not a file URI:", att.src);
+                    }
+                };
+            }
+            if (attachmentElement) attachmentsContainer.appendChild(attachmentElement);
+        });
+        contentDiv.appendChild(attachmentsContainer);
+    }
 }
 
-audio[controls]::-webkit-media-controls-current-time-display,
-audio[controls]::-webkit-media-controls-time-remaining-display {
-    color: #181818 !important;
-    text-shadow: none !important;
+async function renderMessage(message, isInitialLoad = false) {
+    console.log('[MessageRenderer renderMessage] Received message:', JSON.parse(JSON.stringify(message))); // Log incoming message
+    const { chatMessagesDiv, electronAPI, markedInstance, uiHelper } = mainRendererReferences;
+    const globalSettings = mainRendererReferences.globalSettingsRef.get();
+    const currentSelectedItem = mainRendererReferences.currentSelectedItemRef.get();
+    const currentChatHistory = mainRendererReferences.currentChatHistoryRef.get();
+
+
+    if (!chatMessagesDiv || !electronAPI || !markedInstance) {
+        console.error("MessageRenderer: Missing critical references for rendering.");
+        return null;
+    }
+
+    if (!message.id) {
+        message.id = `msg_${message.timestamp}_${Math.random().toString(36).substring(2, 9)}`;
+    }
+
+    const { messageItem, contentDiv, avatarImg, senderNameDiv } = createMessageSkeleton(message, globalSettings, currentSelectedItem);
+
+    if (message.role !== 'system' && !message.isThinking) {
+       messageItem.addEventListener('contextmenu', (e) => {
+           e.preventDefault();
+           contextMenu.showContextMenu(e, messageItem, message);
+       });
+   }
+
+    // Determine avatar color and URL to use
+    let avatarColorToUse;
+    let avatarUrlToUse; // This was the missing variable
+    if (message.role === 'user') {
+        avatarColorToUse = globalSettings.userAvatarCalculatedColor;
+        avatarUrlToUse = globalSettings.userAvatarUrl;
+    } else if (message.role === 'assistant') {
+        if (message.isGroupMessage) {
+            avatarColorToUse = message.avatarColor;
+            avatarUrlToUse = message.avatarUrl;
+        } else if (currentSelectedItem) {
+            avatarColorToUse = currentSelectedItem.config?.avatarCalculatedColor;
+            avatarUrlToUse = currentSelectedItem.avatarUrl;
+        }
+    }
+
+    chatMessagesDiv.appendChild(messageItem);
+
+    if (message.isThinking) {
+        contentDiv.innerHTML = `<span class="thinking-indicator">${message.content || '思考中'}<span class="thinking-indicator-dots">...</span></span>`;
+        messageItem.classList.add('thinking');
+    } else {
+        let textToRender = "";
+        if (typeof message.content === 'string') {
+            textToRender = message.content;
+        } else if (message.content && typeof message.content.text === 'string') {
+            // This case handles objects like { text: "..." }, common for group messages before history saving
+            textToRender = message.content.text;
+        } else if (message.content === null || message.content === undefined) {
+            textToRender = ""; // Handle null or undefined content gracefully
+             console.warn('[MessageRenderer] message.content is null or undefined for message ID:', message.id);
+        } else {
+            // Fallback for other unexpected object structures, log and use a placeholder
+            console.warn('[MessageRenderer] Unexpected message.content type. Message ID:', message.id, 'Content:', JSON.stringify(message.content));
+            textToRender = "[消息内容格式异常]";
+        }
+        
+       const processedContent = preprocessFullContent(textToRender);
+       const rawHtml = markedInstance.parse(processedContent);
+       setContentAndProcessImages(contentDiv, rawHtml, message.id);
+       contentProcessor.processRenderedContent(contentDiv);
+   }
+    
+    // Avatar Color Application (after messageItem is in DOM)
+    if ((message.role === 'user' || message.role === 'assistant') && avatarImg && senderNameDiv) {
+        const applyColorToElements = (colorStr) => {
+            if (colorStr && messageItem.isConnected) { // Check if still in DOM
+                senderNameDiv.style.color = colorStr;
+                avatarImg.style.borderColor = colorStr;
+            }
+        };
+
+        if (avatarColorToUse) { // If a specific color was passed (e.g. for group member or persisted user/agent color)
+            applyColorToElements(avatarColorToUse);
+        } else if (avatarUrlToUse && !avatarUrlToUse.includes('default_')) { // No persisted color, try to extract
+            const dominantColor = await getDominantAvatarColor(avatarUrlToUse);
+            applyColorToElements(dominantColor);
+            if (dominantColor && messageItem.isConnected) { // If extracted and still in DOM, try to persist
+                let typeToSave, idToSaveFor;
+                if (message.role === 'user') {
+                    typeToSave = 'user'; idToSaveFor = 'user_global';
+                } else if (message.isGroupMessage && message.agentId) {
+                    typeToSave = 'agent'; idToSaveFor = message.agentId; // Save for the specific group member
+                } else if (currentSelectedItem && currentSelectedItem.type === 'agent') {
+                    typeToSave = 'agent'; idToSaveFor = currentSelectedItem.id; // Current agent
+                }
+
+                if (typeToSave && idToSaveFor) {
+                    electronAPI.saveAvatarColor({ type: typeToSave, id: idToSaveFor, color: dominantColor })
+                        .then(result => {
+                            if (result.success) {
+                                if (typeToSave === 'user') {
+                                     mainRendererReferences.globalSettingsRef.set({...globalSettings, userAvatarCalculatedColor: dominantColor });
+                                } else if (typeToSave === 'agent' && idToSaveFor === currentSelectedItem.id && currentSelectedItem.config) {
+                                    // Update currentSelectedItem.config if it's the active agent
+                                    currentSelectedItem.config.avatarCalculatedColor = dominantColor;
+                                }
+                                // For group messages, the individual agent's config isn't directly held in currentSelectedItem.config
+                                // The color is applied directly to the message. If persistence is needed for each group member,
+                                // it should happen when their main config is loaded/saved.
+                            }
+                        });
+                }
+            }
+        } else { // Default avatar or no URL, reset to theme defaults
+            senderNameDiv.style.color = message.role === 'user' ? 'var(--secondary-text)' : 'var(--highlight-text)';
+            avatarImg.style.borderColor = 'transparent';
+        }
+    }
+
+
+    // Render attachments using the new helper function
+    renderAttachments(message, contentDiv);
+    
+   if (!message.isThinking) {
+       contentProcessor.processRenderedContent(contentDiv);
+   }
+   
+   if (!isInitialLoad && !message.isThinking) {
+        const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
+        currentChatHistoryArray.push(message);
+        mainRendererReferences.currentChatHistoryRef.set(currentChatHistoryArray); // Update the ref
+
+        if (currentSelectedItem.id && mainRendererReferences.currentTopicIdRef.get()) {
+             if (currentSelectedItem.type === 'agent') {
+                electronAPI.saveChatHistory(currentSelectedItem.id, mainRendererReferences.currentTopicIdRef.get(), currentChatHistoryArray);
+             } else if (currentSelectedItem.type === 'group') {
+                // Group history is usually saved by groupchat.js in main process after AI response
+                // If we need to save user's message immediately for groups too, add IPC for it.
+                // For now, this saveChatHistory call is agent-specific.
+             }
+        }
+    } else if (isInitialLoad && message.isThinking) {
+        // This case should ideally not happen if thinking messages aren't persisted.
+        // If it does, remove the transient thinking message.
+        const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
+        const thinkingMsgIndex = currentChatHistoryArray.findIndex(m => m.id === message.id && m.isThinking);
+        if (thinkingMsgIndex > -1) {
+            currentChatHistoryArray.splice(thinkingMsgIndex, 1);
+            mainRendererReferences.currentChatHistoryRef.set(currentChatHistoryArray);
+        }
+        messageItem.remove();
+        return null;
+    }
+
+   // Highlighting is now part of processRenderedContent
+   
+   uiHelper.scrollToBottom();
+   return messageItem;
 }
 
-audio[controls]::-webkit-media-controls-timeline {
-    background-color:rgb(255, 255, 255) !important;
-    border-radius: 4px !important;
-    height: 6px !important;
-    margin: 0 5px !important;
+function startStreamingMessage(message) {
+    return streamManager.startStreamingMessage(message);
 }
 
-audio[controls]::-webkit-media-controls-timeline::-webkit-slider-thumb {
-    background-color: #555555 !important;
-    border: 1px solid rgba(0, 0, 0, 0.3) !important;
-    box-shadow: 0 0 2px rgba(0,0,0,0.3) !important;
-    height: 12px !important;
-    width: 12px !important;
-    border-radius: 50% !important;
+
+function appendStreamChunk(messageId, chunkData, agentNameForGroup, agentIdForGroup) {
+    streamManager.appendStreamChunk(messageId, chunkData, agentNameForGroup, agentIdForGroup);
 }
 
-audio[controls]::-webkit-media-controls-timeline::-moz-range-thumb {
-    background-color: #555555 !important;
-    border: 1px solid rgba(0, 0, 0, 0.3) !important;
-    height: 12px !important;
-    width: 12px !important;
-    border-radius: 50% !important;
+async function finalizeStreamedMessage(messageId, finishReason, agentNameForGroup, agentIdForGroup) { // <--- fullResponseText 参数已被移除
+    // 责任完全在 streamManager 内部，它应该使用自己拼接好的文本。
+    // 我们现在只传递必要的元数据。
+    await streamManager.finalizeStreamedMessage(messageId, finishReason, agentNameForGroup, agentIdForGroup);
 }
 
-audio[controls]::-webkit-media-controls-timeline::-moz-range-track {
-    background-color:rgb(255, 255, 255) !important;
-    border-radius: 4px !important;
-    height: 6px !important;
+/**
+ * Renders a full, non-streamed message, replacing a 'thinking' placeholder.
+ * @param {string} messageId - The ID of the message to update.
+ * @param {string} fullContent - The full HTML or text content of the message.
+ * @param {string} agentName - The name of the agent sending the message.
+ * @param {string} agentId - The ID of the agent sending the message.
+ */
+async function renderFullMessage(messageId, fullContent, agentName, agentId) {
+    console.log(`[MessageRenderer renderFullMessage] Rendering full message for ID: ${messageId}`);
+    const { chatMessagesDiv, electronAPI, uiHelper, markedInstance } = mainRendererReferences;
+    const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
+    const currentSelectedItem = mainRendererReferences.currentSelectedItemRef.get();
+    const currentTopicIdVal = mainRendererReferences.currentTopicIdRef.get();
+
+    const messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
+    if (!messageItem) {
+        console.error(`[renderFullMessage] Could not find message item with ID ${messageId} to render full content.`);
+        // As a fallback, we could try to render it as a new message, but it might appear out of order.
+        // For now, we'll log the error and return.
+        return;
+    }
+
+    messageItem.classList.remove('thinking', 'streaming');
+
+    const contentDiv = messageItem.querySelector('.md-content');
+    if (!contentDiv) {
+        console.error(`[renderFullMessage] Could not find .md-content div for message ID ${messageId}.`);
+        return;
+    }
+
+    // --- Update History ---
+    const messageIndex = currentChatHistoryArray.findIndex(msg => msg.id === messageId);
+    if (messageIndex > -1) {
+        const message = currentChatHistoryArray[messageIndex];
+        message.content = fullContent;
+        message.isThinking = false;
+        message.finishReason = 'completed_non_streamed';
+        message.name = agentName || message.name;
+        message.agentId = agentId || message.agentId;
+        
+        // Update timestamp display if it was missing
+        const nameTimeBlock = messageItem.querySelector('.name-time-block');
+        if (nameTimeBlock && !nameTimeBlock.querySelector('.message-timestamp')) {
+            const timestampDiv = document.createElement('div');
+            timestampDiv.classList.add('message-timestamp');
+            timestampDiv.textContent = new Date(message.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            nameTimeBlock.appendChild(timestampDiv);
+        }
+        
+        mainRendererReferences.currentChatHistoryRef.set([...currentChatHistoryArray]);
+
+        // Save history
+        if (currentSelectedItem && currentSelectedItem.id && currentTopicIdVal && currentSelectedItem.type === 'group') {
+            if (electronAPI.saveGroupChatHistory) {
+                try {
+                    await electronAPI.saveGroupChatHistory(currentSelectedItem.id, currentTopicIdVal, currentChatHistoryArray.filter(m => !m.isThinking));
+                } catch (error) {
+                    console.error(`[MR renderFullMessage] FAILED to save GROUP history for ${currentSelectedItem.id}, topic ${currentTopicIdVal}:`, error);
+                }
+            }
+        }
+    } else {
+        console.warn(`[renderFullMessage] Message ID ${messageId} not found in history. UI will be updated, but history may be inconsistent.`);
+    }
+
+    // --- Update DOM ---
+   const processedFinalText = preprocessFullContent(fullContent);
+   const rawHtml = markedInstance.parse(processedFinalText);
+   setContentAndProcessImages(contentDiv, rawHtml, messageId);
+
+   // Apply post-processing
+   contentProcessor.processRenderedContent(contentDiv);
+
+   uiHelper.scrollToBottom();
 }
 
-audio[controls]::-webkit-media-controls-volume-slider {
-    background-color:rgb(255, 255, 255) !important;
-    border-radius: 3px !important;
-    height: 4px !important;
-    margin: 0 5px !important;
-}
-
-audio[controls]::-webkit-media-controls-volume-slider::-webkit-slider-thumb {
-    background-color: #555555 !important;
-    border: 1px solid rgba(0,0,0,0.3) !important;
-    height: 10px !important;
-    width: 10px !important;
-    border-radius: 50% !important;
-}
-
-/* Context Menu Item Colors */
-.context-menu-item.danger-item {
-   color:hsl(1, 83.80%, 61.20%) !important; /* Red */
-}
-.context-menu-item.danger-item:hover {
-   background-color: rgba(229, 57, 53, 0.1) !important;
-}
-.context-menu-item.info-item {
-   color:rgb(90, 171, 238) !important; /* Lighter Blue */
-}
-.context-menu-item.info-item:hover {
-   background-color: rgba(30, 136, 229, 0.1) !important;
-}
-.context-menu-item.regenerate-text {
-   color: #43A047 !important; /* Green for regenerate */
-}
-.context-menu-item.regenerate-text:hover {
-   background-color: rgba(67, 160, 71, 0.1) !important;
-}
-
-/* Highlight for quoted text */
-.md-content .highlighted-quote { /* Increased specificity */
-   color: var(--quoted-text) !important; /* Use CSS variable and !important */
-   /* font-style: italic; */ /* Optional: if italics are desired */
-}
-
-/* AI 发送的链接样式 */
-.md-content a {
-   color: #87CEEB !important; /* 柔和的天蓝色 */
-}
-
-/* Markdown Table Styles (Theme Aware) */
-/* Define light theme variables as defaults */
-:root {
-    --table-border-color: var(--border-color);
-    --table-text-color: var(--primary-text);
-    --table-bg-color: rgba(var(--rgb-secondary-bg-dark, 40, 40, 44), 0.2);
-    --table-header-bg-color: rgba(var(--rgb-secondary-bg-dark, 40, 40, 44), 0.3);
-    --table-header-text-color: var(--highlight-text);
-    --table-row-even-bg-color: transparent;
-    --table-row-hover-bg-color: rgba(var(--rgb-secondary-bg-dark, 40, 40, 44), 0.4);
-}
-
-/* Define dark theme variables when .dark-theme (or lack of .light-theme) is active */
-body:not(.light-theme) { /* Or just .dark-theme if that's how your theme switching works */
-    --table-border-color: var(--border-color);
-    --table-text-color: var(--primary-text);
-    --table-bg-color: rgba(var(--rgb-secondary-bg-dark, 40, 40, 44), 0.2);
-    --table-header-bg-color: rgba(var(--rgb-secondary-bg-dark, 40, 40, 44), 0.3);
-    --table-header-text-color: var(--highlight-text);
-    --table-row-even-bg-color: transparent;
-    --table-row-hover-bg-color: rgba(var(--rgb-secondary-bg-dark, 40, 40, 44), 0.4);
-}
-
-body.light-theme {
-    --table-border-color: var(--border-color);
-    --table-text-color: var(--primary-text);
-    --table-bg-color: rgba(var(--rgb-secondary-bg-light, 255, 255, 255), 0.6);
-    --table-header-bg-color: rgba(var(--rgb-secondary-bg-light, 255, 255, 255), 0.7);
-    --table-header-text-color: var(--highlight-text);
-    --table-row-even-bg-color: transparent;
-    --table-row-hover-bg-color: rgba(var(--rgb-secondary-bg-light, 255, 255, 255), 0.8);
-}
-
-.md-content table {
-    border-collapse: collapse;
-    margin: 1em 0;
-    width: auto;
-    border: 1px solid var(--table-border-color);
-    color: var(--table-text-color);
-    background-color: var(--table-bg-color);
-}
-
-.md-content th, .md-content td {
-    border: 1px solid var(--table-border-color);
-    padding: 10px 15px;
-    text-align: left;
-}
-
-.md-content th {
-    background-color: var(--table-header-bg-color);
-    font-weight: bold;
-    color: var(--table-header-text-color);
-}
-
-/* Optional: Re-enable for alternating rows if desired for both themes */
-.md-content tr:nth-child(even) td {
-   /* background-color: var(--table-row-even-bg-color); */ /* Commented out for now, can be enabled */
-}
-
-.md-content tr:hover td {
-     background-color: var(--table-row-hover-bg-color);
-}
-
-/* NEW STYLES FOR IMAGE PLACEHOLDERS */
-.image-placeholder {
-     background-color: rgba(128, 128, 128, 0.1);
-     border: 1px dashed rgba(128, 128, 128, 0.3);
-     border-radius: 8px;
-     display: flex;
-     align-items: center;
-     justify-content: center;
-     font-size: 13px;
-     color: #888;
-     /* 过渡效果，让替换更平滑 */
-     transition: all 0.3s ease;
-}
-
-.image-placeholder::before {
-     /* content: "正在加载图片..."; */
-     content: '';
-     display: block;
-     width: 24px;
-     height: 24px;
-     border: 3px solid rgba(128, 128, 128, 0.3);
-     border-top-color: #888;
-     border-radius: 50%;
-     animation: vcp-icon-rotate 1s linear infinite;
-}
+// Expose methods to renderer.js
+window.messageRenderer = {
+    initializeMessageRenderer,
+    setCurrentSelectedItem, // Keep for renderer.js to call
+    setCurrentTopicId,      // Keep for renderer.js to call
+    setCurrentItemAvatar,   // Renamed for clarity
+    setUserAvatar,
+    setCurrentItemAvatarColor, // Renamed
+    setUserAvatarColor,
+    renderMessage,
+    startStreamingMessage,
+    appendStreamChunk,
+    finalizeStreamedMessage,
+    renderFullMessage,
+    clearChat,
+    removeMessageById,
+    summarizeTopicFromMessages: async (history, agentName) => { // Example: Keep this if it's generic enough
+        // This function was passed in, so it's likely defined in renderer.js or another module.
+        // If it's meant to be internal to messageRenderer, its logic would go here.
+        // For now, assume it's an external utility.
+        if (mainRendererReferences.summarizeTopicFromMessages) {
+            return mainRendererReferences.summarizeTopicFromMessages(history, agentName);
+        }
+        return null;
+    }
+};

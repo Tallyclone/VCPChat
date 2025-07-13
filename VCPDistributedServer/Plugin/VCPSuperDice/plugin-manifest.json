@@ -16,7 +16,7 @@
     "invocationCommands": [
       {
         "command": "roll",
-        "description": "功能: 根据提供的标准骰子表达式，支持同时丢出多个不同骰子，（如 '2d6+1d20'）进行3D物理投掷，并可选择指定骰子颜色。\n参数:\n- notation (字符串, 必需): 标准的骰子投掷表达式，支持用'+'连接多个表达式。\n- themecolor (字符串, 可选): 一个有效的CSS颜色值 (例如 '#FF0000')，用于设置骰子的颜色。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」SuperDice「末」,\ncommand:「始」roll「末」,\nnotation:「始」1d20「末」,\nthemecolor:「始」#8b4513「末」\n<<<[END_TOOL_REQUEST]>>>"
+        "description": "功能: 根据提供的标准骰子表达式，支持同时丢出多个不同骰子，（如 '2d6+1d20'）进行3D物理投掷，支持d4-d100，并可选择指定骰子颜色。\n参数:\n- notation (字符串, 必需): 标准的骰子投掷表达式，支持用'+'连接多个表达式。\n- themecolor (字符串, 可选): 一个有效的CSS颜色值 (例如 '#FF0000')，用于设置骰子的颜色。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」SuperDice「末」,\ncommand:「始」roll「末」,\nnotation:「始」1d20「末」,\nthemecolor:「始」#8b4513「末」\n<<<[END_TOOL_REQUEST]>>>"
       }
     ]
   }
