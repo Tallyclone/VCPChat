@@ -449,7 +449,7 @@ window.chatManager = (() => {
         };
         
         if (messageRenderer) {
-            messageRenderer.renderMessage(userMessage);
+            await messageRenderer.renderMessage(userMessage);
         }
 
         messageInput.value = '';
