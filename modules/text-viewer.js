@@ -18,19 +18,80 @@ document.addEventListener('DOMContentLoaded', async () => {
         }).join('\n');
     }
 
-    function addParserBreakerBetweenDivAndCode(text) {
-        const regex = /(<\/div>)\s*(```(?=[\s\S]*?(?:<<<\[TOOL_REQUEST\]>>>|<<<DailyNoteStart>>>)))/g;
-        return text.replace(regex, '$1\n\n<!-- -->\n\n$2');
+    function escapeHtml(text) {
+        if (typeof text !== 'string') return '';
+        return text
+            .replace(/&/g, '&')
+            .replace(/</g, '<')
+            .replace(/>/g, '>')
+            .replace(/"/g, '"')
+            .replace(/'/g, '&#039;');
     }
 
-    function ensureSpecialBlockFenced(text, startTag, endTag) {
-        if (!text.includes(startTag)) return text;
-        const regex = new RegExp(`(\`\`\`[\\s\\S]*?${startTag}[\\s\\S]*?${endTag}[\\s\\S]*?\`\`\`)|(${startTag}[\\s\\S]*?${endTag})`, 'g');
-        return text.replace(regex, (match, fencedBlock, unfencedBlock) => {
-            if (fencedBlock) return fencedBlock;
-            if (unfencedBlock) return `\n\`\`\`\n${unfencedBlock}\n\`\`\`\n`;
-            return match;
+    function transformSpecialBlocksForViewer(text) {
+        const toolRegex = /<<<\[TOOL_REQUEST\]>>>(.*?)<<<\[END_TOOL_REQUEST\]>>>/gs;
+        const noteRegex = /<<<DailyNoteStart>>>(.*?)<<<DailyNoteEnd>>>/gs;
+
+        let processed = text;
+
+        // Process Tool Requests - Viewer Mode (Full Details)
+        processed = processed.replace(toolRegex, (match, content) => {
+            const toolNameRegex = /<tool_name>([\s\S]*?)<\/tool_name>|tool_name:\s*([^\n\r]*)/;
+            const toolNameMatch = content.match(toolNameRegex);
+            let toolName = (toolNameMatch && (toolNameMatch[1] || toolNameMatch[2])) ? (toolNameMatch[1] || toolNameMatch[2]).trim() : 'Tool Call';
+            toolName = toolName.replace(/「始」|「末」|,/g, '').trim();
+
+            let finalContent = escapeHtml(content.trim());
+            if (toolName) {
+                 finalContent = finalContent.replace(
+                    escapeHtml(toolName),
+                    `<span class="vcp-tool-name-highlight">${escapeHtml(toolName)}</span>`
+                );
+            }
+            
+            return `<div class="vcp-tool-use-bubble">` +
+                   `<span class="vcp-tool-label">VCP-ToolUse:</span> ` +
+                   finalContent +
+                   `</div>`;
         });
+
+        // Process Daily Notes - Viewer Mode (Styled)
+        processed = processed.replace(noteRegex, (match, rawContent) => {
+            const content = rawContent.trim();
+            const maidRegex = /Maid:\s*([^\n\r]*)/;
+            const dateRegex = /Date:\s*([^\n\r]*)/;
+            const contentRegex = /Content:\s*([\s\S]*)/;
+
+            const maidMatch = content.match(maidRegex);
+            const dateMatch = content.match(dateRegex);
+            const contentMatch = content.match(contentRegex);
+
+            const maid = maidMatch ? maidMatch[1].trim() : '';
+            const date = dateMatch ? dateMatch[1].trim() : '';
+            const diaryContent = contentMatch ? contentMatch[1].trim() : content;
+
+            let html = `<div class="maid-diary-bubble">`;
+            html += `<div class="diary-header">`;
+            html += `<span class="diary-title">Maid's Diary</span>`;
+            if (date) {
+                html += `<span class="diary-date">${escapeHtml(date)}</span>`;
+            }
+            html += `</div>`;
+            
+            if (maid) {
+                html += `<div class="diary-maid-info">`;
+                html += `<span class="diary-maid-label">Maid:</span> `;
+                html += `<span class="diary-maid-name">${escapeHtml(maid)}</span>`;
+                html += `</div>`;
+            }
+
+            html += `<div class="diary-content">${escapeHtml(diaryContent)}</div>`;
+            html += `</div>`;
+
+            return html;
+        });
+
+        return processed;
     }
     
     function ensureHtmlFenced(text) {
@@ -63,9 +124,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     function preprocessFullContent(text) {
         let processed = text;
         processed = deIndentHtml(processed);
-        processed = addParserBreakerBetweenDivAndCode(processed);
-        processed = ensureSpecialBlockFenced(processed, '<<<[TOOL_REQUEST]>>>', '<<<[END_TOOL_REQUEST]>>>');
-        processed = ensureSpecialBlockFenced(processed, '<<<DailyNoteStart>>>', '<<<DailyNoteEnd>>>');
+        // Directly transform special blocks instead of fencing them
+        processed = transformSpecialBlocksForViewer(processed);
         processed = ensureHtmlFenced(processed);
         // Basic content processors from contentProcessor.js
         processed = processed.replace(/^(\s*```)(?![\r\n])/gm, '$1\n'); // ensureNewlineAfterCodeBlock
