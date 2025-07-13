@@ -45,7 +45,8 @@ async function main() {
         }
 
         // 成功时，直接将结果字符串输出到 stdout
-        console.log(output);
+        // 成功时，输出包含状态和结果的JSON对象
+        console.log(JSON.stringify({ status: "success", result: output }));
 
     } catch (error) {
         // 失败时，将JSON错误信息输出到 stderr，并以非零状态码退出
