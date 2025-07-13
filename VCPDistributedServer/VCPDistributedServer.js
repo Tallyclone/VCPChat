@@ -201,8 +201,7 @@ class DistributedServer {
             } else {
                 // --- Default Handling for all other plugins ---
                 try {
-                    // The result from other plugins is expected to be a JSON string
-                    // containing a status and a result/error field.
+                    // First, try to parse the result as JSON, which is the modern contract.
                     const parsedPluginResult = JSON.parse(result);
                     if (parsedPluginResult.status === 'success') {
                         finalResult = parsedPluginResult.result;
@@ -211,8 +210,14 @@ class DistributedServer {
                         throw new Error(parsedPluginResult.error || 'Plugin reported an error without a message.');
                     }
                 } catch (e) {
-                    // If parsing fails or the plugin reported an error, re-throw.
-                    throw new Error(`Failed to process plugin result for ${toolName}: ${e.message}`);
+                    // If parsing fails, assume it's a legacy plugin returning a raw string.
+                    // We check if the error is a JSON parsing error.
+                    if (e instanceof SyntaxError) {
+                        finalResult = result; // Use the raw output as the result.
+                    } else {
+                        // If it's another type of error (e.g., from the 'else' block above), re-throw it.
+                        throw e; // Re-throw the original error to be handled by the outer catch block.
+                    }
                 }
             }
 
