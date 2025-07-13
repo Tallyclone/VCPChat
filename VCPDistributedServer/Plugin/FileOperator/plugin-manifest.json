@@ -92,6 +92,10 @@
       {
         "command": "SearchFiles",
         "description": "功能: 在指定目录中递归搜索匹配特定模式的文件或目录。\n参数:\n- searchPath (字符串, 必需): 要搜索的起始目录的绝对路径。\n- pattern (字符串, 必需): 要搜索的文件模式，支持通配符 (例如: '*.txt', 'image_*.png')。\n- options (JSON字符串, 可选): 包含搜索选项的JSON对象字符串。支持的键包括:\n  - \"caseSensitive\" (布尔值, 默认false): 搜索是否区分大小写。\n  - \"includeHidden\" (布尔值, 默认false): 是否在搜索中包含隐藏文件。\n  - \"fileType\" (字符串, 默认'all'): 搜索的项目类型，可选值为 'file', 'directory', 'all'。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」SearchFiles「末」,\nsearchPath:「始」/path/to/search「末」,\npattern:「始」*.log「末」,\noptions:「始」{\"caseSensitive\": false, \"fileType\": \"file\"}「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "MoveManyFiles",
+        "description": "功能: 批量将多个文件或目录移动到一个目标目录中。插件会返回详细的成功和失败列表。\n参数:\n- sourcePaths (字符串数组, 必需): 要移动的源文件或目录的绝对路径列表。\n- destinationDirectory (字符串, 必需): 目标目录的绝对路径。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」MoveManyFiles「末」,\nsourcePaths:「始」[\"/path/to/file1.txt\", \"/path/to/folder1\"]「末」,\ndestinationDirectory:「始」/path/to/new_parent_folder「末」\n<<<[END_TOOL_REQUEST]>>>"
       }
     ]
   }

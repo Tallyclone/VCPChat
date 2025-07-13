@@ -506,6 +506,80 @@ async function moveFile(sourcePath, destinationPath) {
   }
 }
 
+async function moveManyFiles(sourcePaths, destinationDirectory) {
+  if (!Array.isArray(sourcePaths) || sourcePaths.length === 0) {
+    return { success: false, error: 'sourcePaths must be a non-empty array.' };
+  }
+  if (typeof destinationDirectory !== 'string') {
+    return { success: false, error: 'destinationDirectory must be a string.' };
+  }
+
+  // 1. 检查目标目录权限
+  if (!isPathAllowed(destinationDirectory, 'MoveManyFiles_Dest')) {
+    return { success: false, error: `Access denied: Destination directory '${destinationDirectory}' is not in allowed directories` };
+  }
+  
+  // 2. 确保目标目录存在
+  try {
+    const stats = await fs.stat(destinationDirectory);
+    if (!stats.isDirectory()) {
+      throw new Error(`Destination path '${destinationDirectory}' is not a directory.`);
+    }
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return { success: false, error: `Destination directory '${destinationDirectory}' does not exist.` };
+    }
+    throw error;
+  }
+
+
+  const results = {
+    succeeded: [],
+    failed: [],
+  };
+
+  for (const sourcePath of sourcePaths) {
+    const sourceName = path.basename(sourcePath);
+    const destinationPath = path.join(destinationDirectory, sourceName);
+
+    try {
+      // 3. 检查每个源文件的权限
+      if (!isPathAllowed(sourcePath, 'MoveManyFiles_Src')) {
+        throw new Error(`Access denied: Source path '${sourcePath}' is not in allowed directories`);
+      }
+      
+      // 4. 使用辅助函数处理同名文件
+      const { newPath, renamed } = getUniqueFilePath(destinationPath);
+      
+      // 5. 执行移动
+      await fs.rename(sourcePath, newPath);
+      
+      results.succeeded.push({
+        source: sourcePath,
+        destination: newPath,
+        renamed: renamed,
+        message: `Successfully moved to ${newPath}`
+      });
+
+    } catch (error) {
+      debugLog('Error moving one of the files in batch', { sourcePath, destinationDirectory, error: error.message });
+      results.failed.push({
+        source: sourcePath,
+        error: error.message,
+      });
+    }
+  }
+
+  return {
+    success: true,
+    data: {
+      message: `Batch move completed. Succeeded: ${results.succeeded.length}, Failed: ${results.failed.length}.`,
+      succeeded: results.succeeded,
+      failed: results.failed,
+    }
+  };
+}
+
 async function renameFile(sourcePath, destinationPath) {
   try {
     debugLog('Renaming file', { sourcePath, destinationPath });
@@ -750,6 +824,18 @@ async function processRequest(request) {
 
     case 'MoveFile':
       return await moveFile(parameters.sourcePath, parameters.destinationPath);
+
+    case 'MoveManyFiles':
+      // 容错处理：如果 sourcePaths 是字符串，则尝试解析它
+      let sourcePaths = parameters.sourcePaths;
+      if (typeof sourcePaths === 'string') {
+        try {
+          sourcePaths = JSON.parse(sourcePaths);
+        } catch (e) {
+          return { success: false, error: 'Failed to parse sourcePaths string into an array.' };
+        }
+      }
+      return await moveManyFiles(sourcePaths, parameters.destinationDirectory);
 
     case 'RenameFile':
       return await renameFile(parameters.sourcePath, parameters.destinationPath);
