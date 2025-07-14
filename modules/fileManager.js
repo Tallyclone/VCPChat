@@ -108,28 +108,33 @@ async function storeFile(sourcePathOrBuffer, originalName, agentId, topicId, fil
 
     // 5. Construct the structured data object to return
     const attachmentData = {
-        id: `attachment_${hash}`, // ID is now based on hash for consistency
+        id: `attachment_${hash}`,
         name: originalName,
         internalFileName: internalFileName,
-        internalPath: `file://${internalFilePath}`, // The direct path to the unique file
+        internalPath: `file://${internalFilePath}`,
         type: mimeType,
         size: fileSize,
-        hash: hash, // Include the hash in the returned data
+        hash: hash,
         createdAt: Date.now(),
         extractedText: null,
+        imageFrames: null, // 新增：用于存储PDF转换后的图片
     };
 
-    // 6. Attempt to extract text content
+    // 6. Attempt to extract text content or convert to images
     try {
-        const text = await getTextContent(attachmentData.internalPath, attachmentData.type);
-        if (text !== null && typeof text === 'string') {
-            attachmentData.extractedText = text;
-            console.log(`[FileManager] Successfully extracted text for ${attachmentData.name}, length: ${text.length}`);
-        } else if (text === null) {
+        const textContentResult = await getTextContent(internalFilePath, attachmentData.type);
+        if (textContentResult && textContentResult.text) {
+            attachmentData.extractedText = textContentResult.text;
+            console.log(`[FileManager] Successfully extracted text for ${attachmentData.name}, length: ${textContentResult.text.length}`);
+        } else if (textContentResult && textContentResult.imageFrames) {
+            attachmentData.imageFrames = textContentResult.imageFrames;
+            attachmentData.extractedText = `[VChat Auto-summary: This is a scanned PDF named "${attachmentData.name}". The content is displayed as images.]`;
+            console.log(`[FileManager] PDF ${attachmentData.name} was converted to ${textContentResult.imageFrames.length} images.`);
+        } else {
             console.log(`[FileManager] No text content extracted or supported for ${attachmentData.name} (type: ${attachmentData.type}).`);
         }
     } catch (error) {
-        console.error(`[FileManager] Error extracting text content during storeFile for ${attachmentData.name}:`, error);
+        console.error(`[FileManager] Error during content extraction for ${attachmentData.name}:`, error);
     }
 
     console.log('[FileManager] File processed:', attachmentData);
@@ -146,104 +151,146 @@ async function getFileAsBase64(internalPath) {
     return fileBuffer.toString('base64');
 }
 
-async function getTextContent(internalPath, fileType) {
-    let effectiveFileType = fileType;
+const poppler = require('pdf-poppler');
 
-    // If the provided fileType is generic or missing, try to infer from the path's extension
-    if ((!effectiveFileType || effectiveFileType === 'application/octet-stream') && internalPath) {
-        if (internalPath.startsWith('file://')) {
-            const cleanPath = internalPath.substring(7); // Remove 'file://'
-            const ext = path.extname(cleanPath).toLowerCase();
-            switch (ext) {
-                case '.txt':
-                case '.md':
-                case '.json':
-                case '.xml':
-                case '.csv':
-                case '.html':
-                case '.css':
-                case '.js': // Some JS files can be treated as text
-                case '.mjs': // ECMAScript module file
-                case '.bat': // Batch file
-                case '.sh': // Shell script
-                case '.py': // Python
-                case '.java': // Java
-                case '.c': // C
-                case '.cpp': // C++
-                case '.h': // C/C++ header
-                case '.hpp': // C++ header
-                case '.cs': // C#
-                case '.go': // Go
-                case '.rb': // Ruby
-                case '.php': // PHP
-                case '.swift': // Swift
-                case '.kt': // Kotlin
-                case '.ts': // TypeScript
-                case '.tsx': // TypeScript React
-                case '.jsx': // JavaScript React
-                case '.vue': // Vue.js Single File Component
-                case '.yml': // YAML
-                case '.yaml': // YAML
-                case '.toml': // TOML
-                case '.ini': // INI file
-                case '.log': // Log file
-                case '.sql': // SQL
-                case '.jsonc': // JSON with comments
-                    effectiveFileType = 'text/plain'; // Or more specific text types if needed
-                    break;
-                // Add other text-based extensions as needed
-            }
+async function getTextContent(internalFilePath, fileType) {
+    let effectiveFileType = fileType;
+    const cleanPath = internalFilePath.startsWith('file://') ? internalFilePath.substring(7) : internalFilePath;
+
+    // Infer type from extension if needed
+    if ((!effectiveFileType || effectiveFileType === 'application/octet-stream')) {
+        const ext = path.extname(cleanPath).toLowerCase();
+        switch (ext) {
+            case '.txt': case '.md': case '.json': case '.xml': case '.csv': case '.html':
+            case '.css': case '.js': case '.mjs': case '.bat': case '.sh': case '.py':
+            case '.java': case '.c': case '.cpp': case '.h': case '.hpp': case '.cs':
+            case '.go': case '.rb': case '.php': case '.swift': case '.kt': case '.ts':
+            case '.tsx': case '.jsx': case '.vue': case '.yml': case '.yaml': case '.toml':
+            case '.ini': case '.log': case '.sql': case '.jsonc':
+                effectiveFileType = 'text/plain';
+                break;
+            case '.pdf':
+                effectiveFileType = 'application/pdf';
+                break;
+            case '.docx':
+                effectiveFileType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+                break;
         }
     }
 
-    // Now use effectiveFileType for the check
+    // Process based on effective file type
     if (effectiveFileType && effectiveFileType.startsWith('text/')) {
-        if (!internalPath.startsWith('file://')) {
-            throw new Error('Invalid internalPath format. Must be a file:// URL.');
-        }
-        const cleanPath = internalPath.substring(7);
         try {
-            console.log(`[FileManager] Reading text content for ${cleanPath} as UTF-8 (effective type: ${effectiveFileType})`);
-            return await fs.readFile(cleanPath, 'utf-8');
+            const text = await fs.readFile(cleanPath, 'utf-8');
+            return { text };
         } catch (error) {
             console.error(`[FileManager] Error reading text content for ${cleanPath}:`, error);
-            return null;
+            return { text: null };
         }
     } else if (effectiveFileType === 'application/pdf') {
-        if (!internalPath.startsWith('file://')) {
-            throw new Error('Invalid internalPath format for PDF. Must be a file:// URL.');
-        }
-        const cleanPath = internalPath.substring(7);
         try {
-            console.log(`[FileManager] Reading PDF content for ${cleanPath}`);
             const dataBuffer = await fs.readFile(cleanPath);
             const data = await pdf(dataBuffer);
-            console.log(`[FileManager] Successfully extracted text from PDF ${cleanPath}, length: ${data.text.length}`);
-            return data.text; // pdf-parse returns an object with a .text property
-        } catch (error) {
-            console.error(`[FileManager] Error reading or parsing PDF content for ${cleanPath}:`, error);
-            return null;
+            // To determine if a PDF is scanned, we check not just the length of the extracted text,
+            // but also the number of alphabetic characters. This helps filter out OCR noise or PDFs
+            // that contain only symbols or formatting characters.
+            const text = data.text || '';
+            const trimmedText = text.trim();
+            const letterCount = (trimmedText.match(/[a-zA-Z]/g) || []).length;
+
+            // A document is considered text-based if it has a decent amount of trimmed text
+            // AND a minimum number of alphabetic characters.
+            if (trimmedText.length > 20 && letterCount > 10) {
+                console.log(`[FileManager] Successfully extracted text from PDF ${cleanPath}, length: ${trimmedText.length}, letterCount: ${letterCount}`);
+                return { text: text };
+            } else {
+                // If text is very short or lacks letters, treat as scanned PDF
+                const textLength = trimmedText.length;
+                console.log(`[FileManager] PDF ${cleanPath} has little or no extractable text (length: ${textLength}, letterCount: ${letterCount}). Attempting image conversion.`);
+                try {
+                    const imageFrames = await _convertPdfToImages(cleanPath);
+                    return { imageFrames };
+                } catch (conversionError) {
+                    console.error(`[FileManager] Failed to convert PDF to images: ${conversionError.message}`);
+                    // Return the minimal text if conversion fails, better than nothing.
+                    return { text: text || null, imageFrames: null };
+                }
+            }
+        } catch (pdfParseError) {
+            // This catches errors from the initial pdf-parse call itself
+            console.warn(`[FileManager] Failed to parse PDF text, treating as scanned: ${pdfParseError.message}`);
+            try {
+                const imageFrames = await _convertPdfToImages(cleanPath);
+                return { imageFrames };
+            } catch (conversionError) {
+                console.error(`[FileManager] Failed to convert PDF to images after parsing failed: ${conversionError.message}`);
+                return { text: null, imageFrames: null };
+            }
         }
-    } else if (effectiveFileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || effectiveFileType === 'application/msword') {
-        if (!internalPath.startsWith('file://')) {
-            throw new Error('Invalid internalPath format for DOCX/DOC. Must be a file:// URL.');
-        }
-        const cleanPath = internalPath.substring(7);
+    } else if (effectiveFileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
         try {
-            console.log(`[FileManager] Reading DOCX/DOC content for ${cleanPath}`);
-            // Mammoth expects a path or a buffer. Reading to buffer first.
             const dataBuffer = await fs.readFile(cleanPath);
             const result = await mammoth.extractRawText({ buffer: dataBuffer });
-            // const result = await mammoth.convertToHtml({ path: cleanPath }); // Alternative: convert to HTML then strip tags
-            console.log(`[FileManager] Successfully extracted text from DOCX/DOC ${cleanPath}, length: ${result.value.length}`);
-            return result.value; // .value contains the raw text
+            return { text: result.value };
         } catch (error) {
-            console.error(`[FileManager] Error reading or parsing DOCX/DOC content for ${cleanPath}:`, error);
-            return null;
+            console.error(`[FileManager] Error parsing DOCX content for ${cleanPath}:`, error);
+            return { text: null };
         }
     }
-    console.log(`[FileManager] getTextContent: File type '${effectiveFileType}' (original: '${fileType}') is not a supported text type, PDF, or DOCX/DOC for path '${internalPath}'. Returning null.`);
-    return null;
+
+    console.log(`[FileManager] getTextContent: File type '${effectiveFileType}' is not supported for text extraction.`);
+    return { text: null };
+}
+
+/**
+ * Converts each page of a PDF file into a JPEG image.
+ * @param {string} pdfPath - The file system path to the PDF file.
+ * @returns {Promise<Array<string>>} A promise that resolves to an array of Base64 encoded JPEG strings.
+ */
+async function _convertPdfToImages(pdfPath) {
+    console.log(`[FileManager] Starting PDF to image conversion with Poppler for: ${pdfPath}`);
+    const imageFrames = [];
+    const tempDir = path.join(os.tmpdir(), `pdf-images-${crypto.randomBytes(16).toString('hex')}`);
+    await fs.ensureDir(tempDir);
+
+    try {
+        let opts = {
+            format: 'jpeg',
+            out_dir: tempDir,
+            out_prefix: path.basename(pdfPath, path.extname(pdfPath)),
+            page: null // Convert all pages
+        };
+
+        await poppler.convert(pdfPath, opts);
+
+        const files = await fs.readdir(tempDir);
+        // Sort files numerically if they follow a standard pattern like 'file-1.jpg', 'file-2.jpg'
+        files.sort((a, b) => {
+            const numA = parseInt(a.match(/\d+/)[0], 10);
+            const numB = parseInt(b.match(/\d+/)[0], 10);
+            return numA - numB;
+        });
+
+        for (const file of files) {
+            if (file.endsWith('.jpg') || file.endsWith('.jpeg')) {
+                const imagePath = path.join(tempDir, file);
+                const imageBuffer = await fs.readFile(imagePath);
+                imageFrames.push(imageBuffer.toString('base64'));
+                console.log(`[FileManager] Converted and encoded page: ${file}`);
+            }
+        }
+        console.log(`[FileManager] Finished converting ${imageFrames.length} pages to images.`);
+    } catch (error) {
+        console.error(`[FileManager] Poppler PDF to image conversion failed:`, error);
+        // Re-throw the error to be caught by the calling function in getTextContent
+        throw new Error(`Poppler conversion failed: ${error.message}`);
+    } finally {
+        // Clean up the temporary directory
+        await fs.remove(tempDir);
+        console.log(`[FileManager] Cleaned up temporary directory: ${tempDir}`);
+    }
+
+    return imageFrames;
 }
 
 

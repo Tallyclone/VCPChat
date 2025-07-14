@@ -490,8 +490,13 @@ window.chatManager = (() => {
                 } else if (msg.attachments && msg.attachments.length > 0) {
                     let historicalAppendedText = "";
                     for (const att of msg.attachments) {
-                        if (att._fileManagerData && typeof att._fileManagerData.extractedText === 'string' && att._fileManagerData.extractedText.trim() !== '') {
-                            historicalAppendedText += `\n\n[附加文件: ${att.name || '未知文件'}]\n${att._fileManagerData.extractedText}\n[/附加文件结束: ${att.name || '未知文件'}]`;
+                        const fileManagerData = att._fileManagerData || {};
+                        // If there are image frames (from a scanned PDF), we don't append text.
+                        // The text is already a summary message.
+                        if (fileManagerData.imageFrames && fileManagerData.imageFrames.length > 0) {
+                             historicalAppendedText += `\n\n[附加文件: ${att.name || '未知文件'} (扫描版PDF，已转换为图片)]`;
+                        } else if (fileManagerData.extractedText) {
+                            historicalAppendedText += `\n\n[附加文件: ${att.name || '未知文件'}]\n${fileManagerData.extractedText}\n[/附加文件结束: ${att.name || '未知文件'}]`;
                         } else {
                             historicalAppendedText += `\n\n[附加文件: ${att.name || '未知文件'} (无法预览文本内容)]`;
                         }
@@ -501,18 +506,23 @@ window.chatManager = (() => {
 
                 if (msg.attachments && msg.attachments.length > 0) {
                     // --- IMAGE PROCESSING ---
-                    const imageAttachmentsPromises = msg.attachments
-                        .filter(att => att.type.startsWith('image/'))
-                        .map(async att => {
+                    const imageAttachmentsPromises = msg.attachments.map(async att => {
+                        const fileManagerData = att._fileManagerData || {};
+                        // Case 1: Scanned PDF converted to image frames
+                        if (fileManagerData.imageFrames && fileManagerData.imageFrames.length > 0) {
+                            return fileManagerData.imageFrames.map(frameData => ({
+                                type: 'image_url',
+                                image_url: { url: `data:image/jpeg;base64,${frameData}` }
+                            }));
+                        }
+                        // Case 2: Regular image file (including GIFs that get framed)
+                        if (att.type.startsWith('image/')) {
                             try {
                                 const result = await electronAPI.getFileAsBase64(att.src);
                                 if (result && result.success) {
                                     return result.base64Frames.map(frameData => ({
                                         type: 'image_url',
-                                        image_url: {
-                                            // Always use jpeg for the processed frames
-                                            url: `data:image/jpeg;base64,${frameData}`
-                                        }
+                                        image_url: { url: `data:image/jpeg;base64,${frameData}` }
                                     }));
                                 } else {
                                     const errorMsg = result ? result.error : '未知错误';
@@ -521,14 +531,15 @@ window.chatManager = (() => {
                                     return null;
                                 }
                             } catch (processingError) {
-                                console.error(`Exception during getBase64 for ${att.name} (internal: ${att.src}):`, processingError);
+                                console.error(`Exception during getBase64 for ${att.name}:`, processingError);
                                 uiHelper.showToastNotification(`处理图片 ${att.name} 时发生异常: ${processingError.message}`, 'error');
                                 return null;
                             }
-                        });
+                        }
+                        return null; // Not an image or a convertible PDF
+                    });
 
                     const nestedImageAttachments = await Promise.all(imageAttachmentsPromises);
-                    // Flatten the array of arrays into a single array of image payloads
                     const flatImageAttachments = nestedImageAttachments.flat().filter(Boolean);
                     vcpImageAttachmentsPayload.push(...flatImageAttachments);
 

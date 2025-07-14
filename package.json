@@ -40,6 +40,7 @@
     "node-global-key-listener": "^0.3.0",
     "node-schedule": "^2.1.1",
     "pdf-parse": "^1.1.1",
+    "pdf-poppler": "^0.2.1",
     "portfinder": "^1.0.37",
     "selection-hook": "^0.9.23",
     "sharp": "^0.34.2",
