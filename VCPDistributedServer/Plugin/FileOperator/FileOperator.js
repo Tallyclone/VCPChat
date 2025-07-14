@@ -7,6 +7,7 @@ const pdf = require('pdf-parse');
 const mammoth = require('mammoth');
 const ExcelJS = require('exceljs');
 const trash = require('trash');
+
 // Load environment variables
 require('dotenv').config();
 
@@ -505,171 +506,6 @@ async function moveFile(sourcePath, destinationPath) {
   }
 }
 
-async function moveManyFiles(sourcePaths, destinations) {
-  if (!Array.isArray(sourcePaths) || sourcePaths.length === 0) {
-    return { success: false, error: 'sourcePaths must be a non-empty array.' };
-  }
-
-  const results = {
-    succeeded: [],
-    failed: [],
-  };
-  const isMultiTarget = Array.isArray(destinations);
-
-  // “多对多”模式校验
-  if (isMultiTarget) {
-    if (sourcePaths.length !== destinations.length) {
-      return {
-        success: false,
-        error: `In multi-target mode, sourcePaths and destinations must have the same number of items. Sources: ${sourcePaths.length}, Destinations: ${destinations.length}.`,
-      };
-    }
-  }
-  // “多对一”模式校验：只检查类型，权限和是否存在放到循环里
-  else if (typeof destinations !== 'string') {
-    return { success: false, error: 'destinations must be a string (for single directory) or an array of strings (for multiple targets).' };
-  }
-
-
-  for (let i = 0; i < sourcePaths.length; i++) {
-    const sourcePath = sourcePaths[i];
-    let destinationPath;
-
-    if (isMultiTarget) {
-      destinationPath = destinations[i];
-    } else {
-      const sourceName = path.basename(sourcePath);
-      destinationPath = path.join(destinations, sourceName);
-    }
-
-    try {
-      // 权限检查
-      if (!isPathAllowed(sourcePath, 'MoveManyFiles_Src')) {
-        throw new Error(`Access denied: Source path '${sourcePath}' is not in allowed directories`);
-      }
-      
-      const destDir = path.dirname(destinationPath);
-      if (!isPathAllowed(destDir, 'MoveManyFiles_Dest')) {
-        throw new Error(`Access denied: Destination directory '${destDir}' is not in allowed directories`);
-      }
-      
-      // 确保目标目录存在 (仅在多对多模式下需要每次检查)
-      if (isMultiTarget) {
-        if (!fsSync.existsSync(destDir)) {
-          await fs.mkdir(destDir, { recursive: true });
-        }
-      }
-
-      // 使用辅助函数处理同名文件
-      const { newPath, renamed } = getUniqueFilePath(destinationPath);
-      
-      // 执行移动
-      await fs.rename(sourcePath, newPath);
-      
-      results.succeeded.push({
-        source: sourcePath,
-        destination: newPath,
-        renamed: renamed,
-        message: `Successfully moved to ${newPath}`
-      });
-
-    } catch (error) {
-      debugLog('Error moving one of the files in batch', { sourcePath, destination: destinationPath, error: error.message });
-      results.failed.push({
-        source: sourcePath,
-        destination: destinationPath,
-        error: error.message,
-      });
-    }
-  }
-
-  return {
-    success: true,
-    data: {
-      message: `Batch move completed. Succeeded: ${results.succeeded.length}, Failed: ${results.failed.length}.`,
-      succeeded: results.succeeded,
-      failed: results.failed,
-    }
-  };
-}
-
-/**
- * 批量修改文件内容。
- * @param {Array<Object>} modifications - 一个包含修改指令的数组。
- * @param {string} modifications[].filePath - 要修改的文件的绝对路径。
- * @param {string} modifications[].content - 要添加或写入的内容。
- * @param {string} modifications[].mode - 操作模式: 'prepend', 'append', 'overwrite'。
- * @returns {Promise<Object>} 一个包含成功和失败列表的对象。
- */
-async function editManyFiles(modifications) {
-  // The primary parsing and validation of the modifications array happens in processRequest.
-  // This function now assumes `modifications` is a valid array of objects.
-
-  const results = {
-    succeeded: [],
-    failed: [],
-  };
-
-  for (const mod of modifications) {
-    const { filePath, content, mode } = mod;
-
-    try {
-      // Security check still happens here for each individual path
-      if (!isPathAllowed(filePath, 'EditManyFiles')) {
-        throw new Error(`Access denied: Path '${filePath}' is not in allowed directories`);
-      }
-      
-      // Basic validation of the modification object
-      if (!filePath || typeof content === 'undefined' || !mode) {
-        throw new Error(`Invalid modification object for "${filePath}". It must include filePath, content, and mode.`);
-      }
-
-      switch (mode) {
-        case 'overwrite':
-          await fs.writeFile(filePath, content, 'utf8');
-          break;
-
-        case 'append':
-          await fs.appendFile(filePath, content, 'utf8');
-          break;
-
-        case 'prepend':
-          // For prepend, we need to read the existing content first.
-          let originalContent = '';
-          try {
-            originalContent = await fs.readFile(filePath, 'utf8');
-          } catch (readError) {
-            if (readError.code !== 'ENOENT') { // Ignore "file not found" errors, treat as new file
-              throw readError;
-            }
-          }
-          const newContent = content + originalContent;
-          await fs.writeFile(filePath, newContent, 'utf8');
-          break;
-
-        default:
-          throw new Error(`Invalid mode "${mode}" for file "${filePath}". Supported modes are: prepend, append, overwrite.`);
-      }
-      results.succeeded.push({ filePath, mode, message: 'Operation successful.' });
-
-    } catch (error) {
-      results.failed.push({
-        filePath,
-        mode,
-        error: error.message,
-      });
-    }
-  }
-
-  return {
-    success: true,
-    data: {
-      succeeded: results.succeeded,
-      failed: results.failed,
-    },
-  };
-}
-
 async function renameFile(sourcePath, destinationPath) {
   try {
     debugLog('Renaming file', { sourcePath, destinationPath });
@@ -879,78 +715,6 @@ async function listAllowedDirectories() {
   }
 }
 
-/**
- * 对单个文件应用一个或多个查找-替换补丁。
- * @param {string} filePath - 文件的绝对路径。
- * @param {Array<Object>} diffs - 包含查找和替换对的数组。
- * @param {string} diffs[].find - 要精确查找的文本块。
- * @param {string} diffs[].replace - 用于替换的新文本块。
- * @returns {Promise<void>}
- */
-async function applySingleFileDiff(filePath, diffs) {
-  let content = await fs.readFile(filePath, 'utf8');
-  let originalContent = content;
-
-  for (const diff of diffs) {
-    if (typeof content.replace(diff.find, diff.replace) !== 'string') {
-        throw new Error(`The replacement for "${diff.find}" is not a string.`);
-    }
-    content = content.replace(diff.find, diff.replace);
-  }
-
-  if (content === originalContent) {
-    // 如果内容没有变化，可能是因为'find'字符串没有找到。
-    // 为了给用户更明确的反馈，我们可以选择抛出错误。
-    const notFound = diffs.filter(d => !originalContent.includes(d.find));
-    if (notFound.length > 0) {
-      const missingPatterns = notFound.map(d => `"${d.find.substring(0, 50)}..."`).join(', ');
-      throw new Error(`Patch failed: The following pattern(s) were not found in the file: ${missingPatterns}`);
-    }
-  }
-
-  await fs.writeFile(filePath, content, 'utf8');
-}
-
-
-/**
- * 批量对多个文件应用精确的查找-替换补丁。
- * @param {Array<Object>} patches - 包含补丁指令的数组。
- * @param {string} patches[].filePath - 要打补丁的文件的绝对路径。
- * @param {Array<Object>} patches[].diffs - 包含查找和替换对的数组。
- * @returns {Promise<Object>} 一个包含成功和失败报告的对象。
- */
-async function applyDiff(patches) {
-  if (!Array.isArray(patches)) {
-    return { success: false, error: 'The "patches" parameter must be an array.' };
-  }
-
-  const results = {
-    succeeded: [],
-    failed: [],
-  };
-
-  for (const patch of patches) {
-    const { filePath, diffs } = patch;
-    try {
-      if (!filePath || !Array.isArray(diffs)) {
-        throw new Error(`Invalid patch object for "${filePath}". It must include filePath and a diffs array.`);
-      }
-      await applySingleFileDiff(filePath, diffs);
-      results.succeeded.push({ filePath, message: "Patch applied successfully." });
-    } catch (error) {
-      results.failed.push({
-        filePath,
-        error: error.message,
-      });
-    }
-  }
-
-  return {
-    success: true,
-    data: results,
-  };
-}
-
 // Main execution function
 async function processRequest(request) {
   // 适配 VCP 标准：将 'command' 字段作为 action，其余字段作为参数
@@ -987,31 +751,6 @@ async function processRequest(request) {
     case 'MoveFile':
       return await moveFile(parameters.sourcePath, parameters.destinationPath);
 
-    case 'MoveManyFiles':
-      // 容错处理：如果 sourcePaths 是字符串，则尝试解析它
-      let sourcePaths = parameters.sourcePaths;
-      if (typeof sourcePaths === 'string') {
-        try {
-          sourcePaths = JSON.parse(sourcePaths);
-        } catch (e) {
-          return { success: false, error: 'Failed to parse sourcePaths string into an array.' };
-        }
-      }
-      // 同样对 destinations 进行容错处理
-      let destinations = parameters.destinations;
-      if (typeof destinations === 'string') {
-        try {
-          // 如果它看起来像一个数组字符串，就解析它
-          if (destinations.trim().startsWith('[')) {
-            destinations = JSON.parse(destinations);
-          }
-          // 否则，它就是一个普通的目录字符串，保持原样
-        } catch (e) {
-           return { success: false, error: 'Failed to parse destinations string into an array.' };
-        }
-      }
-      return await moveManyFiles(sourcePaths, destinations);
-
     case 'RenameFile':
       return await renameFile(parameters.sourcePath, parameters.destinationPath);
 
@@ -1023,28 +762,6 @@ async function processRequest(request) {
 
     case 'SearchFiles':
       return await searchFiles(parameters.searchPath, parameters.pattern, parameters.options);
-
-    case 'EditManyFiles':
-      let modifications = parameters.modifications;
-      if (typeof modifications === 'string') {
-        try {
-          modifications = JSON.parse(modifications);
-        } catch (e) {
-          return { success: false, error: 'Failed to parse "modifications" parameter. It must be a valid JSON array string.' };
-        }
-      }
-      return await editManyFiles(modifications);
-
-    case 'ApplyDiff':
-      let patches = parameters.patches;
-      if (typeof patches === 'string') {
-        try {
-          patches = JSON.parse(patches);
-        } catch (e) {
-          return { success: false, error: 'Failed to parse "patches" parameter. It must be a valid JSON array string.' };
-        }
-      }
-      return await applyDiff(patches);
 
     default:
       return {
