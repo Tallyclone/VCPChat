@@ -137,6 +137,36 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- End: Ported functions ---
 
+    /**
+     * Finds and executes script tags within a given HTML element.
+     * This is necessary because scripts inserted via innerHTML are not automatically executed.
+     * @param {HTMLElement} containerElement - The element to search for scripts within.
+     */
+    function processAnimationsInContent(containerElement) {
+        if (!containerElement || !window.anime) return;
+
+        const scripts = Array.from(containerElement.querySelectorAll('script'));
+        scripts.forEach(oldScript => {
+            if (oldScript.type && oldScript.type !== 'text/javascript' && oldScript.type !== 'application/javascript') {
+                return;
+            }
+            // Avoid re-running the main text-viewer script or external libraries already loaded
+            if (oldScript.src.includes('text-viewer.js') || oldScript.src.includes('cdn.jsdelivr.net')) {
+                return;
+            }
+
+            const newScript = document.createElement('script');
+            Array.from(oldScript.attributes).forEach(attr => {
+                newScript.setAttribute(attr.name, attr.value);
+            });
+            newScript.textContent = oldScript.textContent;
+            
+            if (oldScript.parentNode) {
+                oldScript.parentNode.replaceChild(newScript, oldScript);
+            }
+        });
+    }
+
 
     // --- Theme Management ---
     function applyTheme(theme) {
@@ -410,7 +440,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // Add keyboard shortcuts for exiting edit mode
                 textarea.addEventListener('keydown', (e) => {
                     // Ctrl+Enter to save changes
-                    if (e.key === 'Enter') {
+                    if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
                         editAllButton.click(); // Trigger the save-and-exit logic
                     }
@@ -536,6 +566,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             const isPython = Array.from(block.classList).some(cls => /^language-python$/i.test(cls));
 
+            // New check for three.js
+            const isThreeJsByClass = Array.from(block.classList).some(cls => /^language-(javascript|js|threejs)$/i.test(cls));
+            const isThreeJsByContent = codeContent.includes('THREE.');
+            // To avoid conflict with regular HTML that might contain JS.
+            // A dedicated threejs block should not be a full html document.
+            const isThreeJs = (isThreeJsByClass && isThreeJsByContent) && !isHtml;
+
             if (isHtml) {
                 const playButton = document.createElement('button');
                 const playIconSVG = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
@@ -577,7 +614,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                         const bodyStyles = document.body.classList.contains('light-theme')
                             ? 'color: #2c3e50; background-color: #ffffff;'
                             : 'color: #abb2bf; background-color: #282c34;';
-                        finalHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>HTML Preview</title><style>body { font-family: sans-serif; padding: 15px; margin: 0; ${bodyStyles} }</style></head><body>${codeContent}</body></html>`;
+                        finalHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>HTML Preview</title><script src="https://cdn.jsdelivr.net/npm/animejs@3.2.1/lib/anime.min.js"><\/script><style>body { font-family: sans-serif; padding: 15px; margin: 0; ${bodyStyles} }</style></head><body>${codeContent}</body></html>`;
+                    } else {
+                        // If it's a full document, inject anime.js before the closing </head> tag
+                        finalHtml = finalHtml.replace('</head>', '<script src="https://cdn.jsdelivr.net/npm/animejs@3.2.1/lib/anime.min.js"><\/script></head>');
                     }
                     iframeDoc.write(finalHtml);
                     iframeDoc.close();
@@ -600,6 +640,70 @@ document.addEventListener('DOMContentLoaded', async () => {
                         const codeToRun = decodeHtmlEntities(block.innerText);
                         runPythonCode(codeToRun, outputContainer);
                     }
+                });
+            } else if (isThreeJs) {
+                const playButton = document.createElement('button');
+                const playIconSVG = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
+                const codeIconSVG = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>`;
+                playButton.innerHTML = playIconSVG;
+                playButton.className = 'play-button';
+                playButton.setAttribute('title', '预览 3D 动画');
+                preElement.appendChild(playButton);
+
+                playButton.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const existingPreview = preElement.nextElementSibling;
+                    if (existingPreview && existingPreview.classList.contains('html-preview-container')) {
+                        existingPreview.remove();
+                        preElement.style.display = 'block';
+                        return;
+                    }
+                    preElement.style.display = 'none';
+                    const previewContainer = document.createElement('div');
+                    previewContainer.className = 'html-preview-container';
+                    const iframe = document.createElement('iframe');
+                    iframe.sandbox = 'allow-scripts allow-same-origin';
+                    const exitButton = document.createElement('button');
+                    exitButton.innerHTML = codeIconSVG + ' 返回代码';
+                    exitButton.className = 'exit-preview-button';
+                    exitButton.title = '返回代码视图';
+                    exitButton.addEventListener('click', () => {
+                        previewContainer.remove();
+                        preElement.style.display = 'block';
+                    });
+                    previewContainer.appendChild(iframe);
+                    previewContainer.appendChild(exitButton);
+                    preElement.parentNode.insertBefore(previewContainer, preElement.nextSibling);
+                    const iframeDoc = iframe.contentWindow.document;
+                    iframeDoc.open();
+                    const threeJsHtml = `
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                            <meta charset="UTF-8">
+                            <title>Three.js Preview</title>
+                            <style>
+                                body { margin: 0; overflow: hidden; background-color: #000; }
+                                canvas { display: block; }
+                            </style>
+                        </head>
+                        <body>
+                            <script type="importmap">
+                            {
+                                "imports": {
+                                    "three": "https://cdn.jsdelivr.net/npm/three@0.166.1/build/three.module.js",
+                                    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.166.1/examples/jsm/"
+                                }
+                            }
+                            <\/script>
+                            <script type="module">
+${codeContent}
+                            <\/script>
+                        </body>
+                        </html>
+                    `;
+                    iframeDoc.write(threeJsHtml);
+                    iframeDoc.close();
                 });
             }
 
@@ -672,6 +776,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 console.error("KaTeX rendering error:", e);
             }
         }
+        
+        // --- Call animation processor after all other enhancements ---
+        processAnimationsInContent(container);
     }
 
     if (textContent) {

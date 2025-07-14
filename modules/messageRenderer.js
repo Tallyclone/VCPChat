@@ -9,6 +9,7 @@ const enhancedRenderDebounceTimers = new WeakMap(); // For debouncing prettify c
 
 import { avatarColorCache, getDominantAvatarColor } from './renderer/colorUtils.js';
 import { initializeImageHandler, setContentAndProcessImages, clearImageState, clearAllImageStates } from './renderer/imageHandler.js';
+import { processAnimationsInContent } from './renderer/animation.js';
 import { createMessageSkeleton } from './renderer/domBuilder.js';
 import * as streamManager from './renderer/streamManager.js';
 
@@ -214,11 +215,10 @@ function deIndentHtml(text) {
     return lines.map(line => {
         if (line.trim().startsWith('```')) {
             inFence = !inFence;
-            return line;
         }
-        // If we are not in a fenced block, and a line is indented and looks like HTML,
-        // remove the leading whitespace.
-        if (!inFence && line.trim().startsWith('<')) {
+        // If we are not in a fenced block, and a line is indented and looks like an HTML tag,
+        // remove the leading whitespace. This is the key fix.
+        if (!inFence && /^\s+<.*>/.test(line)) {
             return line.trimStart();
         }
         return line;
@@ -231,12 +231,13 @@ function deIndentHtml(text) {
  * @param {string} text The raw text content.
  * @returns {string} The processed text.
  */
-function preprocessFullContent(text) {
+function preprocessFullContent(text, settings = {}) {
    let processed = text;
    // The order here is critical.
 
    // 1. Fix indented HTML that markdown might misinterpret as code blocks.
-   // This MUST run first to prevent indented HTML from being treated as code.
+   // This MUST run first, regardless of the theme, to correctly handle indented divs.
+   // The logic inside deIndentHtml is now smart enough to handle this correctly.
    processed = deIndentHtml(processed);
 
    // 2. Directly transform special blocks (Tool/Diary) into styled HTML divs.
@@ -244,6 +245,7 @@ function preprocessFullContent(text) {
    processed = transformSpecialBlocks(processed);
 
    // 3. Ensure raw HTML documents are fenced to be displayed as code.
+   // This is a safety measure for full HTML pages.
    processed = ensureHtmlFenced(processed);
 
    // 4. Run other standard content processors.
@@ -353,11 +355,9 @@ function initializeMessageRenderer(refs) {
    const streamingMarkedInstance = {
        ...mainRendererReferences.markedInstance,
        parse: (text) => {
-           // First, de-indent raw HTML to prevent it from being parsed as a code block.
-           let processedText = deIndentHtml(text);
-           // Second, transform our custom blocks (Tool/Diary) into direct HTML divs during the stream.
-           processedText = transformSpecialBlocks(processedText);
-           // Finally, parse the remaining markdown.
+           const globalSettings = mainRendererReferences.globalSettingsRef.get();
+           // Pass settings to the preprocessor so it can adjust its behavior.
+           const processedText = preprocessFullContent(text, globalSettings);
            return originalMarkedParse(processedText);
        }
    };
@@ -404,6 +404,7 @@ function initializeMessageRenderer(refs) {
 
        // Pass the main processor function
        processRenderedContent: contentProcessor.processRenderedContent,
+       processAnimationsInContent: processAnimationsInContent, // Pass the animation processor
 
        // Debouncing and Timers
        enhancedRenderDebounceTimers: enhancedRenderDebounceTimers,
@@ -566,11 +567,16 @@ async function renderMessage(message, isInitialLoad = false) {
             textToRender = "[消息内容格式异常]";
         }
         
-       const processedContent = preprocessFullContent(textToRender);
-       const rawHtml = markedInstance.parse(processedContent);
-       setContentAndProcessImages(contentDiv, rawHtml, message.id);
-       contentProcessor.processRenderedContent(contentDiv);
-   }
+        const processedContent = preprocessFullContent(textToRender, globalSettings);
+        const rawHtml = markedInstance.parse(processedContent);
+        setContentAndProcessImages(contentDiv, rawHtml, message.id);
+        contentProcessor.processRenderedContent(contentDiv);
+        
+        // After content is rendered, check if we need to run animations
+        if (globalSettings.enableAgentBubbleTheme) {
+            processAnimationsInContent(contentDiv);
+        }
+    }
     
     // Avatar Color Application (after messageItem is in DOM)
     if ((message.role === 'user' || message.role === 'assistant') && avatarImg && senderNameDiv) {
@@ -741,14 +747,20 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId) {
     }
 
     // --- Update DOM ---
-   const processedFinalText = preprocessFullContent(fullContent);
-   const rawHtml = markedInstance.parse(processedFinalText);
-   setContentAndProcessImages(contentDiv, rawHtml, messageId);
+    const globalSettings = mainRendererReferences.globalSettingsRef.get();
+    const processedFinalText = preprocessFullContent(fullContent, globalSettings);
+    const rawHtml = markedInstance.parse(processedFinalText);
+    setContentAndProcessImages(contentDiv, rawHtml, messageId);
 
-   // Apply post-processing
-   contentProcessor.processRenderedContent(contentDiv);
+    // Apply post-processing
+    contentProcessor.processRenderedContent(contentDiv);
 
-   uiHelper.scrollToBottom();
+    // After content is rendered, check if we need to run animations
+    if (globalSettings.enableAgentBubbleTheme) {
+        processAnimationsInContent(contentDiv);
+    }
+
+    uiHelper.scrollToBottom();
 }
 
 // Expose methods to renderer.js

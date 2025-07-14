@@ -300,10 +300,17 @@ export async function finalizeStreamedMessage(messageId, finishReason, agentName
     // 执行最终的、权威的DOM渲染
     const contentDiv = messageItem.querySelector('.md-content');
     if (contentDiv) {
-        let processedFinalText = refs.preprocessFullContent(finalFullText);
+        const globalSettings = refs.globalSettingsRef.get();
+        // Pass settings to the preprocessor
+        let processedFinalText = refs.preprocessFullContent(finalFullText, globalSettings);
         const rawHtml = markedInstance.parse(processedFinalText);
         refs.setContentAndProcessImages(contentDiv, rawHtml, messageId);
         refs.processRenderedContent(contentDiv);
+
+        // After final content is rendered, check if we need to run animations
+        if (globalSettings.enableAgentBubbleTheme && refs.processAnimationsInContent) {
+            refs.processAnimationsInContent(contentDiv);
+        }
     }
     
     // 清理工作

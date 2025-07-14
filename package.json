@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@3d-dice/dice-box": "^1.1.4",
+    "animejs": "^4.0.2",
     "clipboard-event": "^1.6.0",
     "exceljs": "^4.4.0",
     "express": "^5.1.0",
@@ -42,6 +43,7 @@
     "portfinder": "^1.0.37",
     "selection-hook": "^0.9.23",
     "sharp": "^0.34.2",
+    "three": "^0.178.0",
     "trash": "^9.0.0",
     "ws": "^8.17.0"
   },
