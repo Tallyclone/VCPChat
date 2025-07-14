@@ -879,6 +879,78 @@ async function listAllowedDirectories() {
   }
 }
 
+/**
+ * 对单个文件应用一个或多个查找-替换补丁。
+ * @param {string} filePath - 文件的绝对路径。
+ * @param {Array<Object>} diffs - 包含查找和替换对的数组。
+ * @param {string} diffs[].find - 要精确查找的文本块。
+ * @param {string} diffs[].replace - 用于替换的新文本块。
+ * @returns {Promise<void>}
+ */
+async function applySingleFileDiff(filePath, diffs) {
+  let content = await fs.readFile(filePath, 'utf8');
+  let originalContent = content;
+
+  for (const diff of diffs) {
+    if (typeof content.replace(diff.find, diff.replace) !== 'string') {
+        throw new Error(`The replacement for "${diff.find}" is not a string.`);
+    }
+    content = content.replace(diff.find, diff.replace);
+  }
+
+  if (content === originalContent) {
+    // 如果内容没有变化，可能是因为'find'字符串没有找到。
+    // 为了给用户更明确的反馈，我们可以选择抛出错误。
+    const notFound = diffs.filter(d => !originalContent.includes(d.find));
+    if (notFound.length > 0) {
+      const missingPatterns = notFound.map(d => `"${d.find.substring(0, 50)}..."`).join(', ');
+      throw new Error(`Patch failed: The following pattern(s) were not found in the file: ${missingPatterns}`);
+    }
+  }
+
+  await fs.writeFile(filePath, content, 'utf8');
+}
+
+
+/**
+ * 批量对多个文件应用精确的查找-替换补丁。
+ * @param {Array<Object>} patches - 包含补丁指令的数组。
+ * @param {string} patches[].filePath - 要打补丁的文件的绝对路径。
+ * @param {Array<Object>} patches[].diffs - 包含查找和替换对的数组。
+ * @returns {Promise<Object>} 一个包含成功和失败报告的对象。
+ */
+async function applyDiff(patches) {
+  if (!Array.isArray(patches)) {
+    return { success: false, error: 'The "patches" parameter must be an array.' };
+  }
+
+  const results = {
+    succeeded: [],
+    failed: [],
+  };
+
+  for (const patch of patches) {
+    const { filePath, diffs } = patch;
+    try {
+      if (!filePath || !Array.isArray(diffs)) {
+        throw new Error(`Invalid patch object for "${filePath}". It must include filePath and a diffs array.`);
+      }
+      await applySingleFileDiff(filePath, diffs);
+      results.succeeded.push({ filePath, message: "Patch applied successfully." });
+    } catch (error) {
+      results.failed.push({
+        filePath,
+        error: error.message,
+      });
+    }
+  }
+
+  return {
+    success: true,
+    data: results,
+  };
+}
+
 // Main execution function
 async function processRequest(request) {
   // 适配 VCP 标准：将 'command' 字段作为 action，其余字段作为参数
@@ -962,6 +1034,17 @@ async function processRequest(request) {
         }
       }
       return await editManyFiles(modifications);
+
+    case 'ApplyDiff':
+      let patches = parameters.patches;
+      if (typeof patches === 'string') {
+        try {
+          patches = JSON.parse(patches);
+        } catch (e) {
+          return { success: false, error: 'Failed to parse "patches" parameter. It must be a valid JSON array string.' };
+        }
+      }
+      return await applyDiff(patches);
 
     default:
       return {

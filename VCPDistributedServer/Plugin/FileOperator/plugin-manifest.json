@@ -100,6 +100,10 @@
       {
         "command": "EditManyFiles",
         "description": "功能: 批量修改多个文件的内容。支持三种模式：在文件开头插入(prepend)、在末尾追加(append)或完全覆盖(overwrite)。\n参数:\n- modifications (字符串, 必需): 一个包含修改指令的JSON对象数组的 **纯文本字符串**。**警告**: 此参数必须是一个严格的、未转义的JSON字符串。不要在JSON内部的引号前加反斜杠'\\'。\n  - 每个JSON对象包含:\n    - \"filePath\" (字符串, 必需): 要修改的文件的绝对路径。**重要**: 在JSON字符串中，Windows路径的反斜杠'\\'必须转义为'\\\\'。\n    - \"content\" (字符串, 必需): 要写入或添加的内容。内容中的换行符应表示为'\\n'。\n    - \"mode\" (字符串, 必需): 操作模式，可选值为 'prepend', 'append', 'overwrite'。\n\n正确调用格式示例:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」EditManyFiles「末」,\nmodifications:「始」[{\"filePath\":\"C:\\\\Users\\\\Test\\\\file.txt\",\"content\":\"第一行\\n第二行\",\"mode\":\"prepend\"},{\"filePath\":\"/home/user/log.txt\",\"content\":\"new log entry\",\"mode\":\"append\"}]「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "ApplyDiff",
+        "description": "功能: 对一个或多个文件应用精确的查找-替换补丁，用于代码重构、修复或任何需要精确修改文件内容的场景。\n参数:\n- patches (字符串, 必需): 一个包含补丁指令的JSON对象数组的 **纯文本字符串**。**警告**: 此参数必须是一个严格的、未转义的JSON字符串。\n  - 每个JSON对象(patch)包含:\n    - \"filePath\" (字符串, 必需): 要打补丁的文件的绝对路径。Windows路径的反斜杠'\\'必须转义为'\\\\'。\n    - \"diffs\" (数组, 必需): 一个包含多组查找和替换的对象数组。\n      - \"find\" (字符串, 必需): 要 **精确查找** 的文本块，必须完全匹配目标文件中的内容，包括换行符(\\n)和缩进。\n      - \"replace\" (字符串, 必需): 用于替换的新文本块。\n\n正确调用格式示例:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」ApplyDiff「末」,\npatches:「始」[{\"filePath\":\"/app/main.js\",\"diffs\":[{\"find\":\"const oldVar = 1;\",\"replace\":\"const newVar = 2;\"}]}]「末」\n<<<[END_TOOL_REQUEST]>>>"
       }
     ]
   }
