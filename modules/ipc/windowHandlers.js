@@ -1,11 +1,13 @@
 // modules/ipc/windowHandlers.js
 const { ipcMain, app, BrowserWindow } = require('electron');
+const path = require('path');
 
 /**
  * Initializes window control IPC handlers.
  * @param {BrowserWindow} mainWindow The main window instance.
+ * @param {BrowserWindow[]} openChildWindows - A reference to the array holding all open child windows.
  */
-function initialize(mainWindow) {
+function initialize(mainWindow, openChildWindows) {
     // --- Window Control IPC Handlers ---
     ipcMain.on('minimize-window', () => {
         if (mainWindow) {
@@ -48,6 +50,46 @@ function initialize(mainWindow) {
             else if (!mainWindow.webContents) console.error('[Main Process] mainWindow.webContents is null or undefined.');
             else if (mainWindow.webContents.isDestroyed()) console.error('[Main Process] mainWindow.webContents is destroyed.');
         }
+    });
+
+    ipcMain.on('open-image-viewer', (event, { src, title }) => {
+        const imageViewerWindow = new BrowserWindow({
+            width: 1000,
+            height: 800,
+            minWidth: 600,
+            minHeight: 500,
+            title: title || '图片预览',
+            modal: false,
+            // frame: true is the default, so we can remove the false setting.
+            // titleBarStyle: 'hidden' is removed to show the native title bar.
+            webPreferences: {
+                preload: path.join(__dirname, '../../preload.js'), // Correct path from this file's location
+                contextIsolation: true,
+                nodeIntegration: false,
+            },
+            icon: path.join(__dirname, '../../assets/icon.png'), // Correct path from this file's location
+            show: false,
+        });
+
+        imageViewerWindow.setMenu(null);
+
+        const url = `file://${path.join(__dirname, '../../modules/image-viewer.html')}?src=${encodeURIComponent(src)}&title=${encodeURIComponent(title)}`;
+        imageViewerWindow.loadURL(url);
+
+        imageViewerWindow.once('ready-to-show', () => {
+            imageViewerWindow.show();
+        });
+
+        // Add to the list of open windows to receive theme updates
+        openChildWindows.push(imageViewerWindow);
+
+        imageViewerWindow.on('closed', () => {
+            // Remove from the list when closed
+            const index = openChildWindows.indexOf(imageViewerWindow);
+            if (index > -1) {
+                openChildWindows.splice(index, 1);
+            }
+        });
     });
 }
 

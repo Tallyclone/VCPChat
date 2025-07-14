@@ -1456,7 +1456,7 @@ async function handleDiceControl(args) {
     });
 
     createWindow();
-    windowHandlers.initialize(mainWindow);
+    windowHandlers.initialize(mainWindow, openChildWindows);
     fileDialogHandlers.initialize(mainWindow, {
         getSelectionListenerStatus: () => selectionListenerActive,
         stopSelectionListener,

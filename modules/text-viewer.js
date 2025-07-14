@@ -824,9 +824,11 @@ ${codeContent}
     const contextMenuDeleteButton = document.getElementById('contextMenuDelete');
     const contextMenuEditAllButton = document.getElementById('contextMenuEditAll');
     const contextMenuCopyAllButton = document.getElementById('contextMenuCopyAll');
+    const contextMenuShareScreenshotButton = document.getElementById('contextMenuShareScreenshot');
+    const contextMenuShareNoteButton = document.getElementById('contextMenuShareNote');
     const mainContentDiv = document.getElementById('textContent'); // Renamed for clarity from previous contentDiv
-
-    if (contextMenu && contextMenuCopyButton && contextMenuCutButton && contextMenuDeleteButton && contextMenuEditAllButton && contextMenuCopyAllButton && mainContentDiv) {
+ 
+     if (contextMenu && contextMenuCopyButton && contextMenuCutButton && contextMenuDeleteButton && contextMenuEditAllButton && contextMenuCopyAllButton && contextMenuShareScreenshotButton && contextMenuShareNoteButton && mainContentDiv) {
         document.addEventListener('contextmenu', (event) => {
             const selection = window.getSelection();
             const selectedText = selection.toString().trim();
@@ -844,6 +846,8 @@ ${codeContent}
                 contextMenuDeleteButton.style.display = 'block';
                 contextMenuEditAllButton.style.display = 'none';
                 contextMenuCopyAllButton.style.display = 'none';
+                contextMenuShareScreenshotButton.style.display = 'none';
+                contextMenuShareNoteButton.style.display = 'none';
             } else {
                 // Show "Edit All" and "Copy All" if no text is selected
                 contextMenuCopyButton.style.display = 'none';
@@ -851,6 +855,8 @@ ${codeContent}
                 contextMenuDeleteButton.style.display = 'none';
                 contextMenuEditAllButton.style.display = 'block';
                 contextMenuCopyAllButton.style.display = 'block';
+                contextMenuShareScreenshotButton.style.display = 'block';
+                contextMenuShareNoteButton.style.display = 'block';
             }
 
             // Determine if Cut and Delete should be shown (based on editability)
@@ -940,6 +946,39 @@ ${codeContent}
             }).catch(err => {
                 console.error('无法复制全文: ', err);
             });
+            contextMenu.style.display = 'none';
+        });
+ 
+         contextMenuShareScreenshotButton.addEventListener('click', () => {
+            contextMenu.style.display = 'none';
+            if (window.html2canvas && mainContentDiv) {
+                html2canvas(mainContentDiv, {
+                    useCORS: true, // Allow loading cross-origin images
+                    backgroundColor: null, // Use transparent background
+                    onclone: (clonedDoc) => {
+                        // Ensure the background of the cloned body is transparent for the screenshot
+                        clonedDoc.body.style.backgroundColor = 'transparent';
+                    }
+                }).then(canvas => {
+                    const imageDataUrl = canvas.toDataURL('image/png');
+                    if (window.electronAPI && window.electronAPI.openImageViewer) {
+                        window.electronAPI.openImageViewer({
+                            src: imageDataUrl,
+                            title: `截图分享 - ${document.title}`
+                        });
+                    } else {
+                        console.error('electronAPI.openImageViewer is not available.');
+                        alert('截图功能不可用。');
+                    }
+                }).catch(err => {
+                    console.error('Error generating screenshot:', err);
+                    alert('生成截图失败。');
+                });
+            }
+        });
+ 
+         contextMenuShareNoteButton.addEventListener('click', () => {
+            shareToNotesButton.click(); // Trigger the global share button's click event
             contextMenu.style.display = 'none';
         });
     }
