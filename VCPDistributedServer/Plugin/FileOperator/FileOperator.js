@@ -551,6 +551,73 @@ async function renameFile(sourcePath, destinationPath) {
   }
 }
 
+async function applyDiff(filePath, searchString, replaceString, encoding = 'utf8') {
+  try {
+    debugLog('Applying diff to file', { filePath, searchString, replaceString, encoding });
+
+    if (!isPathAllowed(filePath, 'ApplyDiff')) {
+      throw new Error(`Access denied: Path '${filePath}' is not in allowed directories`);
+    }
+
+    // Ensure the file exists before attempting to edit it.
+    try {
+      const stats = await fs.stat(filePath);
+      if (stats.isDirectory()) {
+        throw new Error(`Path points to a directory, not a file. Cannot apply diff.`);
+      }
+    } catch (e) {
+      if (e.code === 'ENOENT') {
+        throw new Error(`File not found at '${filePath}'.`);
+      }
+      throw e; // Re-throw other errors
+    }
+
+    let content = await fs.readFile(filePath, encoding);
+    const originalContent = content;
+
+    // Perform the replacement
+    // Using a global regex to replace all occurrences
+    const regex = new RegExp(escapeRegExp(searchString), 'g');
+    content = content.replace(regex, replaceString);
+
+    if (originalContent === content) {
+      return {
+        success: false,
+        error: `No changes applied: Search string '${searchString}' not found in file.`,
+      };
+    }
+
+    if (Buffer.byteLength(content, encoding) > MAX_FILE_SIZE) {
+      throw new Error(`Content too large after diff: exceeds limit of ${formatFileSize(MAX_FILE_SIZE)}`);
+    }
+
+    await fs.writeFile(filePath, content, encoding);
+    const stats = await fs.stat(filePath);
+
+    return {
+      success: true,
+      data: {
+        message: 'Diff applied successfully',
+        path: filePath,
+        size: stats.size,
+        sizeFormatted: formatFileSize(stats.size),
+        lastModified: stats.mtime.toISOString(),
+      },
+    };
+  } catch (error) {
+    debugLog('Error applying diff to file', { filePath, error: error.message });
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+}
+
+// Helper function to escape special characters in a string for use in a RegExp
+function escapeRegExp(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the matched substring
+}
+
 async function deleteFile(filePath) {
   try {
     debugLog('Deleting file', { filePath });
@@ -763,6 +830,9 @@ async function processRequest(request) {
     case 'SearchFiles':
       return await searchFiles(parameters.searchPath, parameters.pattern, parameters.options);
 
+    case 'ApplyDiff':
+      return await applyDiff(parameters.filePath, parameters.searchString, parameters.replaceString, parameters.encoding);
+
     default:
       return {
         success: false,
@@ -776,21 +846,68 @@ process.stdin.setEncoding('utf8');
 process.stdin.on('data', async data => {
   try {
     const lines = data.toString().trim().split('\n');
-
     for (const line of lines) {
       if (!line.trim()) continue;
 
-      const request = JSON.parse(line); // This is now the flat object from VCP
-      const response = await processRequest(request);
+      const request = JSON.parse(line);
 
-      // Convert internal format to VCP protocol format
-      const vcpResponse = convertToVCPFormat(response);
-      console.log(JSON.stringify(vcpResponse));
+      // Check for batch commands (e.g., command1, sourcePath1, command2, etc.)
+      const isBatch = Object.keys(request).some(k => k.match(/^command\d+$/));
+
+      if (isBatch) {
+        const groupedCommands = {};
+        for (const key in request) {
+          const match = key.match(/^([a-zA-Z]+)(\d+)$/);
+          if (match) {
+            const paramName = match[1];
+            const index = match[2];
+            if (!groupedCommands[index]) {
+              groupedCommands[index] = {};
+            }
+            groupedCommands[index][paramName] = request[key];
+          }
+        }
+
+        const batchResults = [];
+        const commandIndices = Object.keys(groupedCommands).sort((a, b) => parseInt(a) - parseInt(b));
+
+        for (const index of commandIndices) {
+          const commandData = groupedCommands[index];
+          const response = await processRequest(commandData);
+          batchResults.push({
+            commandIndex: index,
+            command: commandData.command,
+            response: response,
+          });
+        }
+
+        const hasErrors = batchResults.some(item => !item.response.success);
+        const finalResponse = {
+          status: 'success',
+          result: {
+            message: hasErrors
+              ? `Batch processed with one or more errors.`
+              : `Batch of ${batchResults.length} commands processed successfully.`,
+            details: batchResults.map(item => ({
+              commandIndex: item.commandIndex,
+              command: item.command,
+              status: item.response.success ? 'success' : 'error',
+              result: item.response.success ? item.response.data : { error: item.response.error },
+            })),
+          },
+        };
+        console.log(JSON.stringify(finalResponse));
+      } else {
+        // Handle single command
+        const response = await processRequest(request);
+        const vcpResponse = convertToVCPFormat(response);
+        console.log(JSON.stringify(vcpResponse));
+      }
     }
   } catch (error) {
     const errorResponse = {
       status: 'error',
-      error: `Invalid request format: ${error.message}`,
+      error: `Invalid request format or processing error: ${error.message}`,
     };
     console.log(JSON.stringify(errorResponse));
   }

@@ -3,7 +3,7 @@
   "displayName": "文件操作器",
   "pluginType": "synchronous",
   "version": "1.0.1",
-  "description": "一个强大的文件系统操作插件，允许AI对受限目录进行读、写、列出、移动、复制、删除等多种文件和目录操作。特别增强了文件读取能力，可自动提取PDF、Word(.docx)和表格(.xlsx, .csv)文件的纯文本内容。",
+  "description": "一个强大的文件系统操作插件，允许AI对受限目录进行读、写、列出、移动、复制、删除等多种文件和目录操作。特别增强了文件读取能力，可自动提取PDF、Word(.docx)和表格(.xlsx, .csv)文件的纯文本内容。现已支持批量指令，可在一次请求中执行多个操作。",
   "author": "VCPToolBox",
   "license": "MIT",
   "entryPoint": {
@@ -92,6 +92,10 @@
       {
         "command": "SearchFiles",
         "description": "功能: 在指定目录中递归搜索匹配特定模式的文件或目录。\n参数:\n- searchPath (字符串, 必需): 要搜索的起始目录的绝对路径。\n- pattern (字符串, 必需): 要搜索的文件模式，支持通配符 (例如: '*.txt', 'image_*.png')。\n- options (JSON字符串, 可选): 包含搜索选项的JSON对象字符串。支持的键包括:\n  - \"caseSensitive\" (布尔值, 默认false): 搜索是否区分大小写。\n  - \"includeHidden\" (布尔值, 默认false): 是否在搜索中包含隐藏文件。\n  - \"fileType\" (字符串, 默认'all'): 搜索的项目类型，可选值为 'file', 'directory', 'all'。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」SearchFiles「末」,\nsearchPath:「始」/path/to/search「末」,\npattern:「始」*.log「末」,\noptions:「始」{\"caseSensitive\": false, \"fileType\": \"file\"}「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "ApplyDiff",
+        "description": "功能: 对指定文件内容进行查找和替换。此操作会查找文件中所有匹配 'searchString' 的内容，并将其替换为 'replaceString'。\n参数:\n- filePath (字符串, 必需): 要修改的文件的绝对路径。\n- searchString (字符串, 必需): 要查找的字符串或正则表达式模式。\n- replaceString (字符串, 必需): 用于替换的字符串。\n- encoding (字符串, 可选, 默认'utf8'): 读取和写入文件时使用的编码。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」ApplyDiff「末」,\nfilePath:「始」/path/to/your/file.txt「末」,\nsearchString:「始」旧内容「末」,\nreplaceString:「始」新内容「末」\n<<<[END_TOOL_REQUEST]>>>"
       }
     ]
   }
