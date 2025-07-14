@@ -506,52 +506,65 @@ async function moveFile(sourcePath, destinationPath) {
   }
 }
 
-async function moveManyFiles(sourcePaths, destinationDirectory) {
+async function moveManyFiles(sourcePaths, destinations) {
   if (!Array.isArray(sourcePaths) || sourcePaths.length === 0) {
     return { success: false, error: 'sourcePaths must be a non-empty array.' };
   }
-  if (typeof destinationDirectory !== 'string') {
-    return { success: false, error: 'destinationDirectory must be a string.' };
-  }
-
-  // 1. 检查目标目录权限
-  if (!isPathAllowed(destinationDirectory, 'MoveManyFiles_Dest')) {
-    return { success: false, error: `Access denied: Destination directory '${destinationDirectory}' is not in allowed directories` };
-  }
-  
-  // 2. 确保目标目录存在
-  try {
-    const stats = await fs.stat(destinationDirectory);
-    if (!stats.isDirectory()) {
-      throw new Error(`Destination path '${destinationDirectory}' is not a directory.`);
-    }
-  } catch (error) {
-    if (error.code === 'ENOENT') {
-      return { success: false, error: `Destination directory '${destinationDirectory}' does not exist.` };
-    }
-    throw error;
-  }
-
 
   const results = {
     succeeded: [],
     failed: [],
   };
+  const isMultiTarget = Array.isArray(destinations);
 
-  for (const sourcePath of sourcePaths) {
-    const sourceName = path.basename(sourcePath);
-    const destinationPath = path.join(destinationDirectory, sourceName);
+  // “多对多”模式校验
+  if (isMultiTarget) {
+    if (sourcePaths.length !== destinations.length) {
+      return {
+        success: false,
+        error: `In multi-target mode, sourcePaths and destinations must have the same number of items. Sources: ${sourcePaths.length}, Destinations: ${destinations.length}.`,
+      };
+    }
+  }
+  // “多对一”模式校验：只检查类型，权限和是否存在放到循环里
+  else if (typeof destinations !== 'string') {
+    return { success: false, error: 'destinations must be a string (for single directory) or an array of strings (for multiple targets).' };
+  }
+
+
+  for (let i = 0; i < sourcePaths.length; i++) {
+    const sourcePath = sourcePaths[i];
+    let destinationPath;
+
+    if (isMultiTarget) {
+      destinationPath = destinations[i];
+    } else {
+      const sourceName = path.basename(sourcePath);
+      destinationPath = path.join(destinations, sourceName);
+    }
 
     try {
-      // 3. 检查每个源文件的权限
+      // 权限检查
       if (!isPathAllowed(sourcePath, 'MoveManyFiles_Src')) {
         throw new Error(`Access denied: Source path '${sourcePath}' is not in allowed directories`);
       }
       
-      // 4. 使用辅助函数处理同名文件
+      const destDir = path.dirname(destinationPath);
+      if (!isPathAllowed(destDir, 'MoveManyFiles_Dest')) {
+        throw new Error(`Access denied: Destination directory '${destDir}' is not in allowed directories`);
+      }
+      
+      // 确保目标目录存在 (仅在多对多模式下需要每次检查)
+      if (isMultiTarget) {
+        if (!fsSync.existsSync(destDir)) {
+          await fs.mkdir(destDir, { recursive: true });
+        }
+      }
+
+      // 使用辅助函数处理同名文件
       const { newPath, renamed } = getUniqueFilePath(destinationPath);
       
-      // 5. 执行移动
+      // 执行移动
       await fs.rename(sourcePath, newPath);
       
       results.succeeded.push({
@@ -562,9 +575,10 @@ async function moveManyFiles(sourcePaths, destinationDirectory) {
       });
 
     } catch (error) {
-      debugLog('Error moving one of the files in batch', { sourcePath, destinationDirectory, error: error.message });
+      debugLog('Error moving one of the files in batch', { sourcePath, destination: destinationPath, error: error.message });
       results.failed.push({
         source: sourcePath,
+        destination: destinationPath,
         error: error.message,
       });
     }
@@ -835,7 +849,20 @@ async function processRequest(request) {
           return { success: false, error: 'Failed to parse sourcePaths string into an array.' };
         }
       }
-      return await moveManyFiles(sourcePaths, parameters.destinationDirectory);
+      // 同样对 destinations 进行容错处理
+      let destinations = parameters.destinations;
+      if (typeof destinations === 'string') {
+        try {
+          // 如果它看起来像一个数组字符串，就解析它
+          if (destinations.trim().startsWith('[')) {
+            destinations = JSON.parse(destinations);
+          }
+          // 否则，它就是一个普通的目录字符串，保持原样
+        } catch (e) {
+           return { success: false, error: 'Failed to parse destinations string into an array.' };
+        }
+      }
+      return await moveManyFiles(sourcePaths, destinations);
 
     case 'RenameFile':
       return await renameFile(parameters.sourcePath, parameters.destinationPath);

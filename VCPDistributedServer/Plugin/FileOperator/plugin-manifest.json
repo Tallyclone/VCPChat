@@ -95,7 +95,7 @@
       },
       {
         "command": "MoveManyFiles",
-        "description": "功能: 批量将多个文件或目录移动到一个目标目录中。插件会返回详细的成功和失败列表。\n参数:\n- sourcePaths (字符串数组, 必需): 要移动的源文件或目录的绝对路径列表。\n- destinationDirectory (字符串, 必需): 目标目录的绝对路径。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」MoveManyFiles「末」,\nsourcePaths:「始」[\"/path/to/file1.txt\", \"/path/to/folder1\"]「末」,\ndestinationDirectory:「始」/path/to/new_parent_folder「末」\n<<<[END_TOOL_REQUEST]>>>"
+        "description": "功能: 批量移动文件或目录，支持两种模式：\n1. **多对一**: 将多个源文件/目录移动到一个目标目录中。\n2. **多对多**: 将多个源文件/目录一一对应地移动到多个目标路径，可以实现批量重命名的效果。\n插件会返回详细的成功和失败列表。\n参数:\n- sourcePaths (字符串数组, 必需): 要移动的源文件或目录的绝对路径列表。\n- destinations (字符串 或 字符串数组, 必需): 目标路径。如果为字符串，则作为“多对一”的目标目录；如果为字符串数组，则作为“多对多”的目标路径列表（此时必须与 sourcePaths 长度相同）。\n调用格式 (多对一):\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」MoveManyFiles「末」,\nsourcePaths:「始」[\"/path/to/file1.txt\", \"/path/to/folder1\"]「末」,\ndestinations:「始」/path/to/new_parent_folder「末」\n<<<[END_TOOL_REQUEST]>>>\n调用格式 (多对多):\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」MoveManyFiles「末」,\nsourcePaths:「始」[\"/path/to/file1.txt\", \"/path/to/file2.png\"]「末」,\ndestinations:「始」[\"/path/to/new_folder/file1_new_name.txt\", \"/path/to/another_folder/image.png\"]「末」\n<<<[END_TOOL_REQUEST]>>>"
       }
     ]
   }
