@@ -7,6 +7,7 @@ const pdf = require('pdf-parse');
 const mammoth = require('mammoth');
 const ExcelJS = require('exceljs');
 const trash = require('trash');
+const { editManyFiles } = require('./editManyFilesHandler.js');
 
 // Load environment variables
 require('dotenv').config();
@@ -875,6 +876,17 @@ async function processRequest(request) {
 
     case 'SearchFiles':
       return await searchFiles(parameters.searchPath, parameters.pattern, parameters.options);
+
+    case 'EditManyFiles':
+      let modifications = parameters.modifications;
+      if (typeof modifications === 'string') {
+        try {
+          modifications = JSON.parse(modifications);
+        } catch (e) {
+          return { success: false, error: 'Failed to parse "modifications" parameter. It must be a valid JSON array string.' };
+        }
+      }
+      return await editManyFiles(modifications);
 
     default:
       return {
