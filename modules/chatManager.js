@@ -501,24 +501,23 @@ window.chatManager = (() => {
 
                 if (msg.attachments && msg.attachments.length > 0) {
                     // --- IMAGE PROCESSING ---
-                    const imageAttachments = await Promise.all(msg.attachments
+                    const imageAttachmentsPromises = msg.attachments
                         .filter(att => att.type.startsWith('image/'))
                         .map(async att => {
                             try {
-                                const base64Data = await electronAPI.getFileAsBase64(att.src);
-                                if (base64Data && typeof base64Data === 'string') {
-                                    return {
+                                const result = await electronAPI.getFileAsBase64(att.src);
+                                if (result && result.success) {
+                                    return result.base64Frames.map(frameData => ({
                                         type: 'image_url',
                                         image_url: {
-                                            url: `data:${att.type};base64,${base64Data}`
+                                            // Always use jpeg for the processed frames
+                                            url: `data:image/jpeg;base64,${frameData}`
                                         }
-                                    };
-                                } else if (base64Data && base64Data.error) {
-                                    console.error(`Failed to get Base64 for ${att.name}: ${base64Data.error}`);
-                                    uiHelper.showToastNotification(`处理图片 ${att.name} 失败: ${base64Data.error}`, 'error');
-                                    return null;
+                                    }));
                                 } else {
-                                    console.error(`Unexpected return from getFileAsBase64 for ${att.name}:`, base64Data);
+                                    const errorMsg = result ? result.error : '未知错误';
+                                    console.error(`Failed to get Base64 for ${att.name}: ${errorMsg}`);
+                                    uiHelper.showToastNotification(`处理图片 ${att.name} 失败: ${errorMsg}`, 'error');
                                     return null;
                                 }
                             } catch (processingError) {
@@ -526,9 +525,12 @@ window.chatManager = (() => {
                                 uiHelper.showToastNotification(`处理图片 ${att.name} 时发生异常: ${processingError.message}`, 'error');
                                 return null;
                             }
-                        })
-                    );
-                    vcpImageAttachmentsPayload.push(...imageAttachments.filter(Boolean));
+                        });
+
+                    const nestedImageAttachments = await Promise.all(imageAttachmentsPromises);
+                    // Flatten the array of arrays into a single array of image payloads
+                    const flatImageAttachments = nestedImageAttachments.flat().filter(Boolean);
+                    vcpImageAttachmentsPayload.push(...flatImageAttachments);
 
                     // --- AUDIO PROCESSING ---
                     const supportedAudioTypes = ['audio/wav', 'audio/mpeg', 'audio/mp3', 'audio/aiff', 'audio/aac', 'audio/ogg', 'audio/flac'];

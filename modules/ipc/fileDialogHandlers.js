@@ -85,66 +85,115 @@ function initialize(mainWindow, context) {
             console.log(`[Main - get-file-as-base64] ===== REQUEST START ===== Received raw filePath: "${filePath}"`);
             if (!filePath || typeof filePath !== 'string') {
                 console.error('[Main - get-file-as-base64] Invalid file path received:', filePath);
-                return { error: 'Invalid file path provided.', base64String: null };
+                return { success: false, error: 'Invalid file path provided.' };
             }
-            
+    
             const cleanPath = filePath.startsWith('file://') ? decodeURIComponent(filePath.substring(7)) : decodeURIComponent(filePath);
             console.log(`[Main - get-file-as-base64] Cleaned path: "${cleanPath}"`);
-            
+    
             if (!await fs.pathExists(cleanPath)) {
                 console.error(`[Main - get-file-as-base64] File not found at path: ${cleanPath}`);
-                return { error: `File not found at path: ${cleanPath}`, base64String: null };
+                return { success: false, error: `File not found at path: ${cleanPath}` };
             }
-            
+    
             let originalFileBuffer = await fs.readFile(cleanPath);
-            let processedFileBuffer = originalFileBuffer;
-
             const fileExtension = path.extname(cleanPath).toLowerCase();
             const isImage = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.tiff', '.svg'].includes(fileExtension);
-
+    
             if (isImage) {
-                console.log(`[Main - get-file-as-base64] Processing image: ${cleanPath}`);
                 const MAX_DIMENSION = 800;
                 const JPEG_QUALITY = 70;
-
-                try {
-                    let image = sharp(originalFileBuffer);
-                    const metadata = await image.metadata();
-                    console.log(`[Main Sharp] Original: ${metadata.format}, ${metadata.width}x${metadata.height}, size: ${originalFileBuffer.length} bytes`);
-
-                    if (metadata.width > MAX_DIMENSION || metadata.height > MAX_DIMENSION) {
-                        image = image.resize({
-                            width: MAX_DIMENSION,
-                            height: MAX_DIMENSION,
-                            fit: sharp.fit.inside,
-                            withoutEnlargement: true
-                        });
+    
+                // Special handling for GIFs
+                if (fileExtension === '.gif') {
+                    console.log('[Main Sharp] GIF detected. Starting frame extraction.');
+                    try {
+                        const image = sharp(originalFileBuffer, { animated: true });
+                        const metadata = await image.metadata();
+                        const frameDelays = metadata.delay || [];
+                        const totalFrames = metadata.pages || 1;
+                        
+                        console.log(`[Main Sharp] GIF Info: ${totalFrames} frames, delays available: ${frameDelays.length > 0}`);
+    
+                        const frameBase64s = [];
+                        let accumulatedDelay = 0;
+                        const targetInterval = 500; // 0.5 seconds in ms
+    
+                        for (let i = 0; i < totalFrames; i++) {
+                            if (i === 0 || accumulatedDelay >= targetInterval) {
+                                console.log(`[Main Sharp] Extracting frame ${i} (Accumulated delay: ${accumulatedDelay}ms)`);
+                                
+                                const frameBuffer = await sharp(originalFileBuffer, { page: i })
+                                    .resize({
+                                        width: MAX_DIMENSION,
+                                        height: MAX_DIMENSION,
+                                        fit: sharp.fit.inside,
+                                        withoutEnlargement: true
+                                    })
+                                    .jpeg({ quality: JPEG_QUALITY })
+                                    .toBuffer();
+                                
+                                frameBase64s.push(frameBuffer.toString('base64'));
+                                accumulatedDelay = 0; // Reset delay
+                            }
+                            
+                            if (frameDelays[i] !== undefined) {
+                                accumulatedDelay += (frameDelays[i] > 0 ? frameDelays[i] : 100);
+                            } else if (totalFrames > 1) {
+                                accumulatedDelay += 100; // Default delay
+                            }
+                        }
+                        
+                        if (frameBase64s.length === 0 && totalFrames > 0) {
+                             const frameBuffer = await sharp(originalFileBuffer, { page: 0 })
+                                .resize({ width: MAX_DIMENSION, height: MAX_DIMENSION, fit: sharp.fit.inside, withoutEnlargement: true })
+                                .jpeg({ quality: JPEG_QUALITY })
+                                .toBuffer();
+                            frameBase64s.push(frameBuffer.toString('base64'));
+                        }
+    
+                        console.log(`[Main Sharp] Extracted ${frameBase64s.length} frames from GIF.`);
+                        console.log(`[Main - get-file-as-base64] ===== REQUEST END (SUCCESS - GIF) =====`);
+                        return { success: true, base64Frames: frameBase64s, isGif: true };
+    
+                    } catch (sharpError) {
+                        console.error(`[Main Sharp] Error processing animated GIF: ${sharpError.message}. Falling back to single frame.`, sharpError);
+                        const fallbackBuffer = await sharp(originalFileBuffer)
+                            .resize({ width: MAX_DIMENSION, height: MAX_DIMENSION, fit: sharp.fit.inside, withoutEnlargement: true })
+                            .jpeg({ quality: JPEG_QUALITY }).toBuffer();
+                        return { success: true, base64Frames: [fallbackBuffer.toString('base64')], isGif: false };
                     }
-                    
-                    console.log(`[Main Sharp] Forcing encoding to JPEG with quality ${JPEG_QUALITY}.`);
-                    processedFileBuffer = await image.jpeg({ quality: JPEG_QUALITY }).toBuffer();
-
-                    const finalMetadata = await sharp(processedFileBuffer).metadata();
-                    console.log(`[Main Sharp] Processed: ${finalMetadata.format}, ${finalMetadata.width}x${finalMetadata.height}, final buffer length: ${processedFileBuffer.length} bytes`);
-
-                } catch (sharpError) {
-                    console.error(`[Main Sharp] Error processing image with sharp: ${sharpError.message}. Using original image buffer.`, sharpError);
-                    processedFileBuffer = originalFileBuffer;
-                    console.warn('[Main Sharp] Sharp processing failed. Will attempt to send original image data.');
+                } else { // For other images (PNG, JPG, etc.)
+                    try {
+                        const processedBuffer = await sharp(originalFileBuffer)
+                            .resize({
+                                width: MAX_DIMENSION,
+                                height: MAX_DIMENSION,
+                                fit: sharp.fit.inside,
+                                withoutEnlargement: true
+                            })
+                            .jpeg({ quality: JPEG_QUALITY })
+                            .toBuffer();
+                        
+                        console.log(`[Main Sharp] Processed static image. Final buffer length: ${processedBuffer.length} bytes`);
+                        return { success: true, base64Frames: [processedBuffer.toString('base64')], isGif: false };
+    
+                    } catch (sharpError) {
+                        console.error(`[Main Sharp] Error processing static image: ${sharpError.message}. Using original buffer.`, sharpError);
+                        return { success: true, base64Frames: [originalFileBuffer.toString('base64')], isGif: false };
+                    }
                 }
-            } else {
+            } else { // Non-image file
                 console.log(`[Main - get-file-as-base64] Non-image file. Buffer length: ${originalFileBuffer.length}`);
+                const base64String = originalFileBuffer.toString('base64');
+                // This path is not expected to be hit for VCP messages, but we return a compatible format for robustness.
+                return { success: true, base64Frames: [base64String], isGif: false };
             }
-
-            const base64String = processedFileBuffer.toString('base64');
-            console.log(`[Main - get-file-as-base64] Successfully converted "${cleanPath}" to Base64. Final Base64 length: ${base64String.length}`);
-            console.log(`[Main - get-file-as-base64] ===== REQUEST END (SUCCESS) =====`);
-            return base64String;
-
+    
         } catch (error) {
             console.error(`[Main - get-file-as-base64] Outer catch: Error processing path "${filePath}":`, error.message, error.stack);
             console.log(`[Main - get-file-as-base64] ===== REQUEST END (ERROR) =====`);
-            return { error: `获取/处理文件Base64失败: ${error.message}`, base64String: null };
+            return { success: false, error: `获取/处理文件Base64失败: ${error.message}` };
         }
     });
 
