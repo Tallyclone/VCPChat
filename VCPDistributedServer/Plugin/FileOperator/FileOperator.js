@@ -7,8 +7,6 @@ const pdf = require('pdf-parse');
 const mammoth = require('mammoth');
 const ExcelJS = require('exceljs');
 const trash = require('trash');
-const { editManyFiles } = require('./editManyFilesHandler.js');
-
 // Load environment variables
 require('dotenv').config();
 
@@ -592,6 +590,83 @@ async function moveManyFiles(sourcePaths, destinations) {
       succeeded: results.succeeded,
       failed: results.failed,
     }
+  };
+}
+
+/**
+ * 批量修改文件内容。
+ * @param {Array<Object>} modifications - 一个包含修改指令的数组。
+ * @param {string} modifications[].filePath - 要修改的文件的绝对路径。
+ * @param {string} modifications[].content - 要添加或写入的内容。
+ * @param {string} modifications[].mode - 操作模式: 'prepend', 'append', 'overwrite'。
+ * @returns {Promise<Object>} 一个包含成功和失败列表的对象。
+ */
+async function editManyFiles(modifications) {
+  // The primary parsing and validation of the modifications array happens in processRequest.
+  // This function now assumes `modifications` is a valid array of objects.
+
+  const results = {
+    succeeded: [],
+    failed: [],
+  };
+
+  for (const mod of modifications) {
+    const { filePath, content, mode } = mod;
+
+    try {
+      // Security check still happens here for each individual path
+      if (!isPathAllowed(filePath, 'EditManyFiles')) {
+        throw new Error(`Access denied: Path '${filePath}' is not in allowed directories`);
+      }
+      
+      // Basic validation of the modification object
+      if (!filePath || typeof content === 'undefined' || !mode) {
+        throw new Error(`Invalid modification object for "${filePath}". It must include filePath, content, and mode.`);
+      }
+
+      switch (mode) {
+        case 'overwrite':
+          await fs.writeFile(filePath, content, 'utf8');
+          break;
+
+        case 'append':
+          await fs.appendFile(filePath, content, 'utf8');
+          break;
+
+        case 'prepend':
+          // For prepend, we need to read the existing content first.
+          let originalContent = '';
+          try {
+            originalContent = await fs.readFile(filePath, 'utf8');
+          } catch (readError) {
+            if (readError.code !== 'ENOENT') { // Ignore "file not found" errors, treat as new file
+              throw readError;
+            }
+          }
+          const newContent = content + originalContent;
+          await fs.writeFile(filePath, newContent, 'utf8');
+          break;
+
+        default:
+          throw new Error(`Invalid mode "${mode}" for file "${filePath}". Supported modes are: prepend, append, overwrite.`);
+      }
+      results.succeeded.push({ filePath, mode, message: 'Operation successful.' });
+
+    } catch (error) {
+      results.failed.push({
+        filePath,
+        mode,
+        error: error.message,
+      });
+    }
+  }
+
+  return {
+    success: true,
+    data: {
+      succeeded: results.succeeded,
+      failed: results.failed,
+    },
   };
 }
 
