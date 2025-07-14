@@ -92,6 +92,18 @@
       {
         "command": "SearchFiles",
         "description": "功能: 在指定目录中递归搜索匹配特定模式的文件或目录。\n参数:\n- searchPath (字符串, 必需): 要搜索的起始目录的绝对路径。\n- pattern (字符串, 必需): 要搜索的文件模式，支持通配符 (例如: '*.txt', 'image_*.png')。\n- options (JSON字符串, 可选): 包含搜索选项的JSON对象字符串。支持的键包括:\n  - \"caseSensitive\" (布尔值, 默认false): 搜索是否区分大小写。\n  - \"includeHidden\" (布尔值, 默认false): 是否在搜索中包含隐藏文件。\n  - \"fileType\" (字符串, 默认'all'): 搜索的项目类型，可选值为 'file', 'directory', 'all'。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」SearchFiles「末」,\nsearchPath:「始」/path/to/search「末」,\npattern:「始」*.log「末」,\noptions:「始」{\"caseSensitive\": false, \"fileType\": \"file\"}「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "MoveManyFiles",
+        "description": "功能: 批量移动文件或目录，支持两种模式：\n1. **多对一**: 将多个源文件/目录移动到一个目标目录中。\n2. **多对多**: 将多个源文件/目录一一对应地移动到多个目标路径，可以实现批量重命名的效果。\n插件会返回详细的成功和失败列表。\n参数:\n- sourcePaths (字符串数组, 必需): 要移动的源文件或目录的绝对路径列表。\n- destinations (字符串 或 字符串数组, 必需): 目标路径。如果为字符串，则作为“多对一”的目标目录；如果为字符串数组，则作为“多对多”的目标路径列表（此时必须与 sourcePaths 长度相同）。\n调用格式 (多对一):\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」MoveManyFiles「末」,\nsourcePaths:「始」[\"/path/to/file1.txt\", \"/path/to/folder1\"]「末」,\ndestinations:「始」/path/to/new_parent_folder「末」\n<<<[END_TOOL_REQUEST]>>>\n调用格式 (多对多):\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」MoveManyFiles「末」,\nsourcePaths:「始」[\"/path/to/file1.txt\", \"/path/to/file2.png\"]「末」,\ndestinations:「始」[\"/path/to/new_folder/file1_new_name.txt\", \"/path/to/another_folder/image.png\"]「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "EditManyFiles",
+        "description": "功能: 批量修改多个文件的内容。支持三种模式：在文件开头插入(prepend)、在末尾追加(append)或完全覆盖(overwrite)。\n参数:\n- modifications (字符串, 必需): 一个包含修改指令的JSON对象数组的 **纯文本字符串**。**警告**: 此参数必须是一个严格的、未转义的JSON字符串。不要在JSON内部的引号前加反斜杠'\\'。\n  - 每个JSON对象包含:\n    - \"filePath\" (字符串, 必需): 要修改的文件的绝对路径。**重要**: 在JSON字符串中，Windows路径的反斜杠'\\'必须转义为'\\\\'。\n    - \"content\" (字符串, 必需): 要写入或添加的内容。内容中的换行符应表示为'\\n'。\n    - \"mode\" (字符串, 必需): 操作模式，可选值为 'prepend', 'append', 'overwrite'。\n\n正确调用格式示例:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」EditManyFiles「末」,\nmodifications:「始」[{\"filePath\":\"C:\\\\Users\\\\Test\\\\file.txt\",\"content\":\"第一行\\n第二行\",\"mode\":\"prepend\"},{\"filePath\":\"/home/user/log.txt\",\"content\":\"new log entry\",\"mode\":\"append\"}]「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "ApplyDiff",
+        "description": "功能: 对一个或多个文件应用精确的查找-替换补丁，用于代码重构、修复或任何需要精确修改文件内容的场景。\n参数:\n- patches (字符串, 必需): 一个包含补丁指令的JSON对象数组的 **纯文本字符串**。**警告**: 此参数必须是一个严格的、未转义的JSON字符串。\n  - 每个JSON对象(patch)包含:\n    - \"filePath\" (字符串, 必需): 要打补丁的文件的绝对路径。Windows路径的反斜杠'\\'必须转义为'\\\\'。\n    - \"diffs\" (数组, 必需): 一个包含多组查找和替换的对象数组。\n      - \"find\" (字符串, 必需): 要 **精确查找** 的文本块，必须完全匹配目标文件中的内容，包括换行符(\\n)和缩进。\n      - \"replace\" (字符串, 必需): 用于替换的新文本块。\n\n正确调用格式示例:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」ApplyDiff「末」,\npatches:「始」[{\"filePath\":\"/app/main.js\",\"diffs\":[{\"find\":\"const oldVar = 1;\",\"replace\":\"const newVar = 2;\"}]}]「末」\n<<<[END_TOOL_REQUEST]>>>"
       }
     ]
   }
