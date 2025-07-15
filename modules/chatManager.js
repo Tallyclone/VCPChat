@@ -640,12 +640,20 @@ window.chatManager = (() => {
                 }
             }
 
+            const context = {
+                agentId: currentSelectedItem.id,
+                topicId: currentTopicId,
+                isGroupMessage: false
+            };
+
             const vcpResponse = await electronAPI.sendToVCP(
                 globalSettings.vcpServerUrl,
                 globalSettings.vcpApiKey,
                 messagesForVCP,
                 modelConfigForVCP,
-                thinkingMessage.id
+                thinkingMessage.id,
+                false, // isGroupCall - legacy, will be ignored by new handler but kept for safety
+                context // The new context object
             );
 
             if (!useStreaming) {

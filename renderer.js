@@ -275,120 +275,143 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    // Listener for agent chat stream chunks
-    window.electronAPI.onVCPStreamChunk(async (eventData) => {
+    // Unified listener for all VCP stream events (agent and group)
+    window.electronAPI.onVCPStreamEvent(async (eventData) => {
         if (!window.messageRenderer) {
-            console.error("VCPStreamChunk: messageRenderer not available.");
+            console.error("onVCPStreamEvent: messageRenderer not available.");
             return;
         }
-        const streamMessageId = eventData.messageId;
-        if (!streamMessageId) {
-            console.error("VCPStreamChunk: Received chunk/event without a messageId. Cannot process.", eventData);
-            // if (activeStreamingMessageId && window.messageRenderer) { // REMOVED activeStreamingMessageId check
-            //     window.messageRenderer.finalizeStreamedMessage(activeStreamingMessageId, 'error_missing_id');
-            //     const errorMsgItem = document.querySelector(`.message-item[data-message-id="${activeStreamingMessageId}"] .md-content`);
-            //     if (errorMsgItem) errorMsgItem.innerHTML += `<p><strong style="color: red;">流错误: 响应中缺少messageId</strong></p>`;
-            //     activeStreamingMessageId = null;
-            // }
+
+        const { type, messageId, context, chunk, error, finish_reason, fullResponse } = eventData;
+
+        if (!messageId) {
+            console.error("onVCPStreamEvent: Received event without a messageId. Cannot process.", eventData);
             return;
         }
-        if (eventData.type === 'data') {
-            window.messageRenderer.appendStreamChunk(streamMessageId, eventData.chunk);
-        } else if (eventData.type === 'end') {
-            window.messageRenderer.finalizeStreamedMessage(streamMessageId, eventData.finish_reason || 'completed');
-            if (currentSelectedItem.type === 'agent') { // Only summarize for agents
-                await window.chatManager.attemptTopicSummarizationIfNeeded();
-            }
-            // if (activeStreamingMessageId === streamMessageId) { // REMOVED
-            //     activeStreamingMessageId = null;
-            // }
-        } else if (eventData.type === 'error') {
-            console.error('VCP Stream Error on ID', streamMessageId, ':', eventData.error);
-            window.messageRenderer.finalizeStreamedMessage(streamMessageId, 'error');
-            const errorMsgItem = document.querySelector(`.message-item[data-message-id="${streamMessageId}"] .md-content`);
-            if (errorMsgItem) {
-                errorMsgItem.innerHTML += `<p><strong style="color: red;">流错误: ${eventData.error}</strong></p>`;
-            } else {
-                 window.messageRenderer.renderMessage({
-                    role: 'system',
-                    content: `流处理错误 (ID: ${streamMessageId}): ${eventData.error}`,
+
+        // --- Asynchronous Logic: Update data model regardless of UI state ---
+        // This is where you would update a global or context-specific data store
+        // For now, we pass the context to the messageRenderer which handles the history array.
+
+        // --- UI Logic: Only render if the message's context matches the current view ---
+        // Directly use the global variables `currentSelectedItem` and `currentTopicId` from the renderer's scope.
+        // The `...Ref` objects are not defined in this scope.
+        const isRelevantToCurrentView = context &&
+            currentSelectedItem && // Ensure currentSelectedItem is not null
+            (context.groupId ? context.groupId === currentSelectedItem.id : context.agentId === currentSelectedItem.id) &&
+            context.topicId === currentTopicId;
+
+        console.log(`[onVCPStreamEvent] Received event type '${type}' for msg ${messageId}. Relevant to current view: ${isRelevantToCurrentView}`, context);
+
+        // Data model updates should ALWAYS happen, regardless of the current view.
+        // UI updates (creating new DOM elements) should only happen if the view is relevant.
+        switch (type) {
+            case 'data':
+                window.messageRenderer.appendStreamChunk(messageId, chunk, context);
+                break;
+
+            case 'end':
+                window.messageRenderer.finalizeStreamedMessage(messageId, finish_reason || 'completed', context);
+                if (context && !context.isGroupMessage) {
+                    // This can run in the background
+                    await window.chatManager.attemptTopicSummarizationIfNeeded();
+                }
+                break;
+
+            case 'error':
+                console.error('VCP Stream Error on ID', messageId, ':', error, 'Context:', context);
+                window.messageRenderer.finalizeStreamedMessage(messageId, 'error', context);
+                if (isRelevantToCurrentView) {
+                    const errorMsgItem = document.querySelector(`.message-item[data-message-id="${messageId}"] .md-content`);
+                    if (errorMsgItem) {
+                        errorMsgItem.innerHTML += `<p><strong style="color: red;">流错误: ${error}</strong></p>`;
+                    } else {
+                        window.messageRenderer.renderMessage({
+                            role: 'system',
+                            content: `流处理错误 (ID: ${messageId}): ${error}`,
+                            timestamp: Date.now(),
+                            id: `err_${messageId}`
+                        });
+                    }
+                }
+                break;
+            
+            // These events create new message bubbles, so they should only execute if the view is relevant.
+            case 'agent_thinking':
+                if (isRelevantToCurrentView) {
+                    console.log(`[Renderer onVCPStreamEvent AGENT_THINKING] Rendering for ${context.agentName} (msgId: ${messageId})`);
+                    window.messageRenderer.renderMessage({
+                        id: messageId,
+                        role: 'assistant',
+                        name: context.agentName,
+                        agentId: context.agentId,
+                        avatarUrl: context.avatarUrl,
+                        avatarColor: context.avatarColor,
+                        content: '思考中...',
+                        timestamp: Date.now(),
+                        isThinking: true,
+                        isGroupMessage: true,
+                        groupId: context.groupId,
+                        topicId: context.topicId
+                    });
+                } else {
+                    // If not relevant, we still need to add a placeholder to the history so it can be updated later.
+                    // The streamManager's `startStreamingMessage` handles this history update.
+                    // We can call a simplified version or ensure startStreamingMessage is called for non-relevant views too.
+                    // For now, let's rely on the fact that 'start' will follow and handle the history.
+                     console.log(`[Renderer onVCPStreamEvent AGENT_THINKING] Event for non-visible chat. UI not rendered for msgId: ${messageId}`);
+                }
+                break;
+
+            case 'start':
+                // `startStreamingMessage` handles both UI creation and history update.
+                // It needs to be called for all streams to ensure history is consistent.
+                // The function itself should internally decide whether to render to DOM based on visibility.
+                // Let's modify this assumption: we call it, and it will handle history. The DOM part is what matters for visibility.
+                window.messageRenderer.startStreamingMessage({
+                    id: messageId,
+                    role: 'assistant',
+                    name: context.agentName,
+                    agentId: context.agentId,
+                    avatarUrl: context.avatarUrl,
+                    avatarColor: context.avatarColor,
+                    content: '',
                     timestamp: Date.now(),
-                    id: `err_${streamMessageId}`
+                    isThinking: false,
+                    isGroupMessage: context.isGroupMessage,
+                    groupId: context.groupId,
+                    topicId: context.topicId
                 });
-            }
-            // if (activeStreamingMessageId === streamMessageId) { // REMOVED
-            //     activeStreamingMessageId = null;
-            // }
-        }
-    });
-    
-    // Listener for group chat stream chunks
-    window.electronAPI.onVCPGroupStreamChunk(async (eventData) => {
-        if (!window.messageRenderer) {
-            console.error("VCPGroupStreamChunk: messageRenderer not available.");
-            return;
-        }
-        const streamMessageId = eventData.messageId;
-        // agentName, agentId, groupId, topicId are now part of eventData directly from main.js
-        const { agentName = '群成员', agentId, groupId, topicId, chunk, fullResponse, error, type } = eventData;
+                if (isRelevantToCurrentView) {
+                     console.log(`[Renderer onVCPStreamEvent START] UI updated for visible chat ${context.agentName} (msgId: ${messageId})`);
+                } else {
+                    console.log(`[Renderer onVCPStreamEvent START] History updated for non-visible chat ${context.agentName} (msgId: ${messageId})`);
+                }
+                break;
 
-        if (!streamMessageId) {
-            console.error("VCPGroupStreamChunk: Received chunk/event without a messageId.", eventData);
-            return;
-        }
+            case 'full_response':
+                // This also needs to update history unconditionally and render only if relevant.
+                // `renderFullMessage` should handle this logic.
+                if (isRelevantToCurrentView) {
+                    console.log(`[Renderer onVCPStreamEvent FULL_RESPONSE] Rendering for ${context.agentName} (msgId: ${messageId})`);
+                    window.messageRenderer.renderFullMessage(messageId, fullResponse, context.agentName, context.agentId);
+                } else {
+                    // If not relevant, we need a way to update the history without rendering.
+                    // Let's assume `renderFullMessage` needs a flag or we need a new function.
+                    // For now, let's add a placeholder to history.
+                    console.log(`[Renderer onVCPStreamEvent FULL_RESPONSE] History update for non-visible chat needed for msgId: ${messageId}`);
+                    // This part is tricky. The message might not exist in history yet.
+                    // Let's ensure `renderFullMessage` can handle this.
+                    window.messageRenderer.renderFullMessage(messageId, fullResponse, context.agentName, context.agentId);
+                }
+                break;
 
-        if (type === 'agent_thinking') {
-            const { agentName, agentId, groupId, topicId, avatarUrl, avatarColor } = eventData;
-            console.log(`[Renderer onVCPGroupStreamChunk AGENT_THINKING] Received for ${agentName} (msgId: ${streamMessageId})`);
-            window.messageRenderer.renderMessage({
-                id: streamMessageId,
-                role: 'assistant',
-                name: agentName,
-                agentId: agentId,
-                avatarUrl: avatarUrl,
-                avatarColor: avatarColor,
-                content: '思考中...',
-                timestamp: Date.now(),
-                isThinking: true,
-                isGroupMessage: true,
-                groupId: groupId,
-                topicId: topicId
-            });
-        } else if (type === 'start') {
-            // No need to call getAgentConfig anymore, avatarUrl is in the eventData
-            const { agentName, agentId, groupId, topicId, avatarUrl, avatarColor } = eventData;
-            console.log(`[Renderer onVCPGroupStreamChunk START] Received start event for ${agentName} with avatarUrl: ${avatarUrl}`);
+            case 'no_ai_response':
+                 console.log(`[onVCPStreamEvent] No AI response needed for messageId: ${messageId}. Message: ${eventData.message}`);
+                break;
 
-            window.messageRenderer.startStreamingMessage({
-                id: streamMessageId,
-                role: 'assistant',
-                name: agentName,
-                agentId: agentId,
-                avatarUrl: avatarUrl, // Use directly from eventData
-                avatarColor: avatarColor, // Use directly from eventData
-                content: '', // Start with empty content
-                timestamp: Date.now(),
-                isThinking: false, // Stream has started, not just thinking
-                isGroupMessage: true,
-                groupId: groupId,
-                topicId: topicId
-            });
-        } else if (type === 'data') {
-            window.messageRenderer.appendStreamChunk(streamMessageId, chunk, agentName, agentId);
-        } else if (type === 'end') {
-            // When the stream ends, finalize the message and save it to history
-            window.messageRenderer.finalizeStreamedMessage(streamMessageId, 'completed', agentName, agentId);
-            // The history saving logic is now handled by groupchat.js in the main process.
-            // The renderer's responsibility is to finalize the UI display.
-        } else if (type === 'full_response') {
-            // New handler for non-streaming full responses
-            console.log(`[Renderer onVCPGroupStreamChunk FULL_RESPONSE] Received for ${agentName} (msgId: ${streamMessageId})`);
-            window.messageRenderer.renderFullMessage(streamMessageId, fullResponse, agentName, agentId);
-        } else if (type === 'error') {
-            console.error('VCP Group Stream Error on ID', streamMessageId, 'for agent', agentName, ':', error);
-            window.messageRenderer.finalizeStreamedMessage(streamMessageId, 'error', `[错误] ${error}`, agentName, agentId);
-        } else if (type === 'no_ai_response') {
-            console.log(`[Group Chat Flow] No AI response needed for messageId: ${streamMessageId}. Message: ${eventData.message}`);
+            default:
+                console.warn(`[onVCPStreamEvent] Received unhandled event type: '${type}'`, eventData);
         }
     });
 

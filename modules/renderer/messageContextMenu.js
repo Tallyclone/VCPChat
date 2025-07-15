@@ -465,21 +465,35 @@ async function handleRegenerateResponse(originalAssistantMessage) {
             stream: agentConfig.streamOutput === true || String(agentConfig.streamOutput) === 'true'
         };
         
+        // 【关键修复】如果使用流式输出，先调用 startStreamingMessage
+        if (modelConfigForVCP.stream) {
+            contextMenuDependencies.startStreamingMessage({ ...regenerationThinkingMessage, content: "" });
+        }
+
+        const context = {
+            agentId: currentSelectedItemVal.id,
+            topicId: currentTopicIdVal,
+            isGroupMessage: false
+        };
+
         const vcpResult = await electronAPI.sendToVCP(
             globalSettingsVal.vcpServerUrl,
             globalSettingsVal.vcpApiKey,
             messagesForVCP,
             modelConfigForVCP,
-            regenerationThinkingMessage.id
+            regenerationThinkingMessage.id,
+            false, // isGroupCall - legacy
+            context // Pass the correct context
         );
 
         if (modelConfigForVCP.stream) {
-            contextMenuDependencies.startStreamingMessage({ ...regenerationThinkingMessage, content: "" });
+            // 如果流启动失败，vcpResult 会包含错误信息
             if (vcpResult.streamError || !vcpResult.streamingStarted) {
                 let detailedError = vcpResult.error || '未能启动流';
                 contextMenuDependencies.finalizeStreamedMessage(regenerationThinkingMessage.id, 'error', `VCP 流错误 (重新生成): ${detailedError}`);
             }
         } else {
+            // 非流式处理逻辑
             contextMenuDependencies.removeMessageById(regenerationThinkingMessage.id, false);
             if (vcpResult.error) {
                 contextMenuDependencies.renderMessage({ role: 'system', content: `VCP错误 (重新生成): ${vcpResult.error}`, timestamp: Date.now() });

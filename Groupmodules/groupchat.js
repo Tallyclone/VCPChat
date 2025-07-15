@@ -253,7 +253,7 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
         console.error('[GroupChat] handleGroupChatMessage: Critical paths or getAgentConfigById not initialized properly.');
         console.error(`[GroupChat] Details - mainAppPaths keys: ${mainAppPaths ? Object.keys(mainAppPaths).join(', ') : 'N/A'}, AGENT_GROUPS_DIR exists: ${!!mainAppPaths?.AGENT_GROUPS_DIR}, AGENT_DIR exists: ${!!mainAppPaths?.AGENT_DIR}, USER_DATA_DIR exists: ${!!mainAppPaths?.USER_DATA_DIR}, getAgentConfigById is function: ${typeof getAgentConfigById === 'function'}`);
         if (typeof sendStreamChunkToRenderer === 'function') {
-            sendStreamChunkToRenderer('vcp-group-stream-chunk', { type: 'error', error: '群聊模块关键路径或依赖未正确初始化。', messageId: userMessage.id || Date.now(), groupId, topicId });
+            sendStreamChunkToRenderer({ type: 'error', error: '群聊模块关键路径或依赖未正确初始化。', messageId: userMessage.id || Date.now(), context: { groupId, topicId, isGroupMessage: true } });
         }
         return;
     }
@@ -262,7 +262,7 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
     if (!groupConfig) {
         console.error(`[GroupChat] 未找到群组配置: ${groupId}`);
         if (typeof sendStreamChunkToRenderer === 'function') {
-            sendStreamChunkToRenderer('vcp-group-stream-chunk', { type: 'error', error: `未找到群组配置: ${groupId}`, messageId: userMessage.id || Date.now() });
+            sendStreamChunkToRenderer({ type: 'error', error: `未找到群组配置: ${groupId}`, messageId: userMessage.id || Date.now(), context: { groupId, topicId, isGroupMessage: true } });
         }
         return;
     }
@@ -315,7 +315,7 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
     if (activeMembers.length === 0) {
         console.log('[GroupChat] 群聊中没有可用的活跃成员。');
          if (typeof sendStreamChunkToRenderer === 'function') {
-            sendStreamChunkToRenderer('vcp-group-stream-chunk', { type: 'no_ai_response', message: '当前群聊没有可响应的AI成员。', messageId: userMessage.id, groupId, topicId });
+            sendStreamChunkToRenderer({ type: 'no_ai_response', message: '当前群聊没有可响应的AI成员。', messageId: userMessage.id, context: { groupId, topicId, isGroupMessage: true } });
         }
         return;
     }
@@ -463,7 +463,7 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
             const errorResponse = { role: 'assistant', name: agentName, agentId: agentId, content: `[系统消息] ${errorMsg}`, timestamp: Date.now(), id: messageIdForAgentResponse };
             groupHistory.push(errorResponse);
             if (typeof sendStreamChunkToRenderer === 'function') {
-                sendStreamChunkToRenderer('vcp-group-stream-chunk', { type: 'error', error: errorMsg, messageId: messageIdForAgentResponse, agentId: agentId, agentName: agentName, groupId, topicId });
+                sendStreamChunkToRenderer({ type: 'error', error: errorMsg, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true } });
             }
             continue; // 继续处理下一个需要发言的Agent
         }
@@ -472,15 +472,18 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
             // Send 'agent_thinking' event before VCP call for ALL agents
             console.log(`[GroupChat] Preparing to send 'agent_thinking' event for ${agentName} (msgId: ${messageIdForAgentResponse})`);
             if (typeof sendStreamChunkToRenderer === 'function') {
-                sendStreamChunkToRenderer('vcp-group-stream-chunk', {
+                sendStreamChunkToRenderer({
                     type: 'agent_thinking',
                     messageId: messageIdForAgentResponse,
-                    agentId: agentId,
-                    agentName: agentName,
-                    avatarUrl: agentConfig.avatarUrl,
-                    avatarColor: agentConfig.avatarCalculatedColor,
-                    groupId,
-                    topicId
+                    context: {
+                        groupId,
+                        topicId,
+                        agentId,
+                        agentName,
+                        avatarUrl: agentConfig.avatarUrl,
+                        avatarColor: agentConfig.avatarCalculatedColor,
+                        isGroupMessage: true
+                    }
                 });
                 console.log(`[GroupChat] 'agent_thinking' event sent for ${agentName}.`);
                 // Short delay to allow renderer to process 'thinking' bubble
@@ -523,7 +526,7 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
 
                 if (typeof sendStreamChunkToRenderer === 'function') {
                     // Finalize the 'thinking' bubble with an error message
-                    sendStreamChunkToRenderer('vcp-group-stream-chunk', { type: 'end', error: errorMessageToPropagate, fullResponse: `[错误] ${errorMessageToPropagate}`, messageId: messageIdForAgentResponse, agentId, agentName, groupId, topicId });
+                    sendStreamChunkToRenderer({ type: 'end', error: errorMessageToPropagate, fullResponse: `[错误] ${errorMessageToPropagate}`, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true } });
                 }
                 continue; // Move to the next agent
             }
@@ -532,14 +535,18 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
                 // For streaming, now send the 'start' event to replace the 'thinking' bubble
                 console.log(`[GroupChat] VCP Response: Starting stream for ${agentName} (msgId: ${messageIdForAgentResponse})`);
                 if (typeof sendStreamChunkToRenderer === 'function') {
-                    sendStreamChunkToRenderer('vcp-group-stream-chunk', {
+                    sendStreamChunkToRenderer({
                         type: 'start',
                         messageId: messageIdForAgentResponse,
-                        agentId: agentId,
-                        agentName: agentName,
-                        avatarUrl: agentConfig.avatarUrl,
-                        avatarColor: agentConfig.avatarCalculatedColor,
-                        groupId, topicId
+                        context: {
+                            groupId,
+                            topicId,
+                            agentId,
+                            agentName,
+                            avatarUrl: agentConfig.avatarUrl,
+                            avatarColor: agentConfig.avatarCalculatedColor,
+                            isGroupMessage: true
+                        }
                     });
                 }
                 
@@ -558,7 +565,7 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
                                 groupHistory.push(finalAiResponseEntry);
                                 await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
                                 if (typeof sendStreamChunkToRenderer === 'function') {
-                                    sendStreamChunkToRenderer('vcp-group-stream-chunk', { type: 'end', messageId: messageIdForAgentResponse, agentId, agentName, fullResponse: accumulatedResponse, groupId, topicId });
+                                    sendStreamChunkToRenderer({ type: 'end', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true }, fullResponse: accumulatedResponse });
                                 }
                                 break;
                             }
@@ -573,7 +580,7 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
                                         groupHistory.push(doneAiResponseEntry);
                                         await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
                                         if (typeof sendStreamChunkToRenderer === 'function') {
-                                            sendStreamChunkToRenderer('vcp-group-stream-chunk', { type: 'end', messageId: messageIdForAgentResponse, agentId, agentName, fullResponse: accumulatedResponse, groupId, topicId });
+                                            sendStreamChunkToRenderer({ type: 'end', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true }, fullResponse: accumulatedResponse });
                                         }
                                         return;
                                     }
@@ -587,12 +594,12 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
                                             accumulatedResponse += parsedChunk.content;
                                         }
                                         if (typeof sendStreamChunkToRenderer === 'function') {
-                                            sendStreamChunkToRenderer('vcp-group-stream-chunk', { type: 'data', chunk: parsedChunk, messageId: messageIdForAgentResponse, agentId, agentName, groupId, topicId });
+                                            sendStreamChunkToRenderer({ type: 'data', chunk: parsedChunk, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true } });
                                         }
                                     } catch (e) {
                                         console.error(`[GroupChat] Failed to parse VCP stream chunk JSON for ${agentName}:`, e, 'Raw data:', jsonData);
                                         if (typeof sendStreamChunkToRenderer === 'function') {
-                                            sendStreamChunkToRenderer('vcp-group-stream-chunk', { type: 'data', chunk: { raw: jsonData, error: 'json_parse_error' }, messageId: messageIdForAgentResponse, agentId, agentName, groupId, topicId });
+                                            sendStreamChunkToRenderer({ type: 'data', chunk: { raw: jsonData, error: 'json_parse_error' }, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true } });
                                         }
                                     }
                                 }
@@ -605,7 +612,7 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
                         groupHistory.push(streamErrorResponseEntry);
                         await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
                         if (typeof sendStreamChunkToRenderer === 'function') {
-                            sendStreamChunkToRenderer('vcp-group-stream-chunk', { type: 'error', error: `VCP stream reading error: ${streamError.message}`, messageId: messageIdForAgentResponse, agentId, agentName, groupId, topicId });
+                            sendStreamChunkToRenderer({ type: 'error', error: `VCP stream reading error: ${streamError.message}`, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true } });
                         }
                     } finally {
                         reader.releaseLock();
@@ -624,14 +631,17 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
                 // Directly send the 'end' event. The 'thinking' placeholder already exists.
                 // Directly send the 'full_response' event. The 'thinking' placeholder already exists.
                 if (typeof sendStreamChunkToRenderer === 'function') {
-                    sendStreamChunkToRenderer('vcp-group-stream-chunk', {
+                    sendStreamChunkToRenderer({
                         type: 'full_response',
                         messageId: messageIdForAgentResponse,
-                        agentId,
-                        agentName,
                         fullResponse: aiResponseContent,
-                        groupId,
-                        topicId
+                        context: {
+                            groupId,
+                            topicId,
+                            agentId,
+                            agentName,
+                            isGroupMessage: true
+                        }
                     });
                 }
             }
@@ -643,14 +653,14 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
             await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
             if (typeof sendStreamChunkToRenderer === 'function') {
                 // Finalize the 'thinking' bubble with an error
-                sendStreamChunkToRenderer('vcp-group-stream-chunk', { type: 'end', error: error.message, fullResponse: errorText, messageId: messageIdForAgentResponse, agentId, agentName, groupId, topicId });
+                sendStreamChunkToRenderer({ type: 'end', error: error.message, fullResponse: errorText, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true } });
             }
         }
         } // End of loop for agentsToRespond
     } else if (groupConfig.mode !== 'invite_only') { // 如果不是邀请模式，但也没有AI响应，也发送 no_ai_response
         console.log('[GroupChat] 根据群聊模式，没有 Agent 需要响应。');
         if (typeof sendStreamChunkToRenderer === 'function') {
-            sendStreamChunkToRenderer('vcp-group-stream-chunk', { type: 'no_ai_response', message: '当前没有AI需要发言。', messageId: userMessage.id, groupId, topicId });
+            sendStreamChunkToRenderer({ type: 'no_ai_response', message: '当前没有AI需要发言。', messageId: userMessage.id, context: { groupId, topicId, isGroupMessage: true } });
         }
         // 即使没有AI响应，也可能需要总结话题（例如，用户连续发了几条消息）
     }
@@ -687,7 +697,7 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
     if (!mainAppPaths || !mainAppPaths.AGENT_GROUPS_DIR || !mainAppPaths.AGENT_DIR || !mainAppPaths.USER_DATA_DIR || typeof getAgentConfigById !== 'function') {
         console.error('[GroupChat] handleInviteAgentToSpeak: Critical paths or getAgentConfigById not initialized properly.');
         if (typeof sendStreamChunkToRenderer === 'function') {
-            sendStreamChunkToRenderer('vcp-group-stream-chunk', { type: 'error', error: '群聊模块关键路径或依赖未正确初始化 (邀请发言)。', groupId, topicId, agentId: invitedAgentId });
+            sendStreamChunkToRenderer({ type: 'error', error: '群聊模块关键路径或依赖未正确初始化 (邀请发言)。', context: { groupId, topicId, agentId: invitedAgentId, isGroupMessage: true } });
         }
         return;
     }
@@ -696,7 +706,7 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
     if (!groupConfig) {
         console.error(`[GroupChat] 未找到群组配置: ${groupId} (邀请发言)`);
         if (typeof sendStreamChunkToRenderer === 'function') {
-            sendStreamChunkToRenderer('vcp-group-stream-chunk', { type: 'error', error: `未找到群组配置: ${groupId}`, agentId: invitedAgentId });
+            sendStreamChunkToRenderer({ type: 'error', error: `未找到群组配置: ${groupId}`, context: { groupId, topicId, agentId: invitedAgentId, isGroupMessage: true } });
         }
         return;
     }
@@ -705,7 +715,7 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
     if (!agentConfig || agentConfig.error) {
         console.error(`[GroupChat] 未找到或无法加载被邀请的群成员 ${invitedAgentId} 的配置: ${agentConfig?.error}`);
         if (typeof sendStreamChunkToRenderer === 'function') {
-            sendStreamChunkToRenderer('vcp-group-stream-chunk', { type: 'error', error: `未找到受邀Agent ${invitedAgentId} 的配置。`, agentId: invitedAgentId });
+            sendStreamChunkToRenderer({ type: 'error', error: `未找到受邀Agent ${invitedAgentId} 的配置。`, context: { groupId, topicId, agentId: invitedAgentId, isGroupMessage: true } });
         }
         return;
     }
@@ -808,7 +818,7 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
         groupHistory.push(errorResponse);
         await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
         if (typeof sendStreamChunkToRenderer === 'function') {
-            sendStreamChunkToRenderer('vcp-group-stream-chunk', { type: 'error', error: errorMsg, messageId: messageIdForAgentResponse, agentId: invitedAgentId, agentName: agentName, groupId, topicId });
+            sendStreamChunkToRenderer({ type: 'error', error: errorMsg, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true } });
         }
         return;
     }
@@ -816,15 +826,18 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
     try {
         // Always send 'agent_thinking' before the fetch call
         if (typeof sendStreamChunkToRenderer === 'function') {
-            sendStreamChunkToRenderer('vcp-group-stream-chunk', {
+            sendStreamChunkToRenderer({
                 type: 'agent_thinking',
                 messageId: messageIdForAgentResponse,
-                agentId: invitedAgentId,
-                agentName: agentName,
-                avatarUrl: agentConfig.avatarUrl,
-                avatarColor: agentConfig.avatarCalculatedColor,
-                groupId,
-                topicId
+                context: {
+                    groupId,
+                    topicId,
+                    agentId: invitedAgentId,
+                    agentName,
+                    avatarUrl: agentConfig.avatarUrl,
+                    avatarColor: agentConfig.avatarCalculatedColor,
+                    isGroupMessage: true
+                }
             });
             await new Promise(resolve => setTimeout(resolve, 200)); // Give renderer time to create the bubble
         }
@@ -861,9 +874,9 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
             const errorResponseEntry = { role: 'assistant', name: agentName, agentId: invitedAgentId, content: `[System Message] ${errorMessageToPropagate}`, timestamp: Date.now(), id: messageIdForAgentResponse };
             groupHistory.push(errorResponseEntry);
             await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
-
+ 
             if (typeof sendStreamChunkToRenderer === 'function') {
-                sendStreamChunkToRenderer('vcp-group-stream-chunk', { type: 'end', error: errorMessageToPropagate, fullResponse: `[错误] ${errorMessageToPropagate}`, messageId: messageIdForAgentResponse, agentId: invitedAgentId, agentName, groupId, topicId });
+                sendStreamChunkToRenderer({ type: 'end', error: errorMessageToPropagate, fullResponse: `[错误] ${errorMessageToPropagate}`, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true } });
             }
             return;
         }
@@ -871,14 +884,18 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
         if (modelConfigForAgent.stream) {
             // Send 'start' to replace 'thinking'
             if (typeof sendStreamChunkToRenderer === 'function') {
-                sendStreamChunkToRenderer('vcp-group-stream-chunk', {
+                sendStreamChunkToRenderer({
                     type: 'start',
                     messageId: messageIdForAgentResponse,
-                    agentId: invitedAgentId,
-                    agentName: agentName,
-                    avatarUrl: agentConfig.avatarUrl,
-                    avatarColor: agentConfig.avatarCalculatedColor,
-                    groupId, topicId
+                    context: {
+                        groupId,
+                        topicId,
+                        agentId: invitedAgentId,
+                        agentName,
+                        avatarUrl: agentConfig.avatarUrl,
+                        avatarColor: agentConfig.avatarCalculatedColor,
+                        isGroupMessage: true
+                    }
                 });
             }
 
@@ -895,7 +912,7 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
                             groupHistory.push(finalAiResponseEntry);
                             await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
                             if (typeof sendStreamChunkToRenderer === 'function') {
-                                sendStreamChunkToRenderer('vcp-group-stream-chunk', { type: 'end', messageId: messageIdForAgentResponse, agentId: invitedAgentId, agentName, fullResponse: accumulatedResponse, groupId, topicId });
+                                sendStreamChunkToRenderer({ type: 'end', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true }, fullResponse: accumulatedResponse });
                             }
                             break;
                         }
@@ -909,7 +926,7 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
                                     groupHistory.push(doneAiResponseEntry);
                                     await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
                                     if (typeof sendStreamChunkToRenderer === 'function') {
-                                        sendStreamChunkToRenderer('vcp-group-stream-chunk', { type: 'end', messageId: messageIdForAgentResponse, agentId: invitedAgentId, agentName, fullResponse: accumulatedResponse, groupId, topicId });
+                                        sendStreamChunkToRenderer({ type: 'end', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true }, fullResponse: accumulatedResponse });
                                     }
                                     return;
                                 }
@@ -923,7 +940,7 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
                                         accumulatedResponse += parsedChunk.content;
                                     }
                                     if (typeof sendStreamChunkToRenderer === 'function') {
-                                        sendStreamChunkToRenderer('vcp-group-stream-chunk', { type: 'data', chunk: parsedChunk, messageId: messageIdForAgentResponse, agentId: invitedAgentId, agentName, groupId, topicId });
+                                        sendStreamChunkToRenderer({ type: 'data', chunk: parsedChunk, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true } });
                                     }
                                 } catch (e) {
                                     console.error(`[GroupChat Invite] Failed to parse VCP stream chunk JSON for ${agentName}:`, e, 'Raw data:', jsonData);
@@ -938,7 +955,7 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
                     groupHistory.push(streamErrorResponseEntry);
                     await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
                     if (typeof sendStreamChunkToRenderer === 'function') {
-                        sendStreamChunkToRenderer('vcp-group-stream-chunk', { type: 'error', error: `VCP stream reading error (invite): ${streamError.message}`, messageId: messageIdForAgentResponse, agentId: invitedAgentId, agentName, groupId, topicId });
+                        sendStreamChunkToRenderer({ type: 'error', error: `VCP stream reading error (invite): ${streamError.message}`, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true } });
                     }
                 } finally {
                     reader.releaseLock();
@@ -952,16 +969,19 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
             const aiResponseEntry = { role: 'assistant', name: agentName, agentId: invitedAgentId, content: aiResponseContent, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor };
             groupHistory.push(aiResponseEntry);
             await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
-
+ 
             if (typeof sendStreamChunkToRenderer === 'function') {
-                sendStreamChunkToRenderer('vcp-group-stream-chunk', {
+                sendStreamChunkToRenderer({
                     type: 'full_response',
                     messageId: messageIdForAgentResponse,
-                    agentId: invitedAgentId,
-                    agentName,
                     fullResponse: aiResponseContent,
-                    groupId,
-                    topicId
+                    context: {
+                        groupId,
+                        topicId,
+                        agentId: invitedAgentId,
+                        agentName,
+                        isGroupMessage: true
+                    }
                 });
             }
         }
@@ -973,7 +993,7 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
         groupHistory.push(errorResponse);
         await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
         if (typeof sendStreamChunkToRenderer === 'function') {
-            sendStreamChunkToRenderer('vcp-group-stream-chunk', { type: 'end', error: error.message, fullResponse: errorText, messageId: messageIdForAgentResponse, agentId: invitedAgentId, agentName, groupId, topicId });
+            sendStreamChunkToRenderer({ type: 'end', error: error.message, fullResponse: errorText, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true } });
         }
     }
 
@@ -1097,11 +1117,15 @@ async function triggerTopicSummarizationIfNeeded(groupId, topicId, groupHistory,
                     const saveResult = await saveGroupTopicTitle(groupId, topicId, newTitle);
                     if (saveResult.success && sendStreamChunkToRenderer) {
                         // 通知渲染器话题标题已更新
-                        sendStreamChunkToRenderer('vcp-group-topic-updated', {
-                            groupId,
-                            topicId,
-                            newTitle,
-                            topics: saveResult.topics // 发送更新后的话题列表
+                        sendStreamChunkToRenderer({
+                            type: 'topic_updated', // Use a type to distinguish from chat chunks
+                            context: {
+                                groupId,
+                                topicId,
+                                newTitle,
+                                topics: saveResult.topics,
+                                isGroupMessage: true // Maintain context structure
+                            }
                         });
                         console.log(`[TopicSummary] 已通知渲染器话题 ${topicId} 标题更新。`);
                     } else if (!saveResult.success) {

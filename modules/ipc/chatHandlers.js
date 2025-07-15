@@ -459,9 +459,9 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
         }
     });
 
-    ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelConfig, messageId, isGroupCall = false, groupContext = null) => {
-        console.log(`[Main - sendToVCP] ***** sendToVCP HANDLER EXECUTED for messageId: ${messageId}, isGroupCall: ${isGroupCall} *****`);
-        const streamChannel = isGroupCall ? 'vcp-group-stream-chunk' : 'vcp-stream-chunk';
+    ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelConfig, messageId, isGroupCall = false, context = null) => {
+        console.log(`[Main - sendToVCP] ***** sendToVCP HANDLER EXECUTED for messageId: ${messageId}, isGroupCall: ${isGroupCall} *****`, context);
+        const streamChannel = 'vcp-stream-event'; // Use a single, unified channel for all stream events.
         try {
             // --- Agent Music Control Injection ---
             if (getMusicState) {
@@ -547,7 +547,7 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
             console.log(`发送到VCP服务器: ${vcpUrl} for messageId: ${messageId}`);
             console.log('VCP API Key:', vcpApiKey ? '已设置' : '未设置');
             console.log('模型配置:', modelConfig);
-            if (isGroupCall) console.log('群聊上下文:', groupContext);
+            if (context) console.log('上下文:', context);
     
             const response = await fetch(vcpUrl, {
                 method: 'POST',
@@ -584,10 +584,8 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
                     else if (typeof errorData === 'string' && errorData.length < 200) detailedErrorMessage += ` 响应: ${errorData}`;
                     else if (errorData && errorData.details && typeof errorData.details === 'string' && errorData.details.length < 200) detailedErrorMessage += ` 详情: ${errorData.details}`;
     
-                    const errorPayload = { type: 'error', error: `VCP请求失败: ${detailedErrorMessage}`, details: errorData, messageId: messageId }; // details 字段保持原始 errorData
-                    if (isGroupCall && groupContext) {
-                        Object.assign(errorPayload, groupContext); // Add agentId, agentName, groupId, topicId
-                    }
+                    const errorPayload = { type: 'error', error: `VCP请求失败: ${detailedErrorMessage}`, details: errorData, messageId: messageId };
+                    if (context) errorPayload.context = context;
                     event.sender.send(streamChannel, errorPayload);
                     // 为函数返回值构造统一的 errorDetail.message
                     const finalErrorMessageForReturn = `VCP请求失败: ${response.status} - ${errorData.message || (errorData.error && errorData.error.message) || (typeof errorData === 'string' ? errorData : '详细错误请查看控制台')}`;
@@ -608,7 +606,6 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
                 // 它现在接收 reader 和 decoder 作为参数
                 async function processStream(reader, decoder) {
                     let buffer = '';
-                    const streamChannel = isGroupCall ? 'vcp-group-stream-chunk' : 'vcp-stream-chunk';
 
                     try {
                         while (true) {
@@ -629,30 +626,21 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
                                     const jsonData = line.substring(5).trim();
                                     if (jsonData === '[DONE]') {
                                         console.log(`VCP流明确[DONE] for messageId: ${messageId}`);
-                                        const donePayload = { type: 'end', messageId: messageId };
-                                        if (isGroupCall && groupContext) {
-                                            Object.assign(donePayload, groupContext);
-                                        }
+                                        const donePayload = { type: 'end', messageId: messageId, context };
                                         event.sender.send(streamChannel, donePayload);
                                         return; // [DONE] 是明确的结束信号，退出函数
-                                    }                                                                       
+                                    }
                                     // 如果 jsonData 为空，则忽略该行，这可能是网络波动或心跳信号
                                     if (jsonData === '') {
                                         continue;
                                     }
                                     try {
                                         const parsedChunk = JSON.parse(jsonData);
-                                        const dataPayload = { type: 'data', chunk: parsedChunk, messageId: messageId };
-                                        if (isGroupCall && groupContext) {
-                                            Object.assign(dataPayload, groupContext);
-                                        }
+                                        const dataPayload = { type: 'data', chunk: parsedChunk, messageId: messageId, context };
                                         event.sender.send(streamChannel, dataPayload);
                                     } catch (e) {
                                         console.error(`解析VCP流数据块JSON失败 for messageId: ${messageId}:`, e, '原始数据:', jsonData);
-                                        const errorChunkPayload = { type: 'data', chunk: { raw: jsonData, error: 'json_parse_error' }, messageId: messageId };
-                                        if (isGroupCall && groupContext) {
-                                            Object.assign(errorChunkPayload, groupContext);
-                                        }
+                                        const errorChunkPayload = { type: 'data', chunk: { raw: jsonData, error: 'json_parse_error' }, messageId: messageId, context };
                                         event.sender.send(streamChannel, errorChunkPayload);
                                     }
                                 }
@@ -662,10 +650,7 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
                                 // 流因连接关闭而结束，而不是[DONE]消息。
                                 // 缓冲区已被处理，现在发送最终的 'end' 信号。
                                 console.log(`VCP流结束 for messageId: ${messageId}`);
-                                const endPayload = { type: 'end', messageId: messageId };
-                                if (isGroupCall && groupContext) {
-                                    Object.assign(endPayload, groupContext);
-                                }
+                                const endPayload = { type: 'end', messageId: messageId, context };
                                 event.sender.send(streamChannel, endPayload);
                                 break; // 退出 while 循环
                             }
@@ -673,9 +658,7 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
                     } catch (streamError) {
                         console.error(`VCP流读取错误 for messageId: ${messageId}:`, streamError);
                         const streamErrPayload = { type: 'error', error: `VCP流读取错误: ${streamError.message}`, messageId: messageId };
-                        if (isGroupCall && groupContext) {
-                            Object.assign(streamErrPayload, groupContext);
-                        }
+                        if (context) streamErrPayload.context = context;
                         event.sender.send(streamChannel, streamErrPayload);
                     } finally {
                         reader.releaseLock();
@@ -701,10 +684,7 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
         } catch (error) {
             console.error('VCP请求错误 (catch block):', error);
             if (modelConfig.stream === true && event && event.sender && !event.sender.isDestroyed()) {
-                const catchErrorPayload = { type: 'error', error: `VCP请求错误: ${error.message}`, messageId: messageId };
-                if (isGroupCall && groupContext) {
-                    Object.assign(catchErrorPayload, groupContext);
-                }
+                const catchErrorPayload = { type: 'error', error: `VCP请求错误: ${error.message}`, messageId: messageId, context };
                 event.sender.send(streamChannel, catchErrorPayload);
                 return { streamError: true, error: `VCP客户端请求错误`, errorDetail: { message: error.message, stack: error.stack } };
             }

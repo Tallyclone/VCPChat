@@ -128,9 +128,9 @@ function initialize(mainWindow, context) {
         // We'll pass a function to groupChat.handleGroupChatMessage that uses event.sender.send
         console.log(`[Main IPC] Received send-group-chat-message for Group: ${groupId}, Topic: ${topicId}`);
         try {
-            const sendStreamChunkToRenderer = (channel, data) => {
+            const sendStreamChunkToRenderer = (data) => { // Channel is now fixed
                 if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
-                    mainWindow.webContents.send(channel, data);
+                    mainWindow.webContents.send('vcp-stream-event', data);
                 }
             };
     
@@ -147,9 +147,9 @@ function initialize(mainWindow, context) {
     ipcMain.handle('inviteAgentToSpeak', async (event, groupId, topicId, invitedAgentId) => {
         console.log(`[Main IPC] Received inviteAgentToSpeak for Group: ${groupId}, Topic: ${topicId}, Agent: ${invitedAgentId}`);
         try {
-            const sendStreamChunkToRenderer = (channel, data) => {
+            const sendStreamChunkToRenderer = (data) => { // Channel is now fixed
                 if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
-                    mainWindow.webContents.send(channel, data);
+                    mainWindow.webContents.send('vcp-stream-event', data);
                 }
             };
 

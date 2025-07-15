@@ -108,8 +108,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     saveCombinedItemOrder: (orderedItemsWithTypes) => ipcRenderer.invoke('save-combined-item-order', orderedItemsWithTypes), // Added for combined list
 
     // VCP Communication
-    sendToVCP: (vcpUrl, vcpApiKey, messages, modelConfig, messageId) => ipcRenderer.invoke('send-to-vcp', vcpUrl, vcpApiKey, messages, modelConfig, messageId),
-    onVCPStreamChunk: (callback) => ipcRenderer.on('vcp-stream-chunk', (_event, eventData) => callback(eventData)),
+    sendToVCP: (vcpUrl, vcpApiKey, messages, modelConfig, messageId, isGroupCall, context) => ipcRenderer.invoke('send-to-vcp', vcpUrl, vcpApiKey, messages, modelConfig, messageId, isGroupCall, context),
+    onVCPStreamEvent: (callback) => ipcRenderer.on('vcp-stream-event', (_event, eventData) => callback(eventData)),
     // Group Chat
     createAgentGroup: (groupName, initialConfig) => ipcRenderer.invoke('create-agent-group', groupName, initialConfig),
     getAgentGroups: () => ipcRenderer.invoke('get-agent-groups'),
@@ -124,7 +124,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getGroupChatHistory: (groupId, topicId) => ipcRenderer.invoke('get-group-chat-history', groupId, topicId),
     saveGroupChatHistory: (groupId, topicId, history) => ipcRenderer.invoke('save-group-chat-history', groupId, topicId, history), // Added for saving group chat history
     sendGroupChatMessage: (groupId, topicId, userMessage) => ipcRenderer.invoke('send-group-chat-message', groupId, topicId, userMessage),
-    onVCPGroupStreamChunk: (callback) => ipcRenderer.on('vcp-group-stream-chunk', (_event, eventData) => callback(eventData)),
     onVCPGroupTopicUpdated: (callback) => ipcRenderer.on('vcp-group-topic-updated', (_event, eventData) => callback(eventData)), // Added for topic title updates
     saveGroupTopicOrder: (groupId, orderedTopicIds) => ipcRenderer.invoke('save-group-topic-order', groupId, orderedTopicIds), // Added for group topic order
     searchTopicsByContent: (itemId, itemType, searchTerm) => ipcRenderer.invoke('search-topics-by-content', itemId, itemType, searchTerm), // Added for content search

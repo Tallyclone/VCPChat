@@ -511,6 +511,12 @@ async function renderMessage(message, isInitialLoad = false) {
     const currentSelectedItem = mainRendererReferences.currentSelectedItemRef.get();
     const currentChatHistory = mainRendererReferences.currentChatHistoryRef.get();
 
+    // Prevent re-rendering if the message already exists in the DOM, unless it's a thinking message being replaced.
+    const existingMessageDom = chatMessagesDiv.querySelector(`.message-item[data-message-id="${message.id}"]`);
+    if (existingMessageDom && !existingMessageDom.classList.contains('thinking')) {
+        // console.log(`[MessageRenderer] Message ${message.id} already in DOM. Skipping render.`);
+        // return existingMessageDom;
+    }
 
     if (!chatMessagesDiv || !electronAPI || !markedInstance) {
         console.error("MessageRenderer: Missing critical references for rendering.");
@@ -671,14 +677,14 @@ function startStreamingMessage(message) {
 }
 
 
-function appendStreamChunk(messageId, chunkData, agentNameForGroup, agentIdForGroup) {
-    streamManager.appendStreamChunk(messageId, chunkData, agentNameForGroup, agentIdForGroup);
+function appendStreamChunk(messageId, chunkData, context) {
+    streamManager.appendStreamChunk(messageId, chunkData, context);
 }
 
-async function finalizeStreamedMessage(messageId, finishReason, agentNameForGroup, agentIdForGroup) { // <--- fullResponseText 参数已被移除
+async function finalizeStreamedMessage(messageId, finishReason, context) {
     // 责任完全在 streamManager 内部，它应该使用自己拼接好的文本。
     // 我们现在只传递必要的元数据。
-    await streamManager.finalizeStreamedMessage(messageId, finishReason, agentNameForGroup, agentIdForGroup);
+    await streamManager.finalizeStreamedMessage(messageId, finishReason, context);
 }
 
 /**
@@ -695,23 +701,7 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId) {
     const currentSelectedItem = mainRendererReferences.currentSelectedItemRef.get();
     const currentTopicIdVal = mainRendererReferences.currentTopicIdRef.get();
 
-    const messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
-    if (!messageItem) {
-        console.error(`[renderFullMessage] Could not find message item with ID ${messageId} to render full content.`);
-        // As a fallback, we could try to render it as a new message, but it might appear out of order.
-        // For now, we'll log the error and return.
-        return;
-    }
-
-    messageItem.classList.remove('thinking', 'streaming');
-
-    const contentDiv = messageItem.querySelector('.md-content');
-    if (!contentDiv) {
-        console.error(`[renderFullMessage] Could not find .md-content div for message ID ${messageId}.`);
-        return;
-    }
-
-    // --- Update History ---
+    // --- Update History First ---
     const messageIndex = currentChatHistoryArray.findIndex(msg => msg.id === messageId);
     if (messageIndex > -1) {
         const message = currentChatHistoryArray[messageIndex];
@@ -720,16 +710,6 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId) {
         message.finishReason = 'completed_non_streamed';
         message.name = agentName || message.name;
         message.agentId = agentId || message.agentId;
-        
-        // Update timestamp display if it was missing
-        const nameTimeBlock = messageItem.querySelector('.name-time-block');
-        if (nameTimeBlock && !nameTimeBlock.querySelector('.message-timestamp')) {
-            const timestampDiv = document.createElement('div');
-            timestampDiv.classList.add('message-timestamp');
-            timestampDiv.textContent = new Date(message.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            nameTimeBlock.appendChild(timestampDiv);
-        }
-        
         mainRendererReferences.currentChatHistoryRef.set([...currentChatHistoryArray]);
 
         // Save history
@@ -744,6 +724,31 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId) {
         }
     } else {
         console.warn(`[renderFullMessage] Message ID ${messageId} not found in history. UI will be updated, but history may be inconsistent.`);
+        // Even if not in history, we might still want to render it if the DOM element exists (e.g., from a 'thinking' state)
+    }
+
+    const messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
+    if (!messageItem) {
+        console.log(`[renderFullMessage] No DOM element for ${messageId}. History updated, UI skipped.`);
+        return; // No UI to update, but history is now consistent.
+    }
+
+    messageItem.classList.remove('thinking', 'streaming');
+
+    const contentDiv = messageItem.querySelector('.md-content');
+    if (!contentDiv) {
+        console.error(`[renderFullMessage] Could not find .md-content div for message ID ${messageId}.`);
+        return;
+    }
+
+    // Update timestamp display if it was missing
+    const nameTimeBlock = messageItem.querySelector('.name-time-block');
+    if (nameTimeBlock && !nameTimeBlock.querySelector('.message-timestamp')) {
+        const timestampDiv = document.createElement('div');
+        timestampDiv.classList.add('message-timestamp');
+        const messageFromHistory = currentChatHistoryArray.find(m => m.id === messageId);
+        timestampDiv.textContent = new Date(messageFromHistory?.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        nameTimeBlock.appendChild(timestampDiv);
     }
 
     // --- Update DOM ---

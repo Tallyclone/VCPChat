@@ -954,10 +954,33 @@ ${codeContent}
             if (window.html2canvas && mainContentDiv) {
                 html2canvas(mainContentDiv, {
                     useCORS: true, // Allow loading cross-origin images
-                    backgroundColor: null, // Use transparent background
+                    // Use the body's actual background color. This is crucial for correct rendering.
+                    backgroundColor: window.getComputedStyle(document.body).backgroundColor,
                     onclone: (clonedDoc) => {
-                        // Ensure the background of the cloned body is transparent for the screenshot
-                        clonedDoc.body.style.backgroundColor = 'transparent';
+                        // Re-apply the theme class to the cloned document's body so styles are correct
+                        if (document.body.classList.contains('light-theme')) {
+                            clonedDoc.body.classList.add('light-theme');
+                        }
+                        // Also explicitly set the background color on the cloned body, as it can help html2canvas
+                        // with layout calculations. A transparent background can cause rendering glitches.
+                        clonedDoc.body.style.backgroundColor = window.getComputedStyle(document.body).backgroundColor;
+
+                        // --- FIX for flexbox rendering issue ---
+                        // html2canvas can struggle with text nodes that are direct children of flex containers.
+                        // We wrap them in a <span> to make them element nodes, which are handled more robustly.
+                        clonedDoc.querySelectorAll('*').forEach(el => {
+                            const style = window.getComputedStyle(el);
+                            if (style.display === 'flex') {
+                                Array.from(el.childNodes).forEach(child => {
+                                    // Node.TEXT_NODE === 3
+                                    if (child.nodeType === 3 && child.textContent.trim().length > 0) {
+                                        const span = clonedDoc.createElement('span');
+                                        span.textContent = child.textContent;
+                                        el.replaceChild(span, child);
+                                    }
+                                });
+                            }
+                        });
                     }
                 }).then(canvas => {
                     const imageDataUrl = canvas.toDataURL('image/png');
