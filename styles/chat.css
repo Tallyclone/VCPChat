@@ -142,7 +142,7 @@ body.light-theme .chat-header {
 .message-item .md-content {
     padding: 10px 15px;
     border-radius: 10px;
-    max-width: 75%; /* Default width when sidebar is closed */
+    max-width: 82%; /* Default width when sidebar is closed */
     word-wrap: break-word;
     line-height: 1.5;
     box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
@@ -154,7 +154,7 @@ body.light-theme .chat-header {
 
 /* When notifications sidebar is active, make bubbles wider to fill more of the narrower space */
 .main-content.notifications-sidebar-active .message-item .md-content {
-    max-width: 85%;
+    max-width: 90%;
 }
 
 .message-item.user .md-content {
