@@ -431,9 +431,15 @@ window.chatManager = (() => {
                     _fileManagerData: fileManagerData
                 });
                 // Append filename for all attachments for AI context
-                if (fileManagerData.extractedText) {
+                // NEW LOGIC: Differentiate between image and other files
+                if (af.file.type.startsWith('image/')) {
+                    // For images, append a special tag with the local path
+                    contentForVCP += `\n\n[附加图片: ${af.localPath}]`;
+                } else if (fileManagerData.extractedText) {
+                    // For other files with extracted text
                     contentForVCP += `\n\n[附加文件: ${af.originalName}]\n${fileManagerData.extractedText}\n[/附加文件结束: ${af.originalName}]`;
                 } else {
+                    // For other files without extracted text
                     contentForVCP += `\n\n[附加文件: ${af.originalName} (无法预览文本内容)]`;
                 }
             }
