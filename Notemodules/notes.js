@@ -15,6 +15,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     const customContextMenu = document.getElementById('customContextMenu');
     const resizer = document.getElementById('resizer');
     const sidebar = document.querySelector('.sidebar');
+    const confirmationModal = document.getElementById('confirmationModal');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalMessage = document.getElementById('modalMessage');
+    const modalConfirmBtn = document.getElementById('modalConfirmBtn');
+    const modalCancelBtn = document.getElementById('modalCancelBtn');
 
     // --- State Management ---
     let localNoteTree = []; // Stores the local note hierarchy
@@ -80,6 +85,34 @@ document.addEventListener('DOMContentLoaded', async () => {
             button.disabled = false;
             button.blur();
         }, duration);
+    }
+
+    // --- Confirmation Modal Logic ---
+    function showConfirmationModal(title, message) {
+        return new Promise((resolve) => {
+            modalTitle.textContent = title;
+            modalMessage.innerHTML = message; // Use innerHTML for simple formatting
+            confirmationModal.style.display = 'flex';
+
+            const confirmHandler = () => {
+                cleanup();
+                resolve(true);
+            };
+
+            const cancelHandler = () => {
+                cleanup();
+                resolve(false);
+            };
+
+            const cleanup = () => {
+                modalConfirmBtn.removeEventListener('click', confirmHandler);
+                modalCancelBtn.removeEventListener('click', cancelHandler);
+                confirmationModal.style.display = 'none';
+            };
+
+            modalConfirmBtn.addEventListener('click', confirmHandler);
+            modalCancelBtn.addEventListener('click', cancelHandler);
+        });
     }
 
     // --- Theme Management ---
@@ -304,6 +337,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
         return null;
+    }
+
+    function isCloudItem(id) {
+        if (!networkNoteTree) return false;
+        // Check if the item exists within the network tree structure
+        return findItemById([networkNoteTree], id) !== null;
     }
     
     async function getParentPath(itemId) {
@@ -618,52 +657,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         return false;
     }
 
-    deleteNoteBtn.addEventListener('click', async () => {
-        if (selectedItems.size === 0) {
-            showButtonFeedback(deleteNoteBtn, '删除', '未选择项目', false);
-            return;
-        }
-
-        if (deleteTimer) {
-            clearTimeout(deleteTimer);
-            deleteTimer = null;
-            deleteNoteBtn.classList.remove('button-confirm-delete');
-
-            for (const id of selectedItems) {
-                const item = findItemById(getCombinedTree(), id);
-                if (item) {
-                    const result = await window.electronAPI.deleteItem(item.path);
-                    if (result.success) {
-                        // Immediate UI update
-                        removeItemById(localNoteTree, id);
-                        if (networkNoteTree) {
-                            removeItemById(networkNoteTree.children, id);
-                        }
-                    } else {
-                        console.error(`Failed to delete item ${item.path}:`, result.error);
-                        // Optionally, show an error to the user
-                    }
-                }
-            }
-            
-            selectedItems.clear();
-            activeItemId = null;
-            clearNoteEditor(); // Clear editor in case the active note was deleted
-            renderTree(); // Re-render with the item removed from memory
-            
-            showButtonFeedback(deleteNoteBtn, '删除', '已删除', true, 1000);
-
-        } else {
-            deleteNoteBtn.textContent = `确认删除 ${selectedItems.size} 项`;
-            deleteNoteBtn.classList.add('button-confirm-delete');
-            deleteTimer = setTimeout(() => {
-                deleteNoteBtn.textContent = '删除';
-                deleteNoteBtn.classList.remove('button-confirm-delete');
-                deleteTimer = null;
-                deleteNoteBtn.blur();
-            }, 3000);
-        }
-    });
+    deleteNoteBtn.addEventListener('click', () => handleDirectDelete(false));
 
     // --- Delegated Event Handlers ---
 
@@ -889,7 +883,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const copyNoteBtn = document.getElementById('context-copy-note');
 
         renameBtn.onclick = () => startInlineRename(item.id);
-        deleteBtn.onclick = () => handleDirectDelete();
+        deleteBtn.onclick = () => handleDirectDelete(true);
         
         copyNoteBtn.onclick = async () => {
             const result = await window.electronAPI.copyNoteContent(item.path);
@@ -968,30 +962,55 @@ document.addEventListener('DOMContentLoaded', async () => {
         input.addEventListener('keydown', handleKeydown);
     }
 
-    async function handleDirectDelete() {
-        if (selectedItems.size === 0) return;
+    async function handleDirectDelete(isFromContextMenu = true) {
+        if (selectedItems.size === 0) {
+            if (!isFromContextMenu) {
+                showButtonFeedback(deleteNoteBtn, '删除', '未选择项目', false);
+            }
+            return;
+        }
 
-        for (const id of selectedItems) {
-            const item = findItemById(getCombinedTree(), id);
-            if (item) {
+        const itemsToDelete = Array.from(selectedItems).map(id => findItemById(getCombinedTree(), id)).filter(Boolean);
+        const containsFolder = itemsToDelete.some(item => item.type === 'folder');
+        const containsCloudFolder = itemsToDelete.some(item => item.type === 'folder' && isCloudItem(item.id));
+
+        let confirmed = false;
+        if (containsFolder) {
+            const title = '确认删除文件夹';
+            let message = `你确定要删除选中的 ${selectedItems.size} 个项目吗？<br><b>此操作无法撤销。</b>`;
+            if (containsCloudFolder) {
+                message = `你确定要删除选中的 ${selectedItems.size} 个项目吗？<br>其中包含云文件夹，<b>删除后将无法从回收站恢复！</b>`;
+            }
+            confirmed = await showConfirmationModal(title, message);
+        } else {
+            // For notes-only deletion, still confirm but with a less alarming message.
+            const title = '确认删除笔记';
+            const message = `你确定要删除选中的 ${selectedItems.size} 个笔记吗？`;
+            confirmed = await showConfirmationModal(title, message);
+        }
+
+        if (confirmed) {
+            for (const item of itemsToDelete) {
                 const result = await window.electronAPI.deleteItem(item.path);
                 if (result.success) {
-                    // Immediate UI update
-                    removeItemById(localNoteTree, id);
+                    removeItemById(localNoteTree, item.id);
                     if (networkNoteTree) {
-                        removeItemById(networkNoteTree.children, id);
+                        removeItemById(networkNoteTree.children, item.id);
                     }
                 } else {
                     console.error(`Failed to delete item ${item.path}:`, result.error);
-                    // Optionally, show an error to the user
                 }
             }
+
+            selectedItems.clear();
+            activeItemId = null;
+            clearNoteEditor();
+            renderTree();
+
+            if (!isFromContextMenu) {
+                showButtonFeedback(deleteNoteBtn, '删除', '已删除', true, 1000);
+            }
         }
-        
-        selectedItems.clear();
-        activeItemId = null;
-        clearNoteEditor(); // Clear editor in case the active note was deleted
-        renderTree(); // Re-render with the item removed from memory
     }
 
     // --- Resizer Logic ---
