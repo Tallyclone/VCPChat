@@ -414,44 +414,145 @@ async function handleRegenerateResponse(originalAssistantMessage) {
     try {
         const agentConfig = await electronAPI.getAgentConfig(currentSelectedItemVal.id);
         
-        let messagesForVCP = await Promise.all(historyForRegeneration.map(async msg => {
+        const messagesForVCP = await Promise.all(historyForRegeneration.map(async msg => {
             let vcpImageAttachmentsPayload = [];
-            let currentMessageTextContent = (typeof msg.content === 'string') ? msg.content : (msg.content?.text || '');
+            let vcpAudioAttachmentsPayload = [];
+            let vcpVideoAttachmentsPayload = [];
+            let currentMessageTextContent;
+
+            let originalText = (typeof msg.content === 'string') ? msg.content : (msg.content?.text || '');
 
             if (msg.attachments && msg.attachments.length > 0) {
+                let historicalAppendedText = "";
                 for (const att of msg.attachments) {
-                    if (att._fileManagerData && typeof att._fileManagerData.extractedText === 'string' && att._fileManagerData.extractedText.trim() !== '') {
-                        currentMessageTextContent += `\n\n[附加文件: ${att.name || '未知文件'}]\n${att._fileManagerData.extractedText}\n[/附加文件结束: ${att.name || '未知文件'}]`;
-                    } else if (att._fileManagerData && att.type && !att.type.startsWith('image/')) {
-                        currentMessageTextContent += `\n\n[附加文件: ${att.name || '未知文件'} (无法预览文本内容)]`;
+                    const fileManagerData = att._fileManagerData || {};
+                    if (fileManagerData.imageFrames && fileManagerData.imageFrames.length > 0) {
+                         historicalAppendedText += `\n\n[附加文件: ${att.name || '未知文件'} (扫描版PDF，已转换为图片)]`;
+                    } else if (fileManagerData.extractedText) {
+                        historicalAppendedText += `\n\n[附加文件: ${att.name || '未知文件'}]\n${fileManagerData.extractedText}\n[/附加文件结束: ${att.name || '未知文件'}]`;
+                    } else {
+                        historicalAppendedText += `\n\n[附加文件: ${att.name || '未知文件'} (无法预览文本内容)]`;
                     }
                 }
+                currentMessageTextContent = originalText + historicalAppendedText;
+            } else {
+                currentMessageTextContent = originalText;
+            }
 
-                const imageAttachmentsPromises = msg.attachments
-                    .filter(att => att.type.startsWith('image/'))
+            if (msg.attachments && msg.attachments.length > 0) {
+                // --- IMAGE PROCESSING ---
+                const imageAttachmentsPromises = msg.attachments.map(async att => {
+                    const fileManagerData = att._fileManagerData || {};
+                    // Case 1: Scanned PDF converted to image frames
+                    if (fileManagerData.imageFrames && fileManagerData.imageFrames.length > 0) {
+                        return fileManagerData.imageFrames.map(frameData => ({
+                            type: 'image_url',
+                            image_url: { url: `data:image/jpeg;base64,${frameData}` }
+                        }));
+                    }
+                    // Case 2: Regular image file (including GIFs that get framed)
+                    if (att.type.startsWith('image/')) {
+                        try {
+                            const result = await electronAPI.getFileAsBase64(att.src);
+                            if (result && result.success) {
+                                return result.base64Frames.map(frameData => ({
+                                    type: 'image_url',
+                                    image_url: { url: `data:image/jpeg;base64,${frameData}` }
+                                }));
+                            } else {
+                                const errorMsg = result ? result.error : '未知错误';
+                                console.error(`Failed to get Base64 for ${att.name}: ${errorMsg}`);
+                                uiHelper.showToastNotification(`处理图片 ${att.name} 失败: ${errorMsg}`, 'error');
+                                return null;
+                            }
+                        } catch (processingError) {
+                            console.error(`Exception during getBase64 for ${att.name}:`, processingError);
+                            uiHelper.showToastNotification(`处理图片 ${att.name} 时发生异常: ${processingError.message}`, 'error');
+                            return null;
+                        }
+                    }
+                    return null; // Not an image or a convertible PDF
+                });
+
+                const nestedImageAttachments = await Promise.all(imageAttachmentsPromises);
+                const flatImageAttachments = nestedImageAttachments.flat().filter(Boolean);
+                vcpImageAttachmentsPayload.push(...flatImageAttachments);
+
+                // --- AUDIO PROCESSING ---
+                const supportedAudioTypes = ['audio/wav', 'audio/mpeg', 'audio/mp3', 'audio/aiff', 'audio/aac', 'audio/ogg', 'audio/flac'];
+                const audioAttachments = await Promise.all(msg.attachments
+                    .filter(att => supportedAudioTypes.includes(att.type))
                     .map(async att => {
                         try {
                             const base64Data = await electronAPI.getFileAsBase64(att.src);
-                            return base64Data && !base64Data.error ? { type: 'image_url', image_url: { url: `data:${att.type};base64,${base64Data}` } } : null;
-                        } catch (e) { return null; }
-                    });
-                vcpImageAttachmentsPayload = (await Promise.all(imageAttachmentsPromises)).filter(Boolean);
+                            if (base64Data && typeof base64Data === 'string') {
+                                return {
+                                    type: 'image_url',
+                                    image_url: {
+                                        url: `data:${att.type};base64,${base64Data}`
+                                    }
+                                };
+                            } else if (base64Data && base64Data.error) {
+                                console.error(`Failed to get Base64 for audio ${att.name}: ${base64Data.error}`);
+                                uiHelper.showToastNotification(`处理音频 ${att.name} 失败: ${base64Data.error}`, 'error');
+                                return null;
+                            } else {
+                                console.error(`Unexpected return from getFileAsBase64 for audio ${att.name}:`, base64Data);
+                                return null;
+                            }
+                        } catch (processingError) {
+                            console.error(`Exception during getBase64 for audio ${att.name} (internal: ${att.src}):`, processingError);
+                            uiHelper.showToastNotification(`处理音频 ${att.name} 时发生异常: ${processingError.message}`, 'error');
+                            return null;
+                        }
+                    })
+                );
+                vcpAudioAttachmentsPayload.push(...audioAttachments.filter(Boolean));
+
+                // --- VIDEO PROCESSING ---
+                const videoAttachments = await Promise.all(msg.attachments
+                    .filter(att => att.type.startsWith('video/'))
+                    .map(async att => {
+                        try {
+                            const base64Data = await electronAPI.getFileAsBase64(att.src);
+                            if (base64Data && typeof base64Data === 'string') {
+                                return {
+                                    type: 'image_url',
+                                    image_url: {
+                                        url: `data:${att.type};base64,${base64Data}`
+                                    }
+                                };
+                            } else if (base64Data && base64Data.error) {
+                                console.error(`Failed to get Base64 for video ${att.name}: ${base64Data.error}`);
+                                uiHelper.showToastNotification(`处理视频 ${att.name} 失败: ${base64Data.error}`, 'error');
+                                return null;
+                            } else {
+                                console.error(`Unexpected return from getFileAsBase64 for video ${att.name}:`, base64Data);
+                                return null;
+                            }
+                        } catch (processingError) {
+                            console.error(`Exception during getBase64 for video ${att.name} (internal: ${att.src}):`, processingError);
+                            uiHelper.showToastNotification(`处理视频 ${att.name} 时发生异常: ${processingError.message}`, 'error');
+                            return null;
+                        }
+                    })
+                );
+                vcpVideoAttachmentsPayload.push(...videoAttachments.filter(Boolean));
             }
 
-            const finalContentForVCP = [];
-            if (currentMessageTextContent.trim() !== '') {
-                finalContentForVCP.push({ type: 'text', text: currentMessageTextContent });
+            let finalContentPartsForVCP = [];
+            if (currentMessageTextContent && currentMessageTextContent.trim() !== '') {
+                finalContentPartsForVCP.push({ type: 'text', text: currentMessageTextContent });
             }
-            finalContentForVCP.push(...vcpImageAttachmentsPayload);
+            finalContentPartsForVCP.push(...vcpImageAttachmentsPayload);
+            finalContentPartsForVCP.push(...vcpAudioAttachmentsPayload);
+            finalContentPartsForVCP.push(...vcpVideoAttachmentsPayload);
 
-            if (finalContentForVCP.length === 0 && msg.role === 'user') {
-                finalContentForVCP.push({ type: 'text', text: '(用户发送了附件，但无文本或图片内容)' });
+            if (finalContentPartsForVCP.length === 0 && msg.role === 'user') {
+                 finalContentPartsForVCP.push({ type: 'text', text: '(用户发送了附件，但无文本或图片内容)' });
             }
-
-            return {
-                role: msg.role,
-                content: finalContentForVCP.length > 0 ? finalContentForVCP : msg.content
-            };
+            
+            return { role: msg.role, content: finalContentPartsForVCP.length > 0 ? finalContentPartsForVCP : msg.content };
         }));
 
         if (agentConfig.systemPrompt) {
