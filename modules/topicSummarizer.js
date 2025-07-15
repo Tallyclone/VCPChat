@@ -11,12 +11,26 @@ async function summarizeTopicFromMessages(messages, agentName) {
         return null;
     }
 
+    // --- Load settings dynamically ---
+    let settings;
+    try {
+        settings = await window.electronAPI.loadSettings();
+        if (!settings || !settings.vcpServerUrl || !settings.vcpApiKey) {
+            console.error('[TopicSummarizer] VCP settings are missing or invalid.');
+            return null; // Can't proceed without settings
+        }
+    } catch (error) {
+        console.error('[TopicSummarizer] Failed to load settings:', error);
+        return null;
+    }
+    // --------------------------------
+
     // 提取最近的几条消息内容用于总结
     // 例如，提取最近4条消息
     const recentMessagesContent = messages.slice(-4).map(msg => {
         // 确保从消息内容中提取文本，即使它是对象 { text: '...' }
         const contentText = typeof msg.content === 'string' ? msg.content : (msg.content?.text || '');
-        return `${msg.role === 'user' ? (globalSettings.userName || '用户') : agentName}: ${contentText}`;
+        return `${msg.role === 'user' ? (settings.userName || '用户') : agentName}: ${contentText}`;
     }).join('\n');
 
     console.log('[TopicSummarizer] 准备总结的内容:', recentMessagesContent);
@@ -25,11 +39,11 @@ async function summarizeTopicFromMessages(messages, agentName) {
     const summaryPrompt = `请根据以下对话内容，仅返回一个简洁的话题标题。要求：1. 标题长度控制在10个汉字以内。2. 标题本身不能包含任何标点符号、数字编号或任何非标题文字。3. 直接给出标题文字，不要添加任何解释或前缀。\n\n对话内容：\n${recentMessagesContent}`;
     let vcpSummaryResponse = null;
     try {
-        const response = await fetch(globalSettings.vcpServerUrl, {
+        const response = await fetch(settings.vcpServerUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${globalSettings.vcpApiKey}`
+                'Authorization': `Bearer ${settings.vcpApiKey}`
             },
             body: JSON.stringify({
                 messages: [{ role: 'user', content: summaryPrompt }],
