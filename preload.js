@@ -217,6 +217,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     openThemesWindow: () => ipcRenderer.send('open-themes-window'),
     getThemes: () => ipcRenderer.invoke('get-themes'),
     applyTheme: (fileName) => ipcRenderer.send('apply-theme', fileName),
+   getWallpaperThumbnail: (path) => ipcRenderer.invoke('get-wallpaper-thumbnail', path),
 
     removeVcpStreamChunkListener: (callback) => ipcRenderer.removeListener('vcp-stream-chunk', callback),
 

@@ -22,6 +22,39 @@ document.addEventListener('DOMContentLoaded', () => {
         return `rgba(${r}, ${g}, ${b}, ${alpha})`;
     }
 
+   // Function to clean up duplicated path segments
+   const fixWallpaperPath = (path) => {
+       if (typeof path !== 'string') return path;
+       return path.replace(/wallpaper\/wallpaper\//g, 'wallpaper/');
+   };
+
+   // Helper to escape single quotes and backslashes for CSS url()
+   const escapeCssUrl = (url) => {
+       if (typeof url !== 'string') return '';
+       // Replace backslashes with forward slashes for CSS compatibility
+       return url.replace(/\\/g, '/').replace(/'/g, "\\'");
+   };
+
+   // New function to load wallpaper previews using thumbnails
+   function loadWallpaperPreview(element, wallpaperPath) {
+       if (!element) return;
+
+       if (wallpaperPath && wallpaperPath !== 'none') {
+           // We still need to fix potential path issues before sending to main
+           const fixedPath = fixWallpaperPath(wallpaperPath);
+           
+           // Request the thumbnail from the main process. If it fails, fallback to full image.
+           window.electronAPI.getWallpaperThumbnail(fixedPath).then(thumbnailUrl => {
+               element.style.backgroundImage = `url('${escapeCssUrl(thumbnailUrl)}')`;
+           }).catch(err => {
+               console.error(`Failed to generate or load thumbnail for ${fixedPath}:`, err);
+               element.style.backgroundImage = `url('${escapeCssUrl(fixedPath)}')`;
+           });
+       } else {
+           element.style.backgroundImage = 'none';
+       }
+   }
+
     // 1. Fetch themes from the main process
     window.electronAPI.getThemes().then(themeList => {
         themes = themeList;
@@ -50,7 +83,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Use dark theme for the left side of the card preview
             if (theme.variables.dark) {
                 pane1.style.backgroundColor = theme.variables.dark['--secondary-bg'] || '#172A46';
-                pane1.style.backgroundImage = theme.variables.dark['--chat-wallpaper-dark'] || 'none';
+                loadWallpaperPreview(pane1, theme.variables.dark['--chat-wallpaper-dark']);
             }
             pane1.style.backgroundSize = 'cover';
             pane1.style.backgroundPosition = 'center';
@@ -63,7 +96,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // For the card, prefer the light wallpaper, fallback to dark, then none.
                 const lightWallpaper = theme.variables.light['--chat-wallpaper-light'];
                 const darkWallpaper = theme.variables.dark ? theme.variables.dark['--chat-wallpaper-dark'] : 'none';
-                pane2.style.backgroundImage = lightWallpaper || darkWallpaper || 'none';
+                loadWallpaperPreview(pane2, lightWallpaper || darkWallpaper);
             }
             pane2.style.backgroundSize = 'cover';
             pane2.style.backgroundPosition = 'center';
@@ -108,12 +141,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const previewButtons1 = document.getElementById('preview-buttons-1');
         const previewButtons2 = document.getElementById('preview-buttons-2');
 
-        // Function to clean up duplicated path segments
-        const fixWallpaperPath = (path) => {
-            if (typeof path !== 'string') return path;
-            return path.replace(/wallpaper\/wallpaper\//g, 'wallpaper/');
-        };
-
         // --- Apply Dark Theme to Pane 1 (Left) ---
         if (pane1 && darkVars) {
             // Set pane-specific variables for mock elements inside this pane
@@ -125,7 +152,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Set the wallpaper on the dedicated background element
             if (wallpaper1) {
-                wallpaper1.style.backgroundImage = fixWallpaperPath(darkVars['--chat-wallpaper-dark']) || 'none';
+                loadWallpaperPreview(wallpaper1, darkVars['--chat-wallpaper-dark']);
             }
 
             // Apply button styles for dark theme by directly styling the buttons
@@ -157,9 +184,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Set the wallpaper on the dedicated background element
             if (wallpaper2) {
-                const lightWallpaper = fixWallpaperPath(lightVars['--chat-wallpaper-light']);
+                const lightWallpaper = lightVars['--chat-wallpaper-light'];
                 const darkWallpaper = darkVars ? fixWallpaperPath(darkVars['--chat-wallpaper-dark']) : 'none';
-                wallpaper2.style.backgroundImage = lightWallpaper || darkWallpaper || 'none';
+                loadWallpaperPreview(wallpaper2, lightWallpaper || darkWallpaper);
             }
 
             // Apply button styles for light theme by directly styling the buttons

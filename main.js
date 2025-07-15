@@ -16,6 +16,7 @@ try {
     console.error('Failed to load selection-hook:', error);
 }
 const path = require('path');
+const crypto = require('crypto');
 const fs = require('fs-extra'); // Using fs-extra for convenience
 const os = require('os');
 const { spawn } = require('child_process'); // For executing local python
@@ -46,6 +47,7 @@ const USER_AVATAR_FILE = path.join(USER_DATA_DIR, 'user_avatar.png'); // Standar
 const MUSIC_PLAYLIST_FILE = path.join(APP_DATA_ROOT_IN_PROJECT, 'songlist.json');
 const MUSIC_COVER_CACHE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'MusicCoverCache');
 const NETWORK_NOTES_CACHE_FILE = path.join(APP_DATA_ROOT_IN_PROJECT, 'network-notes-cache.json'); // Cache for network notes
+const WALLPAPER_THUMBNAIL_CACHE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'WallpaperThumbnailCache');
 
 // Define a specific agent ID for notes attachments
 const NOTES_AGENT_ID = 'notes_attachments_agent';
@@ -668,6 +670,8 @@ async function handleDiceControl(args) {
     fs.ensureDirSync(APP_DATA_ROOT_IN_PROJECT); // Ensure the main AppData directory in project exists
     fs.ensureDirSync(AGENT_DIR);
     fs.ensureDirSync(USER_DATA_DIR);
+    fs.ensureDirSync(MUSIC_COVER_CACHE_DIR);
+    fs.ensureDirSync(WALLPAPER_THUMBNAIL_CACHE_DIR); // Ensure the thumbnail cache directory exists
     fileManager.initializeFileManager(USER_DATA_DIR, AGENT_DIR); // Initialize FileManager
     groupChat.initializePaths({ APP_DATA_ROOT_IN_PROJECT, AGENT_DIR, USER_DATA_DIR, SETTINGS_FILE }); // Initialize GroupChat paths
     settingsHandlers.initialize({ SETTINGS_FILE, USER_AVATAR_FILE, AGENT_DIR }); // Initialize settings handlers
@@ -1835,6 +1839,60 @@ async function handleDiceControl(args) {
             }
         } catch (error) {
             console.error('Failed to apply theme:', error);
+        }
+    });
+
+    ipcMain.handle('get-wallpaper-thumbnail', async (event, rawPath) => {
+        const THUMBNAIL_WIDTH = 400; // px
+
+        if (!rawPath || typeof rawPath !== 'string' || rawPath === 'none') {
+            throw new Error('Invalid path provided for thumbnail generation.');
+        }
+
+        // 1. Sanitize path: extract from url() if needed
+        const match = rawPath.match(/url\(['"]?(.*?)['"]?\)/);
+        const cleanedPath = match ? match[1] : rawPath;
+
+        // 2. Resolve to absolute path. The path is relative to the themes CSS file.
+        const absolutePath = path.resolve(__dirname, 'Themesmodules', cleanedPath);
+
+        // 3. Create a unique and stable cache filename
+        const hash = crypto.createHash('md5').update(absolutePath).digest('hex');
+        const thumbnailFilename = `${hash}.jpeg`;
+        const cachedThumbnailPath = path.join(WALLPAPER_THUMBNAIL_CACHE_DIR, thumbnailFilename);
+
+        // 4. Check if thumbnail exists in cache
+        try {
+            if (await fs.pathExists(cachedThumbnailPath)) {
+                return cachedThumbnailPath; // Return cached version
+            }
+        } catch (e) {
+            console.error(`Error checking for existing thumbnail: ${cachedThumbnailPath}`, e);
+            // Continue to generation
+        }
+
+        // 5. Check if original file exists before trying to process
+        try {
+            if (!(await fs.pathExists(absolutePath))) {
+                throw new Error(`Original wallpaper file not found at: ${absolutePath}`);
+            }
+        } catch (e) {
+            console.error(e.message);
+            throw e; // Re-throw to be caught by the renderer
+        }
+
+        // 6. Generate thumbnail if not in cache
+        try {
+            await sharp(absolutePath)
+                .resize(THUMBNAIL_WIDTH) // Resize to width, maintain aspect ratio
+                .jpeg({ quality: 80 })   // Convert to JPEG with good compression
+                .toFile(cachedThumbnailPath);
+
+            console.log(`Generated thumbnail for ${absolutePath} at ${cachedThumbnailPath}`);
+            return cachedThumbnailPath; // Return path of newly created thumbnail
+        } catch (error) {
+            console.error(`Sharp failed to generate thumbnail for ${absolutePath}:`, error);
+            throw error; // Propagate error to renderer
         }
     });
 });
