@@ -21,7 +21,10 @@ async function main() {
         if (keywords.length === 0) {
             throw new Error("请求中缺少 'keyword' 参数。");
         }
-        const windowSize = parseInt(args.window_size || '10', 10);
+        let windowSize = parseInt(args.window_size || '10', 10);
+        if (windowSize < 1) {
+            windowSize = 1;
+        }
 
         // 3. 查找Agent信息
         const agentInfo = await findAgentInfo(VchatDataURL, maidName);
