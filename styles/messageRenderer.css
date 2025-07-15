@@ -78,7 +78,10 @@
     position: relative;
     overflow: hidden;
     line-height: 1.6;
-    display: inline-block !important; /* Allow bubble to shrink to content width */
+    display: block !important; /* Use block for layout stability */
+    width: -moz-fit-content;    /* Firefox */
+    width: fit-content;       /* Modern browsers, shrink width to content */
+    max-width: 100%;          /* Ensure it doesn't overflow on small screens */
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
     font-size: 0.95em !important;
     white-space: pre-wrap; /* Allow wrapping but preserve whitespace */
