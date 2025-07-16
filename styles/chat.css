@@ -630,3 +630,57 @@ body.light-theme .suggestion-item {
     background-color: var(--accent-bg);
     color: var(--highlight-text);
 }
+/* --- Light Theme Code Block Styles --- */
+body.light-theme .message-item .md-content pre {
+    background-color: rgba(255, 250, 240, 0.85); /* 米白磨砂背景 */
+    color: #333333; /* 深灰色基础文字 */
+    border-color: rgba(0, 0, 0, 0.1);
+}
+
+/* --- Light Theme Syntax Highlighting Overrides --- */
+/* Default code color */
+body.light-theme .message-item .md-content pre code {
+    color: #333333;
+}
+
+/* Keywords (e.g., def, if, return) */
+body.light-theme .message-item .md-content pre .hljs-keyword {
+    color: #d73a49; /* Dark Red */
+}
+
+/* Built-ins, types (e.g., print, True) */
+body.light-theme .message-item .md-content pre .hljs-built_in {
+    color: #6f42c1; /* Dark Purple */
+}
+
+/* Strings */
+body.light-theme .message-item .md-content pre .hljs-string {
+    color: #032f62; /* Dark Blue */
+}
+
+/* Comments */
+body.light-theme .message-item .md-content pre .hljs-comment {
+    color: #6a737d; /* Grey */
+    font-style: italic;
+}
+
+/* Numbers */
+body.light-theme .message-item .md-content pre .hljs-number {
+    color: #005cc5; /* Blue */
+}
+
+/* Function/Class names */
+body.light-theme .message-item .md-content pre .hljs-title,
+body.light-theme .message-item .md-content pre .hljs-class .hljs-title {
+    color: #6f42c1; /* Dark Purple */
+}
+
+/* Function parameters */
+body.light-theme .message-item .md-content pre .hljs-params {
+    color: #24292e; /* Almost black */
+}
+
+/* Python decorators, annotations */
+body.light-theme .message-item .md-content pre .hljs-meta {
+    color: #e36209; /* Dark Orange */
+}
