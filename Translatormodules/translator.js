@@ -63,6 +63,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     messages: messages,
                     model: modelConfig.model,
                     temperature: modelConfig.temperature,
+                    max_tokens: 50000,
                     stream: false // Use non-streaming request
                 }),
                 signal: signal
