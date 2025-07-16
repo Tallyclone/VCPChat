@@ -709,3 +709,55 @@ textarea:focus {
         transform: scale(1);
     }
 }
+
+/* --- Custom Code Block Styles --- */
+.markdown-preview pre {
+    background-color: rgba(42, 45, 53, 0.85); /* Bluish-dark from chat.css */
+    color: #abb2bf; /* A common light text color for dark themes */
+    padding: 1em;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    position: relative;
+    margin: 1em 0;
+}
+
+/* --- Light Theme Code Block Overrides --- */
+body.light-theme .markdown-preview pre {
+    background-color: rgba(255, 250, 240, 0.85); /* 米白磨砂背景 */
+    color: #333333; /* 深灰色基础文字 */
+    border-color: rgba(0, 0, 0, 0.1);
+}
+
+/* --- Light Theme Syntax Highlighting Overrides --- */
+body.light-theme .markdown-preview pre code.hljs {
+    color: #333333;
+}
+body.light-theme .markdown-preview pre .hljs-keyword {
+    color: #d73a49; /* Dark Red */
+}
+body.light-theme .markdown-preview pre .hljs-built_in {
+    color: #6f42c1; /* Dark Purple */
+}
+body.light-theme .markdown-preview pre .hljs-string {
+    color: #032f62; /* Dark Blue */
+}
+body.light-theme .markdown-preview pre .hljs-comment {
+    color: #6a737d; /* Grey */
+    font-style: italic;
+}
+body.light-theme .markdown-preview pre .hljs-number {
+    color: #005cc5; /* Blue */
+}
+body.light-theme .markdown-preview pre .hljs-title,
+body.light-theme .markdown-preview pre .hljs-class .hljs-title {
+    color: #6f42c1; /* Dark Purple */
+}
+body.light-theme .markdown-preview pre .hljs-params {
+    color: #24292e; /* Almost black */
+}
+body.light-theme .markdown-preview pre .hljs-meta {
+    color: #e36209; /* Dark Orange */
+}
