@@ -49,7 +49,7 @@ async function summarizeTopicFromMessages(messages, agentName) {
                 messages: [{ role: 'user', content: summaryPrompt }],
                 model: 'gemini-2.5-flash-preview-05-20',
                 temperature: 0.3,
-                max_tokens: 30
+                max_tokens: 30000
             })
         });
 
