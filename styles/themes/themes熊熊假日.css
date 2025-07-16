@@ -36,8 +36,8 @@
     --agent-text: #e8e8e8;      /* Agent气泡文字 - 米白 */
 
     /* --- Bubble Colors (Frosted Glass Ready) --- */
-    --user-bubble-bg: rgba(145, 109, 51, 0.715); /* 用户气泡 - 篝火黄 - 半透明 */
-    --assistant-bubble-bg: rgba(44, 62, 74, 0.763); /* AI气泡 - 深石板灰蓝 - 半透明 */
+    --user-bubble-bg: rgba(145, 109, 51, 0.573); /* 用户气泡 - 篝火黄 - 半透明 */
+    --assistant-bubble-bg: rgba(44, 62, 74, 0.577); /* AI气泡 - 深石板灰蓝 - 半透明 */
 
     /* --- UI Element Colors --- */
     --button-bg: #3a506b;           /* 按钮背景 - 柔和钢蓝 */
@@ -110,8 +110,8 @@ body.light-theme {
     --agent-text: #3d405b;      /* Agent气泡文字 - 深灰紫 */
 
     /* --- Bubble Colors --- */
-    --user-bubble-bg: rgba(236, 202, 202, 0.677); /* 用户气泡 - 西瓜红 - 半透明 */
-    --assistant-bubble-bg: rgba(233, 255, 233, 0.752); /* AI气泡 - 柔和薄荷绿 - 半透明 */
+    --user-bubble-bg: rgba(236, 202, 202, 0.488); /* 用户气泡 - 西瓜红 - 半透明 */
+    --assistant-bubble-bg: rgba(233, 255, 233, 0.525); /* AI气泡 - 柔和薄荷绿 - 半透明 */
 
     /* --- UI Element Colors --- */
     --button-bg: #f25f5c;           /* 按钮 - 西瓜红 */

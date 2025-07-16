@@ -114,6 +114,8 @@ const refreshModelsBtn = document.getElementById('refreshModelsBtn');
 const uiHelperFunctions = window.uiHelperFunctions;
 
 
+import searchManager from './modules/searchManager.js';
+
 // --- Initialization ---
 document.addEventListener('DOMContentLoaded', async () => {
     // 确保在GroupRenderer初始化之前，其容器已准备好
@@ -606,6 +608,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Set default view if no item is selected
         if (!currentSelectedItem.id) {
             window.chatManager.displayNoItemSelected();
+        }
+
+        // Initialize Search Manager
+        if (searchManager) {
+            searchManager.init({
+                electronAPI: window.electronAPI,
+                uiHelper: uiHelperFunctions,
+                refs: {
+                    currentSelectedItemRef: { get: () => currentSelectedItem },
+                },
+                modules: {
+                    chatManager: window.chatManager,
+                }
+            });
+        } else {
+            console.error('[RENDERER_INIT] searchManager module not found!');
         }
 
     } catch (error) {

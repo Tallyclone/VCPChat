@@ -8,4 +8,5 @@
 @import url('./styles/notifications.css');
 @import url('./styles/settings.css');
 @import url('./styles/animations.css');
+@import url('./styles/search.css');
 @import url('./styles/themes.css'); /* 移动到末尾以获得最高优先级 */

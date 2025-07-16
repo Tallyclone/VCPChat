@@ -404,7 +404,7 @@
     <script type="module" src="modules/renderer/streamManager.js"></script>
     <script type="module" src="modules/renderer/contentProcessor.js"></script>
     <script type="module" src="modules/renderer/messageContextMenu.js"></script>
-    <script src="renderer.js" defer></script>
+    <script type="module" src="renderer.js" defer></script>
 
     <!-- Model Selection Modal -->
     <div class="modal" id="modelSelectModal">
@@ -424,6 +424,22 @@
             </ul>
         </div>
     </div>
+
+    <!-- Global Search Modal -->
+    <div id="global-search-modal" class="search-modal-overlay" style="display: none;">
+        <div class="search-modal-content">
+            <div class="search-modal-header">
+                <h3>全局搜索</h3>
+                <button id="global-search-close-button" class="search-modal-close-button">&times;</button>
+            </div>
+            <div class="search-modal-body">
+                <input type="text" id="global-search-input" placeholder="搜索所有聊天记录 (Ctrl+F)...">
+                <div id="global-search-results"></div>
+                <div id="global-search-pagination"></div>
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>
 <div id="floating-toast-notifications-container"></div>
