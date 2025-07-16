@@ -36,7 +36,7 @@ async function summarizeTopicFromMessages(messages, agentName) {
     console.log('[TopicSummarizer] 准备总结的内容:', recentMessagesContent);
 
     // --- AI summarization logic ---
-    const summaryPrompt = `请根据以下对话内容，仅返回一个简洁的话题标题。要求：1. 标题长度控制在10个汉字以内。2. 标题本身不能包含任何标点符号、数字编号或任何非标题文字。3. 直接给出标题文字，不要添加任何解释或前缀。\n\n对话内容：\n${recentMessagesContent}`;
+    const summaryPrompt = `[待总结聊天记录: ${recentMessagesContent}]\n请根据以上对话内容，仅返回一个简洁的话题标题。要求：1. 标题长度控制在10个汉字以内。2. 标题本身不能包含任何标点符号、数字编号或任何非标题文字。3. 直接给出标题文字，不要添加任何解释或前缀。`;
     let vcpSummaryResponse = null;
     try {
         const response = await fetch(settings.vcpServerUrl, {
@@ -107,11 +107,6 @@ async function summarizeTopicFromMessages(messages, agentName) {
 }
 
 // 如果是在Node.js环境中直接运行此文件进行测试，可以取消下面的注释
-// if (typeof module !== 'undefined' && module.exports) {
-//     module.exports = { summarizeTopicFromMessages };
-// }
-// 在Electron的Renderer进程中，我们通常会通过 <script src="..."> 引入
-// 或者，如果preload.js可以访问这个文件，也可以通过IPC暴露
-// 但最简单的方式是在renderer.js中直接通过相对路径的script标签引入
+
 
 window.summarizeTopicFromMessages = summarizeTopicFromMessages;
