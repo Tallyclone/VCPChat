@@ -40,11 +40,15 @@ const searchManager = {
     },
 
     setupEventListeners() {
-        // Open with Ctrl+F
+        // Global key listener for opening (Ctrl+F) and closing (Esc) the modal
         window.addEventListener('keydown', (e) => {
             if (e.ctrlKey && e.key === 'f') {
                 e.preventDefault();
                 this.openModal();
+            }
+            if (e.key === 'Escape' && this.elements.modal.style.display !== 'none') {
+                e.preventDefault();
+                this.closeModal();
             }
         });
 
@@ -54,13 +58,6 @@ const searchManager = {
         // Close by clicking overlay
         this.elements.modal.addEventListener('click', (e) => {
             if (e.target === this.elements.modal) {
-                this.closeModal();
-            }
-        });
-        
-        // Close with Escape key
-        this.elements.modal.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
                 this.closeModal();
             }
         });
