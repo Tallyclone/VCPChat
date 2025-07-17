@@ -3,11 +3,12 @@
   "displayName": "文件操作器",
   "pluginType": "synchronous",
   "version": "1.0.1",
-  "description": "一个强大的文件系统操作插件，允许AI对受限目录进行读、写、列出、移动、复制、删除等多种文件和目录操作。特别增强了文件读取能力，可自动提取PDF、Word(.docx)和表格(.xlsx, .csv)文件的纯文本内容。现已支持批量指令，可在一次请求中执行多个操作。",
+  "description": "一个强大的文件系统操作插件，允许AI对受限目录进行读、写、列出、移动、复制、删除等多种文件和目录操作。特别增强了文件读取能力，可自动提取PDF、Word(.docx)和表格(.xlsx, .csv)文件的纯文本内容。",
   "author": "VCPToolBox",
   "license": "MIT",
   "entryPoint": {
-    "command": "node FileOperator.js"
+    "command": "node FileOperator.js",
+    "timeout": 300000
   },
   "communication": {
     "protocol": "stdio"
@@ -48,6 +49,10 @@
       {
         "command": "ReadFile",
         "description": "功能: 读取指定绝对路径下文件的内容。特别优化了对多种格式的支持：对于 .pdf, .docx, .xlsx, .xls, .csv 等文件，插件会自动解析并提取其纯文本内容返回给AI；对于其他文件类型，则按普通文本文件读取。\n参数:\n- filePath (字符串, 必需): 要读取的文件的绝对路径。\n- encoding (字符串, 可选, 默认'utf8'): 对于普通文本文件，可以指定编码格式 (例如: 'utf8', 'ascii')。对于自动解析的文件，此参数无效。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」ReadFile「末」,\nfilePath:「始」/path/to/your/document.pdf「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "WebReadFile",
+        "description": "功能: 从一个URL地址读取文件。插件会先将文件下载到本地一个临时文件夹内，然后复用ReadFile的逻辑进行解析和内容提取，支持所有ReadFile支持的格式（如PDF, DOCX, 图片等）。成功后，会返回文件内容以及一个本地文件URL。\n参数:\n- url (字符串, 必需): 要读取的文件的完整URL地址 (支持http和https)。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」WebReadFile「末」,\nurl:「始」http://example.com/sample.jpg「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
         "command": "WriteFile",
@@ -94,8 +99,8 @@
         "description": "功能: 在指定目录中递归搜索匹配特定模式的文件或目录。\n参数:\n- searchPath (字符串, 必需): 要搜索的起始目录的绝对路径。\n- pattern (字符串, 必需): 要搜索的文件模式，支持通配符 (例如: '*.txt', 'image_*.png')。\n- options (JSON字符串, 可选): 包含搜索选项的JSON对象字符串。支持的键包括:\n  - \"caseSensitive\" (布尔值, 默认false): 搜索是否区分大小写。\n  - \"includeHidden\" (布尔值, 默认false): 是否在搜索中包含隐藏文件。\n  - \"fileType\" (字符串, 默认'all'): 搜索的项目类型，可选值为 'file', 'directory', 'all'。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」SearchFiles「末」,\nsearchPath:「始」/path/to/search「末」,\npattern:「始」*.log「末」,\noptions:「始」{\"caseSensitive\": false, \"fileType\": \"file\"}「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
-        "command": "ApplyDiff",
-        "description": "功能: 对指定文件内容进行查找和替换。此操作会查找文件中所有匹配 'searchString' 的内容，并将其替换为 'replaceString'。\n参数:\n- filePath (字符串, 必需): 要修改的文件的绝对路径。\n- searchString (字符串, 必需): 要查找的字符串或正则表达式模式。\n- replaceString (字符串, 必需): 用于替换的字符串。\n- encoding (字符串, 可选, 默认'utf8'): 读取和写入文件时使用的编码。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」ApplyDiff「末」,\nfilePath:「始」/path/to/your/file.txt「末」,\nsearchString:「始」旧内容「末」,\nreplaceString:「始」新内容「末」\n<<<[END_TOOL_REQUEST]>>>"
+        "command": "DownloadFile",
+        "description": "功能: (异步) 从一个URL地址下载文件到固定的用户数据目录（AppData/file）中。插件会自动从URL中解析文件名。这是一个异步操作，命令会立即返回，告知AI下载已在后台开始以及文件的最终保存路径，AI无需等待下载完成。如果目标路径已存在同名文件，会自动重命名以防止覆盖。\n参数:\n- url (字符串, 必需): 要下载的文件的完整URL地址。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」DownloadFile「末」,\nurl:「始」http://example.com/archive.zip「末」\n<<<[END_TOOL_REQUEST]>>>"
       }
     ]
   }

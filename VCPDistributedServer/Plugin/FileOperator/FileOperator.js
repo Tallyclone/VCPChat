@@ -7,6 +7,7 @@ const pdf = require('pdf-parse');
 const mammoth = require('mammoth');
 const ExcelJS = require('exceljs');
 const trash = require('trash');
+const axios = require('axios');
 
 // Load environment variables
 require('dotenv').config();
@@ -91,6 +92,55 @@ function getUniqueFilePath(filePath) {
 }
 
 // File operation functions
+async function webReadFile(fileUrl) {
+  try {
+    const fileDir = path.join(__dirname, '..', '..', '..', 'AppData', 'file');
+    await fs.mkdir(fileDir, { recursive: true }); // Ensure directory exists
+
+    // Extract filename from URL, handling potential query strings
+    const url = new URL(fileUrl);
+    const fileName = path.basename(url.pathname);
+    const localFilePath = path.join(fileDir, fileName);
+
+    debugLog('Downloading file from web', { fileUrl, localFilePath });
+
+    const response = await axios({
+      method: 'get',
+      url: fileUrl,
+      responseType: 'stream'
+    });
+
+    const writer = fsSync.createWriteStream(localFilePath);
+    response.data.pipe(writer);
+
+    await new Promise((resolve, reject) => {
+      writer.on('finish', resolve);
+      writer.on('error', reject);
+    });
+
+    debugLog('File downloaded successfully. Reading local file.', { localFilePath });
+    const result = await readFile(localFilePath);
+
+    if (result.success) {
+      result.data.localPath = localFilePath;
+      result.data.originalUrl = fileUrl;
+      // Modify the text message to reflect the web origin
+      if (Array.isArray(result.data.content) && result.data.content[0]?.type === 'text') {
+          result.data.content[0].text = `已从网络地址读取文件 '${result.data.fileName}' 并保存到本地。`;
+      }
+    }
+    
+    return result;
+
+  } catch (error) {
+    debugLog('Error reading web file', { fileUrl, error: error.message });
+    return {
+      success: false,
+      error: `Failed to read or download file from URL: ${error.message}`,
+    };
+  }
+}
+
 async function readFile(filePath, encoding = 'utf8') {
   try {
     debugLog('Reading file', { filePath, encoding });
@@ -551,73 +601,6 @@ async function renameFile(sourcePath, destinationPath) {
   }
 }
 
-async function applyDiff(filePath, searchString, replaceString, encoding = 'utf8') {
-  try {
-    debugLog('Applying diff to file', { filePath, searchString, replaceString, encoding });
-
-    if (!isPathAllowed(filePath, 'ApplyDiff')) {
-      throw new Error(`Access denied: Path '${filePath}' is not in allowed directories`);
-    }
-
-    // Ensure the file exists before attempting to edit it.
-    try {
-      const stats = await fs.stat(filePath);
-      if (stats.isDirectory()) {
-        throw new Error(`Path points to a directory, not a file. Cannot apply diff.`);
-      }
-    } catch (e) {
-      if (e.code === 'ENOENT') {
-        throw new Error(`File not found at '${filePath}'.`);
-      }
-      throw e; // Re-throw other errors
-    }
-
-    let content = await fs.readFile(filePath, encoding);
-    const originalContent = content;
-
-    // Perform the replacement
-    // Using a global regex to replace all occurrences
-    const regex = new RegExp(escapeRegExp(searchString), 'g');
-    content = content.replace(regex, replaceString);
-
-    if (originalContent === content) {
-      return {
-        success: false,
-        error: `No changes applied: Search string '${searchString}' not found in file.`,
-      };
-    }
-
-    if (Buffer.byteLength(content, encoding) > MAX_FILE_SIZE) {
-      throw new Error(`Content too large after diff: exceeds limit of ${formatFileSize(MAX_FILE_SIZE)}`);
-    }
-
-    await fs.writeFile(filePath, content, encoding);
-    const stats = await fs.stat(filePath);
-
-    return {
-      success: true,
-      data: {
-        message: 'Diff applied successfully',
-        path: filePath,
-        size: stats.size,
-        sizeFormatted: formatFileSize(stats.size),
-        lastModified: stats.mtime.toISOString(),
-      },
-    };
-  } catch (error) {
-    debugLog('Error applying diff to file', { filePath, error: error.message });
-    return {
-      success: false,
-      error: error.message,
-    };
-  }
-}
-
-// Helper function to escape special characters in a string for use in a RegExp
-function escapeRegExp(string) {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the matched substring
-}
-
 async function deleteFile(filePath) {
   try {
     debugLog('Deleting file', { filePath });
@@ -747,6 +730,72 @@ async function searchFiles(searchPath, pattern, options = {}) {
   }
 }
 
+async function downloadFile(url) {
+  try {
+    // Automatically parse filename from URL
+    const parsedUrl = new URL(url);
+    const fileName = path.basename(parsedUrl.pathname);
+    
+    // Construct the full destination path in the designated AppData/file directory
+    const baseDir = path.join(__dirname, '..', '..', '..', 'AppData', 'file');
+    const destinationPath = path.join(baseDir, fileName);
+
+    debugLog('Initiating asynchronous file download', { url, destinationPath });
+
+    if (!isPathAllowed(destinationPath, 'WriteFile')) {
+      throw new Error(`Access denied: Path '${destinationPath}' is not in allowed directories`);
+    }
+
+    // Synchronously ensure the destination directory exists to safely predict the final path
+    const destDir = path.dirname(destinationPath);
+    fsSync.mkdirSync(destDir, { recursive: true });
+
+    // Determine the final, non-conflicting path before starting the download
+    const { newPath, renamed } = getUniqueFilePath(destinationPath);
+
+    // Fire-and-forget the download process. Do not await.
+    axios({
+      method: 'get',
+      url: url,
+      responseType: 'stream'
+    }).then(response => {
+      const writer = fsSync.createWriteStream(newPath);
+      response.data.pipe(writer);
+
+      writer.on('finish', () => {
+        debugLog('Background download completed successfully.', { sourceUrl: url, destination: newPath });
+      });
+      writer.on('error', (err) => {
+        debugLog('Background download failed.', { sourceUrl: url, destination: newPath, error: err.message });
+        // Attempt to clean up the partially downloaded file
+        fs.unlink(newPath).catch(e => debugLog('Failed to clean up partial download.', { path: newPath }));
+      });
+    }).catch(err => {
+      debugLog('Failed to initiate download stream.', { url, error: err.message });
+    });
+
+    // Immediately return a success message to the AI
+    const message = `文件下载任务已在后台启动。将从URL自动解析文件名并保存到: ${newPath}`;
+    return {
+      success: true,
+      data: {
+        message: message,
+        path: newPath,
+        originalPath: destinationPath,
+        renamed: renamed,
+        sourceUrl: url,
+      },
+    };
+
+  } catch (error) {
+    debugLog('Error initiating file download', { url, error: error.message });
+    return {
+      success: false,
+      error: `Failed to initiate download: ${error.message}`,
+    };
+  }
+}
+
 async function listAllowedDirectories() {
   debugLog('Listing allowed directories content');
   if (ALLOWED_DIRECTORIES.length === 0) {
@@ -797,6 +846,10 @@ async function processRequest(request) {
     case 'ReadFile':
       return await readFile(parameters.filePath, parameters.encoding);
 
+    case 'WebReadFile':
+      // Accept 'url' or 'filePath' for compatibility
+      return await webReadFile(parameters.url || parameters.filePath);
+
     case 'WriteFile':
       return await writeFile(parameters.filePath, parameters.content, parameters.encoding);
 
@@ -830,8 +883,8 @@ async function processRequest(request) {
     case 'SearchFiles':
       return await searchFiles(parameters.searchPath, parameters.pattern, parameters.options);
 
-    case 'ApplyDiff':
-      return await applyDiff(parameters.filePath, parameters.searchString, parameters.replaceString, parameters.encoding);
+    case 'DownloadFile':
+      return await downloadFile(parameters.url);
 
     default:
       return {
@@ -846,68 +899,21 @@ process.stdin.setEncoding('utf8');
 process.stdin.on('data', async data => {
   try {
     const lines = data.toString().trim().split('\n');
+
     for (const line of lines) {
       if (!line.trim()) continue;
 
-      const request = JSON.parse(line);
+      const request = JSON.parse(line); // This is now the flat object from VCP
+      const response = await processRequest(request);
 
-      // Check for batch commands (e.g., command1, sourcePath1, command2, etc.)
-      const isBatch = Object.keys(request).some(k => k.match(/^command\d+$/));
-
-      if (isBatch) {
-        const groupedCommands = {};
-        for (const key in request) {
-          const match = key.match(/^([a-zA-Z]+)(\d+)$/);
-          if (match) {
-            const paramName = match[1];
-            const index = match[2];
-            if (!groupedCommands[index]) {
-              groupedCommands[index] = {};
-            }
-            groupedCommands[index][paramName] = request[key];
-          }
-        }
-
-        const batchResults = [];
-        const commandIndices = Object.keys(groupedCommands).sort((a, b) => parseInt(a) - parseInt(b));
-
-        for (const index of commandIndices) {
-          const commandData = groupedCommands[index];
-          const response = await processRequest(commandData);
-          batchResults.push({
-            commandIndex: index,
-            command: commandData.command,
-            response: response,
-          });
-        }
-
-        const hasErrors = batchResults.some(item => !item.response.success);
-        const finalResponse = {
-          status: 'success',
-          result: {
-            message: hasErrors
-              ? `Batch processed with one or more errors.`
-              : `Batch of ${batchResults.length} commands processed successfully.`,
-            details: batchResults.map(item => ({
-              commandIndex: item.commandIndex,
-              command: item.command,
-              status: item.response.success ? 'success' : 'error',
-              result: item.response.success ? item.response.data : { error: item.response.error },
-            })),
-          },
-        };
-        console.log(JSON.stringify(finalResponse));
-      } else {
-        // Handle single command
-        const response = await processRequest(request);
-        const vcpResponse = convertToVCPFormat(response);
-        console.log(JSON.stringify(vcpResponse));
-      }
+      // Convert internal format to VCP protocol format
+      const vcpResponse = convertToVCPFormat(response);
+      console.log(JSON.stringify(vcpResponse));
     }
   } catch (error) {
     const errorResponse = {
       status: 'error',
-      error: `Invalid request format or processing error: ${error.message}`,
+      error: `Invalid request format: ${error.message}`,
     };
     console.log(JSON.stringify(errorResponse));
   }
