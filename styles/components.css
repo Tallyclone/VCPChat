@@ -513,10 +513,11 @@ input:checked + .slider:before {
 }
 /* --- Toggle Assistant Button --- */
 #toggleAssistantBtn.active {
-    background-color: var(--border-color);
-    color: var(--button-bg); /* Or whatever the background color is */
+    background-color: var(--highlight-text);
+    color: var(--text-on-accent);
+    border-color: var(--highlight-text);
 }
 
 #toggleAssistantBtn.active svg {
-    stroke: var(--button-bg); /* Make the icon color same as background */
+    stroke: var(--text-on-accent);
 }
