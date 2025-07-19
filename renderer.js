@@ -645,30 +645,30 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 function setupTtsListeners() {
-    // Initialize AudioContext on user interaction
+    // This function is now called from ensureAudioContext, not on body events
     const initAudioContext = () => {
         if (!audioContext) {
             try {
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                console.log("AudioContext initialized.");
+                console.log("[TTS Renderer] AudioContext initialized successfully.");
+                return true;
             } catch (e) {
-                console.error("Failed to initialize AudioContext:", e);
+                console.error("[TTS Renderer] Failed to initialize AudioContext:", e);
                 uiHelperFunctions.showToastNotification("无法初始化音频播放器。", "error");
+                return false;
             }
         }
-        // Remove the event listener after the first interaction
-        document.body.removeEventListener('click', initAudioContext);
-        document.body.removeEventListener('keydown', initAudioContext);
+        return true;
     };
-    document.body.addEventListener('click', initAudioContext, { once: true });
-    document.body.addEventListener('keydown', initAudioContext, { once: true });
 
+    // Expose a function to be called on demand
+    window.ensureAudioContext = initAudioContext;
 
     window.electronAPI.onPlayTtsAudio(async ({ audioData }) => {
+        console.log("[TTS Renderer] Received audio data chunk to play.");
         if (!audioContext) {
-            console.warn("AudioContext not initialized. Cannot play TTS audio.");
-            uiHelperFunctions.showToastNotification("请先与页面交互以激活音频。", "warning");
-            // We should probably still notify main that we're "done" so the queue isn't stuck
+            console.warn("[TTS Renderer] AudioContext not initialized. Cannot play TTS audio.");
+            uiHelperFunctions.showToastNotification("音频上下文未激活，无法播放。", "warning");
             window.electronAPI.notifyTtsAudioPlaybackFinished();
             return;
         }
@@ -677,22 +677,23 @@ function setupTtsListeners() {
         }
 
         try {
+            console.log("[TTS Renderer] Decoding audio data...");
             const audioBuffer = await audioContext.decodeAudioData(
                 Uint8Array.from(atob(audioData), c => c.charCodeAt(0)).buffer
             );
+            console.log("[TTS Renderer] Audio data decoded successfully. Starting playback.");
             currentAudioSource = audioContext.createBufferSource();
             currentAudioSource.buffer = audioBuffer;
             currentAudioSource.connect(audioContext.destination);
             currentAudioSource.start(0);
             currentAudioSource.onended = () => {
-                console.log("TTS audio playback finished.");
+                console.log("[TTS Renderer] Audio playback finished.");
                 window.electronAPI.notifyTtsAudioPlaybackFinished();
                 currentAudioSource = null;
             };
         } catch (error) {
-            console.error("Error playing TTS audio:", error);
-            uiHelperFunctions.showToastNotification("播放音频失败。", "error");
-            // Notify main process to continue the queue even if playback fails
+            console.error("[TTS Renderer] Error decoding or playing TTS audio:", error);
+            uiHelperFunctions.showToastNotification(`播放音频失败: ${error.message}`, "error");
             window.electronAPI.notifyTtsAudioPlaybackFinished();
         }
     });
@@ -1380,5 +1381,6 @@ function setCroppedFile(type, file) {
 // Expose these functions globally for ui-helpers.js
 window.getCroppedFile = getCroppedFile;
 window.setCroppedFile = setCroppedFile;
+window.ensureAudioContext = () => { /* Placeholder, will be defined in setupTtsListeners */ };
 
 
