@@ -5,8 +5,11 @@ const { app } = require('electron');
 const crypto = require('crypto');
 
 const SOVITS_API_BASE_URL = "http://127.0.0.1:8000";
-const MODELS_CACHE_PATH = path.join(app.getPath('userData'), 'sovits_models.json');
-const TTS_CACHE_DIR = path.join(app.getPath('userData'), 'tts_cache');
+// 修正路径问题，确保缓存和模型列表都在项目内的AppData目录
+const PROJECT_ROOT = path.join(__dirname, '..'); // 更可靠的方式获取项目根目录
+const APP_DATA_ROOT_IN_PROJECT = path.join(PROJECT_ROOT, 'AppData');
+const MODELS_CACHE_PATH = path.join(APP_DATA_ROOT_IN_PROJECT, 'sovits_models.json');
+const TTS_CACHE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'tts_cache');
 
 class SovitsTTS {
     constructor(mainWindow) {
@@ -73,15 +76,16 @@ class SovitsTTS {
      */
     async textToSpeech(text, voice, speed) {
         const cacheKey = crypto.createHash('md5').update(text + voice + speed).digest('hex');
-        const cacheFilePath = path.join(TTS_CACHE_DIR, `${cacheKey}.wav`);
+        const cacheFilePath = path.join(TTS_CACHE_DIR, `${cacheKey}.mp3`);
+        console.log(`[TTS] 尝试缓存路径: ${cacheFilePath}`);
 
         // 1. 检查缓存
         try {
             const cachedAudio = await fs.readFile(cacheFilePath);
-            console.log(`从缓存加载TTS音频: ${cacheKey}`);
+            console.log(`[TTS] 成功从缓存加载音频: ${cacheKey}`);
             return cachedAudio;
         } catch (error) {
-            // 缓存不存在或读取失败，继续执行
+            console.log(`[TTS] 缓存未命中或读取失败: ${error.message}`);
         }
 
         // 2. 如果没有缓存，请求API
@@ -89,7 +93,7 @@ class SovitsTTS {
             model: "tts-v2ProPlus",
             input: text,
             voice: voice,
-            response_format: "wav",
+            response_format: "mp3",
             speed: speed,
             other_params: {
                 text_lang: "中英混合",
@@ -100,26 +104,28 @@ class SovitsTTS {
         };
 
         try {
+            console.log('[TTS] 发送API请求:', JSON.stringify(payload));
             const response = await axios.post(`${SOVITS_API_BASE_URL}/v1/audio/speech`, payload, {
                 responseType: 'arraybuffer'
             });
+            console.log(`[TTS]收到API响应: 状态 ${response.status}, 类型 ${response.headers['content-type']}`);
 
-            if (response.headers['content-type'] === 'audio/wav') {
+            if (response.headers['content-type'] === 'audio/mpeg') {
                 const audioBuffer = Buffer.from(response.data);
                 // 3. 保存到缓存
                 try {
                     await fs.writeFile(cacheFilePath, audioBuffer);
-                    console.log(`TTS音频已缓存: ${cacheKey}`);
+                    console.log(`[TTS] 音频已成功缓存: ${cacheKey}`);
                 } catch (cacheError) {
-                    console.error("保存TTS音频缓存失败:", cacheError);
+                    console.error("[TTS] 保存音频缓存失败:", cacheError);
                 }
                 return audioBuffer;
             } else {
-                console.error("Sovits API没有返回音频文件。");
+                console.error("[TTS] API没有返回正确的音频文件类型。");
                 return null;
             }
         } catch (error) {
-            console.error("请求Sovits语音合成API时出错: ", error.message);
+            console.error("[TTS] 请求语音合成API时出错: ", error.message);
             return null;
         }
     }
