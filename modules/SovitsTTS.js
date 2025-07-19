@@ -160,62 +160,46 @@ class SovitsTTS {
      * 处理语音队列
      */
     async processQueue() {
-        if (this.speechQueue.length === 0) {
-            this.isSpeaking = false;
-            if (this.currentSpeechItemId) {
-                this.mainWindow.webContents.send('tts-status-changed', { msgId: this.currentSpeechItemId, isSpeaking: false });
-                this.currentSpeechItemId = null;
-            }
-            return;
-        }
-
+        if (this.isSpeaking) return; // 防止重入
         this.isSpeaking = true;
-        const currentTask = this.speechQueue.shift();
-        
-        // 如果这是一个新的朗读序列，更新UI
-        if (this.currentSpeechItemId !== currentTask.msgId) {
-            // 如果上一个还在亮，先关掉
-            if(this.currentSpeechItemId) {
-                 this.mainWindow.webContents.send('tts-status-changed', { msgId: this.currentSpeechItemId, isSpeaking: false });
+
+        while (this.speechQueue.length > 0) {
+            // 在每次循环开始时检查是否被外部调用stop()停止
+            if (!this.isSpeaking) {
+                console.log("TTS processing loop was stopped.");
+                break;
             }
-            this.currentSpeechItemId = currentTask.msgId;
-            this.mainWindow.webContents.send('tts-status-changed', { msgId: currentTask.msgId, isSpeaking: true });
-        }
 
-        // **优化：开始预合成下一个片段**
-        if (this.speechQueue.length > 0) {
-            const nextTask = this.speechQueue[0];
-            // 异步执行，不阻塞当前任务
-            this.textToSpeech(nextTask.text, nextTask.voice, nextTask.speed).then(buffer => {
-                if (buffer) {
-                    // 将合成好的音频缓存到任务对象中
-                    nextTask.audioBuffer = buffer;
-                    console.log('预合成下一个音频片段成功。');
+            const currentTask = this.speechQueue.shift();
+
+            // 如果这是一个新的朗读序列，更新UI
+            if (this.currentSpeechItemId !== currentTask.msgId) {
+                if (this.currentSpeechItemId) {
+                    this.mainWindow.webContents.send('tts-status-changed', { msgId: this.currentSpeechItemId, isSpeaking: false });
                 }
-            });
+                this.currentSpeechItemId = currentTask.msgId;
+                this.mainWindow.webContents.send('tts-status-changed', { msgId: currentTask.msgId, isSpeaking: true });
+            }
+
+            const audioBuffer = await this.textToSpeech(currentTask.text, currentTask.voice, currentTask.speed);
+
+            if (audioBuffer) {
+                const audioBase64 = audioBuffer.toString('base64');
+                // 发送音频数据和关联的msgId
+                this.mainWindow.webContents.send('play-tts-audio', { audioData: audioBase64, msgId: currentTask.msgId });
+            } else {
+                console.error(`合成失败: "${currentTask.text.substring(0, 20)}..."`);
+                // 即使合成失败，循环也会继续处理下一个任务
+            }
         }
 
-        // 检查当前任务是否已经预合成了音频
-        const audioBuffer = currentTask.audioBuffer || await this.textToSpeech(currentTask.text, currentTask.voice, currentTask.speed);
-
-        if (audioBuffer) {
-            const audioBase64 = audioBuffer.toString('base64');
-            this.mainWindow.webContents.send('play-tts-audio', { audioData: audioBase64 });
-            // 等待渲染器发送 'sovits-audio-playback-finished' 事件
-        } else {
-            // 如果合成失败，直接处理下一个
-            console.error(`合成失败: "${currentTask.text.substring(0, 20)}..."`);
-            this.processQueue();
+        // 队列处理完毕或被中断
+        this.isSpeaking = false;
+        if (this.currentSpeechItemId) {
+            this.mainWindow.webContents.send('tts-status-changed', { msgId: this.currentSpeechItemId, isSpeaking: false });
+            this.currentSpeechItemId = null;
         }
-    }
-    
-    /**
-     * 当渲染进程通知音频播放完成时调用
-     */
-    audioPlaybackFinished() {
-        if (this.isSpeaking) {
-            this.processQueue();
-        }
+        console.log('TTS queue finished processing.');
     }
 
     /**

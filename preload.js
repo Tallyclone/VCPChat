@@ -240,7 +240,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onSovitsStatusChanged: (callback) => ipcRenderer.on('tts-status-changed', (_event, data) => callback(data)), // { msgId, isSpeaking }
     onPlayTtsAudio: (callback) => ipcRenderer.on('play-tts-audio', (_event, data) => callback(data)), // { audioData }
     onStopTtsAudio: (callback) => ipcRenderer.on('stop-tts-audio', (_event) => callback()),
-    notifyTtsAudioPlaybackFinished: () => ipcRenderer.send('sovits-audio-playback-finished'),
 });
 
 // Log the electronAPI object as it's defined in preload.js right after exposing it

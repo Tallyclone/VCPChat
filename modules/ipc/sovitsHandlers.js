@@ -26,10 +26,6 @@ function initialize(mainWindow) {
         sovitsTTSInstance.stop();
     });
 
-    ipcMain.on('sovits-audio-playback-finished', () => {
-        if (!sovitsTTSInstance) return;
-        sovitsTTSInstance.audioPlaybackFinished();
-    });
 
     console.log('SovitsTTS IPC handlers initialisés.');
 }

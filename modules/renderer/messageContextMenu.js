@@ -148,6 +148,11 @@ function showContextMenu(event, messageItem, message) {
             readAloudOption.classList.add('context-menu-item', 'context-menu-item-speak');
             readAloudOption.innerHTML = `<i class="fas fa-volume-up"></i> 朗读气泡`;
             readAloudOption.onclick = async () => {
+                // **关键修复：在发送请求前，确保音频上下文已激活**
+                if (typeof window.ensureAudioContext === 'function') {
+                    window.ensureAudioContext();
+                }
+
                 const agentId = message.agentId || currentSelectedItemVal.id;
                 if (!agentId) {
                     uiHelper.showToastNotification("无法确定Agent身份，无法朗读。", "error");

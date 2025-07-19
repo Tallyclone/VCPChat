@@ -18,6 +18,8 @@ let attachedFiles = [];
 // let activeStreamingMessageId = null; // REMOVED
 let audioContext = null;
 let currentAudioSource = null;
+let ttsAudioQueue = []; // 新增：TTS音频播放队列
+let isTtsPlaying = false; // 新增：TTS播放状态标志
 
 // --- DOM Elements ---
 const itemListUl = document.getElementById('agentList'); // Renamed from agentListUl to itemListUl
@@ -664,47 +666,66 @@ function setupTtsListeners() {
     // Expose a function to be called on demand
     window.ensureAudioContext = initAudioContext;
 
-    window.electronAPI.onPlayTtsAudio(async ({ audioData }) => {
-        console.log("[TTS Renderer] Received audio data chunk to play.");
+    // 新的TTS播放逻辑：将音频加入队列并由独立的播放器处理
+    window.electronAPI.onPlayTtsAudio(async ({ audioData, msgId }) => {
+        console.log(`[TTS Renderer] Received audio data for msgId ${msgId}. Pushing to queue.`);
         if (!audioContext) {
-            console.warn("[TTS Renderer] AudioContext not initialized. Cannot play TTS audio.");
-            uiHelperFunctions.showToastNotification("音频上下文未激活，无法播放。", "warning");
-            window.electronAPI.notifyTtsAudioPlaybackFinished();
-            return;
+            console.warn("[TTS Renderer] AudioContext not initialized. Buffering audio but cannot play yet.");
+            // 即使没有上下文，也先把任务加进去，等待用户交互激活
         }
-        if (currentAudioSource) {
-            currentAudioSource.stop();
+        ttsAudioQueue.push({ audioData, msgId });
+        processTtsQueue(); // 尝试处理队列
+    });
+
+    async function processTtsQueue() {
+        if (isTtsPlaying || ttsAudioQueue.length === 0) {
+            return; // 如果正在播放或队列为空，则退出
         }
 
+        if (!audioContext) {
+            console.warn("[TTS Renderer] AudioContext not ready. Waiting to process TTS queue.");
+            return;
+        }
+
+        isTtsPlaying = true;
+        const { audioData, msgId } = ttsAudioQueue.shift();
+
         try {
-            console.log("[TTS Renderer] Decoding audio data...");
             const audioBuffer = await audioContext.decodeAudioData(
                 Uint8Array.from(atob(audioData), c => c.charCodeAt(0)).buffer
             );
-            console.log("[TTS Renderer] Audio data decoded successfully. Starting playback.");
+            
             currentAudioSource = audioContext.createBufferSource();
             currentAudioSource.buffer = audioBuffer;
             currentAudioSource.connect(audioContext.destination);
-            currentAudioSource.start(0);
+            
             currentAudioSource.onended = () => {
-                console.log("[TTS Renderer] Audio playback finished.");
-                window.electronAPI.notifyTtsAudioPlaybackFinished();
+                console.log(`[TTS Renderer] Playback finished for a chunk of msgId ${msgId}.`);
+                isTtsPlaying = false;
                 currentAudioSource = null;
+                processTtsQueue(); // 播放下一个
             };
+
+            currentAudioSource.start(0);
+            console.log(`[TTS Renderer] Starting playback for a chunk of msgId ${msgId}.`);
+
         } catch (error) {
-            console.error("[TTS Renderer] Error decoding or playing TTS audio:", error);
+            console.error("[TTS Renderer] Error decoding or playing TTS audio from queue:", error);
             uiHelperFunctions.showToastNotification(`播放音频失败: ${error.message}`, "error");
-            window.electronAPI.notifyTtsAudioPlaybackFinished();
+            isTtsPlaying = false;
+            processTtsQueue(); // 即使失败也尝试处理下一个
         }
-    });
+    }
 
     window.electronAPI.onStopTtsAudio(() => {
+        console.log("TTS audio playback stopped by main process. Clearing queue.");
+        ttsAudioQueue = []; // 清空队列
         if (currentAudioSource) {
-            currentAudioSource.onended = null; // Prevent onended from firing and calling notifyTtsAudioPlaybackFinished
+            currentAudioSource.onended = null; // 阻止onended触发processTtsQueue
             currentAudioSource.stop();
             currentAudioSource = null;
-            console.log("TTS audio playback stopped by main process.");
         }
+        isTtsPlaying = false; // 重置播放状态
     });
 
     window.electronAPI.onSovitsStatusChanged(({ msgId, isSpeaking }) => {
