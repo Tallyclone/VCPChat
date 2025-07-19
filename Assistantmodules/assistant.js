@@ -160,6 +160,12 @@ window.electronAPI.onAssistantData(async (data) => {
         };
         await window.messageRenderer.renderMessage(assistantMessagePlaceholder, false);
 
+        // Context is required for the new sendToVCP API
+        const context = {
+            agentId: agentId,
+            topicId: 'assistant_chat'
+        };
+
         try {
             const latestAgentConfig = await window.electronAPI.getAgentConfig(agentId);
             if (!latestAgentConfig || latestAgentConfig.error) throw new Error(`无法获取最新的助手配置: ${latestAgentConfig?.error || '未知错误'}`);
@@ -179,12 +185,18 @@ window.electronAPI.onAssistantData(async (data) => {
                 max_tokens: agentConfig.maxOutputTokens
             };
 
-            await window.electronAPI.sendToVCP(globalSettings.vcpServerUrl, globalSettings.vcpApiKey, messagesForVCP, modelConfig, thinkingMessageId);
+            // Call with new signature, including context. isGroupCall is false.
+            await window.electronAPI.sendToVCP(globalSettings.vcpServerUrl, globalSettings.vcpApiKey, messagesForVCP, modelConfig, thinkingMessageId, false, context);
 
         } catch (error) {
             console.error('Error sending message to VCP:', error);
             if (window.messageRenderer) {
-                window.messageRenderer.finalizeStreamedMessage(thinkingMessageId, 'error', `请求失败: ${error.message}`);
+                // Finalize without context to prevent history saving, then update UI
+                window.messageRenderer.finalizeStreamedMessage(thinkingMessageId, 'error');
+                const messageItemContent = document.querySelector(`.message-item[data-message-id="${thinkingMessageId}"] .md-content`);
+                if (messageItemContent) {
+                    messageItemContent.innerHTML = `<p style="color: var(--danger-color);">请求失败: ${error.message}</p>`;
+                }
             }
             activeStreamingMessageId = null;
             messageInput.disabled = false;
@@ -194,12 +206,14 @@ window.electronAPI.onAssistantData(async (data) => {
     };
 
     const activeStreams = new Set();
-    window.electronAPI.onVCPStreamChunk((chunkData) => {
-        if (!window.messageRenderer || chunkData.messageId !== activeStreamingMessageId) return;
+    // Listen to the new, unified stream event
+    window.electronAPI.onVCPStreamEvent((eventData) => {
+        if (!window.messageRenderer || eventData.messageId !== activeStreamingMessageId) return;
 
-        const { messageId, type, chunk, error, fullText } = chunkData;
+        const { messageId, type, chunk, error } = eventData;
 
-        if (!activeStreams.has(messageId) && (type === 'data' || type === 'start')) {
+        // The 'start' event is implicit. The first 'data' chunk will trigger startStreamingMessage.
+        if (!activeStreams.has(messageId) && type === 'data') {
             window.messageRenderer.startStreamingMessage({
                 id: messageId,
                 role: 'assistant',
@@ -210,16 +224,23 @@ window.electronAPI.onAssistantData(async (data) => {
         }
 
         if (type === 'data') {
+            // No context needed for assistant window
             window.messageRenderer.appendStreamChunk(messageId, chunk);
         } else if (type === 'end') {
-            window.messageRenderer.finalizeStreamedMessage(messageId, 'completed', fullText);
+            // No context needed, and no fullText. This prevents history saving.
+            window.messageRenderer.finalizeStreamedMessage(messageId, 'completed');
             activeStreams.delete(messageId);
             activeStreamingMessageId = null;
             messageInput.disabled = false;
             sendMessageBtn.disabled = false;
             messageInput.focus();
         } else if (type === 'error') {
-            window.messageRenderer.finalizeStreamedMessage(messageId, 'error', error);
+            // No context needed.
+            window.messageRenderer.finalizeStreamedMessage(messageId, 'error');
+            const messageItemContent = document.querySelector(`.message-item[data-message-id="${messageId}"] .md-content`);
+            if (messageItemContent) {
+                messageItemContent.innerHTML = `<p style="color: var(--danger-color);">${error || '未知流错误'}</p>`;
+            }
             activeStreams.delete(messageId);
             activeStreamingMessageId = null;
             messageInput.disabled = false;
