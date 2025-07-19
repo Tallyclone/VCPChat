@@ -167,11 +167,16 @@ function showContextMenu(event, messageItem, message) {
                         const textToRead = contentDiv ? contentDiv.innerText : '';
                         
                         if (textToRead.trim()) {
+                            // Pass bilingual TTS settings
                             electronAPI.sovitsSpeak({
                                 text: textToRead,
-                                voice: agentConfig.ttsVoice,
+                                voice: agentConfig.ttsVoicePrimary, // Legacy 'voice' is now primary
                                 speed: agentConfig.ttsSpeed || 1.0,
-                                msgId: message.id
+                                msgId: message.id,
+                                ttsRegex: agentConfig.ttsRegexPrimary, // Legacy 'ttsRegex' is now primary
+                                // New bilingual fields
+                                voiceSecondary: agentConfig.ttsVoiceSecondary,
+                                ttsRegexSecondary: agentConfig.ttsRegexSecondary
                             });
                         } else {
                             uiHelper.showToastNotification("此消息没有可朗读的文本内容。", "info");

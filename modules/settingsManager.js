@@ -18,7 +18,7 @@ const settingsManager = (() => {
     let agentSystemPromptTextarea, agentModelInput, agentTemperatureInput;
     let agentContextTokenLimitInput, agentMaxOutputTokensInput;
     let openModelSelectBtn, modelSelectModal, modelList, modelSearchInput, refreshModelsBtn;
-    let agentTtsVoiceSelect, refreshTtsModelsBtn, agentTtsSpeedSlider, ttsSpeedValueSpan;
+    let agentTtsVoicePrimarySelect, agentTtsRegexPrimaryInput, agentTtsVoiceSecondarySelect, agentTtsRegexSecondaryInput, refreshTtsModelsBtn, agentTtsSpeedSlider, ttsSpeedValueSpan;
 
     /**
      * Displays the appropriate settings view (agent, group, or default prompt)
@@ -100,8 +100,13 @@ const settingsManager = (() => {
         }
         agentAvatarInput.value = '';
         mainRendererFunctions.setCroppedFile('agent', null);
-        populateTtsModels(agentConfig.ttsVoice); // Populate and set current voice
         
+        // Populate bilingual TTS settings
+        populateTtsModels(agentConfig.ttsVoicePrimary, agentConfig.ttsVoiceSecondary);
+        
+        agentTtsRegexPrimaryInput.value = agentConfig.ttsRegexPrimary || '';
+        agentTtsRegexSecondaryInput.value = agentConfig.ttsRegexSecondary || '';
+
         agentTtsSpeedSlider.value = agentConfig.ttsSpeed !== undefined ? agentConfig.ttsSpeed : 1.0;
         ttsSpeedValueSpan.textContent = parseFloat(agentTtsSpeedSlider.value).toFixed(1);
     }
@@ -121,7 +126,10 @@ const settingsManager = (() => {
             contextTokenLimit: parseInt(agentContextTokenLimitInput.value),
             maxOutputTokens: parseInt(agentMaxOutputTokensInput.value),
             streamOutput: document.getElementById('agentStreamOutputTrue').checked,
-            ttsVoice: agentTtsVoiceSelect.value,
+            ttsVoicePrimary: agentTtsVoicePrimarySelect.value,
+            ttsRegexPrimary: agentTtsRegexPrimaryInput.value.trim(),
+            ttsVoiceSecondary: agentTtsVoiceSecondarySelect.value,
+            ttsRegexSecondary: agentTtsRegexSecondaryInput.value.trim(),
             ttsSpeed: parseFloat(agentTtsSpeedSlider.value)
         };
      
@@ -261,32 +269,50 @@ const settingsManager = (() => {
     }
 
     /**
-     * Populates the TTS voice model select dropdown.
-     * @param {string} currentVoice - The currently selected voice model name to pre-select.
+     * Populates the primary and secondary TTS voice model select dropdowns.
+     * @param {string} currentPrimaryVoice - The currently selected primary voice.
+     * @param {string} currentSecondaryVoice - The currently selected secondary voice.
      */
-    async function populateTtsModels(currentVoice) {
-        if (!agentTtsVoiceSelect) return;
-        
+    async function populateTtsModels(currentPrimaryVoice, currentSecondaryVoice) {
+        if (!agentTtsVoicePrimarySelect || !agentTtsVoiceSecondarySelect) return;
+
         try {
             const models = await electronAPI.sovitsGetModels();
-            agentTtsVoiceSelect.innerHTML = '<option value="">不使用语音</option>'; // Clear and add default
             
+            // Clear existing options
+            agentTtsVoicePrimarySelect.innerHTML = '<option value="">不使用语音</option>';
+            agentTtsVoiceSecondarySelect.innerHTML = '<option value="">不使用</option>';
+
             if (models && Object.keys(models).length > 0) {
                 for (const modelName in models) {
-                    const option = document.createElement('option');
-                    option.value = modelName;
-                    option.textContent = modelName;
-                    if (modelName === currentVoice) {
-                        option.selected = true;
+                    // Create options for primary dropdown
+                    const primaryOption = document.createElement('option');
+                    primaryOption.value = modelName;
+                    primaryOption.textContent = modelName;
+                    if (modelName === currentPrimaryVoice) {
+                        primaryOption.selected = true;
                     }
-                    agentTtsVoiceSelect.appendChild(option);
+                    agentTtsVoicePrimarySelect.appendChild(primaryOption);
+
+                    // Create options for secondary dropdown
+                    const secondaryOption = document.createElement('option');
+                    secondaryOption.value = modelName;
+                    secondaryOption.textContent = modelName;
+                    if (modelName === currentSecondaryVoice) {
+                        secondaryOption.selected = true;
+                    }
+                    agentTtsVoiceSecondarySelect.appendChild(secondaryOption);
                 }
             } else {
-                agentTtsVoiceSelect.innerHTML += '<option value="" disabled>未找到模型,请启动Sovits</option>';
+                const disabledOption = '<option value="" disabled>未找到模型,请启动Sovits</option>';
+                agentTtsVoicePrimarySelect.innerHTML += disabledOption;
+                agentTtsVoiceSecondarySelect.innerHTML += disabledOption;
             }
         } catch (error) {
             console.error('Failed to get Sovits TTS models:', error);
-            agentTtsVoiceSelect.innerHTML = '<option value="" disabled>获取模型失败</option>';
+            const errorOption = '<option value="" disabled>获取模型失败</option>';
+            agentTtsVoicePrimarySelect.innerHTML = errorOption;
+            agentTtsVoiceSecondarySelect.innerHTML = errorOption;
             uiHelper.showToastNotification('获取Sovits语音模型失败', 'error');
         }
     }
@@ -321,8 +347,13 @@ const settingsManager = (() => {
             modelList = options.elements.modelList;
             modelSearchInput = options.elements.modelSearchInput;
             refreshModelsBtn = options.elements.refreshModelsBtn;
-            agentTtsVoiceSelect = options.elements.agentTtsVoiceSelect;
-            refreshTtsModelsBtn = options.elements.refreshTtsModelsBtn;
+            
+            // TTS Elements
+            agentTtsVoicePrimarySelect = document.getElementById('agentTtsVoicePrimary');
+            agentTtsRegexPrimaryInput = document.getElementById('agentTtsRegexPrimary');
+            agentTtsVoiceSecondarySelect = document.getElementById('agentTtsVoiceSecondary');
+            agentTtsRegexSecondaryInput = document.getElementById('agentTtsRegexSecondary');
+            refreshTtsModelsBtn = document.getElementById('refreshTtsModelsBtn');
             agentTtsSpeedSlider = options.elements.agentTtsSpeedSlider;
             ttsSpeedValueSpan = options.elements.ttsSpeedValueSpan;
 
@@ -379,7 +410,7 @@ const settingsManager = (() => {
                     uiHelper.showToastNotification('正在刷新语音模型...', 'info');
                     try {
                         await electronAPI.sovitsGetModels(true); // force refresh
-                        await populateTtsModels(agentTtsVoiceSelect.value); // repopulate
+                        await populateTtsModels(agentTtsVoicePrimarySelect.value, agentTtsVoiceSecondarySelect.value); // repopulate
                         uiHelper.showToastNotification('语音模型列表已刷新', 'success');
                     } catch (e) {
                         uiHelper.showToastNotification('刷新语音模型失败', 'error');

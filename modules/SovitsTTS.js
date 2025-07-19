@@ -47,7 +47,7 @@ class SovitsTTS {
 
         try {
             console.log(`正在从 ${SOVITS_API_BASE_URL}/models 获取模型列表...`);
-            const response = await axios.post(`${SOVITS_API_BASE_URL}/models`, { version: "v4" });
+            const response = await axios.post(`${SOVITS_API_BASE_URL}/models`, { version: "v2ProPlus" });
 
             if (response.data && response.data.msg === "获取成功" && response.data.models) {
                 await fs.writeFile(MODELS_CACHE_PATH, JSON.stringify(response.data.models, null, 2));
@@ -90,6 +90,13 @@ class SovitsTTS {
         }
 
         // 2. 如果没有缓存，请求API
+        // 根据模型名称动态确定语言
+        let promptLang = "中文";
+        if (voice.includes('日语')) {
+            promptLang = "日语";
+        }
+        // 可以在这里添加更多语言的判断，例如 '英语', '韩语' 等
+
         const payload = {
             model: "tts-v2ProPlus",
             input: text,
@@ -97,8 +104,8 @@ class SovitsTTS {
             response_format: "mp3",
             speed: speed,
             other_params: {
-                text_lang: "中英混合",
-                prompt_lang: "中文",
+                text_lang: promptLang === "日语" ? "日语" : "中英混合", // 动态设置 text_lang
+                prompt_lang: promptLang, // 动态设置语言
                 emotion: "默认",
                 text_split_method: "按标点符号切",
             }
@@ -133,30 +140,117 @@ class SovitsTTS {
 
     /**
      * 将长文本分割成句子队列
-     * @param {string} text 
+     * @param {string} text
      * @returns {string[]}
      */
     splitText(text) {
-        // 根据用户建议，仅按换行符分割
         return text.split('\n').filter(line => line.trim() !== '');
     }
 
     /**
-     * 开始朗读或将朗读任务加入队列
-     * @param {string} text 要朗读的完整文本
-     * @param {string} voice 模型
-     * @param {number} speed 语速
-     * @param {string} msgId 消息ID
+     * 新的双语文本切片算法
+     * @param {string} text 原始文本
+     * @param {string} primaryRegexStr 主语言正则
+     * @param {string} secondaryRegexStr 副语言正则
+     * @returns {Array<{text: string, lang: 'primary' | 'secondary'}>}
      */
-    speak(text, voice, speed, msgId) {
-        // 关键修复：每次新的speak请求都应被视为一个全新的播放序列。
-        // 因此，先调用stop()来清空任何正在进行的或排队的任务。
+    _segmentTextForBilingualTTS(text, primaryRegexStr, secondaryRegexStr) {
+        // Case 1: No secondary model/regex provided. Use primary regex or treat whole text as primary.
+        if (!secondaryRegexStr) {
+            const regex = primaryRegexStr ? new RegExp(primaryRegexStr, 'g') : null;
+            if (regex) {
+                const matches = text.match(regex);
+                return matches ? [{ text: matches.join('\n'), lang: 'primary' }] : [];
+            }
+            return [{ text, lang: 'primary' }];
+        }
+
+        // Case 2: Secondary regex provided. Segment text into primary and secondary parts.
+        try {
+            const secondaryRegex = new RegExp(secondaryRegexStr, 'g');
+            const segments = [];
+            let lastIndex = 0;
+            let match;
+
+            while ((match = secondaryRegex.exec(text)) !== null) {
+                // Part before the match is primary language
+                if (match.index > lastIndex) {
+                    segments.push({ text: text.substring(lastIndex, match.index), lang: 'primary' });
+                }
+                // The matched part (group 1 if exists, otherwise full match) is secondary
+                segments.push({ text: match[1] || match[0], lang: 'secondary' });
+                lastIndex = match.index + match[0].length;
+            }
+
+            // Part after the last match is primary language
+            if (lastIndex < text.length) {
+                segments.push({ text: text.substring(lastIndex), lang: 'primary' });
+            }
+            
+            // If a primary regex is also provided, filter the primary segments further
+            if (primaryRegexStr) {
+                const primaryRegex = new RegExp(primaryRegexStr, 'g');
+                return segments.map(seg => {
+                    if (seg.lang === 'primary') {
+                        const matches = seg.text.match(primaryRegex);
+                        seg.text = matches ? matches.join('\n') : '';
+                    }
+                    return seg;
+                }).filter(seg => seg.text.trim() !== '');
+            }
+
+            return segments.filter(seg => seg.text.trim() !== '');
+
+        } catch (e) {
+            console.error(`[TTS Bilingual] Invalid regex provided. Error: ${e.message}`);
+            // Fallback to treating the whole text as primary
+            return [{ text, lang: 'primary' }];
+        }
+    }
+
+    /**
+     * 开始双语朗读任务
+     * @param {object} options 包含所有朗读参数
+     */
+    speak(options) {
+        const {
+            text,
+            voice, // Primary voice
+            speed,
+            msgId,
+            ttsRegex, // Primary regex
+            voiceSecondary,
+            ttsRegexSecondary
+        } = options;
+
         this.stop();
 
-        const textQueue = this.splitText(text);
-        this.speechQueue.push(...textQueue.map(chunk => ({ text: chunk, voice, speed, msgId })));
+        // 如果没有选择任何主语言模型，则不执行任何操作
+        if (!voice) {
+            console.log("[TTS] No primary voice model selected. Aborting speak.");
+            return;
+        }
+
+        const segments = this._segmentTextForBilingualTTS(text, ttsRegex, ttsRegexSecondary);
+
+        if (segments.length === 0) {
+            console.log("[TTS] Text is empty after segmentation. Nothing to speak.");
+            return;
+        }
+
+        const tasks = segments.map(seg => {
+            const taskVoice = seg.lang === 'secondary' && voiceSecondary ? voiceSecondary : voice;
+            // 将每个片段再按换行符分割，以保持原有的分段逻辑
+            return this.splitText(seg.text).map(chunk => ({
+                text: chunk,
+                voice: taskVoice,
+                speed,
+                msgId
+            }));
+        }).flat(); // Flatten the array of arrays
+
+        this.speechQueue.push(...tasks);
         
-        // stop() 已经将 isSpeaking 设置为 false，所以这里可以直接开始处理新队列。
         this.processQueue();
     }
 

@@ -755,7 +755,47 @@ textarea::placeholder {
     position: relative;
     display: flex;
     align-items: center;
+    gap: 8px; /* Add gap between select and button */
 }
+
+#agentModel,
+#agentSettingsForm select { /* Apply flex-grow to select elements inside the form */
+    flex-grow: 1; /* Allow select to take up available space */
+}
+
+#agentSettingsForm .model-input-container button {
+    flex-shrink: 0; /* Prevent button from shrinking */
+    margin-left: 0; /* Gap property handles spacing */
+    /* Let's borrow styles from #refreshModelsBtn for consistency */
+    padding: 0;
+    background-color: var(--button-bg);
+    border: 1px solid var(--button-bg);
+    color: var(--primary-text);
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+    box-sizing: border-box;
+    height: 38px; /* Match the typical height of inputs */
+    width: 38px;
+}
+
+#agentSettingsForm .model-input-container button:hover {
+    background-color: var(--button-hover-bg);
+    border-color: var(--button-hover-bg);
+}
+
+#agentSettingsForm .model-input-container button svg {
+    stroke: var(--primary-text);
+    transition: transform 0.5s ease;
+}
+
+#agentSettingsForm .model-input-container button:active svg {
+    transform: rotate(360deg);
+}
+
 
 #agentModel {
     padding-right: 35px; /* Make space for the button */
@@ -862,4 +902,39 @@ textarea::placeholder {
 .model-list li:hover {
     background-color: var(--accent-bg);
     color: var(--highlight-text);
+}
+
+/* --- Form Dividers & Sections --- */
+.form-divider {
+    border: none;
+    height: 1px;
+    background-color: var(--border-color);
+    margin: 15px 0;
+}
+
+.form-section-title {
+    font-size: 1em;
+    font-weight: 500;
+    color: var(--highlight-text);
+    margin-top: 10px;
+    margin-bottom: 5px;
+}
+
+.slider-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+#agentTtsSpeed {
+    flex-grow: 1;
+}
+
+#ttsSpeedValue {
+    font-weight: 500;
+    color: var(--secondary-text);
+    min-width: 30px; /* Ensure space for the number */
+}
+.form-divider-dashed {
+    display: none;
 }

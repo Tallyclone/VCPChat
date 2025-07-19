@@ -140,11 +140,10 @@
                         <div class="form-section-title">语音设置 (Sovits TTS)</div>
                         
                         <div>
-                            <label for="agentTtsVoice">语音模型:</label>
+                            <label for="agentTtsVoicePrimary">主语言模型:</label>
                             <div class="model-input-container">
-                                <select id="agentTtsVoice" name="ttsVoice">
+                                <select id="agentTtsVoicePrimary" name="ttsVoicePrimary">
                                     <option value="">不使用语音</option>
-                                    <!-- 模型将由JS动态填充 -->
                                 </select>
                                 <button type="button" id="refreshTtsModelsBtn" class="small-button" title="刷新模型列表">
                                     <svg data-slot="icon" fill="none" stroke-width="1.5" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="16" height="16">
@@ -153,6 +152,27 @@
                                 </button>
                             </div>
                         </div>
+                        <div>
+                            <label for="agentTtsRegexPrimary">主语言正则 (留空则匹配全部):</label>
+                            <input type="text" id="agentTtsRegexPrimary" name="ttsRegexPrimary" placeholder="例如 [^\[\]]+">
+                        </div>
+
+                        <hr class="form-divider-dashed">
+
+                        <div>
+                            <label for="agentTtsVoiceSecondary">副语言模型:</label>
+                            <div class="model-input-container">
+                                <select id="agentTtsVoiceSecondary" name="ttsVoiceSecondary">
+                                    <option value="">不使用</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div>
+                            <label for="agentTtsRegexSecondary">副语言正则:</label>
+                            <input type="text" id="agentTtsRegexSecondary" name="ttsRegexSecondary" placeholder="例如 \[(.*?)\]">
+                        </div>
+
+                        <hr class="form-divider-dashed">
 
                         <div>
                             <label for="agentTtsSpeed">语速:</label>
@@ -468,6 +488,6 @@
         </div>
     </div>
 
+    <div id="floating-toast-notifications-container"></div>
 </body>
 </html>
-<div id="floating-toast-notifications-container"></div>

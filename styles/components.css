@@ -450,6 +450,16 @@ body.light-theme .modal-content .danger-button {
     background-color: var(--accent-bg);
 }
 
+.context-menu-item-speak {
+    color: #DAA520; /* Dark Goldenrod */
+    font-weight: 500;
+}
+
+.context-menu-item-speak:hover {
+    color: #F0B840 !important; /* A slightly lighter gold for hover */
+}
+
+
 /* --- Switch Toggle Styles --- */
 .switch {
   position: relative;

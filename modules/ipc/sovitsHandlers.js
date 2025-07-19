@@ -17,9 +17,10 @@ function initialize(mainWindow) {
         return await sovitsTTSInstance.getModels(forceRefresh);
     });
 
-    ipcMain.on('sovits-speak', (event, { text, voice, speed, msgId }) => {
+    ipcMain.on('sovits-speak', (event, options) => {
         if (!sovitsTTSInstance) return;
-        sovitsTTSInstance.speak(text, voice, speed, msgId);
+        // The speak method now expects a single options object.
+        sovitsTTSInstance.speak(options);
     });
 
     ipcMain.on('sovits-stop', () => {
