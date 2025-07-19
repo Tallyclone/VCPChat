@@ -86,7 +86,7 @@ class SovitsTTS {
 
         // 2. 如果没有缓存，请求API
         const payload = {
-            model: "tts-v4",
+            model: "tts-v2ProPlus",
             input: text,
             voice: voice,
             response_format: "wav",
