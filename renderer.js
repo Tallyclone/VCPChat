@@ -20,6 +20,8 @@ let audioContext = null;
 let currentAudioSource = null;
 let ttsAudioQueue = []; // 新增：TTS音频播放队列
 let isTtsPlaying = false; // 新增：TTS播放状态标志
+let currentPlayingMsgId = null; // 新增：跟踪当前播放的msgId以控制UI
+let currentTtsSessionId = -1; // 新增：会话ID，用于处理异步时序问题
 
 // --- DOM Elements ---
 const itemListUl = document.getElementById('agentList'); // Renamed from agentListUl to itemListUl
@@ -666,12 +668,26 @@ function setupTtsListeners() {
     // Expose a function to be called on demand
     window.ensureAudioContext = initAudioContext;
 
-    // 新的TTS播放逻辑：将音频加入队列并由独立的播放器处理
-    window.electronAPI.onPlayTtsAudio(async ({ audioData, msgId }) => {
-        console.log(`[TTS Renderer] Received audio data for msgId ${msgId}. Pushing to queue.`);
+    // 新的TTS播放逻辑：使用sessionId来处理异步时序问题
+    window.electronAPI.onPlayTtsAudio(async ({ audioData, msgId, sessionId }) => {
+        // 如果收到的sessionId小于当前的，说明是过时的事件，直接忽略
+        if (sessionId < currentTtsSessionId) {
+            console.log(`[TTS Renderer] Discarding stale audio data from old session ${sessionId}. Current session is ${currentTtsSessionId}.`);
+            return;
+        }
+
+        // 如果sessionId大于当前的，说明是一个全新的播放请求
+        if (sessionId > currentTtsSessionId) {
+            console.log(`[TTS Renderer] New TTS session ${sessionId} started. Clearing old queue.`);
+            currentTtsSessionId = sessionId;
+            // 清空队列，扔掉所有可能属于更旧会话的音频块
+            ttsAudioQueue = [];
+        }
+        
+        // 只有当sessionId匹配时，才将音频加入队列
+        console.log(`[TTS Renderer] Received audio data for msgId ${msgId} (session ${sessionId}). Pushing to queue.`);
         if (!audioContext) {
             console.warn("[TTS Renderer] AudioContext not initialized. Buffering audio but cannot play yet.");
-            // 即使没有上下文，也先把任务加进去，等待用户交互激活
         }
         ttsAudioQueue.push({ audioData, msgId });
         processTtsQueue(); // 尝试处理队列
@@ -679,7 +695,12 @@ function setupTtsListeners() {
 
     async function processTtsQueue() {
         if (isTtsPlaying || ttsAudioQueue.length === 0) {
-            return; // 如果正在播放或队列为空，则退出
+            // 如果队列为空且没有在播放，确保关闭所有动画
+            if (!isTtsPlaying && currentPlayingMsgId) {
+                updateSpeakingIndicator(currentPlayingMsgId, false);
+                currentPlayingMsgId = null;
+            }
+            return;
         }
 
         if (!audioContext) {
@@ -690,10 +711,28 @@ function setupTtsListeners() {
         isTtsPlaying = true;
         const { audioData, msgId } = ttsAudioQueue.shift();
 
+        // 更新UI动画
+        if (currentPlayingMsgId !== msgId) {
+            // 关闭上一个正在播放的动画（如果有）
+            if (currentPlayingMsgId) {
+                updateSpeakingIndicator(currentPlayingMsgId, false);
+            }
+            // 开启当前新的动画
+            currentPlayingMsgId = msgId;
+            updateSpeakingIndicator(currentPlayingMsgId, true);
+        }
+
         try {
             const audioBuffer = await audioContext.decodeAudioData(
                 Uint8Array.from(atob(audioData), c => c.charCodeAt(0)).buffer
             );
+
+            // 关键修复：在异步解码后，再次检查停止标志，防止竞态条件
+            if (!isTtsPlaying) {
+                console.log("[TTS Renderer] Stop command received during audio decoding. Aborting playback.");
+                // onStopTtsAudio已经处理了状态重置，这里只需中止即可
+                return;
+            }
             
             currentAudioSource = audioContext.createBufferSource();
             currentAudioSource.buffer = audioBuffer;
@@ -718,17 +757,39 @@ function setupTtsListeners() {
     }
 
     window.electronAPI.onStopTtsAudio(() => {
-        console.log("TTS audio playback stopped by main process. Clearing queue.");
-        ttsAudioQueue = []; // 清空队列
+        console.error("!!!!!!!!!! [TTS RENDERER] STOP EVENT RECEIVED !!!!!!!!!!");
+        
+        // 关键：增加会话ID，使所有后续到达的、属于旧会话的play-tts-audio事件全部失效
+        currentTtsSessionId++;
+        console.log(`[TTS Renderer] Stop event incremented session ID to ${currentTtsSessionId}.`);
+
+        console.log("Clearing TTS queue, stopping current audio source, and resetting state.");
+        
+        ttsAudioQueue = []; // 1. 清空前端队列
+        
         if (currentAudioSource) {
-            currentAudioSource.onended = null; // 阻止onended触发processTtsQueue
-            currentAudioSource.stop();
+            console.log("Found active audio source. Stopping it now.");
+            currentAudioSource.onended = null; // 2. 阻止onended回调
+            currentAudioSource.stop();        // 3. 停止当前音频
             currentAudioSource = null;
+        } else {
+            console.warn("Stop event received, but no active audio source was found.");
         }
-        isTtsPlaying = false; // 重置播放状态
+        
+        isTtsPlaying = false; // 4. 重置播放状态标志
+
+        // 5. 确保关闭当前的播放动画
+        if (currentPlayingMsgId) {
+            console.log(`Closing speaking indicator for message ID: ${currentPlayingMsgId}`);
+            updateSpeakingIndicator(currentPlayingMsgId, false);
+            currentPlayingMsgId = null;
+        }
     });
 
-    window.electronAPI.onSovitsStatusChanged(({ msgId, isSpeaking }) => {
+    // 移除旧的 onSovitsStatusChanged 监听器，因为它不再准确
+    // window.electronAPI.onSovitsStatusChanged(...)
+
+    function updateSpeakingIndicator(msgId, isSpeaking) {
         const messageItem = document.querySelector(`.message-item[data-message-id="${msgId}"]`);
         if (messageItem) {
             const avatarElement = messageItem.querySelector('.chat-avatar');
@@ -740,7 +801,7 @@ function setupTtsListeners() {
                 }
             }
         }
-    });
+    }
 }
 
 function prepareGroupSettingsDOM() {

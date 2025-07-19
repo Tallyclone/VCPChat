@@ -17,6 +17,7 @@ class SovitsTTS {
         this.isSpeaking = false;
         this.speechQueue = [];
         this.currentSpeechItemId = null; // 用于跟踪当前朗读的气泡ID
+        this.sessionId = 0; // 新增：会话ID，用于作废过时的播放事件
         this.initCacheDir();
     }
 
@@ -148,12 +149,15 @@ class SovitsTTS {
      * @param {string} msgId 消息ID
      */
     speak(text, voice, speed, msgId) {
+        // 关键修复：每次新的speak请求都应被视为一个全新的播放序列。
+        // 因此，先调用stop()来清空任何正在进行的或排队的任务。
+        this.stop();
+
         const textQueue = this.splitText(text);
         this.speechQueue.push(...textQueue.map(chunk => ({ text: chunk, voice, speed, msgId })));
         
-        if (!this.isSpeaking) {
-            this.processQueue();
-        }
+        // stop() 已经将 isSpeaking 设置为 false，所以这里可以直接开始处理新队列。
+        this.processQueue();
     }
 
     /**
@@ -162,44 +166,47 @@ class SovitsTTS {
     async processQueue() {
         if (this.isSpeaking) return; // 防止重入
         this.isSpeaking = true;
+        
+        const loopSessionId = this.sessionId; // 捕获当前循环的会话ID
 
         while (this.speechQueue.length > 0) {
-            // 在每次循环开始时检查是否被外部调用stop()停止
-            if (!this.isSpeaking) {
-                console.log("TTS processing loop was stopped.");
+            // 在每次循环开始时检查会话ID是否已改变
+            if (this.sessionId !== loopSessionId) {
+                console.log(`[TTS] Session ID changed (${loopSessionId} -> ${this.sessionId}). Stopping current processing loop.`);
                 break;
             }
 
             const currentTask = this.speechQueue.shift();
-
-            // 如果这是一个新的朗读序列，更新UI
-            if (this.currentSpeechItemId !== currentTask.msgId) {
-                if (this.currentSpeechItemId) {
-                    this.mainWindow.webContents.send('tts-status-changed', { msgId: this.currentSpeechItemId, isSpeaking: false });
-                }
-                this.currentSpeechItemId = currentTask.msgId;
-                this.mainWindow.webContents.send('tts-status-changed', { msgId: currentTask.msgId, isSpeaking: true });
-            }
+            this.currentSpeechItemId = currentTask.msgId;
 
             const audioBuffer = await this.textToSpeech(currentTask.text, currentTask.voice, currentTask.speed);
 
+            // 在异步操作后，再次检查会话ID
+            if (this.sessionId !== loopSessionId) {
+                console.log(`[TTS] Session ID changed during TTS synthesis. Discarding audio.`);
+                break;
+            }
+
             if (audioBuffer) {
                 const audioBase64 = audioBuffer.toString('base64');
-                // 发送音频数据和关联的msgId
-                this.mainWindow.webContents.send('play-tts-audio', { audioData: audioBase64, msgId: currentTask.msgId });
+                // 发送音频数据、msgId 和会话ID
+                this.mainWindow.webContents.send('play-tts-audio', {
+                    audioData: audioBase64,
+                    msgId: currentTask.msgId,
+                    sessionId: loopSessionId
+                });
             } else {
                 console.error(`合成失败: "${currentTask.text.substring(0, 20)}..."`);
-                // 即使合成失败，循环也会继续处理下一个任务
             }
         }
 
         // 队列处理完毕或被中断
         this.isSpeaking = false;
-        if (this.currentSpeechItemId) {
-            this.mainWindow.webContents.send('tts-status-changed', { msgId: this.currentSpeechItemId, isSpeaking: false });
+        // 只有当会话未被更新时，才清除 currentSpeechItemId
+        if (this.sessionId === loopSessionId) {
             this.currentSpeechItemId = null;
         }
-        console.log('TTS queue finished processing.');
+        console.log(`TTS processing loop for session ${loopSessionId} finished.`);
     }
 
     /**
@@ -208,12 +215,12 @@ class SovitsTTS {
     stop() {
         this.speechQueue = [];
         this.isSpeaking = false;
-        if (this.currentSpeechItemId) {
-            this.mainWindow.webContents.send('tts-status-changed', { msgId: this.currentSpeechItemId, isSpeaking: false });
-            this.mainWindow.webContents.send('stop-tts-audio'); // 通知渲染器停止当前播放
-            this.currentSpeechItemId = null;
-        }
-        console.log('TTS朗读已停止。');
+        this.sessionId++; // 关键：使当前所有操作和事件失效
+        console.log(`[TTS] Stop called. New session ID: ${this.sessionId}`);
+        // 停止事件的发送逻辑已移至 ipc/sovitsHandlers.js，以确保可靠性。
+        // 这里只负责清理内部状态。
+        this.currentSpeechItemId = null;
+        // console.log('TTS朗读已停止。'); // 日志由上方的 sessionId 变化日志替代
     }
 }
 
