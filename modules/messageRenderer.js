@@ -536,6 +536,37 @@ async function renderMessage(message, isInitialLoad = false) {
        });
    }
 
+    // Add logic for stopping TTS by clicking the avatar
+    if (avatarImg && message.role === 'assistant') {
+        const handleAvatarClick = () => {
+            mainRendererReferences.electronAPI.sovitsStop();
+        };
+
+        const observer = new MutationObserver(mutations => {
+            mutations.forEach(mutation => {
+                if (mutation.attributeName === 'class') {
+                    const targetNode = mutation.target;
+                    if (targetNode.classList.contains('speaking')) {
+                        targetNode.addEventListener('click', handleAvatarClick);
+                    } else {
+                        targetNode.removeEventListener('click', handleAvatarClick);
+                    }
+                }
+            });
+        });
+
+        observer.observe(avatarImg, { attributes: true });
+        
+        // Disconnect observer when the message item is removed from the DOM
+        const messageObserver = new MutationObserver((mutations, obs) => {
+            if (!document.body.contains(messageItem)) {
+                observer.disconnect();
+                obs.disconnect();
+            }
+        });
+        messageObserver.observe(document.body, { childList: true, subtree: true });
+    }
+
     // Determine avatar color and URL to use
     let avatarColorToUse;
     let avatarUrlToUse; // This was the missing variable

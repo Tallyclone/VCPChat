@@ -16,6 +16,8 @@ let currentTopicId = null;
 let currentChatHistory = [];
 let attachedFiles = [];
 // let activeStreamingMessageId = null; // REMOVED
+let audioContext = null;
+let currentAudioSource = null;
 
 // --- DOM Elements ---
 const itemListUl = document.getElementById('agentList'); // Renamed from agentListUl to itemListUl
@@ -582,6 +584,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 modelList: modelList,
                 modelSearchInput: modelSearchInput,
                 refreshModelsBtn: refreshModelsBtn,
+                // TTS Elements
+                agentTtsVoiceSelect: document.getElementById('agentTtsVoice'),
+                refreshTtsModelsBtn: document.getElementById('refreshTtsModelsBtn'),
+                agentTtsSpeedSlider: document.getElementById('agentTtsSpeed'),
+                ttsSpeedValueSpan: document.getElementById('ttsSpeedValue'),
             },
             mainRendererFunctions: {
                 setCroppedFile: setCroppedFile,
@@ -632,9 +639,87 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     console.log('[Renderer DOMContentLoaded END] createNewGroupBtn textContent:', document.getElementById('createNewGroupBtn')?.textContent);
+    
+    // --- TTS Audio Playback and Visuals ---
+    setupTtsListeners();
 });
 
+function setupTtsListeners() {
+    // Initialize AudioContext on user interaction
+    const initAudioContext = () => {
+        if (!audioContext) {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                console.log("AudioContext initialized.");
+            } catch (e) {
+                console.error("Failed to initialize AudioContext:", e);
+                uiHelperFunctions.showToastNotification("无法初始化音频播放器。", "error");
+            }
+        }
+        // Remove the event listener after the first interaction
+        document.body.removeEventListener('click', initAudioContext);
+        document.body.removeEventListener('keydown', initAudioContext);
+    };
+    document.body.addEventListener('click', initAudioContext, { once: true });
+    document.body.addEventListener('keydown', initAudioContext, { once: true });
 
+
+    window.electronAPI.onPlayTtsAudio(async ({ audioData }) => {
+        if (!audioContext) {
+            console.warn("AudioContext not initialized. Cannot play TTS audio.");
+            uiHelperFunctions.showToastNotification("请先与页面交互以激活音频。", "warning");
+            // We should probably still notify main that we're "done" so the queue isn't stuck
+            window.electronAPI.notifyTtsAudioPlaybackFinished();
+            return;
+        }
+        if (currentAudioSource) {
+            currentAudioSource.stop();
+        }
+
+        try {
+            const audioBuffer = await audioContext.decodeAudioData(
+                Uint8Array.from(atob(audioData), c => c.charCodeAt(0)).buffer
+            );
+            currentAudioSource = audioContext.createBufferSource();
+            currentAudioSource.buffer = audioBuffer;
+            currentAudioSource.connect(audioContext.destination);
+            currentAudioSource.start(0);
+            currentAudioSource.onended = () => {
+                console.log("TTS audio playback finished.");
+                window.electronAPI.notifyTtsAudioPlaybackFinished();
+                currentAudioSource = null;
+            };
+        } catch (error) {
+            console.error("Error playing TTS audio:", error);
+            uiHelperFunctions.showToastNotification("播放音频失败。", "error");
+            // Notify main process to continue the queue even if playback fails
+            window.electronAPI.notifyTtsAudioPlaybackFinished();
+        }
+    });
+
+    window.electronAPI.onStopTtsAudio(() => {
+        if (currentAudioSource) {
+            currentAudioSource.onended = null; // Prevent onended from firing and calling notifyTtsAudioPlaybackFinished
+            currentAudioSource.stop();
+            currentAudioSource = null;
+            console.log("TTS audio playback stopped by main process.");
+        }
+    });
+
+    window.electronAPI.onSovitsStatusChanged(({ msgId, isSpeaking }) => {
+        const messageItem = document.querySelector(`.message-item[data-message-id="${msgId}"]`);
+        if (messageItem) {
+            const avatarElement = messageItem.querySelector('.chat-avatar');
+            if (avatarElement) {
+                if (isSpeaking) {
+                    avatarElement.classList.add('speaking');
+                } else {
+                    avatarElement.classList.remove('speaking');
+                }
+            }
+        }
+    });
+}
 
 function prepareGroupSettingsDOM() {
     // This function is called early in DOMContentLoaded.

@@ -232,6 +232,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onRollDice: (callback) => ipcRenderer.on('roll-dice', (_event, notation, options) => callback(notation, options)),
     sendDiceModuleReady: () => ipcRenderer.send('dice-module-ready'),
     sendDiceRollComplete: (results) => ipcRenderer.send('dice-roll-complete', results),
+
+    // Sovits TTS
+    sovitsGetModels: (forceRefresh = false) => ipcRenderer.invoke('sovits-get-models', forceRefresh),
+    sovitsSpeak: (options) => ipcRenderer.send('sovits-speak', options), // { text, voice, speed, msgId }
+    sovitsStop: () => ipcRenderer.send('sovits-stop'),
+    onSovitsStatusChanged: (callback) => ipcRenderer.on('tts-status-changed', (_event, data) => callback(data)), // { msgId, isSpeaking }
+    onPlayTtsAudio: (callback) => ipcRenderer.on('play-tts-audio', (_event, data) => callback(data)), // { audioData }
+    onStopTtsAudio: (callback) => ipcRenderer.on('stop-tts-audio', (_event) => callback()),
+    notifyTtsAudioPlaybackFinished: () => ipcRenderer.send('sovits-audio-playback-finished'),
 });
 
 // Log the electronAPI object as it's defined in preload.js right after exposing it

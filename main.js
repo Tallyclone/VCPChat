@@ -33,6 +33,7 @@ const fileDialogHandlers = require('./modules/ipc/fileDialogHandlers'); // Impor
 const { getAgentConfigById, ...agentHandlers } = require('./modules/ipc/agentHandlers'); // Import agent handlers
 const chatHandlers = require('./modules/ipc/chatHandlers'); // Import chat handlers
 const groupChatHandlers = require('./modules/ipc/groupChatHandlers'); // Import group chat handlers
+const sovitsHandlers = require('./modules/ipc/sovitsHandlers'); // Import SovitsTTS IPC handlers
 const musicMetadata = require('music-metadata');
 
 // --- Configuration Paths ---
@@ -1493,6 +1494,7 @@ async function handleDiceControl(args) {
         startSelectionListener,
         getMusicState: () => ({ musicWindow, currentSongInfo })
     });
+    sovitsHandlers.initialize(mainWindow); // Initialize SovitsTTS handlers
     createAssistantBarWindow(); // Pre-create the assistant bar window for performance
 
     // --- Distributed Server Initialization ---

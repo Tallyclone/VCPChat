@@ -142,6 +142,47 @@ function showContextMenu(event, messageItem, message) {
             menu.appendChild(createBranchOption);
         }
 
+        // Add "Read Aloud" option for assistant messages
+        if (message.role === 'assistant') {
+            const readAloudOption = document.createElement('div');
+            readAloudOption.classList.add('context-menu-item', 'context-menu-item-speak');
+            readAloudOption.innerHTML = `<i class="fas fa-volume-up"></i> 朗读气泡`;
+            readAloudOption.onclick = async () => {
+                const agentId = message.agentId || currentSelectedItemVal.id;
+                if (!agentId) {
+                    uiHelper.showToastNotification("无法确定Agent身份，无法朗读。", "error");
+                    closeContextMenu();
+                    return;
+                }
+
+                try {
+                    const agentConfig = await electronAPI.getAgentConfig(agentId);
+                    if (agentConfig && agentConfig.ttsVoice) {
+                        const contentDiv = messageItem.querySelector('.md-content');
+                        const textToRead = contentDiv ? contentDiv.innerText : '';
+                        
+                        if (textToRead.trim()) {
+                            electronAPI.sovitsSpeak({
+                                text: textToRead,
+                                voice: agentConfig.ttsVoice,
+                                speed: agentConfig.ttsSpeed || 1.0,
+                                msgId: message.id
+                            });
+                        } else {
+                            uiHelper.showToastNotification("此消息没有可朗读的文本内容。", "info");
+                        }
+                    } else {
+                        uiHelper.showToastNotification("此Agent未配置语音模型。", "warning");
+                    }
+                } catch (error) {
+                    console.error("获取Agent配置以进行朗读时出错:", error);
+                    uiHelper.showToastNotification("获取Agent配置失败。", "error");
+                }
+                closeContextMenu();
+            };
+            menu.appendChild(readAloudOption);
+        }
+
         const readModeOption = document.createElement('div');
         readModeOption.classList.add('context-menu-item', 'info-item');
         readModeOption.innerHTML = `<i class="fas fa-book-reader"></i> 阅读模式`;
