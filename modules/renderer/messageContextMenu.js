@@ -162,7 +162,7 @@ function showContextMenu(event, messageItem, message) {
 
                 try {
                     const agentConfig = await electronAPI.getAgentConfig(agentId);
-                    if (agentConfig && agentConfig.ttsVoice) {
+                    if (agentConfig && agentConfig.ttsVoicePrimary) {
                         const contentDiv = messageItem.querySelector('.md-content');
                         const textToRead = contentDiv ? contentDiv.innerText : '';
                         
