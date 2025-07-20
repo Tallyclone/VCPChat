@@ -496,14 +496,17 @@ window.chatManager = (() => {
                     let historicalAppendedText = "";
                     for (const att of msg.attachments) {
                         const fileManagerData = att._fileManagerData || {};
-                        // If there are image frames (from a scanned PDF), we don't append text.
-                        // The text is already a summary message.
+                        // 优先使用 att.src，因为它代表前端的本地可访问路径
+                        // 后备到 internalPath（来自 fileManager），最后才是文件名
+                        const filePathForContext = att.src || (fileManagerData.internalPath ? fileManagerData.internalPath.replace('file://', '') : (att.name || '未知文件'));
+
                         if (fileManagerData.imageFrames && fileManagerData.imageFrames.length > 0) {
-                             historicalAppendedText += `\n\n[附加文件: ${att.name || '未知文件'} (扫描版PDF，已转换为图片)]`;
+                             historicalAppendedText += `\n\n[附加文件: ${filePathForContext} (扫描版PDF，已转换为图片)]`;
                         } else if (fileManagerData.extractedText) {
-                            historicalAppendedText += `\n\n[附加文件: ${att.name || '未知文件'}]\n${fileManagerData.extractedText}\n[/附加文件结束: ${att.name || '未知文件'}]`;
+                            historicalAppendedText += `\n\n[附加文件: ${filePathForContext}]\n${fileManagerData.extractedText}\n[/附加文件结束: ${att.name || '未知文件'}]`;
                         } else {
-                            historicalAppendedText += `\n\n[附加文件: ${att.name || '未知文件'} (无法预览文本内容)]`;
+                            // 对于没有提取文本的文件（如音视频），只附加路径
+                            historicalAppendedText += `\n\n[附加文件: ${filePathForContext}]`;
                         }
                     }
                     currentMessageTextContent += historicalAppendedText;
@@ -550,64 +553,56 @@ window.chatManager = (() => {
 
                     // --- AUDIO PROCESSING ---
                     const supportedAudioTypes = ['audio/wav', 'audio/mpeg', 'audio/mp3', 'audio/aiff', 'audio/aac', 'audio/ogg', 'audio/flac'];
-                    const audioAttachments = await Promise.all(msg.attachments
+                    const audioAttachmentsPromises = msg.attachments
                         .filter(att => supportedAudioTypes.includes(att.type))
                         .map(async att => {
                             try {
-                                const base64Data = await electronAPI.getFileAsBase64(att.src);
-                                if (base64Data && typeof base64Data === 'string') {
-                                    return {
+                                const result = await electronAPI.getFileAsBase64(att.src);
+                                if (result && result.success) {
+                                    return result.base64Frames.map(frameData => ({
                                         type: 'image_url',
-                                        image_url: {
-                                            url: `data:${att.type};base64,${base64Data}`
-                                        }
-                                    };
-                                } else if (base64Data && base64Data.error) {
-                                    console.error(`Failed to get Base64 for audio ${att.name}: ${base64Data.error}`);
-                                    uiHelper.showToastNotification(`处理音频 ${att.name} 失败: ${base64Data.error}`, 'error');
-                                    return null;
+                                        image_url: { url: `data:${att.type};base64,${frameData}` }
+                                    }));
                                 } else {
-                                    console.error(`Unexpected return from getFileAsBase64 for audio ${att.name}:`, base64Data);
+                                    const errorMsg = result ? result.error : '未知错误';
+                                    console.error(`Failed to get Base64 for audio ${att.name}: ${errorMsg}`);
+                                    uiHelper.showToastNotification(`处理音频 ${att.name} 失败: ${errorMsg}`, 'error');
                                     return null;
                                 }
                             } catch (processingError) {
-                                console.error(`Exception during getBase64 for audio ${att.name} (internal: ${att.src}):`, processingError);
+                                console.error(`Exception during getBase64 for audio ${att.name}:`, processingError);
                                 uiHelper.showToastNotification(`处理音频 ${att.name} 时发生异常: ${processingError.message}`, 'error');
                                 return null;
                             }
-                        })
-                    );
-                    vcpAudioAttachmentsPayload.push(...audioAttachments.filter(Boolean));
+                        });
+                    const nestedAudioAttachments = await Promise.all(audioAttachmentsPromises);
+                    vcpAudioAttachmentsPayload.push(...nestedAudioAttachments.flat().filter(Boolean));
 
                     // --- VIDEO PROCESSING ---
-                    const videoAttachments = await Promise.all(msg.attachments
+                    const videoAttachmentsPromises = msg.attachments
                         .filter(att => att.type.startsWith('video/'))
                         .map(async att => {
                             try {
-                                const base64Data = await electronAPI.getFileAsBase64(att.src);
-                                if (base64Data && typeof base64Data === 'string') {
-                                    return {
+                                const result = await electronAPI.getFileAsBase64(att.src);
+                                if (result && result.success) {
+                                    return result.base64Frames.map(frameData => ({
                                         type: 'image_url',
-                                        image_url: {
-                                            url: `data:${att.type};base64,${base64Data}`
-                                        }
-                                    };
-                                } else if (base64Data && base64Data.error) {
-                                    console.error(`Failed to get Base64 for video ${att.name}: ${base64Data.error}`);
-                                    uiHelper.showToastNotification(`处理视频 ${att.name} 失败: ${base64Data.error}`, 'error');
-                                    return null;
+                                        image_url: { url: `data:${att.type};base64,${frameData}` }
+                                    }));
                                 } else {
-                                    console.error(`Unexpected return from getFileAsBase64 for video ${att.name}:`, base64Data);
+                                    const errorMsg = result ? result.error : '未知错误';
+                                    console.error(`Failed to get Base64 for video ${att.name}: ${errorMsg}`);
+                                    uiHelper.showToastNotification(`处理视频 ${att.name} 失败: ${errorMsg}`, 'error');
                                     return null;
                                 }
                             } catch (processingError) {
-                                console.error(`Exception during getBase64 for video ${att.name} (internal: ${att.src}):`, processingError);
+                                console.error(`Exception during getBase64 for video ${att.name}:`, processingError);
                                 uiHelper.showToastNotification(`处理视频 ${att.name} 时发生异常: ${processingError.message}`, 'error');
                                 return null;
                             }
-                        })
-                    );
-                    vcpVideoAttachmentsPayload.push(...videoAttachments.filter(Boolean));
+                        });
+                    const nestedVideoAttachments = await Promise.all(videoAttachmentsPromises);
+                    vcpVideoAttachmentsPayload.push(...nestedVideoAttachments.flat().filter(Boolean));
                 }
 
                 let finalContentPartsForVCP = [];

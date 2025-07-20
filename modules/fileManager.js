@@ -143,12 +143,33 @@ async function storeFile(sourcePathOrBuffer, originalName, agentId, topicId, fil
 
 // Placeholder for future functions
 async function getFileAsBase64(internalPath) {
-    if (!internalPath.startsWith('file://')) {
-        throw new Error('Invalid internal path format. Must be a file:// URL.');
+    try {
+        if (!internalPath || !internalPath.startsWith('file://')) {
+            throw new Error('无效的内部路径格式。必须是 file:// URL。');
+        }
+        
+        // 直接根据用户反馈和日志进行路径清理
+        // 'file:///H:/...' -> 'H:/...'
+        let cleanPath = decodeURIComponent(internalPath.substring('file:///'.length));
+
+        console.log(`[Main - get-file-as-base64] Received raw filePath: "${internalPath}"`);
+        console.log(`[Main - get-file-as-base64] Cleaned path: "${cleanPath}"`);
+
+        if (!await fs.pathExists(cleanPath)) {
+            console.error(`[Main - get-file-as-base64] File not found at path: ${cleanPath}`);
+            throw new Error(`文件未找到: ${cleanPath}`);
+        }
+        const fileBuffer = await fs.readFile(cleanPath);
+        const base64Data = fileBuffer.toString('base64');
+        
+        return {
+            success: true,
+            base64Frames: [base64Data]
+        };
+    } catch (error) {
+        console.error(`[FileManager] getFileAsBase64 函数出错，路径: ${internalPath}:`, error);
+        return { success: false, error: error.message, base64Frames: [] };
     }
-    const cleanPath = internalPath.substring(7);
-    const fileBuffer = await fs.readFile(cleanPath);
-    return fileBuffer.toString('base64');
 }
 
 const poppler = require('pdf-poppler');
