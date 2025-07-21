@@ -218,7 +218,10 @@ function deIndentHtml(text) {
         }
         // If we are not in a fenced block, and a line is indented and looks like an HTML tag,
         // remove the leading whitespace. This is the key fix.
-        if (!inFence && /^\s+<.*>/.test(line)) {
+        // The regex now more robustly checks for an indented line that looks like
+        // the start of an HTML tag (e.g., `<div`, `<p`), even if the tag spans multiple lines.
+        // This prevents markdown from treating it as a code block.
+        if (!inFence && /^\s+<[a-zA-Z]/.test(line)) {
             return line.trimStart();
         }
         return line;
