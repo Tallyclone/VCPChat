@@ -6,7 +6,7 @@
 
 后端链接：https://github.com/lioensky/VCPToolBox
 
-请下载壁纸包以避免元素窗口异常：https://github.com/lioensky/VCPChat/releases
+请下载壁纸包放入assets文件夹内，以避免元素窗口异常：https://github.com/lioensky/VCPChat/releases
 
 ## 前后端深度协同：释放 AI 的无限潜能
 
