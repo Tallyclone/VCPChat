@@ -684,3 +684,23 @@ body.light-theme .message-item .md-content pre .hljs-params {
 body.light-theme .message-item .md-content pre .hljs-meta {
     color: #e36209; /* Dark Orange */
 }
+/* Fix for centering images inside a div with text-align: center */
+.message-item .md-content div[style*="text-align: center"] p {
+    display: flex;
+    justify-content: center;
+}
+/* Override display:block for images inside a centered paragraph to allow them to align with text */
+.message-item .md-content div[style*="text-align: center"] p img {
+    display: inline-block;
+    vertical-align: middle;
+}
+/*
+ * Override for images inside an element that is explicitly centered.
+ * This reverts the image back to an inline-block element so it can be centered along with text.
+ * The vertical-align helps to align the image nicely with the surrounding text.
+*/
+.message-item .md-content div[style*="text-align: center"] img {
+    display: inline-block;
+    vertical-align: middle;
+    margin-top: 0; /* Reset margin-top that is applied to block images */
+}
