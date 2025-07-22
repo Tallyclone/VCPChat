@@ -17,6 +17,22 @@ export function initStreamManager(dependencies) {
     refs = dependencies;
 }
 
+/**
+ * Scrolls the chat to the bottom only if the user is already near the bottom.
+ */
+function conditionalScrollToBottom() {
+    const { chatMessagesDiv, uiHelper } = refs;
+    if (!chatMessagesDiv) return;
+
+    // A small tolerance to account for variations
+    const scrollThreshold = 20; // pixels
+    const isScrolledToBottom = chatMessagesDiv.scrollHeight - chatMessagesDiv.clientHeight <= chatMessagesDiv.scrollTop + scrollThreshold;
+
+    if (isScrolledToBottom) {
+        uiHelper.scrollToBottom();
+    }
+}
+
 function shouldEnableSmoothStreaming() {
     const globalSettings = refs.globalSettingsRef.get();
     return globalSettings.enableSmoothStreaming === true;
@@ -91,7 +107,7 @@ function processAndRenderSmoothChunk(messageId) {
         // The full processRenderedContent includes all necessary post-processing,
         // so we call it here to apply syntax highlighting and other effects during streaming.
         refs.processRenderedContent(contentDiv);
-        uiHelper.scrollToBottom();
+        conditionalScrollToBottom();
     }
 }
 
@@ -145,7 +161,7 @@ function renderChunkDirectlyToDOM(messageId, textToAppend, context) {
         refs.setContentAndProcessImages(contentDiv, rawHtml, messageId);
         // The full processRenderedContent includes all necessary post-processing.
         refs.processRenderedContent(contentDiv);
-        uiHelper.scrollToBottom();
+        conditionalScrollToBottom();
     }
 }
 
@@ -188,7 +204,7 @@ export function startStreamingMessage(message) {
     }
     refs.currentChatHistoryRef.set(currentChatHistoryArray);
 
-    uiHelper.scrollToBottom();
+    conditionalScrollToBottom();
     return messageItem;
 }
 
@@ -367,7 +383,7 @@ export async function finalizeStreamedMessage(messageId, finishReason, context) 
                 refs.processAnimationsInContent(contentDiv);
             }
         }
-        uiHelper.scrollToBottom();
+        conditionalScrollToBottom();
     }
     
     // 清理工作
