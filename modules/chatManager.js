@@ -169,7 +169,7 @@ window.chatManager = (() => {
         messageInput.disabled = false;
         sendMessageBtn.disabled = false;
         attachFileBtn.disabled = false;
-        messageInput.focus();
+        // messageInput.focus();
         if (topicListManager) topicListManager.loadTopicList();
     }
 
@@ -267,7 +267,6 @@ window.chatManager = (() => {
         } else {
              if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `加载话题 "${topicId}" 的聊天记录时返回了无效数据。`, timestamp: Date.now() });
         }
-        uiHelper.scrollToBottom();
         if (itemId && topicId && !(historyResult && historyResult.error)) {
             localStorage.setItem(`lastActiveTopic_${itemId}_${itemType}`, topicId);
         }
@@ -412,7 +411,7 @@ window.chatManager = (() => {
             attachedFilesRef.set([]);
             if(mainRendererFunctions.updateAttachmentPreview) mainRendererFunctions.updateAttachmentPreview();
             uiHelper.autoResizeTextarea(messageInput);
-            messageInput.focus();
+            // messageInput.focus();
             return;
         }
 
@@ -461,7 +460,7 @@ window.chatManager = (() => {
         attachedFilesRef.set([]);
         if(mainRendererFunctions.updateAttachmentPreview) mainRendererFunctions.updateAttachmentPreview();
         uiHelper.autoResizeTextarea(messageInput);
-        messageInput.focus();
+        // messageInput.focus(); // 核心修正：注释掉此行。这是导致AI流式输出时，即使向上滚动也会被强制拉回底部的根源。
 
         const thinkingMessageId = `msg_${Date.now()}_assistant_${Math.random().toString(36).substring(2, 9)}`;
         const thinkingMessage = {
@@ -724,7 +723,7 @@ window.chatManager = (() => {
                 }
                 
                 await displayTopicTimestampBubble(itemId, itemType, result.topicId);
-                elements.messageInput.focus();
+                // elements.messageInput.focus();
             } else {
                 uiHelper.showToastNotification(`创建新话题失败: ${result ? result.error : '未知错误'}`, 'error');
             }
@@ -794,7 +793,7 @@ window.chatManager = (() => {
             localStorage.setItem(`lastActiveTopic_${currentSelectedItem.id}_agent`, newTopicId);
 
             uiHelper.showToastNotification(`已成功创建分支话题 "${newBranchTopicName}" 并切换。`);
-            elements.messageInput.focus();
+            // elements.messageInput.focus();
 
         } catch (error) {
             console.error("创建分支时发生错误:", error);

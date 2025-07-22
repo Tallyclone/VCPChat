@@ -20,18 +20,6 @@ export function initStreamManager(dependencies) {
 /**
  * Scrolls the chat to the bottom only if the user is already near the bottom.
  */
-function conditionalScrollToBottom() {
-    const { chatMessagesDiv, uiHelper } = refs;
-    if (!chatMessagesDiv) return;
-
-    // A small tolerance to account for variations
-    const scrollThreshold = 20; // pixels
-    const isScrolledToBottom = chatMessagesDiv.scrollHeight - chatMessagesDiv.clientHeight <= chatMessagesDiv.scrollTop + scrollThreshold;
-
-    if (isScrolledToBottom) {
-        uiHelper.scrollToBottom();
-    }
-}
 
 function shouldEnableSmoothStreaming() {
     const globalSettings = refs.globalSettingsRef.get();
@@ -107,7 +95,9 @@ function processAndRenderSmoothChunk(messageId) {
         // The full processRenderedContent includes all necessary post-processing,
         // so we call it here to apply syntax highlighting and other effects during streaming.
         refs.processRenderedContent(contentDiv);
-        conditionalScrollToBottom();
+
+        // 调用现在已经内置了条件检查的 scrollToBottom
+        refs.uiHelper.scrollToBottom();
     }
 }
 
@@ -161,7 +151,8 @@ function renderChunkDirectlyToDOM(messageId, textToAppend, context) {
         refs.setContentAndProcessImages(contentDiv, rawHtml, messageId);
         // The full processRenderedContent includes all necessary post-processing.
         refs.processRenderedContent(contentDiv);
-        conditionalScrollToBottom();
+        
+        // 此处不再需要无条件调用 scrollToBottom，因为正确的滚动逻辑由 processAndRenderSmoothChunk 和 finalizeStreamedMessage 处理
     }
 }
 
@@ -204,7 +195,8 @@ export function startStreamingMessage(message) {
     }
     refs.currentChatHistoryRef.set(currentChatHistoryArray);
 
-    conditionalScrollToBottom();
+    // 调用现在已经内置了条件检查的 scrollToBottom
+    refs.uiHelper.scrollToBottom();
     return messageItem;
 }
 
@@ -383,7 +375,8 @@ export async function finalizeStreamedMessage(messageId, finishReason, context) 
                 refs.processAnimationsInContent(contentDiv);
             }
         }
-        conditionalScrollToBottom();
+        // 调用现在已经内置了条件检查的 scrollToBottom
+        refs.uiHelper.scrollToBottom();
     }
     
     // 清理工作

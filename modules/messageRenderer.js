@@ -307,18 +307,6 @@ let mainRendererReferences = {
     // activeStreamingMessageId: null, // ID of the message currently being streamed - REMOVED
 };
 
-function conditionalScrollToBottom() {
-    const { chatMessagesDiv, uiHelper } = mainRendererReferences;
-    if (!chatMessagesDiv) return;
-
-    // A small tolerance to account for variations
-    const scrollThreshold = 20; // pixels
-    const isScrolledToBottom = chatMessagesDiv.scrollHeight - chatMessagesDiv.clientHeight <= chatMessagesDiv.scrollTop + scrollThreshold;
-
-    if (isScrolledToBottom) {
-        uiHelper.scrollToBottom();
-    }
-}
 
 function removeMessageById(messageId, saveHistory = false) {
     const item = mainRendererReferences.chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
@@ -695,7 +683,7 @@ async function renderMessage(message, isInitialLoad = false) {
 
    // Highlighting is now part of processRenderedContent
    
-   conditionalScrollToBottom();
+   mainRendererReferences.uiHelper.scrollToBottom();
    return messageItem;
 }
 
@@ -792,7 +780,7 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId) {
         processAnimationsInContent(contentDiv);
     }
 
-    conditionalScrollToBottom();
+    mainRendererReferences.uiHelper.scrollToBottom();
 }
 
 // Expose methods to renderer.js

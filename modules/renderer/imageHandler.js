@@ -27,6 +27,7 @@ export function initializeImageHandler(refs) {
  * @param {string} messageId - 消息ID。
  */
 export function setContentAndProcessImages(contentDiv, rawHtml, messageId) {
+
     // 确保该消息有一个图片状态Map
     if (!messageImageStates.has(messageId)) {
         messageImageStates.set(messageId, new Map());
@@ -104,11 +105,6 @@ export function setContentAndProcessImages(contentDiv, rawHtml, messageId) {
                     const messageContainer = placeholder.closest('.message-item');
                     if (messageContainer && messageContainer.dataset.messageId === messageId) {
                         placeholder.replaceWith(finalImage);
-                        const chatContainer = imageHandlerRefs.chatMessagesDiv;
-                        const isScrolledToBottom = chatContainer.scrollHeight - chatContainer.clientHeight <= chatContainer.scrollTop + 150;
-                        if (isScrolledToBottom) {
-                            imageHandlerRefs.uiHelper.scrollToBottom();
-                        }
                     }
                 }
             };
@@ -144,6 +140,7 @@ export function setContentAndProcessImages(contentDiv, rawHtml, messageId) {
                 placeholder.replaceWith(item.element);
             }
         }
+    
     }
 }
 
