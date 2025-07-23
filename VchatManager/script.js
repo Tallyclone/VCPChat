@@ -35,25 +35,56 @@ document.addEventListener('DOMContentLoaded', () => {
             const agents = {};
             const groups = {};
 
-            for (const item of settings.combinedItemOrder) {
+            // If combinedItemOrder doesn't exist, build it from existing directories
+            let combinedItemOrder = settings.combinedItemOrder;
+            if (!combinedItemOrder || !Array.isArray(combinedItemOrder)) {
+                combinedItemOrder = [];
+
+                // Scan Agents directory
+                const agentDirs = await window.api.listDir(`${AppDataPath}Agents`);
+                if (agentDirs && Array.isArray(agentDirs)) {
+                    for (const agentId of agentDirs) {
+                        combinedItemOrder.push({ type: 'agent', id: agentId });
+                    }
+                }
+
+                // Scan AgentGroups directory
+                const groupDirs = await window.api.listDir(`${AppDataPath}AgentGroups`);
+                if (groupDirs && Array.isArray(groupDirs)) {
+                    for (const groupId of groupDirs) {
+                        combinedItemOrder.push({ type: 'group', id: groupId });
+                    }
+                }
+            }
+
+            for (const item of combinedItemOrder) {
                 const configPath = item.type === 'agent'
                     ? `${AppDataPath}Agents/${item.id}/config.json`
                     : `${AppDataPath}AgentGroups/${item.id}/config.json`;
-                
+
                 const configStr = await window.api.readFile(configPath);
                 if (configStr) {
                     const config = JSON.parse(configStr);
                     const avatarPath = configPath.replace('config.json', 'avatar.png');
-                    
+
+                    // Check if avatar file exists, otherwise use default
+                    const avatarExists = await window.api.readFile(avatarPath);
+                    const finalAvatarPath = avatarExists ? avatarPath :
+                        (item.type === 'agent' ? 'assets/default_avatar.png' : 'assets/default_group_avatar.png');
+
                     if (item.type === 'agent') {
-                        agents[item.id] = { ...config, id: item.id, avatar: avatarPath };
+                        agents[item.id] = { ...config, id: item.id, avatar: finalAvatarPath };
                     } else {
-                        groups[item.id] = { ...config, id: item.id, avatar: avatarPath };
+                        groups[item.id] = { ...config, id: item.id, avatar: finalAvatarPath };
                     }
                 } else {
                     console.warn(`Could not load config for ${item.type}: ${item.id}`);
                 }
             }
+
+            // Update settings with the combinedItemOrder if it was constructed
+            settings.combinedItemOrder = combinedItemOrder;
+
             allSettings = settings;
             allAgents = agents;
             allGroups = groups;
@@ -72,6 +103,12 @@ document.addEventListener('DOMContentLoaded', () => {
         agentsListEl.innerHTML = '<h3>Agents</h3>';
         groupsListEl.innerHTML = '<h3>Groups</h3>';
 
+        // Check if combinedItemOrder exists and is an array
+        if (!settings.combinedItemOrder || !Array.isArray(settings.combinedItemOrder)) {
+            console.warn('No combinedItemOrder found in settings');
+            return;
+        }
+
         settings.combinedItemOrder.forEach(item => {
             const itemData = item.type === 'agent' ? agents[item.id] : groups[item.id];
             if (!itemData) return;
@@ -81,8 +118,17 @@ document.addEventListener('DOMContentLoaded', () => {
             listItem.dataset.id = item.id;
             listItem.dataset.type = item.type;
             
-            const avatarRelativePath = `../${itemData.avatar}`;
-            listItem.innerHTML = `<img src="${avatarRelativePath}" class="avatar" alt="${itemData.name} avatar"><span>${itemData.name}</span>`;
+            // Handle avatar path for Electron
+            let avatarSrc;
+            if (itemData.avatar.startsWith('assets/')) {
+                // Default avatar from assets folder
+                avatarSrc = `../${itemData.avatar}`;
+            } else {
+                // Custom avatar from AppData
+                avatarSrc = `../${itemData.avatar}`;
+            }
+
+            listItem.innerHTML = `<img src="${avatarSrc}" class="avatar" alt="${itemData.name || 'Unknown'} avatar" onerror="this.src='../assets/default_avatar.png'"><span>${itemData.name || 'Unknown Agent'}</span>`;
             
             if (item.type === 'agent') {
                 agentsListEl.appendChild(listItem);
