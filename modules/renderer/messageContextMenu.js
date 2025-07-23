@@ -129,7 +129,7 @@ function showContextMenu(event, messageItem, message) {
             menu.appendChild(pasteOption);
         }
 
-        if (currentSelectedItemVal.type === 'agent') {
+        if (currentSelectedItemVal.type === 'agent' || currentSelectedItemVal.type === 'group') {
             const createBranchOption = document.createElement('div');
             createBranchOption.classList.add('context-menu-item');
             createBranchOption.innerHTML = `<i class="fas fa-code-branch"></i> 创建分支`;

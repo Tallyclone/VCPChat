@@ -734,13 +734,14 @@ window.chatManager = (() => {
     }
 
 
-    async function handleCreateBranch(selectedMessage) { // Only for Agents
+    async function handleCreateBranch(selectedMessage) {
         const currentSelectedItem = currentSelectedItemRef.get();
         const currentTopicId = currentTopicIdRef.get();
         const currentChatHistory = currentChatHistoryRef.get();
+        const itemType = currentSelectedItem.type;
 
-        if (currentSelectedItem.type !== 'agent' || !currentSelectedItem.id || !currentTopicId || !selectedMessage) {
-            uiHelper.showToastNotification("无法创建分支：当前非Agent聊天或缺少必要信息。", 'error');
+        if ((itemType !== 'agent' && itemType !== 'group') || !currentSelectedItem.id || !currentTopicId || !selectedMessage) {
+            uiHelper.showToastNotification("无法创建分支：当前非Agent/群组聊天或缺少必要信息。", 'error');
             return;
         }
 
@@ -759,16 +760,29 @@ window.chatManager = (() => {
         }
 
         try {
-            const agentConfig = await electronAPI.getAgentConfig(currentSelectedItem.id);
-            if (!agentConfig || agentConfig.error) {
-                uiHelper.showToastNotification(`创建分支失败：无法获取助手配置。 ${agentConfig?.error || ''}`, 'error');
+            let itemConfig, originalTopic, createResult, saveResult;
+            const itemId = currentSelectedItem.id;
+
+            if (itemType === 'agent') {
+                itemConfig = await electronAPI.getAgentConfig(itemId);
+            } else { // group
+                itemConfig = await electronAPI.getAgentGroupConfig(itemId);
+            }
+
+            if (!itemConfig || itemConfig.error) {
+                uiHelper.showToastNotification(`创建分支失败：无法获取${itemType === 'agent' ? '助手' : '群组'}配置。 ${itemConfig?.error || ''}`, 'error');
                 return;
             }
-            const originalTopic = agentConfig.topics.find(t => t.id === currentTopicId);
+
+            originalTopic = itemConfig.topics.find(t => t.id === currentTopicId);
             const originalTopicName = originalTopic ? originalTopic.name : "未命名话题";
             const newBranchTopicName = `${originalTopicName} (分支)`;
 
-            const createResult = await electronAPI.createNewTopicForAgent(currentSelectedItem.id, newBranchTopicName, true); // true to refresh timestamp
+            if (itemType === 'agent') {
+                createResult = await electronAPI.createNewTopicForAgent(itemId, newBranchTopicName, true);
+            } else { // group
+                createResult = await electronAPI.createNewTopicForGroup(itemId, newBranchTopicName, true);
+            }
 
             if (!createResult || !createResult.success || !createResult.topicId) {
                 uiHelper.showToastNotification(`创建分支话题失败: ${createResult ? createResult.error : '未知错误'}`, 'error');
@@ -776,24 +790,34 @@ window.chatManager = (() => {
             }
 
             const newTopicId = createResult.topicId;
-            const saveResult = await electronAPI.saveChatHistory(currentSelectedItem.id, newTopicId, historyForNewBranch);
+
+            if (itemType === 'agent') {
+                saveResult = await electronAPI.saveChatHistory(itemId, newTopicId, historyForNewBranch);
+            } else { // group
+                saveResult = await electronAPI.saveGroupChatHistory(itemId, newTopicId, historyForNewBranch);
+            }
+
             if (!saveResult || !saveResult.success) {
                 uiHelper.showToastNotification(`无法将历史记录保存到新的分支话题: ${saveResult ? saveResult.error : '未知错误'}`, 'error');
-                await electronAPI.deleteTopic(currentSelectedItem.id, newTopicId); // Clean up empty branch topic
+                // Clean up empty branch topic
+                if (itemType === 'agent') {
+                    await electronAPI.deleteTopic(itemId, newTopicId);
+                } else { // group
+                    await electronAPI.deleteGroupTopic(itemId, newTopicId);
+                }
                 return;
             }
 
-            currentTopicIdRef.set(newTopicId); // Switch to the new branch topic
+            currentTopicIdRef.set(newTopicId);
             if (messageRenderer) messageRenderer.setCurrentTopicId(newTopicId);
             
             if (document.getElementById('tabContentTopics').classList.contains('active')) {
-                if (topicListManager) await topicListManager.loadTopicList(); // Refresh topic list UI
+                if (topicListManager) await topicListManager.loadTopicList();
             }
-            await loadChatHistory(currentSelectedItem.id, 'agent', newTopicId); // Load history for the new branch
-            localStorage.setItem(`lastActiveTopic_${currentSelectedItem.id}_agent`, newTopicId);
+            await loadChatHistory(itemId, itemType, newTopicId);
+            localStorage.setItem(`lastActiveTopic_${itemId}_${itemType}`, newTopicId);
 
             uiHelper.showToastNotification(`已成功创建分支话题 "${newBranchTopicName}" 并切换。`);
-            // elements.messageInput.focus();
 
         } catch (error) {
             console.error("创建分支时发生错误:", error);
