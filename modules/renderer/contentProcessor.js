@@ -253,29 +253,28 @@ function highlightQuotesInMessage(messageElement) {
         }
     }
 
+    // Process nodes in reverse to avoid issues with DOM modification
     for (let i = nodesToProcess.length - 1; i >= 0; i--) {
         const { node, matches } = nodesToProcess[i];
-        const fragment = document.createDocumentFragment();
-        let lastIndex = 0;
-        const originalText = node.nodeValue;
+        let currentNode = node;
 
-        for (const matchInfo of matches) {
-            if (matchInfo.index > lastIndex) {
-                fragment.appendChild(document.createTextNode(originalText.substring(lastIndex, matchInfo.index)));
-            }
+        // Process matches for a single node in reverse to keep indices valid
+        for (let j = matches.length - 1; j >= 0; j--) {
+            const matchInfo = matches[j];
+
+            // Split the text node after the match
+            const textAfterNode = currentNode.splitText(matchInfo.index + matchInfo.fullMatch.length);
+
+            // Create the highlighted span
             const span = document.createElement('span');
             span.className = 'highlighted-quote';
             span.textContent = matchInfo.fullMatch;
-            fragment.appendChild(span);
-            lastIndex = matchInfo.index + matchInfo.fullMatch.length;
-        }
 
-        if (lastIndex < originalText.length) {
-            fragment.appendChild(document.createTextNode(originalText.substring(lastIndex)));
-        }
+            // Insert the new span before the text that followed the match
+            currentNode.parentNode.insertBefore(span, textAfterNode);
 
-        if (node.parentNode) {
-            node.parentNode.replaceChild(fragment, node);
+            // Truncate the original node to remove the matched text from its end
+            currentNode.nodeValue = currentNode.nodeValue.substring(0, matchInfo.index);
         }
     }
 }

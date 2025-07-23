@@ -695,6 +695,19 @@ body.light-theme .message-item .md-content pre .hljs-meta {
 }
 
 /*
+ * Hotfix for AI-generated custom HTML blocks.
+ * When the AI outputs a DIV with its own inline `max-width`, it can break
+ * the responsive layout of our message bubble. This rule forces such DIVs
+ * to be contained within the parent bubble, preventing layout conflicts
+ * and weird text wrapping issues.
+*/
+.message-item .md-content > div[style] {
+    max-width: 100% !important;
+    width: auto !important;
+    box-sizing: border-box;
+}
+
+/*
  * Final fix for centering images.
  * When an image is inside a paragraph with `text-align: center`,
  * we turn the paragraph into a flex container to reliably center the image.

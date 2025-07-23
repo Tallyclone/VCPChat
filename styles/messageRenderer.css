@@ -389,7 +389,9 @@ audio[controls]::-webkit-media-controls-volume-slider::-webkit-slider-thumb {
 /* Highlight for quoted text */
 .md-content .highlighted-quote { /* Increased specificity */
    color: var(--quoted-text) !important; /* Use CSS variable and !important */
-   /* font-style: italic; */ /* Optional: if italics are desired */
+   display: inline !important; /* Ensure it behaves as an inline element and does not break the line */
+   vertical-align: baseline; /* Align properly with the surrounding text */
+   word-break: break-all; /* Allow breaking within the quote to prevent overflow and layout issues */
 }
 
 /* AI 发送的链接样式 */
