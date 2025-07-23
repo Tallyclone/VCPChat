@@ -322,9 +322,12 @@
                     <label for="vcpLogKey">VCP WebSocket鉴权 Key:</label>
                     <input type="text" id="vcpLogKey" name="vcpLogKey">
                 </div>
-                <div>
-                    <label for="networkNotesPath">网络笔记路径:</label>
-                    <input type="text" id="networkNotesPath" name="networkNotesPath" placeholder="例如 \\NAS\Shared\Notes">
+                <div class="form-group">
+                    <label>网络笔记路径:</label>
+                    <div id="networkNotesPathsContainer" style="display: flex; flex-direction: column; gap: 8px;">
+                        <!-- Path inputs will be dynamically added here -->
+                    </div>
+                    <button type="button" id="addNetworkPathBtn" class="sidebar-button small-button" style="margin-top: 8px; width: auto; padding: 4px 10px;">添加路径</button>
                 </div>
                 <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
                     <label for="enableAgentBubbleTheme">开启Agent自定义气泡主题</label>

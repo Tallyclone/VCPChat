@@ -847,7 +847,21 @@ async function loadAndApplyGlobalSettings() {
         document.getElementById('vcpApiKey').value = globalSettings.vcpApiKey || '';
         document.getElementById('vcpLogUrl').value = globalSettings.vcpLogUrl || '';
         document.getElementById('vcpLogKey').value = globalSettings.vcpLogKey || '';
-        document.getElementById('networkNotesPath').value = globalSettings.networkNotesPath || '';
+        
+        // --- Load Network Notes Paths ---
+        const networkNotesPathsContainer = document.getElementById('networkNotesPathsContainer');
+        networkNotesPathsContainer.innerHTML = ''; // Clear existing
+        const paths = Array.isArray(settings.networkNotesPaths)
+            ? settings.networkNotesPaths
+            : (settings.networkNotesPath ? [settings.networkNotesPath] : []);
+        
+        if (paths.length === 0) {
+            // Add one empty path input if none are saved
+            addNetworkPathInput('');
+        } else {
+            paths.forEach(path => addNetworkPathInput(path));
+        }
+        // --- End Load Network Notes Paths ---
 
         // Load smooth streaming settings
         document.getElementById('enableAgentBubbleTheme').checked = globalSettings.enableAgentBubbleTheme === true;
@@ -944,6 +958,35 @@ async function loadAndApplyGlobalSettings() {
 
 
 // --- UI Event Listeners & Helpers ---
+function addNetworkPathInput(path = '') {
+    const container = document.getElementById('networkNotesPathsContainer');
+    const inputGroup = document.createElement('div');
+    inputGroup.style.display = 'flex';
+    inputGroup.style.gap = '8px';
+    inputGroup.style.alignItems = 'center';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.name = 'networkNotesPath';
+    input.placeholder = '例如 \\\\NAS\\Shared\\Notes';
+    input.value = path;
+    input.style.flexGrow = '1';
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.textContent = '删除';
+    removeBtn.className = 'sidebar-button small-button danger-button'; // Re-use existing styles
+    removeBtn.style.width = 'auto';
+    removeBtn.style.padding = '4px 8px';
+    removeBtn.onclick = () => {
+        inputGroup.remove();
+    };
+
+    inputGroup.appendChild(input);
+    inputGroup.appendChild(removeBtn);
+    container.appendChild(inputGroup);
+}
+
 function setupEventListeners() {
     if (chatMessagesDiv) {
         chatMessagesDiv.addEventListener('click', (event) => {
@@ -1020,13 +1063,20 @@ function setupEventListeners() {
     globalSettingsBtn.addEventListener('click', () => uiHelperFunctions.openModal('globalSettingsModal'));
     globalSettingsForm.addEventListener('submit', async (e) => {
         e.preventDefault();
+
+        // --- Collect Network Notes Paths ---
+        const networkNotesPathsContainer = document.getElementById('networkNotesPathsContainer');
+        const pathInputs = networkNotesPathsContainer.querySelectorAll('input[name="networkNotesPath"]');
+        const networkNotesPaths = Array.from(pathInputs).map(input => input.value.trim()).filter(path => path); // Filter out empty paths
+        // --- End Collect Network Notes Paths ---
+
         const newSettings = { // Read directly from globalSettings for widths
             userName: document.getElementById('userName').value.trim() || '用户',
             vcpServerUrl: document.getElementById('vcpServerUrl').value.trim(),
             vcpApiKey: document.getElementById('vcpApiKey').value,
             vcpLogUrl: document.getElementById('vcpLogUrl').value.trim(),
             vcpLogKey: document.getElementById('vcpLogKey').value.trim(),
-            networkNotesPath: document.getElementById('networkNotesPath').value.trim(),
+            networkNotesPaths: networkNotesPaths, // Use the new array
             sidebarWidth: globalSettings.sidebarWidth, // Keep existing value if not changed by resizer
             notificationsSidebarWidth: globalSettings.notificationsSidebarWidth, // Keep existing
             // userAvatarUrl and userAvatarCalculatedColor are handled by saveUserAvatar
@@ -1098,6 +1148,11 @@ function setupEventListeners() {
            uiHelperFunctions.showToastNotification(`保存全局设置失败: ${result.error}`, 'error');
         }
     });
+
+    const addNetworkPathBtn = document.getElementById('addNetworkPathBtn');
+    if (addNetworkPathBtn) {
+        addNetworkPathBtn.addEventListener('click', () => addNetworkPathInput());
+    }
 
     if (userAvatarInput) {
         userAvatarInput.addEventListener('change', (event) => {

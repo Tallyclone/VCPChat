@@ -841,10 +841,17 @@ async function handleDiceControl(args) {
         try {
             if (await fs.pathExists(SETTINGS_FILE)) {
                 const settings = await fs.readJson(SETTINGS_FILE);
-                const networkPath = settings.networkNotesPath;
-                // Check if a network path is configured and the file path starts with it
-                if (networkPath && filePath.startsWith(networkPath)) {
-                    return true;
+                // Support both new array and legacy string format
+                const networkPaths = Array.isArray(settings.networkNotesPaths)
+                    ? settings.networkNotesPaths
+                    : (settings.networkNotesPath ? [settings.networkNotesPath] : []);
+
+                if (networkPaths.length > 0) {
+                    for (const p of networkPaths) {
+                        if (p && filePath.startsWith(p)) {
+                            return true;
+                        }
+                    }
                 }
             }
         } catch (e) { console.error("Error checking for network note:", e); }
@@ -966,37 +973,56 @@ async function handleDiceControl(args) {
         try {
             if (await fs.pathExists(SETTINGS_FILE)) {
                 const settings = await fs.readJson(SETTINGS_FILE);
-                const networkPath = settings.networkNotesPath;
+                // Support both new array and legacy string format
+                const networkPaths = Array.isArray(settings.networkNotesPaths)
+                    ? settings.networkNotesPaths
+                    : (settings.networkNotesPath ? [settings.networkNotesPath] : []);
 
-                if (networkPath && await fs.pathExists(networkPath)) {
-                    console.log(`[scanAndCacheNetworkNotes] Starting async scan of: ${networkPath}`);
-                    const networkNotes = await readDirectoryStructure(networkPath);
-                    let networkTree = null;
+                if (networkPaths.length === 0) {
+                    // If no paths are configured, clear cache and notify renderer
+                    networkNotesTreeCache = [];
+                    await fs.remove(NETWORK_NOTES_CACHE_FILE);
+                    if (notesWindow && !notesWindow.isDestroyed()) {
+                        notesWindow.webContents.send('network-notes-scanned', []);
+                    }
+                    return;
+                }
 
-                    if (networkNotes.length > 0) {
-                        networkTree = {
-                            id: 'folder-network-notes-root',
+                const allNetworkTrees = [];
+                for (const networkPath of networkPaths) {
+                    if (networkPath && (await fs.pathExists(networkPath))) {
+                        console.log(`[scanAndCacheNetworkNotes] Starting async scan of: ${networkPath}`);
+                        const networkNotes = await readDirectoryStructure(networkPath);
+
+                        // Create a root node even if the folder is empty, so it appears in the UI
+                        const rootName = path.basename(networkPath) || networkPath;
+                        const networkTree = {
+                            id: `folder-network-root-${Buffer.from(networkPath).toString('hex')}`,
                             type: 'folder',
-                            name: '云笔记dailynote',
+                            name: `☁️ ${rootName}`, // Use a cloud icon for clarity
                             path: networkPath,
                             children: networkNotes,
-                            isNetwork: true
+                            isNetwork: true,
+                            isRoot: true // Custom flag for root network folders
                         };
-                    }
+                        allNetworkTrees.push(networkTree);
 
-                    // Update cache (in-memory and on-disk)
-                    networkNotesTreeCache = networkTree;
-                    if (networkTree) {
-                        await fs.writeJson(NETWORK_NOTES_CACHE_FILE, networkTree);
                     } else {
-                        // If network folder is empty or inaccessible, clear the cache
-                        await fs.remove(NETWORK_NOTES_CACHE_FILE);
+                        console.warn(`[scanAndCacheNetworkNotes] Network path not found or is invalid: ${networkPath}`);
                     }
+                }
 
-                    // Push the result to the notes window when done
-                    if (notesWindow && !notesWindow.isDestroyed()) {
-                        notesWindow.webContents.send('network-notes-scanned', networkTree);
-                    }
+                // Update cache (in-memory and on-disk)
+                networkNotesTreeCache = allNetworkTrees;
+                if (allNetworkTrees.length > 0) {
+                    await fs.writeJson(NETWORK_NOTES_CACHE_FILE, allNetworkTrees);
+                } else {
+                    await fs.remove(NETWORK_NOTES_CACHE_FILE);
+                }
+
+                // Push the result to the notes window when done
+                if (notesWindow && !notesWindow.isDestroyed()) {
+                    notesWindow.webContents.send('network-notes-scanned', allNetworkTrees);
                 }
             }
         } catch (e) {
@@ -1014,7 +1040,8 @@ async function handleDiceControl(args) {
 
     // IPC handler to get the cached network notes tree for faster startup
     ipcMain.handle('get-cached-network-notes', async () => {
-        return await fs.pathExists(NETWORK_NOTES_CACHE_FILE) ? await fs.readJson(NETWORK_NOTES_CACHE_FILE) : null;
+        // Now returns an array of trees or an empty array
+        return await fs.pathExists(NETWORK_NOTES_CACHE_FILE) ? await fs.readJson(NETWORK_NOTES_CACHE_FILE) : [];
     });
 
     // IPC handler to write a note file

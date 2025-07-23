@@ -23,7 +23,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- State Management ---
     let localNoteTree = []; // Stores the local note hierarchy
-    let networkNoteTree = null; // Stores the network note hierarchy
+    let networkNoteTree = []; // Stores the network note hierarchy as an array of trees
     let activeNoteId = null; // ID of the note currently being edited
     let activeItemId = null; // ID of the last clicked item (note or folder)
     let selectedItems = new Set(); // Stores IDs of all selected items for multi-select
@@ -325,7 +325,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function getCombinedTree() {
-        return networkNoteTree ? [networkNoteTree, ...localNoteTree] : localNoteTree;
+        return [...networkNoteTree, ...localNoteTree];
     }
 
     function findItemById(tree, id) {
@@ -340,9 +340,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function isCloudItem(id) {
-        if (!networkNoteTree) return false;
-        // Check if the item exists within the network tree structure
-        return findItemById([networkNoteTree], id) !== null;
+        if (!networkNoteTree || networkNoteTree.length === 0) return false;
+        // Check if the item exists within any of the network tree structures
+        return findItemById(networkNoteTree, id) !== null;
     }
     
     async function getParentPath(itemId) {
@@ -994,8 +994,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const result = await window.electronAPI.deleteItem(item.path);
                 if (result.success) {
                     removeItemById(localNoteTree, item.id);
-                    if (networkNoteTree) {
-                        removeItemById(networkNoteTree.children, item.id);
+                    if (networkNoteTree && networkNoteTree.length > 0) {
+                        networkNoteTree.forEach(tree => removeItemById(tree.children, item.id));
                     }
                 } else {
                     console.error(`Failed to delete item ${item.path}:`, result.error);
@@ -1099,10 +1099,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         // 2. Try to load network notes from cache for faster startup
+        // 2. Try to load network notes from cache for faster startup (now returns array)
         const cachedNetworkNotes = await window.electronAPI.getCachedNetworkNotes();
-        if (cachedNetworkNotes) {
-            networkNoteTree = cachedNetworkNotes;
-        }
+        // Ensure it's always an array, handling both old object format and null/undefined
+        networkNoteTree = Array.isArray(cachedNetworkNotes) ? cachedNetworkNotes : (cachedNetworkNotes ? [cachedNetworkNotes] : []);
 
         // 3. Initial render with whatever we have so far
         renderTree();
@@ -1112,7 +1112,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // 5. Listen for the updated network notes to be returned
         window.electronAPI.onNetworkNotesScanned((freshNetworkTree) => {
-            networkNoteTree = freshNetworkTree; // This could be null if the network drive is empty/gone
+            // Ensure it's always an array, handling both old object format and null/undefined
+            networkNoteTree = Array.isArray(freshNetworkTree) ? freshNetworkTree : (freshNetworkTree ? [freshNetworkTree] : []);
             renderTree(); // Re-render with the fresh data
         });
 
