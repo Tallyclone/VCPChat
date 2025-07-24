@@ -72,8 +72,15 @@ function fixEmoticonUrl(originalSrc) {
     }
 
     // 1. Quick check: if the URL is already perfect, return it.
-    if (emoticonLibrary.some(item => item.url === originalSrc)) {
-        return originalSrc;
+    // We decode both URLs to avoid mismatches due to encoding differences.
+    try {
+        const decodedOriginalSrc = decodeURIComponent(originalSrc);
+        if (emoticonLibrary.some(item => decodeURIComponent(item.url) === decodedOriginalSrc)) {
+            return originalSrc; // It's a perfect match, don't touch it.
+        }
+    } catch (e) {
+        // If decoding fails, it's likely a malformed URL. Let it proceed to the fuzzy matching logic.
+        console.warn(`[EmoticonFixer] Could not decode originalSrc: ${originalSrc}`, e);
     }
 
     // 2. Check if it's likely an emoticon URL. If not, pass through.
