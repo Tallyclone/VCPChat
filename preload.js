@@ -239,6 +239,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     sovitsStop: () => ipcRenderer.send('sovits-stop'),
     onPlayTtsAudio: (callback) => ipcRenderer.on('play-tts-audio', (_event, data) => callback(data)), // { audioData }
     onStopTtsAudio: (callback) => ipcRenderer.on('stop-tts-audio', (_event) => callback()),
+
+    // Emoticons
+    getEmoticonLibrary: () => ipcRenderer.invoke('get-emoticon-library'),
 });
 
 // Log the electronAPI object as it's defined in preload.js right after exposing it

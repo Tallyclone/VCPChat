@@ -121,9 +121,10 @@ const uiHelperFunctions = window.uiHelperFunctions;
 
 
 import searchManager from './modules/searchManager.js';
-
-// --- Initialization ---
-document.addEventListener('DOMContentLoaded', async () => {
+import { initialize as initializeEmoticonFixer } from './modules/renderer/emoticonUrlFixer.js';
+ 
+ // --- Initialization ---
+ document.addEventListener('DOMContentLoaded', async () => {
     // 确保在GroupRenderer初始化之前，其容器已准备好
     prepareGroupSettingsDOM();
     inviteAgentButtonsContainerElement = document.getElementById('inviteAgentButtonsContainer'); // 新增：获取容器引用
@@ -636,6 +637,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else {
             console.error('[RENDERER_INIT] searchManager module not found!');
         }
+
+       // Initialize the emoticon URL fixer
+       initializeEmoticonFixer(window.electronAPI);
 
     } catch (error) {
         console.error('Error during DOMContentLoaded initialization:', error);

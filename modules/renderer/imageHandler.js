@@ -1,6 +1,7 @@
 // modules/renderer/imageHandler.js
-
-// This map holds the loading state for images within each message,
+import { fixEmoticonUrl } from './emoticonUrlFixer.js';
+ 
+ // This map holds the loading state for images within each message,
 // preventing re-loading and solving the placeholder flicker issue during streaming.
 // Structure: Map<messageId, Map<uniqueImageKey, { status: 'loading'|'loaded'|'error', element?: HTMLImageElement }>>
 // uniqueImageKey is `${src}-${index}` to handle duplicate images in the same message.
@@ -40,7 +41,11 @@ export function setContentAndProcessImages(contentDiv, rawHtml, messageId) {
     const processedHtml = rawHtml.replace(/<img[^>]+>/g, (imgTagString) => {
         const srcMatch = imgTagString.match(/src="([^"]+)"/);
         if (!srcMatch) return ''; // 忽略没有src的标签
-        const src = srcMatch[1];
+        
+        // --- Emoticon URL Fixer Integration ---
+        const originalSrc = srcMatch[1];
+        const src = fixEmoticonUrl(originalSrc);
+        // --- End Integration ---
 
         const uniqueImageKey = `${src}-${imageCounter}`;
         const placeholderId = `img-placeholder-${messageId}-${imageCounter}`;

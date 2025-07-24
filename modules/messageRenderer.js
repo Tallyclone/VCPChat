@@ -221,7 +221,7 @@ function deIndentHtml(text) {
         // The regex now specifically targets indented `<p>` and `<div>` tags,
         // which are common block-level elements that can be misinterpreted as code blocks.
         // It is case-insensitive and handles tags spanning multiple lines.
-        if (!inFence && /^\s+<[a-zA-Z]/.test(line)) {
+        if (!inFence && /^\s+<(!|[a-zA-Z])/.test(line)) {
             return line.trimStart();
         }
         return line;

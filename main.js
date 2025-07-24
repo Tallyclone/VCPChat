@@ -27,6 +27,7 @@ const assistantHandlers = require('./modules/ipc/assistantHandlers'); // Import 
 const musicHandlers = require('./modules/ipc/musicHandlers'); // Import music handlers
 const diceHandlers = require('./modules/ipc/diceHandlers'); // Import dice handlers
 const themeHandlers = require('./modules/ipc/themeHandlers'); // Import theme handlers
+const emoticonHandlers = require('./modules/ipc/emoticonHandlers'); // Import emoticon handlers
 const musicMetadata = require('music-metadata');
 
 // --- Configuration Paths ---
@@ -359,9 +360,11 @@ if (!gotTheLock) {
     musicHandlers.initialize({ mainWindow, openChildWindows, APP_DATA_ROOT_IN_PROJECT });
     diceHandlers.initialize({ projectRoot: PROJECT_ROOT });
     themeHandlers.initialize({ mainWindow, openChildWindows, projectRoot: PROJECT_ROOT, APP_DATA_ROOT_IN_PROJECT });
-
-    // --- Distributed Server Initialization ---
-    (async () => {
+    emoticonHandlers.initialize({ SETTINGS_FILE, APP_DATA_ROOT_IN_PROJECT });
+    emoticonHandlers.setupEmoticonHandlers();
+ 
+     // --- Distributed Server Initialization ---
+     (async () => {
         try {
             const settings = await fs.readJson(SETTINGS_FILE);
             if (settings.enableDistributedServer) {
