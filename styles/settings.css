@@ -938,3 +938,27 @@ textarea::placeholder {
 .form-divider-dashed {
     display: none;
 }
+/* Network Notes Path Input Group in Global Settings */
+.network-path-input-group {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.network-path-input-group input[type="text"] {
+    flex-grow: 1;
+    padding: 9px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background-color: var(--input-bg);
+    color: var(--primary-text);
+    font-size: 0.95em;
+    box-sizing: border-box;
+    height: 38px; /* Set explicit height for perfect alignment */
+}
+
+.network-path-input-group button {
+    height: 38px; /* Match input height */
+    position: relative;
+    top: -6.8px;
+}
