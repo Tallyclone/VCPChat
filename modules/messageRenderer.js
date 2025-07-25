@@ -95,10 +95,14 @@ function transformSpecialBlocks(text) {
             }
         }
 
-        // Construct the simple, single-line display as requested
+        const escapedFullContent = escapeHtml(content);
+        // Construct the new HTML with a hidden details part
         return `<div class="vcp-tool-use-bubble">` +
+               `<div class="vcp-tool-summary">` +
                `<span class="vcp-tool-label">VCP-ToolUse:</span> ` +
                `<span class="vcp-tool-name-highlight">${escapeHtml(toolName)}</span>` +
+               `</div>` +
+               `<div class="vcp-tool-details"><pre>${escapedFullContent}</pre></div>` +
                `</div>`;
     });
 
