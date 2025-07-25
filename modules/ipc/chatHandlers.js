@@ -1,5 +1,5 @@
 // modules/ipc/chatHandlers.js
-const { ipcMain, dialog } = require('electron');
+const { ipcMain, dialog, BrowserWindow } = require('electron');
 const fs = require('fs-extra');
 const path = require('path');
 const fileManager = require('../fileManager');
@@ -689,6 +689,75 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
                 return { streamError: true, error: `VCP客户端请求错误`, errorDetail: { message: error.message, stack: error.stack } };
             }
             return { error: `VCP请求错误: ${error.message}` };
+        }
+    });
+
+    ipcMain.on('send-voice-chat-message', async (event, { agentId, history, thinkingMessageId }) => {
+        const replyToWindow = BrowserWindow.fromWebContents(event.sender);
+        if (!replyToWindow || replyToWindow.isDestroyed()) {
+            console.error('Voice chat reply window is not available.');
+            return;
+        }
+
+        try {
+            const settingsPath = path.join(APP_DATA_ROOT_IN_PROJECT, 'settings.json');
+            const settings = await fs.readJson(settingsPath);
+
+            const agentConfigPath = path.join(AGENT_DIR, agentId, 'config.json');
+            if (!await fs.pathExists(agentConfigPath)) {
+                throw new Error(`Agent config for ${agentId} not found.`);
+            }
+            const agentConfig = await fs.readJson(agentConfigPath);
+
+            const voiceModePromptInjection = "\n\n当前处于语音模式中，你的回复应当口语化，内容简短直白。由于用户输入同样是语音识别模型构成，注意自主判断、理解其中的同音错别字或者错误语义识别。";
+            const systemPrompt = (agentConfig.systemPrompt || '').replace(/\{\{AgentName\}\}/g, agentConfig.name) + voiceModePromptInjection;
+
+            const messagesForVCP = [{ role: 'system', content: systemPrompt }];
+            const historyForVCP = history.map(msg => ({ role: msg.role, content: msg.content }));
+            messagesForVCP.push(...historyForVCP);
+
+            const modelConfig = {
+                model: agentConfig.model,
+                temperature: agentConfig.temperature,
+                stream: false, // Force non-streaming
+                max_tokens: agentConfig.maxOutputTokens
+            };
+
+            const response = await fetch(settings.vcpServerUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${settings.vcpApiKey}`
+                },
+                body: JSON.stringify({
+                    messages: messagesForVCP,
+                    ...modelConfig
+                })
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`VCP server error: ${response.status} ${errorText}`);
+            }
+
+            const responseData = await response.json();
+            const fullText = responseData.choices?.[0]?.message?.content || '';
+
+            if (!replyToWindow.isDestroyed()) {
+                replyToWindow.webContents.send('voice-chat-reply', {
+                    thinkingMessageId,
+                    fullText
+                });
+            }
+
+        } catch (error) {
+            console.error('Error handling voice chat message:', error);
+            if (!replyToWindow.isDestroyed()) {
+                replyToWindow.webContents.send('voice-chat-reply', {
+                    thinkingMessageId,
+                    error: error.message
+                });
+            }
         }
     });
 }

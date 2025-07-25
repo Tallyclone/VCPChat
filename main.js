@@ -29,6 +29,7 @@ const diceHandlers = require('./modules/ipc/diceHandlers'); // Import dice handl
 const themeHandlers = require('./modules/ipc/themeHandlers'); // Import theme handlers
 const emoticonHandlers = require('./modules/ipc/emoticonHandlers'); // Import emoticon handlers
 const musicMetadata = require('music-metadata');
+const speechRecognizer = require('./modules/speechRecognizer'); // Import the new speech recognizer
 
 // --- Configuration Paths ---
 // Data storage will be within the project's 'AppData' directory
@@ -470,7 +471,10 @@ app.on('will-quit', () => {
     globalShortcut.unregisterAll();
     console.log('[Main] All global shortcuts unregistered.');
 
-    // 3. 关闭WebSocket连接
+    // 3. Stop the speech recognizer
+    speechRecognizer.stop();
+
+    // 4. 关闭WebSocket连接
     if (vcpLogWebSocket && vcpLogWebSocket.readyState === WebSocket.OPEN) {
         vcpLogWebSocket.close();
     }
@@ -609,3 +613,55 @@ ipcMain.on('disconnect-vcplog', () => {
     console.log('VCPLog 已手动断开');
 });
 }
+// --- Voice Chat IPC Handler ---
+ipcMain.on('open-voice-chat-window', (event, { agentId }) => {
+    const voiceChatWindow = new BrowserWindow({
+        width: 500,
+        height: 700,
+        minWidth: 400,
+        minHeight: 500,
+        frame: false,
+        titleBarStyle: 'hidden', // Add this to hide the title bar on some OS
+        title: '语音聊天',
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            contextIsolation: true,
+            nodeIntegration: false,
+        },
+        parent: mainWindow,
+        modal: false, // Set to false to allow interaction with main window
+        show: false,
+    });
+
+    voiceChatWindow.loadFile(path.join(__dirname, 'Voicechatmodules/voicechat.html'));
+    
+    voiceChatWindow.once('ready-to-show', () => {
+        const theme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+        voiceChatWindow.show();
+        voiceChatWindow.webContents.send('voice-chat-data', { agentId, theme });
+    });
+
+    openChildWindows.push(voiceChatWindow);
+
+    voiceChatWindow.on('closed', () => {
+        openChildWindows = openChildWindows.filter(win => win !== voiceChatWindow);
+        // Ensure speech recognition is stopped when the window is closed
+        speechRecognizer.stop();
+    });
+});
+
+// --- Speech Recognition IPC Handlers ---
+ipcMain.on('start-speech-recognition', (event) => {
+    const voiceChatWindow = openChildWindows.find(win => win.webContents === event.sender);
+    if (!voiceChatWindow) return;
+
+    speechRecognizer.start((text) => {
+        if (voiceChatWindow && !voiceChatWindow.isDestroyed()) {
+            voiceChatWindow.webContents.send('speech-recognition-result', text);
+        }
+    });
+});
+
+ipcMain.on('stop-speech-recognition', () => {
+    speechRecognizer.stop();
+});

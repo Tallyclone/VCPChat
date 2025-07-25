@@ -6,11 +6,11 @@ let internalMainWindow = null; // 用于在 handler 内部可靠地访问 mainWi
 
 function initialize(mainWindow) {
     if (!mainWindow) {
-        console.error("SovitsTTS a besoin de la fenêtre principale pour s'initialiser.");
+        console.error("SovitsTTS needs the main window to initialize."); // Translated for clarity
         return;
     }
-    internalMainWindow = mainWindow; // 保存对 mainWindow 的引用
-    sovitsTTSInstance = new SovitsTTS(mainWindow);
+    internalMainWindow = mainWindow; // Save reference to mainWindow
+    sovitsTTSInstance = new SovitsTTS(); // No longer pass mainWindow
 
     ipcMain.handle('sovits-get-models', async (event, forceRefresh) => {
         if (!sovitsTTSInstance) return null;
@@ -20,7 +20,9 @@ function initialize(mainWindow) {
     ipcMain.on('sovits-speak', (event, options) => {
         if (!sovitsTTSInstance) return;
         // The speak method now expects a single options object.
-        sovitsTTSInstance.speak(options);
+        sovitsTTSInstance.stop(); // Ensure any previous speech is stopped.
+        // Pass the event sender to the speak method to reply to the correct window
+        sovitsTTSInstance.speak(options, event.sender);
     });
 
     ipcMain.on('sovits-stop', () => {

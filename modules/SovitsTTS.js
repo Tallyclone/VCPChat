@@ -12,8 +12,7 @@ const MODELS_CACHE_PATH = path.join(APP_DATA_ROOT_IN_PROJECT, 'sovits_models.jso
 const TTS_CACHE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'tts_cache');
 
 class SovitsTTS {
-    constructor(mainWindow) {
-        this.mainWindow = mainWindow;
+    constructor() {
         this.isSpeaking = false;
         this.speechQueue = [];
         this.currentSpeechItemId = null; // 用于跟踪当前朗读的气泡ID
@@ -212,7 +211,7 @@ class SovitsTTS {
      * 开始双语朗读任务
      * @param {object} options 包含所有朗读参数
      */
-    speak(options) {
+    speak(options, sender) { // Add sender parameter
         const {
             text,
             voice, // Primary voice
@@ -222,8 +221,6 @@ class SovitsTTS {
             voiceSecondary,
             ttsRegexSecondary
         } = options;
-
-        this.stop();
 
         // 如果没有选择任何主语言模型，则不执行任何操作
         if (!voice) {
@@ -245,7 +242,8 @@ class SovitsTTS {
                 text: chunk,
                 voice: taskVoice,
                 speed,
-                msgId
+                msgId,
+                sender // Pass sender to each task
             }));
         }).flat(); // Flatten the array of arrays
 
@@ -284,11 +282,15 @@ class SovitsTTS {
             if (audioBuffer) {
                 const audioBase64 = audioBuffer.toString('base64');
                 // 发送音频数据、msgId 和会话ID
-                this.mainWindow.webContents.send('play-tts-audio', {
-                    audioData: audioBase64,
-                    msgId: currentTask.msgId,
-                    sessionId: loopSessionId
-                });
+                if (currentTask.sender && !currentTask.sender.isDestroyed()) {
+                    currentTask.sender.send('play-tts-audio', {
+                        audioData: audioBase64,
+                        msgId: currentTask.msgId,
+                        sessionId: loopSessionId
+                    });
+                } else {
+                    console.error(`[TTS] 无法发送音频，因为发送方窗口已被销毁。`);
+                }
             } else {
                 console.error(`合成失败: "${currentTask.text.substring(0, 20)}..."`);
             }

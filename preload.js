@@ -242,6 +242,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Emoticons
     getEmoticonLibrary: () => ipcRenderer.invoke('get-emoticon-library'),
+
+    // Voice Chat
+    openVoiceChatWindow: (data) => ipcRenderer.send('open-voice-chat-window', data),
+    onVoiceChatData: (callback) => ipcRenderer.on('voice-chat-data', (_event, data) => callback(data)),
+    sendVoiceChatMessage: (data) => ipcRenderer.send('send-voice-chat-message', data),
+    onVoiceChatReply: (callback) => ipcRenderer.on('voice-chat-reply', (_event, data) => callback(data)),
+
+    // --- Speech Recognition via Puppeteer ---
+    startSpeechRecognition: () => ipcRenderer.send('start-speech-recognition'),
+    stopSpeechRecognition: () => ipcRenderer.send('stop-speech-recognition'),
+    onSpeechRecognitionResult: (callback) => ipcRenderer.on('speech-recognition-result', (_event, text) => callback(text)),
 });
 
 // Log the electronAPI object as it's defined in preload.js right after exposing it

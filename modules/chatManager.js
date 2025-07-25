@@ -55,11 +55,12 @@ window.chatManager = (() => {
     // --- Functions moved from renderer.js ---
 
     function displayNoItemSelected() {
-        const { currentChatNameH3, chatMessagesDiv, currentItemActionBtn, clearCurrentChatBtn, messageInput, sendMessageBtn, attachFileBtn } = elements;
+        const { currentChatNameH3, chatMessagesDiv, currentItemActionBtn, messageInput, sendMessageBtn, attachFileBtn } = elements;
+        const voiceChatBtn = document.getElementById('voiceChatBtn');
         currentChatNameH3.textContent = '选择一个 Agent 或群组开始聊天';
         chatMessagesDiv.innerHTML = `<div class="message-item system welcome-bubble"><p>欢迎！请从左侧选择AI助手/群组，或创建新的开始对话。</p></div>`;
         currentItemActionBtn.style.display = 'none';
-        clearCurrentChatBtn.style.display = 'none';
+        if (voiceChatBtn) voiceChatBtn.style.display = 'none';
         messageInput.disabled = true;
         sendMessageBtn.disabled = true;
         attachFileBtn.disabled = true;
@@ -70,7 +71,7 @@ window.chatManager = (() => {
     }
 
     async function selectItem(itemId, itemType, itemName, itemAvatarUrl, itemFullConfig) {
-        const { currentChatNameH3, currentItemActionBtn, clearCurrentChatBtn, messageInput, sendMessageBtn, attachFileBtn } = elements;
+        const { currentChatNameH3, currentItemActionBtn, messageInput, sendMessageBtn, attachFileBtn } = elements;
         let currentSelectedItem = currentSelectedItemRef.get();
         let currentTopicId = currentTopicIdRef.get();
 
@@ -103,11 +104,16 @@ window.chatManager = (() => {
             }
         }
      
+        const voiceChatBtn = document.getElementById('voiceChatBtn');
+
         currentChatNameH3.textContent = `与 ${itemName} ${itemType === 'group' ? '(群组)' : ''} 聊天中`;
         currentItemActionBtn.textContent = itemType === 'group' ? '新建群聊话题' : '新建聊天话题';
         currentItemActionBtn.title = `为 ${itemName} 新建${itemType === 'group' ? '群聊话题' : '聊天话题'}`;
         currentItemActionBtn.style.display = 'inline-block';
-        clearCurrentChatBtn.style.display = 'inline-block';
+        
+        if (voiceChatBtn) {
+            voiceChatBtn.style.display = itemType === 'agent' ? 'inline-block' : 'none';
+        }
 
         itemListManager.highlightActiveItem(itemId, itemType);
         if(mainRendererFunctions.displaySettingsForItem) mainRendererFunctions.displaySettingsForItem();

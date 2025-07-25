@@ -989,6 +989,18 @@ function addNetworkPathInput(path = '') {
 }
 
 function setupEventListeners() {
+    const voiceChatBtn = document.getElementById('voiceChatBtn');
+
+    if (voiceChatBtn) {
+        voiceChatBtn.addEventListener('click', () => {
+            if (currentSelectedItem && currentSelectedItem.type === 'agent' && currentSelectedItem.id) {
+                window.electronAPI.openVoiceChatWindow({ agentId: currentSelectedItem.id });
+            } else {
+                uiHelperFunctions.showToastNotification('请先选择一个Agent才能开始语音聊天。', 'info');
+            }
+        });
+    }
+
     if (chatMessagesDiv) {
         chatMessagesDiv.addEventListener('click', (event) => {
             const target = event.target.closest('a');
@@ -1215,43 +1227,8 @@ function setupEventListeners() {
     // MOVED to settingsManager.js: agentAvatarInput listener
 
 
-    clearCurrentChatBtn.addEventListener('click', async () => {
-        if (currentSelectedItem.id && currentTopicId && confirm(`确定要清空当前话题的聊天记录吗（${currentSelectedItem.type === 'group' ? '群组' : '助手'}: ${currentSelectedItem.name}）？此操作不可撤销。`)) {
-            currentChatHistory = [];
-            // Save empty history for the correct item type and ID
-            if (currentSelectedItem.type === 'agent') {
-                await window.electronAPI.saveChatHistory(currentSelectedItem.id, currentTopicId, []);
-            } else if (currentSelectedItem.type === 'group') {
-                // Assuming groupchat.js has a saveGroupChatHistory or similar that main.js exposes
-                // For now, let's assume renderer.js doesn't directly call save for group history,
-                // groupchat.js manages its own history saving after each message.
-                // If explicit clearing is needed, main.js needs an IPC handler for it.
-                // For now, we'll just clear UI and local history.
-                // TODO: Add IPC for clearing group chat history if needed from main.js
-                 if (window.messageRenderer) window.messageRenderer.clearChat();
-                 uiHelperFunctions.showToastNotification("群聊记录已在本地清空 (后端清空待实现)。");
-
-            }
-            if (window.messageRenderer) {
-                 window.messageRenderer.clearChat(); // Clears UI
-                 window.messageRenderer.renderMessage({ role: 'system', content: '当前话题聊天记录已清空。', timestamp: Date.now() });
-            }
-            
-            // Reset topic title for agents
-            if (currentSelectedItem.type === 'agent') {
-                const clearedTopicName = `话题 ${currentTopicId.substring(0,8)}...`;
-                const titleSaveResult = await window.electronAPI.saveAgentTopicTitle(currentSelectedItem.id, currentTopicId, clearedTopicName);
-                if (titleSaveResult.success) {
-                    if (document.getElementById('tabContentTopics').classList.contains('active')) {
-                        if (window.topicListManager) window.topicListManager.loadTopicList();
-                    }
-                }
-            }
-            uiHelperFunctions.showToastNotification('当前话题聊天记录已清空，话题标题已重置。');
-        } else if (!currentTopicId) {
-            uiHelperFunctions.showToastNotification("没有选中的话题可清空。", 'info');
-        }
-    });
+    // The clearCurrentChatBtn logic is now removed as the button is replaced.
+    // If a clear chat functionality is needed, it should be re-added elsewhere.
 
     clearNotificationsBtn.addEventListener('click', () => {
         notificationsListUl.innerHTML = '';
