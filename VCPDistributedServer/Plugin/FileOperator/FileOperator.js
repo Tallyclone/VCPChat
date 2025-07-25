@@ -831,9 +831,76 @@ async function listAllowedDirectories() {
   }
 }
 
+// Batch processing for legacy format
+async function processBatchRequest(request) {
+  debugLog('Processing legacy batch request', { request });
+  const results = [];
+  let i = 1;
+  let successCount = 0;
+  let failureCount = 0;
+
+  while (request[`command${i}`]) {
+    const command = request[`command${i}`];
+    const parameters = {};
+    // Dynamically collect all parameters for this command index
+    Object.keys(request).forEach(key => {
+      if (key.endsWith(i.toString()) && key !== `command${i}`) {
+        // Remove the numeric suffix to get the actual parameter name
+        const paramName = key.slice(0, -i.toString().length);
+        parameters[paramName] = request[key];
+      }
+    });
+
+    let result;
+    try {
+      switch (command) {
+        case 'CopyFile':
+          result = await copyFile(parameters.sourcePath, parameters.destinationPath);
+          break;
+        case 'MoveFile':
+          result = await moveFile(parameters.sourcePath, parameters.destinationPath);
+          break;
+        case 'RenameFile':
+          result = await renameFile(parameters.sourcePath, parameters.destinationPath);
+          break;
+        case 'DeleteFile':
+          result = await deleteFile(parameters.filePath);
+          break;
+        default:
+          result = { success: false, error: `Unsupported batch command: ${command}` };
+      }
+    } catch (error) {
+      result = { success: false, error: error.message };
+    }
+
+    if (result.success) {
+      successCount++;
+    } else {
+      failureCount++;
+    }
+    results.push({ command, parameters, ...result });
+    i++;
+  }
+
+  return {
+    success: true,
+    data: {
+      message: `Batch processing complete. Succeeded: ${successCount}, Failed: ${failureCount}.`,
+      successCount,
+      failureCount,
+      results,
+    },
+  };
+}
+
 // Main execution function
 async function processRequest(request) {
-  // 适配 VCP 标准：将 'command' 字段作为 action，其余字段作为参数
+  // Legacy batch request detection
+  if (request.command1) {
+    return await processBatchRequest(request);
+  }
+
+  // Standard VCP request processing
   const { command, ...parameters } = request;
   const action = command;
 
@@ -842,50 +909,34 @@ async function processRequest(request) {
   switch (action) {
     case 'ListAllowedDirectories':
       return await listAllowedDirectories();
-
     case 'ReadFile':
       return await readFile(parameters.filePath, parameters.encoding);
-
     case 'WebReadFile':
-      // Accept 'url' or 'filePath' for compatibility
       return await webReadFile(parameters.url || parameters.filePath);
-
     case 'WriteFile':
       return await writeFile(parameters.filePath, parameters.content, parameters.encoding);
-
     case 'AppendFile':
       return await appendFile(parameters.filePath, parameters.content, parameters.encoding);
-
     case 'EditFile':
       return await editFile(parameters.filePath, parameters.content, parameters.encoding);
-
     case 'ListDirectory':
       return await listDirectory(parameters.directoryPath, parameters.showHidden);
-
     case 'FileInfo':
       return await getFileInfo(parameters.filePath);
-
     case 'CopyFile':
       return await copyFile(parameters.sourcePath, parameters.destinationPath);
-
     case 'MoveFile':
       return await moveFile(parameters.sourcePath, parameters.destinationPath);
-
     case 'RenameFile':
       return await renameFile(parameters.sourcePath, parameters.destinationPath);
-
     case 'DeleteFile':
       return await deleteFile(parameters.filePath);
-
     case 'CreateDirectory':
       return await createDirectory(parameters.directoryPath);
-
     case 'SearchFiles':
       return await searchFiles(parameters.searchPath, parameters.pattern, parameters.options);
-
     case 'DownloadFile':
       return await downloadFile(parameters.url);
-
     default:
       return {
         success: false,
