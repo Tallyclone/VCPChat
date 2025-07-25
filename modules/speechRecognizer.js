@@ -3,12 +3,14 @@ const path = require('path');
 
 let browser = null;
 let page = null;
+let isProcessing = false; // State lock
 
 async function start(textCallback) {
-    if (browser) {
-        console.log('[SpeechRecognizer] Recognizer is already running.');
+    if (browser || isProcessing) {
+        console.log('[SpeechRecognizer] Recognizer is already running or in process.');
         return;
     }
+    isProcessing = true;
 
     try {
         console.log('[SpeechRecognizer] Attempting to launch Puppeteer...');
@@ -58,21 +60,31 @@ async function start(textCallback) {
     } catch (error) {
         console.error('Failed to start Puppeteer speech recognizer:', error);
         await stop(); // Clean up on failure
+    } finally {
+        // Release the lock only if start-up failed, otherwise it stays locked until stop() is called.
+        if (!browser) {
+            isProcessing = false;
+        }
     }
 }
 
 async function stop() {
-    if (browser) {
-        console.log('Stopping Puppeteer speech recognizer...');
-        try {
-            await browser.close();
-        } catch (error) {
-            console.error('Error closing Puppeteer browser:', error);
-        }
-        browser = null;
-        page = null;
-        console.log('Puppeteer speech recognizer stopped.');
+    if (!browser || isProcessing) {
+        console.log('[SpeechRecognizer] Recognizer is not running or already stopping.');
+        return;
     }
+    isProcessing = true;
+
+    console.log('Stopping Puppeteer speech recognizer...');
+    try {
+        await browser.close();
+    } catch (error) {
+        console.error('Error closing Puppeteer browser:', error);
+    }
+    browser = null;
+    page = null;
+    isProcessing = false; // Release the lock
+    console.log('Puppeteer speech recognizer stopped.');
 }
 
 module.exports = {
