@@ -78,14 +78,15 @@
     position: relative;
     overflow: hidden;
     line-height: 1.6;
-    display: block !important; /* Use block for layout stability */
-    width: -moz-fit-content;    /* Firefox */
-    width: fit-content;       /* Modern browsers, shrink width to content */
-    max-width: 100%;          /* Ensure it doesn't overflow on small screens */
+    display: block !important;
+    width: -moz-fit-content;
+    width: fit-content;
+    max-width: 100%;
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
     font-size: 0.95em !important;
-    white-space: pre-wrap; /* Allow wrapping but preserve whitespace */
-    word-break: break-all; /* Break long strings */
+    white-space: pre-wrap; /* Restore: Allow wrapping but preserve whitespace */
+    word-break: break-all; /* Restore: Break long strings */
+    transition: all 0.4s ease-in-out; /* Add transition for smooth hover effect */
 }
 
 /* Animated Border for VCP ToolUse */
@@ -106,6 +107,48 @@
     z-index: 0; 
     pointer-events: none;
 }
+
+/* On hover, we don't need to force a width. `fit-content` will adjust to the new content. */
+/* We can keep a max-width to prevent it from becoming too wide. */
+.vcp-tool-use-bubble:hover {
+    max-width: 90%; /* Just constrain the max width on hover */
+}
+
+/* New styles for summary and details sections */
+.vcp-tool-summary {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.vcp-tool-details {
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    font-size: 0; /* Use font-size to collapse content, preventing width issues */
+    transition: max-height 0.5s ease-in-out, opacity 0.5s ease-in-out, margin-top 0.5s ease-in-out;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 6px;
+    margin-top: 0;
+}
+
+.vcp-tool-use-bubble:hover .vcp-tool-details {
+    max-height: 500px; /* Allow space for content to show */
+    opacity: 1;
+    margin-top: 10px; /* Add space between summary and details */
+    font-size: initial; /* Restore font-size on hover */
+}
+
+.vcp-tool-details pre {
+    margin: 0;
+    padding: 10px;
+    color: #f0f0f0;
+    white-space: pre-wrap;
+    word-break: break-all;
+    font-size: 0.85em;
+    line-height: 1.5;
+}
+
 
 /* 内部 span 的重置 - VCP ToolUse */
 .vcp-tool-use-bubble .vcp-tool-label,
