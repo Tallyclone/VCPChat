@@ -831,10 +831,12 @@ async function listAllowedDirectories() {
   }
 }
 
-// Batch processing for legacy format
+// Batch processing for legacy format with robust content and action aggregation
 async function processBatchRequest(request) {
-  debugLog('Processing legacy batch request', { request });
-  const results = [];
+  debugLog('Processing legacy batch request with robust aggregation', { request });
+
+  const aggregatedContent = [];
+  const summaryMessages = [];
   let i = 1;
   let successCount = 0;
   let failureCount = 0;
@@ -842,10 +844,8 @@ async function processBatchRequest(request) {
   while (request[`command${i}`]) {
     const command = request[`command${i}`];
     const parameters = {};
-    // Dynamically collect all parameters for this command index
     Object.keys(request).forEach(key => {
       if (key.endsWith(i.toString()) && key !== `command${i}`) {
-        // Remove the numeric suffix to get the actual parameter name
         const paramName = key.slice(0, -i.toString().length);
         parameters[paramName] = request[key];
       }
@@ -854,6 +854,20 @@ async function processBatchRequest(request) {
     let result;
     try {
       switch (command) {
+        case 'ReadFile':
+        case 'WebReadFile':
+          const filePath = parameters.filePath || parameters.url;
+          result = command === 'ReadFile' ? await readFile(filePath) : await webReadFile(filePath);
+          if (result.success) {
+            // Add a text header for the file content
+            aggregatedContent.push({ type: 'text', text: `--- Content of ${result.data.fileName || filePath} ---` });
+            if (Array.isArray(result.data.content)) {
+              aggregatedContent.push(...result.data.content);
+            } else if (typeof result.data.content === 'string') {
+              aggregatedContent.push({ type: 'text', text: result.data.content });
+            }
+          }
+          break;
         case 'CopyFile':
           result = await copyFile(parameters.sourcePath, parameters.destinationPath);
           break;
@@ -875,20 +889,41 @@ async function processBatchRequest(request) {
 
     if (result.success) {
       successCount++;
+      // For non-read operations, generate a summary message instead of pushing to content
+      if (command !== 'ReadFile' && command !== 'WebReadFile') {
+         summaryMessages.push(result.data.message);
+      }
     } else {
       failureCount++;
+      // Add error messages to the summary as well
+      summaryMessages.push(`Error executing ${command}: ${result.error}`);
     }
-    results.push({ command, parameters, ...result });
     i++;
   }
 
+  // Prepend summary of all non-read operations to the aggregated content
+  if (summaryMessages.length > 0) {
+      const summaryText = `Batch Operations Summary:\n- ${summaryMessages.join('\n- ')}`;
+      aggregatedContent.unshift({ type: 'text', text: summaryText });
+  }
+
+  // If there's any content (from reads or summaries), return the aggregated multimodal response.
+  if (aggregatedContent.length > 0) {
+    return {
+      success: true,
+      data: {
+        message: `Batch processing complete. Succeeded: ${successCount}, Failed: ${failureCount}.`,
+        content: aggregatedContent,
+      },
+    };
+  }
+
+  // Fallback for batches with no read operations and no successful write operations
   return {
     success: true,
     data: {
       message: `Batch processing complete. Succeeded: ${successCount}, Failed: ${failureCount}.`,
-      successCount,
-      failureCount,
-      results,
+      details: summaryMessages.join('\n'),
     },
   };
 }
