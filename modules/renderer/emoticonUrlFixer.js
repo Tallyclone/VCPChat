@@ -48,6 +48,50 @@ function editDistance(s1, s2) {
 }
 
 
+function extractEmoticonInfo(url) {
+    let filename = null;
+    let packageName = null;
+
+    if (!url) return { filename, packageName };
+
+    try {
+        // Use URL to handle file:// or http:// protocols
+        const decodedPath = decodeURIComponent(new URL(url).pathname);
+        // Split path and remove empty segments (e.g., leading slash)
+        const parts = decodedPath.split('/').filter(Boolean);
+        if (parts.length > 0) {
+            filename = parts[parts.length - 1];
+        }
+        if (parts.length > 1) {
+            packageName = parts[parts.length - 2];
+        }
+    } catch (e) {
+        // Fallback for strings that are not full URLs or malformed
+        try {
+            const decodedUrl = decodeURIComponent(url);
+            const parts = decodedUrl.split('/').filter(Boolean);
+            if (parts.length > 0) {
+                filename = parts[parts.length - 1];
+            }
+            if (parts.length > 1) {
+                packageName = parts[parts.length - 2];
+            }
+        } catch (e2) {
+            // If decoding fails, use the raw url string
+            const parts = url.split('/').filter(Boolean);
+            if (parts.length > 0) {
+                filename = parts[parts.length - 1];
+            }
+            if (parts.length > 1) {
+                packageName = parts[parts.length - 2];
+            }
+        }
+    }
+    
+    return { filename, packageName };
+}
+
+
 async function initialize(api) {
     if (isInitialized) return;
     electronAPI = api;
@@ -72,68 +116,66 @@ function fixEmoticonUrl(originalSrc) {
     }
 
     // 1. Quick check: if the URL is already perfect, return it.
-    // We decode both URLs to avoid mismatches due to encoding differences.
     try {
         const decodedOriginalSrc = decodeURIComponent(originalSrc);
         if (emoticonLibrary.some(item => decodeURIComponent(item.url) === decodedOriginalSrc)) {
             return originalSrc; // It's a perfect match, don't touch it.
         }
     } catch (e) {
-        // If decoding fails, it's likely a malformed URL. Let it proceed to the fuzzy matching logic.
-        console.warn(`[EmoticonFixer] Could not decode originalSrc: ${originalSrc}`, e);
+        console.warn(`[EmoticonFixer] Could not decode originalSrc for perfect match check: ${originalSrc}`, e);
     }
 
-    // 2. Check if it's likely an emoticon URL. If not, pass through.
-    // We check for "表情包" in the decoded URL path.
+    // 2. Check if it's likely an emoticon URL by looking for "表情包"
     try {
-        const decodedSrc = decodeURIComponent(originalSrc);
-        if (!decodedSrc.includes('表情包')) {
+        if (!decodeURIComponent(originalSrc).includes('表情包')) {
             return originalSrc;
         }
     } catch (e) {
-        // URI malformed, likely not a valid URL we can fix anyway.
+        return originalSrc; // Malformed URI
+    }
+
+    // 3. Extract info and find the best match based on package and filename.
+    const searchInfo = extractEmoticonInfo(originalSrc);
+
+    if (!searchInfo.filename) {
+        console.log(`[EmoticonFixer] Could not extract filename from "${originalSrc}". Passing through.`);
         return originalSrc;
     }
 
-
-    // 3. Extract the filename from the original URL for matching.
-    let searchFilename;
-    try {
-        // Robust way to get the last part of the path from a URL
-        const decodedPath = decodeURIComponent(new URL(originalSrc).pathname);
-        const parts = decodedPath.split('/');
-        searchFilename = parts[parts.length - 1];
-    } catch (e) {
-        // Fallback for malformed URLs
-        const match = decodeURIComponent(originalSrc).match(/([^/]+)$/);
-        searchFilename = match ? match[1] : null;
-    }
-    
-    if (!searchFilename) {
-        return originalSrc;
-    }
-
-    // 4. Find the best match in the library.
     let bestMatch = null;
-    let highestScore = 0.0;
+    let highestScore = -1;
 
     for (const item of emoticonLibrary) {
-        const score = getSimilarity(searchFilename, item.filename);
+        const itemPackageInfo = extractEmoticonInfo(item.url);
+        
+        let packageScore = 0.5;
+        if (searchInfo.packageName && itemPackageInfo.packageName) {
+            packageScore = getSimilarity(searchInfo.packageName, itemPackageInfo.packageName);
+        } else if (!searchInfo.packageName && !itemPackageInfo.packageName) {
+            packageScore = 1.0; // Both have no package, that's a perfect "package match"
+        } else {
+            packageScore = 0.0; // One has a package name, the other doesn't.
+        }
+
+        const filenameScore = getSimilarity(searchInfo.filename, item.filename);
+
+        // Weighted score: 70% for package name, 30% for filename.
+        const score = (0.7 * packageScore) + (0.3 * filenameScore);
+
         if (score > highestScore) {
             highestScore = score;
             bestMatch = item;
         }
     }
 
-    // 5. If we found a reasonably good match, return the fixed URL.
-    // Lowered threshold to 0.6 to be more lenient.
-    if (bestMatch && highestScore > 0.3) {
-        console.log(`[EmoticonFixer] Fixed URL. Original: "${originalSrc}", Best Match: "${bestMatch.url}" (Score: ${highestScore})`);
+    // 4. If a reasonably good match is found, return the fixed URL.
+    if (bestMatch && highestScore > 0.6) {
+        console.log(`[EmoticonFixer] Fixed URL. Original: "${originalSrc}", Best Match: "${bestMatch.url}" (Score: ${highestScore.toFixed(2)})`);
         return bestMatch.url;
     }
 
-    // 6. If no good match was found, return the original URL.
-    console.log(`[EmoticonFixer] No suitable fix found for "${originalSrc}". Highest score: ${highestScore}. Passing through.`);
+    // 5. If no good match was found, return the original URL.
+    console.log(`[EmoticonFixer] No suitable fix found for "${originalSrc}". Highest score: ${highestScore.toFixed(2)}. Passing through.`);
     return originalSrc;
 }
 

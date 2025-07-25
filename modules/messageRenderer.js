@@ -12,6 +12,7 @@ import { initializeImageHandler, setContentAndProcessImages, clearImageState, cl
 import { processAnimationsInContent } from './renderer/animation.js';
 import { createMessageSkeleton } from './renderer/domBuilder.js';
 import * as streamManager from './renderer/streamManager.js';
+import * as emoticonUrlFixer from './renderer/emoticonUrlFixer.js';
 
 
 import * as contentProcessor from './renderer/contentProcessor.js';
@@ -354,6 +355,9 @@ function initializeMessageRenderer(refs) {
        chatMessagesDiv: mainRendererReferences.chatMessagesDiv,
    });
 
+   // Initialize the emoticon fixer
+   emoticonUrlFixer.initialize(mainRendererReferences.electronAPI);
+
    // Create a new marked instance wrapper specifically for the stream manager.
    // This ensures that any text passed to `marked.parse()` during streaming
    // is first processed by `deIndentHtml`. This robustly fixes the issue of
@@ -593,8 +597,23 @@ async function renderMessage(message, isInitialLoad = false) {
         }
         
         const processedContent = preprocessFullContent(textToRender, globalSettings);
-        const rawHtml = markedInstance.parse(processedContent);
-        setContentAndProcessImages(contentDiv, rawHtml, message.id);
+        let rawHtml = markedInstance.parse(processedContent);
+        
+        // Create a temporary div to apply emoticon fixes before setting innerHTML
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = rawHtml;
+        const images = tempDiv.querySelectorAll('img');
+        images.forEach(img => {
+            const originalSrc = img.getAttribute('src');
+            if (originalSrc) {
+                const fixedSrc = emoticonUrlFixer.fixEmoticonUrl(originalSrc);
+                if (originalSrc !== fixedSrc) {
+                    img.src = fixedSrc;
+                }
+            }
+        });
+        
+        setContentAndProcessImages(contentDiv, tempDiv.innerHTML, message.id);
         contentProcessor.processRenderedContent(contentDiv);
         
         // After content is rendered, check if we need to run animations
@@ -773,8 +792,23 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId) {
     // --- Update DOM ---
     const globalSettings = mainRendererReferences.globalSettingsRef.get();
     const processedFinalText = preprocessFullContent(fullContent, globalSettings);
-    const rawHtml = markedInstance.parse(processedFinalText);
-    setContentAndProcessImages(contentDiv, rawHtml, messageId);
+    let rawHtml = markedInstance.parse(processedFinalText);
+
+    // Create a temporary div to apply emoticon fixes before setting innerHTML
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = rawHtml;
+    const images = tempDiv.querySelectorAll('img');
+    images.forEach(img => {
+        const originalSrc = img.getAttribute('src');
+        if (originalSrc) {
+            const fixedSrc = emoticonUrlFixer.fixEmoticonUrl(originalSrc);
+            if (originalSrc !== fixedSrc) {
+                img.src = fixedSrc;
+            }
+        }
+    });
+
+    setContentAndProcessImages(contentDiv, tempDiv.innerHTML, messageId);
 
     // Apply post-processing
     contentProcessor.processRenderedContent(contentDiv);

@@ -1,4 +1,179 @@
 document.addEventListener('DOMContentLoaded', async () => {
+    // --- Start: Emoticon URL Fixer ---
+    let emoticonLibrary = [];
+    let isEmoticonFixerInitialized = false;
+
+    // A simple string similarity function (Jaro-Winkler might be better, but this is simple)
+    function getSimilarity(s1, s2) {
+        let longer = s1;
+        let shorter = s2;
+        if (s1.length < s2.length) {
+            longer = s2;
+            shorter = s1;
+        }
+        const longerLength = longer.length;
+        if (longerLength === 0) {
+            return 1.0;
+        }
+        return (longerLength - editDistance(longer, shorter)) / parseFloat(longerLength);
+    }
+
+    function editDistance(s1, s2) {
+        s1 = s1.toLowerCase();
+        s2 = s2.toLowerCase();
+
+        const costs = [];
+        for (let i = 0; i <= s1.length; i++) {
+            let lastValue = i;
+            for (let j = 0; j <= s2.length; j++) {
+                if (i === 0) {
+                    costs[j] = j;
+                } else {
+                    if (j > 0) {
+                        let newValue = costs[j - 1];
+                        if (s1.charAt(i - 1) !== s2.charAt(j - 1)) {
+                            newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
+                        }
+                        costs[j - 1] = lastValue;
+                        lastValue = newValue;
+                    }
+                }
+            }
+            if (i > 0) {
+                costs[s2.length] = lastValue;
+            }
+        }
+        return costs[s2.length];
+    }
+    
+    function extractEmoticonInfo(url) {
+        let filename = null;
+        let packageName = null;
+
+        if (!url) return { filename, packageName };
+
+        try {
+            const decodedPath = decodeURIComponent(new URL(url).pathname);
+            const parts = decodedPath.split('/').filter(Boolean);
+            if (parts.length > 0) {
+                filename = parts[parts.length - 1];
+            }
+            if (parts.length > 1) {
+                packageName = parts[parts.length - 2];
+            }
+        } catch (e) {
+            try {
+                const decodedUrl = decodeURIComponent(url);
+                const parts = decodedUrl.split('/').filter(Boolean);
+                if (parts.length > 0) {
+                    filename = parts[parts.length - 1];
+                }
+                if (parts.length > 1) {
+                    packageName = parts[parts.length - 2];
+                }
+            } catch (e2) {
+                const parts = url.split('/').filter(Boolean);
+                if (parts.length > 0) {
+                    filename = parts[parts.length - 1];
+                }
+                if (parts.length > 1) {
+                    packageName = parts[parts.length - 2];
+                }
+            }
+        }
+        
+        return { filename, packageName };
+    }
+
+    async function initializeEmoticonFixer() {
+        if (isEmoticonFixerInitialized || !window.electronAPI) return;
+        try {
+            console.log('[TextViewer-EmoticonFixer] Initializing and fetching library...');
+            const library = await window.electronAPI.getEmoticonLibrary();
+            if (library && library.length > 0) {
+                emoticonLibrary = library;
+                isEmoticonFixerInitialized = true;
+                console.log(`[TextViewer-EmoticonFixer] Library loaded with ${emoticonLibrary.length} items.`);
+            } else {
+                console.warn('[TextViewer-EmoticonFixer] Fetched library is empty.');
+            }
+        } catch (error) {
+            console.error('[TextViewer-EmoticonFixer] Failed to initialize:', error);
+        }
+    }
+
+    function fixEmoticonUrl(originalSrc) {
+        if (!isEmoticonFixerInitialized || emoticonLibrary.length === 0) {
+            return originalSrc;
+        }
+        try {
+            const decodedOriginalSrc = decodeURIComponent(originalSrc);
+            if (emoticonLibrary.some(item => decodeURIComponent(item.url) === decodedOriginalSrc)) {
+                return originalSrc;
+            }
+        } catch (e) {
+            // Malformed URL, proceed to fuzzy matching
+        }
+        try {
+            if (!decodeURIComponent(originalSrc).includes('表情包')) {
+                return originalSrc;
+            }
+        } catch (e) {
+            return originalSrc;
+        }
+
+        const searchInfo = extractEmoticonInfo(originalSrc);
+        if (!searchInfo.filename) {
+            return originalSrc;
+        }
+
+        let bestMatch = null;
+        let highestScore = -1;
+
+        for (const item of emoticonLibrary) {
+            const itemPackageInfo = extractEmoticonInfo(item.url);
+            let packageScore = 0.5;
+            if (searchInfo.packageName && itemPackageInfo.packageName) {
+                packageScore = getSimilarity(searchInfo.packageName, itemPackageInfo.packageName);
+            } else if (!searchInfo.packageName && !itemPackageInfo.packageName) {
+                packageScore = 1.0;
+            } else {
+                packageScore = 0.0;
+            }
+            const filenameScore = getSimilarity(searchInfo.filename, item.filename);
+            const score = (0.7 * packageScore) + (0.3 * filenameScore);
+            if (score > highestScore) {
+                highestScore = score;
+                bestMatch = item;
+            }
+        }
+
+        if (bestMatch && highestScore > 0.6) {
+            console.log(`[TextViewer-EmoticonFixer] Fixed URL. Original: "${originalSrc}", Best Match: "${bestMatch.url}" (Score: ${highestScore.toFixed(2)})`);
+            return bestMatch.url;
+        }
+        return originalSrc;
+    }
+
+    async function fixEmoticonImagesInContainer(container) {
+        if (!isEmoticonFixerInitialized) {
+            return;
+        }
+        const images = container.querySelectorAll('img');
+        images.forEach(img => {
+            const originalSrc = img.getAttribute('src');
+            if (originalSrc) {
+                const fixedSrc = fixEmoticonUrl(originalSrc);
+                if (originalSrc !== fixedSrc) {
+                    img.src = fixedSrc;
+                }
+            }
+        });
+    }
+    // --- End: Emoticon URL Fixer ---
+
+    initializeEmoticonFixer(); // Initialize when the script loads
+
     let originalRawContent = ''; // To store the raw, un-rendered content
 
     // --- Start: Ported Pre-processing functions from messageRenderer ---
@@ -488,7 +663,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    function enhanceRenderedContent(container) {
+    async function enhanceRenderedContent(container) {
+        // First, fix any broken emoticon URLs
+        await fixEmoticonImagesInContainer(container);
+
         const codeBlocksToProcess = [];
         const mermaidBlocksToRender = [];
 
