@@ -965,9 +965,7 @@ async function loadAndApplyGlobalSettings() {
 function addNetworkPathInput(path = '') {
     const container = document.getElementById('networkNotesPathsContainer');
     const inputGroup = document.createElement('div');
-    inputGroup.style.display = 'flex';
-    inputGroup.style.gap = '8px';
-    inputGroup.style.alignItems = 'center';
+    inputGroup.className = 'network-path-input-group';
 
     const input = document.createElement('input');
     input.type = 'text';
@@ -981,7 +979,6 @@ function addNetworkPathInput(path = '') {
     removeBtn.textContent = '删除';
     removeBtn.className = 'sidebar-button small-button danger-button'; // Re-use existing styles
     removeBtn.style.width = 'auto';
-    removeBtn.style.padding = '4px 8px';
     removeBtn.onclick = () => {
         inputGroup.remove();
     };
