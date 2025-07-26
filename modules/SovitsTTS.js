@@ -138,12 +138,66 @@ class SovitsTTS {
     }
 
     /**
-     * 将长文本分割成句子队列
-     * @param {string} text
-     * @returns {string[]}
+     * 将长文本分割成更小的块以进行流式TTS。
+     * 策略：
+     * 1. 将第一段分割为“第一句”和“段落的其余部分”。
+     * 2. 如果第一句以感叹号结尾且后面还有内容，则会尝试将下一句也合并进来，以避免过短的语气词片段。
+     * 3. 后续段落保持原样。
+     * 这样做可以尽快发送第一个音频块，以减少可感知的延迟。
+     * @param {string} text 要分割的原始文本。
+     * @returns {string[]} 文本块的数组。
      */
     splitText(text) {
-        return text.split('\n').filter(line => line.trim() !== '');
+        const trimmedText = text.trim();
+        if (!trimmedText) {
+            return [];
+        }
+
+        // 1. 找到第一个换行符的位置，以此划分第一段和其余段落
+        const firstNewlineIndex = trimmedText.indexOf('\n');
+        const firstParagraph = (firstNewlineIndex === -1) ? trimmedText : trimmedText.substring(0, firstNewlineIndex);
+        const otherParagraphs = (firstNewlineIndex === -1) ? '' : trimmedText.substring(firstNewlineIndex + 1);
+
+        const chunks = [];
+
+        // 2. 处理第一段：分离出第一句
+        // 正则表达式：匹配直到第一个中/英文句号、问号或感叹号。非贪婪匹配。
+        const sentenceEndRegex = /.+?[。！？.!?]/;
+        const match = firstParagraph.match(sentenceEndRegex);
+
+        if (match) {
+            let firstChunk = match[0];
+            let restOfFirstParagraph = firstParagraph.substring(firstChunk.length).trim();
+
+            // 新增逻辑：如果第一句以感叹号结尾，并且后面还有内容，则尝试合并下一句
+            if (/[!！]$/.test(firstChunk) && restOfFirstParagraph) {
+                const nextSentenceMatch = restOfFirstParagraph.match(sentenceEndRegex);
+                if (nextSentenceMatch) {
+                    const nextSentence = nextSentenceMatch[0];
+                    firstChunk += nextSentence; // 合并
+                    restOfFirstParagraph = restOfFirstParagraph.substring(nextSentence.length).trim();
+                }
+            }
+
+            chunks.push(firstChunk);
+
+            if (restOfFirstParagraph) {
+                chunks.push(restOfFirstParagraph);
+            }
+        } else {
+            // 如果第一段没有标点，则将整个第一段作为一个块
+            if (firstParagraph.trim()) {
+                chunks.push(firstParagraph.trim());
+            }
+        }
+
+        // 3. 处理其余段落
+        if (otherParagraphs.trim()) {
+            const restChunks = otherParagraphs.split('\n').filter(line => line.trim() !== '');
+            chunks.push(...restChunks);
+        }
+
+        return chunks.filter(c => c.length > 0);
     }
 
     /**
