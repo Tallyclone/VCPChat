@@ -258,8 +258,7 @@ AI在生成表情包的`<img>`标签时，有时会因为模型幻觉或数据�
         *   已合成的音频会被自动缓存，重复朗读同一内容时可实现“秒播”，无需再次请求 API。
     *   **交互式控制**: 朗读期间，AI 的头像会呈现呼吸灯特效。用户可随时点击发光的头像来立即终止当前的朗读队列。
     *   **下载与使用**：[引擎下载链接](https://modelscope.cn/models/aihobbyist/GPT-SoVITS-Inference/files)，20-40的N卡下载124版本，50的N卡下载128版本。使用`gsvi.bat`启动引擎。
-    *
-	**下载模型**：[下载模型](https://www.modelscope.cn/models/aihobbyist/GPT-SoVITS_Model_Collection/files) ,将模型下载到`/models/v2proplus`文件夹。
+    *   **下载模型**：[下载模型](https://www.modelscope.cn/models/aihobbyist/GPT-SoVITS_Model_Collection/files) ,将模型下载到`/models/v2proplus`文件夹。
 	*
 	**优化输出接口**：Vchat使用自建的流式剪枝算法以提高流式输出中tts渲染的延迟降低卡顿，因此需要Sovits输出引擎兼容。请用Vchat仓库源码中提供的魔改版core.py来替换原始项目的核心渲染程序代码。将VCPChat源码目录中的sovitstest/core.py替换Sovits目录中的gsvi_server/core.py；将sovitstest/my_infer.py替换Sovits目录中的tools/my_infer.py。
     *   **业界首创的双语混合朗读引擎**:
