@@ -472,7 +472,7 @@ app.on('will-quit', () => {
     console.log('[Main] All global shortcuts unregistered.');
 
     // 3. Stop the speech recognizer
-    speechRecognizer.stop();
+    speechRecognizer.shutdown(); // Use the new shutdown function to close the browser
 
     // 4. 关闭WebSocket连接
     if (vcpLogWebSocket && vcpLogWebSocket.readyState === WebSocket.OPEN) {

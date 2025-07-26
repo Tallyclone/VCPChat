@@ -24,6 +24,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const uiHelperFunctions = {
         scrollToBottom: () => {
             chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight;
+        },
+        autoResizeTextarea: (textarea) => {
+            textarea.style.height = 'auto';
+            const scrollHeight = textarea.scrollHeight;
+            const maxHeight = parseInt(getComputedStyle(textarea).maxHeight, 10) || Infinity;
+            textarea.style.height = `${Math.min(scrollHeight, maxHeight)}px`;
         }
     };
 
@@ -185,18 +191,29 @@ document.addEventListener('DOMContentLoaded', () => {
             const messageElement = document.getElementById(`message-item-${thinkingMessageId}`);
             let textToSpeak = '';
             if (messageElement) {
-                // Find the content part of the message, which is rendered by messageRenderer
                 const contentElement = messageElement.querySelector('.md-content');
                 if (contentElement) {
-                    textToSpeak = contentElement.innerText || ''; // Use innerText to get the rendered text
+                    // Clone the content element to avoid modifying the actual displayed content
+                    const contentClone = contentElement.cloneNode(true);
+                    
+                    // Remove all tool-use bubbles from the clone
+                    contentClone.querySelectorAll('.vcp-tool-use-bubble').forEach(el => el.remove());
+                    
+                    // Now, get the innerText from the cleaned-up clone
+                    textToSpeak = contentClone.innerText || '';
                 } else {
                     // Fallback for safety, though .md-content should exist
                     textToSpeak = messageElement.textContent || messageElement.innerText;
                 }
             } else {
                 // If the element can't be found, fall back to parsing the raw HTML as a last resort.
+                // This is less ideal as it doesn't benefit from the DOM-based filtering.
                 const tempDiv = document.createElement('div');
                 tempDiv.innerHTML = fullText;
+                // A simple regex to strip tool blocks from the raw text as a fallback.
+                const toolRegex = /<<<\[TOOL_REQUEST\]>>>(.*?)<<<\[END_TOOL_REQUEST\]>>>/gs;
+                const cleanedFullText = fullText.replace(toolRegex, '');
+                tempDiv.innerHTML = cleanedFullText;
                 textToSpeak = tempDiv.textContent || tempDiv.innerText || '';
             }
             
@@ -225,20 +242,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- TTS Audio Playback Logic ---
     let currentAudio = null;
-    let currentSessionId = -1;
+    let audioQueue = []; // Queue for pending audio clips
+    let isPlaying = false;
 
-    window.electronAPI.onPlayTtsAudio((data) => {
-        const { audioData, msgId, sessionId } = data;
-        console.log(`[VoiceChat] Received audio for msgId ${msgId} in session ${sessionId}`);
-
-        if (currentAudio) {
-            currentAudio.pause();
-            currentAudio = null;
+    function processAudioQueue() {
+        if (isPlaying || audioQueue.length === 0) {
+            return; // Don't start a new audio if one is already playing or queue is empty
         }
-        currentSessionId = sessionId;
 
-        // FIX: "Buffer is not defined" in renderer process.
-        // Use atob to decode base64 and then convert to a byte array (Uint8Array).
+        isPlaying = true;
+        const { audioData, msgId } = audioQueue.shift(); // Get the next audio from the queue
+
+        console.log(`[VoiceChat] Playing audio from queue for msgId ${msgId}`);
+
         const byteCharacters = atob(audioData);
         const byteNumbers = new Array(byteCharacters.length);
         for (let i = 0; i < byteCharacters.length; i++) {
@@ -246,27 +262,42 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         const byteArray = new Uint8Array(byteNumbers);
         const audioBlob = new Blob([byteArray], { type: 'audio/mpeg' });
-
         const audioUrl = URL.createObjectURL(audioBlob);
+
         currentAudio = new Audio(audioUrl);
 
-        currentAudio.play().catch(e => console.error("Audio playback failed:", e));
+        currentAudio.play().catch(e => {
+            console.error("Audio playback failed:", e);
+            isPlaying = false; // Reset flag on error
+            processAudioQueue(); // Try to play the next one
+        });
 
         currentAudio.onended = () => {
             console.log(`[VoiceChat] Audio for msgId ${msgId} finished playing.`);
             URL.revokeObjectURL(audioUrl);
             currentAudio = null;
+            isPlaying = false;
+            processAudioQueue(); // Play the next item in the queue
         };
+    }
+
+    window.electronAPI.onPlayTtsAudio((data) => {
+        const { audioData, msgId } = data;
+        console.log(`[VoiceChat] Queued audio for msgId ${msgId}`);
+        audioQueue.push({ audioData, msgId });
+        processAudioQueue(); // Attempt to process the queue
     });
 
     // Listen for stop command from main process
     window.electronAPI.onStopTtsAudio(() => {
-        console.log('[VoiceChat] Received stop TTS command.');
+        console.log('[VoiceChat] Received stop TTS command. Clearing queue and stopping current audio.');
+        audioQueue = []; // Clear the pending audio queue
         if (currentAudio) {
             currentAudio.pause();
             URL.revokeObjectURL(currentAudio.src);
             currentAudio = null;
         }
+        isPlaying = false;
     });
 
 

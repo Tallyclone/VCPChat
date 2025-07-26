@@ -164,7 +164,15 @@ function showContextMenu(event, messageItem, message) {
                     const agentConfig = await electronAPI.getAgentConfig(agentId);
                     if (agentConfig && agentConfig.ttsVoicePrimary) {
                         const contentDiv = messageItem.querySelector('.md-content');
-                        const textToRead = contentDiv ? contentDiv.innerText : '';
+                        let textToRead = '';
+                        if (contentDiv) {
+                            // Clone the content element to avoid modifying the actual displayed content
+                            const contentClone = contentDiv.cloneNode(true);
+                            // Remove all tool-use bubbles from the clone
+                            contentClone.querySelectorAll('.vcp-tool-use-bubble').forEach(el => el.remove());
+                            // Now, get the innerText from the cleaned-up clone
+                            textToRead = contentClone.innerText || '';
+                        }
                         
                         if (textToRead.trim()) {
                             // Pass bilingual TTS settings

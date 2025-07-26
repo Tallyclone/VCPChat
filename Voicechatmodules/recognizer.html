@@ -93,6 +93,7 @@
         const resultDiv = document.getElementById('result');
         let recognition;
         let recognizing = false;
+        let manualStop = false; // Flag to prevent auto-restart on manual stop
 
         // The 'window.sendTextToElectron' function will be injected directly by Puppeteer's exposeFunction.
         // We don't need a setter for it anymore.
@@ -105,6 +106,7 @@
 
             recognition.onstart = function() {
                 recognizing = true;
+                manualStop = false; // Reset flag on start
                 startButton.textContent = '停止录音';
                 startButton.style.backgroundColor = '#dc3545';
                 statusDiv.textContent = '正在聆听...';
@@ -144,16 +146,30 @@
                 startButton.textContent = '开始录音';
                 startButton.style.backgroundColor = '#4682b4';
                 statusDiv.textContent = '录音结束。';
+                // If recognition stops and it wasn't a manual stop, restart it.
+                // This handles cases where the service stops due to silence or other issues.
+                if (!manualStop) {
+                    console.log('Recognition ended, restarting automatically...');
+                    // Use a small timeout to prevent rapid-fire restarts on some errors
+                    setTimeout(() => {
+                        // Check again in case the user manually started during the timeout
+                        if (!recognizing) {
+                           window.startRecognition();
+                        }
+                    }, 500);
+                }
             };
 
             // Allow Puppeteer to control start/stop directly
             window.startRecognition = () => {
                 if (!recognizing) {
+                    manualStop = false; // Ensure we intend to run
                     recognition.start();
                 }
             };
             window.stopRecognition = () => {
                 if (recognizing) {
+                    manualStop = true;
                     recognition.stop();
                 }
             };

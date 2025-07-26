@@ -3,91 +3,121 @@ const path = require('path');
 
 let browser = null;
 let page = null;
-let isProcessing = false; // State lock
+let isProcessing = false; // State lock to prevent race conditions
+let textCallback = null; // Store the callback function globally within the module
 
-async function start(textCallback) {
-    if (browser || isProcessing) {
-        console.log('[SpeechRecognizer] Recognizer is already running or in process.');
+// --- Private Functions ---
+
+async function initializeBrowser() {
+    if (browser) return; // Already initialized
+
+    console.log('[SpeechRecognizer] Initializing Puppeteer browser...');
+    const executablePath = puppeteer.executablePath();
+    browser = await puppeteer.launch({
+        executablePath: executablePath,
+        headless: true,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--use-fake-ui-for-media-stream',
+            '--disable-gpu', // Often helps in headless environments
+        ],
+    });
+
+    page = await browser.newPage();
+    
+    // Grant microphone permissions permanently for the session
+    const context = browser.defaultBrowserContext();
+    await context.overridePermissions(`file://${path.join(__dirname, '..')}`, ['microphone']);
+
+    // Expose the callback function once
+    await page.exposeFunction('sendTextToElectron', (text) => {
+        if (textCallback && typeof textCallback === 'function') {
+            textCallback(text);
+        }
+    });
+    console.log('[SpeechRecognizer] "sendTextToElectron" function exposed.');
+
+    const recognizerPath = `file://${path.join(__dirname, '..', 'Voicechatmodules', 'recognizer.html')}`;
+    console.log(`[SpeechRecognizer] Loading recognizer page: ${recognizerPath}`);
+    await page.goto(recognizerPath);
+    
+    console.log('[SpeechRecognizer] Browser and page initialized.');
+}
+
+
+// --- Public API ---
+
+async function start(callback) {
+    if (isProcessing) {
+        console.log('[SpeechRecognizer] Already processing a request.');
         return;
     }
     isProcessing = true;
-
+    
     try {
-        console.log('[SpeechRecognizer] Attempting to launch Puppeteer...');
-        
-        const executablePath = puppeteer.executablePath();
-        console.log(`[SpeechRecognizer] Puppeteer executable path: ${executablePath}`);
+        // Store the callback
+        if (callback) {
+            textCallback = callback;
+        }
 
-        browser = await puppeteer.launch({
-            executablePath: executablePath, // Explicitly set the path
-            headless: true, // Back to headless mode for production
-            // devtools: true, // No need for devtools in headless mode
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--use-fake-ui-for-media-stream'
-            ]
-        });
-
-        console.log('[SpeechRecognizer] Puppeteer launched, creating new page...');
-        page = await browser.newPage();
-        console.log('[SpeechRecognizer] New page created.');
-
-        // Grant microphone permissions
-        const context = browser.defaultBrowserContext();
-        await context.overridePermissions(`file://${path.join(__dirname, '..')}`, ['microphone']);
-
-        const recognizerPath = `file://${path.join(__dirname, '..', 'Voicechatmodules', 'recognizer.html')}`;
-        console.log(`Navigating to recognizer page: ${recognizerPath}`);
-        await page.goto(recognizerPath);
-
-        // Expose a function from Node.js to the page (Puppeteer).
-        // This is the one and only place this function is defined.
-        await page.exposeFunction('sendTextToElectron', (text) => {
-            if (textCallback && typeof textCallback === 'function') {
-                textCallback(text);
-            }
-        });
-        console.log('[SpeechRecognizer] "sendTextToElectron" function exposed to the page.');
+        // Initialize browser if it's not already running
+        await initializeBrowser();
 
         // Start recognition on the page
-        await page.evaluate(() => {
-            window.startRecognition();
-        });
-
-        console.log('Puppeteer speech recognizer started successfully.');
+        if (page) {
+            await page.evaluate(() => window.startRecognition());
+            console.log('[SpeechRecognizer] Recognition started on page.');
+        } else {
+            throw new Error("Page is not available.");
+        }
 
     } catch (error) {
-        console.error('Failed to start Puppeteer speech recognizer:', error);
-        await stop(); // Clean up on failure
+        console.error('[SpeechRecognizer] Failed to start recognition:', error);
+        await shutdown(); // If start fails catastrophically, shut down everything.
     } finally {
-        // Release the lock only if start-up failed, otherwise it stays locked until stop() is called.
-        if (!browser) {
-            isProcessing = false;
-        }
+        isProcessing = false;
     }
 }
 
 async function stop() {
-    if (!browser || isProcessing) {
-        console.log('[SpeechRecognizer] Recognizer is not running or already stopping.');
+    if (isProcessing || !page) {
+        console.log('[SpeechRecognizer] Not running or already processing.');
         return;
     }
     isProcessing = true;
 
-    console.log('Stopping Puppeteer speech recognizer...');
+    console.log('[SpeechRecognizer] Stopping recognition on page...');
     try {
-        await browser.close();
+        if (page && !page.isClosed()) {
+            await page.evaluate(() => window.stopRecognition());
+            console.log('[SpeechRecognizer] Recognition stopped on page.');
+        }
     } catch (error) {
-        console.error('Error closing Puppeteer browser:', error);
+        console.error('[SpeechRecognizer] Error stopping recognition on page:', error);
+    } finally {
+        isProcessing = false;
+    }
+}
+
+async function shutdown() {
+    console.log('[SpeechRecognizer] Shutting down Puppeteer browser...');
+    if (browser) {
+        try {
+            await browser.close();
+        } catch (error) {
+            console.error('[SpeechRecognizer] Error closing browser:', error);
+        }
     }
     browser = null;
     page = null;
-    isProcessing = false; // Release the lock
-    console.log('Puppeteer speech recognizer stopped.');
+    textCallback = null;
+    isProcessing = false;
+    console.log('[SpeechRecognizer] Puppeteer shut down.');
 }
 
 module.exports = {
     start,
-    stop
+    stop,
+    shutdown // Expose the new shutdown function
 };
