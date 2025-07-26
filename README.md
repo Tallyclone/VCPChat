@@ -260,7 +260,7 @@ AI在生成表情包的`<img>`标签时，有时会因为模型幻觉或数据�
     *   **下载与使用**：[引擎下载链接](https://modelscope.cn/models/aihobbyist/GPT-SoVITS-Inference/files)，20-40的N卡下载124版本，50的N卡下载128版本。使用`gsvi.bat`启动引擎。
     *   **下载模型**：[下载模型](https://www.modelscope.cn/models/aihobbyist/GPT-SoVITS_Model_Collection/files) ,将模型下载到`/models/v2proplus`文件夹。
 	*
-	**优化输出接口**：Vchat使用自建的流式剪枝算法以提高流式输出中tts渲染的延迟降低卡顿，因此需要Sovits输出引擎兼容。请用Vchat仓库源码中提供的魔改版core.py来替换原始项目的核心渲染程序代码。将VCPChat源码目录中的sovitstest/GSVI.py替换Sovits目录中的gsvi_server/GSVI.py；将sovitstest/my_infer.py替换Sovits目录中的tools/my_infer.py。
+	**优化输出接口**：Vchat使用自创的流式剪枝算法以提高流式输出中tts渲染的延迟降低卡顿(该算法会将音频合成速度提升600%，实现语音输入和输出延迟都降低至毫秒级)，因此需要Sovits输出引擎兼容。请用Vchat仓库源码中提供的魔改版文件来替换原始项目的核心渲染程序代码。将VCPChat源码目录中的sovitstest/GSVI.py替换Sovits目录中的gsvi_server/GSVI.py；将sovitstest/my_infer.py替换Sovits目录中的tools/my_infer.py。
     *   **业界首创的双语混合朗读引擎**:
         *   VChat 实现了一套强大的、基于正则表达式的文本切片算法，允许实现**无缝的中日、中英等多语言混合朗读**。
         *   **如何使用**: 在 Agent 设置中，您可以分别设置“主语言模型”和“副语言模型”，并为它们指定不同的正则表达式。
