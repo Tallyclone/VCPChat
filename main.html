@@ -324,7 +324,7 @@
                 </div>
                 <div>
                     <label for="vcpServerUrl">VCP 服务器 URL:</label>
-                    <input type="url" id="vcpServerUrl" name="vcpServerUrl" placeholder="需手动添加v1/chat/completions" required>
+                    <input type="url" id="vcpServerUrl" name="vcpServerUrl" placeholder="将自动补全 /v1/chat/completions" required>
                 </div>
                 <div>
                     <label for="vcpApiKey">VCP API Key:</label>
@@ -392,6 +392,13 @@
                     </label>
                 </div>
 
+                <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <label for="enableVcpToolInjection">开启VCP工具信息注入上下文</label>
+                    <label class="switch">
+                        <input type="checkbox" id="enableVcpToolInjection" name="enableVcpToolInjection">
+                        <span class="slider round"></span>
+                    </label>
+                </div>
 
                 <div class="form-group-inline" style="justify-content: space-between; align-items: center;">
                     <label for="agentMusicControl">启用Agent音乐控制</label>

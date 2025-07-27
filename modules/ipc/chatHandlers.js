@@ -462,17 +462,38 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
     ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelConfig, messageId, isGroupCall = false, context = null) => {
         console.log(`[Main - sendToVCP] ***** sendToVCP HANDLER EXECUTED for messageId: ${messageId}, isGroupCall: ${isGroupCall} *****`, context);
         const streamChannel = 'vcp-stream-event'; // Use a single, unified channel for all stream events.
+        
+        let finalVcpUrl = vcpUrl;
+        let settings = {};
+        try {
+            const settingsPath = path.join(APP_DATA_ROOT_IN_PROJECT, 'settings.json');
+            if (await fs.pathExists(settingsPath)) {
+                settings = await fs.readJson(settingsPath);
+            }
+    
+            // **强制检查和切换URL**
+            if (settings.enableVcpToolInjection === true) {
+                const urlObject = new URL(vcpUrl);
+                urlObject.pathname = '/v1/chatvcp/completions';
+                finalVcpUrl = urlObject.toString();
+                console.log(`[Main - sendToVCP] VCP tool injection is ON. URL switched to: ${finalVcpUrl}`);
+            } else {
+                console.log(`[Main - sendToVCP] VCP tool injection is OFF. Using original URL: ${vcpUrl}`);
+            }
+        } catch (e) {
+            console.error(`[Main - sendToVCP] Error reading settings or switching URL: ${e.message}. Proceeding with original URL.`);
+        }
+    
         try {
             // --- Agent Music Control Injection ---
             if (getMusicState) {
-                const settingsPath = path.join(APP_DATA_ROOT_IN_PROJECT, 'settings.json');
+                // Settings already loaded, just check the flag
                 try {
-                    const settings = await fs.readJson(settingsPath);
                     if (settings.agentMusicControl) {
                         const { musicWindow, currentSongInfo } = getMusicState();
                         const topParts = [];
                         const bottomParts = [];
-
+    
                         // 1. 构建播放列表信息 (注入到顶部)
                         const songlistPath = path.join(APP_DATA_ROOT_IN_PROJECT, 'songlist.json');
                         if (await fs.pathExists(songlistPath)) {
@@ -484,21 +505,21 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
                                 }
                             }
                         }
-
+    
                         // 2. 构建注入到底部的信息
                         // 2a. 插件权限
                         bottomParts.push(`点歌台{{VCPMusicController}}`);
-
+    
                         // 2b. 当前歌曲信息 (仅当播放器打开且有歌曲信息时)
                         if (musicWindow && !musicWindow.isDestroyed() && currentSongInfo) {
                             bottomParts.push(`[当前播放音乐：${currentSongInfo.title} - ${currentSongInfo.artist} (${currentSongInfo.album || '未知专辑'})]`);
                         }
-
+    
                         // 3. 组合并注入到消息数组
                         if (topParts.length > 0 || bottomParts.length > 0) {
                             let systemMsgIndex = messages.findIndex(m => m.role === 'system');
                             let originalContent = '';
-
+    
                             if (systemMsgIndex !== -1) {
                                 originalContent = messages[systemMsgIndex].content;
                             } else {
@@ -511,7 +532,7 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
                             if (topParts.length > 0) finalParts.push(topParts.join('\n'));
                             if (originalContent) finalParts.push(originalContent);
                             if (bottomParts.length > 0) finalParts.push(bottomParts.join('\n'));
-
+    
                             // 用换行符连接各个部分，确保格式正确
                             messages[systemMsgIndex].content = finalParts.join('\n\n').trim();
                         }
@@ -520,11 +541,10 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
                     console.error('[Agent Music Control] Failed to inject music info:', e);
                 }
             }
-
+    
             // --- Agent Bubble Theme Injection ---
             try {
-                const settingsPath = path.join(APP_DATA_ROOT_IN_PROJECT, 'settings.json');
-                const settings = await fs.readJson(settingsPath);
+                // Settings already loaded, just check the flag
                 if (settings.enableAgentBubbleTheme) {
                     let systemMsgIndex = messages.findIndex(m => m.role === 'system');
                     if (systemMsgIndex === -1) {
@@ -544,12 +564,12 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
             // --- End of Injection ---
             // --- End of Injection ---
 
-            console.log(`发送到VCP服务器: ${vcpUrl} for messageId: ${messageId}`);
+            console.log(`发送到VCP服务器: ${finalVcpUrl} for messageId: ${messageId}`);
             console.log('VCP API Key:', vcpApiKey ? '已设置' : '未设置');
             console.log('模型配置:', modelConfig);
             if (context) console.log('上下文:', context);
     
-            const response = await fetch(vcpUrl, {
+            const response = await fetch(finalVcpUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

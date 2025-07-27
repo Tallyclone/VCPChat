@@ -847,7 +847,9 @@ async function loadAndApplyGlobalSettings() {
     if (settings && !settings.error) {
         globalSettings = { ...globalSettings, ...settings }; // Merge with defaults
         document.getElementById('userName').value = globalSettings.userName || '用户';
-        document.getElementById('vcpServerUrl').value = globalSettings.vcpServerUrl || '';
+        // Ensure the loaded URL is displayed in its complete form
+        const completedUrl = window.settingsManager.completeVcpUrl(globalSettings.vcpServerUrl || '');
+        document.getElementById('vcpServerUrl').value = completedUrl;
         document.getElementById('vcpApiKey').value = globalSettings.vcpApiKey || '';
         document.getElementById('vcpLogUrl').value = globalSettings.vcpLogUrl || '';
         document.getElementById('vcpLogKey').value = globalSettings.vcpLogKey || '';
@@ -926,6 +928,7 @@ async function loadAndApplyGlobalSettings() {
         // Load distributed server setting
         document.getElementById('enableDistributedServer').checked = globalSettings.enableDistributedServer === true;
         document.getElementById('agentMusicControl').checked = globalSettings.agentMusicControl === true;
+        document.getElementById('enableVcpToolInjection').checked = globalSettings.enableVcpToolInjection === true;
 
 
     } else {
@@ -1085,7 +1088,7 @@ function setupEventListeners() {
 
         const newSettings = { // Read directly from globalSettings for widths
             userName: document.getElementById('userName').value.trim() || '用户',
-            vcpServerUrl: document.getElementById('vcpServerUrl').value.trim(),
+            vcpServerUrl: window.settingsManager.completeVcpUrl(document.getElementById('vcpServerUrl').value.trim()),
             vcpApiKey: document.getElementById('vcpApiKey').value,
             vcpLogUrl: document.getElementById('vcpLogUrl').value.trim(),
             vcpLogKey: document.getElementById('vcpLogKey').value.trim(),
@@ -1101,6 +1104,7 @@ function setupEventListeners() {
             assistantAgent: assistantAgentSelect.value,
             enableDistributedServer: document.getElementById('enableDistributedServer').checked,
             agentMusicControl: document.getElementById('agentMusicControl').checked,
+            enableVcpToolInjection: document.getElementById('enableVcpToolInjection').checked,
         };
 
         const userAvatarCropped = getCroppedFile('user'); // Use central getter
