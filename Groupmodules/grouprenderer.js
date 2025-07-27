@@ -229,7 +229,7 @@ window.GroupRenderer = (() => {
         mainRendererElements.currentItemActionBtn.textContent = '新建群聊话题';
         mainRendererElements.currentItemActionBtn.title = `为群组 ${groupName} 新建群聊话题`;
         mainRendererElements.currentItemActionBtn.style.display = 'inline-block';
-        mainRendererElements.clearCurrentChatBtn.style.display = 'inline-block';
+        // mainRendererElements.clearCurrentChatBtn.style.display = 'inline-block'; // This button is removed
 
         mainRendererFunctions.highlightActiveItem(groupId, 'group');
 
@@ -267,7 +267,7 @@ window.GroupRenderer = (() => {
         mainRendererElements.messageInput.disabled = false;
         mainRendererElements.sendMessageBtn.disabled = false;
         mainRendererElements.attachFileBtn.disabled = false;
-        mainRendererElements.messageInput.focus();
+        // mainRendererElements.messageInput.focus();
 
         // After selecting group and loading history, update invite buttons
         console.log(`[GroupRenderer handleSelectGroup] Checking mode for group ${groupId}. Mode: ${groupConfig?.mode}`);
@@ -879,7 +879,7 @@ window.GroupRenderer = (() => {
         mainRendererFunctions.clearAttachedFiles();
         mainRendererFunctions.updateAttachmentPreview();
         uiHelper.autoResizeTextarea(mainRendererElements.messageInput);
-        mainRendererElements.messageInput.focus();
+        // mainRendererElements.messageInput.focus();
 
         // Message object for IPC to backend (uses combined text content)
         const userMessageForIPC = {
