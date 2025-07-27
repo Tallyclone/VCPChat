@@ -102,12 +102,17 @@ function transformSpecialBlocks(text) {
             }
         });
 
-        let html = `<div class="vcp-tool-result-bubble">`;
+        // Add 'collapsible' class for the new functionality, default to collapsed
+        let html = `<div class="vcp-tool-result-bubble collapsible">`;
         html += `<div class="vcp-tool-result-header">`;
         html += `<span class="vcp-tool-result-label">VCP-ToolResult</span>`;
         html += `<span class="vcp-tool-result-name">${escapeHtml(toolName)}</span>`;
         html += `<span class="vcp-tool-result-status">${escapeHtml(status)}</span>`;
+        html += `<span class="vcp-result-toggle-icon"></span>`; // Toggle icon
         html += `</div>`;
+
+        // Wrap details and footer in a new collapsible container
+        html += `<div class="vcp-tool-result-collapsible-content">`;
 
         html += `<div class="vcp-tool-result-details">`;
         details.forEach(({ key, value }) => {
@@ -129,13 +134,14 @@ function transformSpecialBlocks(text) {
             html += `<span class="vcp-tool-result-item-value">${processedValue}</span>`;
             html += `</div>`;
         });
+        html += `</div>`; // End of vcp-tool-result-details
 
         if (otherContent.length > 0) {
             html += `<div class="vcp-tool-result-footer"><pre>${escapeHtml(otherContent.join('\n'))}</pre></div>`;
         }
 
-        html += `</div>`;
-        html += `</div>`;
+        html += `</div>`; // End of vcp-tool-result-collapsible-content
+        html += `</div>`; // End of vcp-tool-result-bubble
 
         return html;
     });
@@ -423,6 +429,17 @@ function initializeMessageRenderer(refs) {
 
    // Initialize the emoticon fixer
    emoticonUrlFixer.initialize(mainRendererReferences.electronAPI);
+
+   // Add event listener for collapsible tool results
+   mainRendererReferences.chatMessagesDiv.addEventListener('click', (event) => {
+       const header = event.target.closest('.vcp-tool-result-header');
+       if (header) {
+           const bubble = header.closest('.vcp-tool-result-bubble.collapsible');
+           if (bubble) {
+               bubble.classList.toggle('expanded');
+           }
+       }
+   });
 
    // Create a new marked instance wrapper specifically for the stream manager.
    // This ensures that any text passed to `marked.parse()` during streaming
