@@ -189,6 +189,8 @@ function showContextMenu(event, messageItem, message) {
                             const contentClone = contentDiv.cloneNode(true);
                             // Remove all tool-use bubbles from the clone
                             contentClone.querySelectorAll('.vcp-tool-use-bubble').forEach(el => el.remove());
+                            // Also remove tool-result bubbles
+                            contentClone.querySelectorAll('.vcp-tool-result-bubble').forEach(el => el.remove());
                             // Now, get the innerText from the cleaned-up clone
                             textToRead = contentClone.innerText || '';
                         }
