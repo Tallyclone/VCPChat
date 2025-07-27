@@ -108,14 +108,29 @@ function showContextMenu(event, messageItem, message) {
         copyOption.classList.add('context-menu-item');
         copyOption.innerHTML = `<i class="fas fa-copy"></i> 复制文本`;
         copyOption.onclick = () => {
-            let contentToProcess = message.content;
-            if (typeof message.content === 'object' && message.content !== null && typeof message.content.text === 'string') {
-                contentToProcess = message.content.text;
-            } else if (typeof message.content !== 'string') {
-                contentToProcess = '';
+            const { uiHelper } = mainRefs;
+            const contentDiv = messageItem.querySelector('.md-content');
+            let textToCopy = '';
+
+            if (contentDiv) {
+                // 克隆节点以避免修改实时显示的DOM
+                const contentClone = contentDiv.cloneNode(true);
+                // 移除工具使用气泡，以获得更干净的复制内容
+                contentClone.querySelectorAll('.vcp-tool-use-bubble, .vcp-tool-result-bubble').forEach(el => el.remove());
+                textToCopy = contentClone.innerText.trim();
+            } else {
+                // 如果找不到 .md-content，则回退到旧方法
+                let contentToProcess = message.content;
+                if (typeof message.content === 'object' && message.content !== null && typeof message.content.text === 'string') {
+                    contentToProcess = message.content.text;
+                } else if (typeof message.content !== 'string') {
+                    contentToProcess = '';
+                }
+                textToCopy = contentToProcess.replace(/<img[^>]*>/g, '').trim();
             }
-            const textToCopy = contentToProcess.replace(/<img[^>]*>/g, '').trim();
+            
             navigator.clipboard.writeText(textToCopy);
+            uiHelper.showToastNotification("已复制渲染后的文本。", "success");
             closeContextMenu();
         };
         menu.appendChild(copyOption);
