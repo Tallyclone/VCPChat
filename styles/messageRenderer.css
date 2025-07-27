@@ -621,6 +621,49 @@ body.light-theme {
     font-size: 0.9em;
 }
 
+/* NEW: Toggle Icon for Collapsible Result Bubble */
+.vcp-result-toggle-icon {
+    margin-left: auto; /* Pushes the icon to the far right */
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    position: relative;
+    transition: transform 0.3s ease;
+}
+
+.vcp-result-toggle-icon::before,
+.vcp-result-toggle-icon::after {
+    content: '';
+    position: absolute;
+    width: 10px;
+    height: 2px;
+    background-color: var(--tool-result-item-key-color);
+    border-radius: 1px;
+    top: 50%;
+    left: 50%;
+    transform-origin: center;
+}
+
+.vcp-result-toggle-icon::before {
+    /* Forms one part of the chevron > */
+    transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.vcp-result-toggle-icon::after {
+    /* Forms the other part of the chevron > */
+    transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+/* By default (collapsed), the icon is a right-pointing chevron > */
+.vcp-tool-result-bubble:not(.expanded) .vcp-result-toggle-icon {
+    transform: rotate(0deg); /* No rotation needed for the default state */
+}
+
+/* When expanded, rotate the whole icon 90 degrees to point down */
+.vcp-tool-result-bubble.expanded .vcp-result-toggle-icon {
+    transform: rotate(90deg);
+}
+
 .vcp-tool-result-status:containing("SUCCESS") { /* This is a pseudo-selector, might not work directly in CSS */
     color: #c8e6c9;
     background-color: rgba(76, 175, 80, 0.2);
@@ -696,4 +739,19 @@ body.light-theme .vcp-tool-result-status:containing("SUCCESS") {
     word-break: break-word;
     font-family: inherit;
     background: none;
+}
+
+/* NEW: Styles for Collapsible Content */
+.vcp-tool-result-collapsible-content {
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition: max-height 0.5s ease-in-out, opacity 0.4s ease-in-out, margin-top 0.5s ease-in-out;
+    margin-top: 0;
+}
+
+.vcp-tool-result-bubble.expanded .vcp-tool-result-collapsible-content {
+    max-height: 1000px; /* Adjust as needed, should be large enough for content */
+    opacity: 1;
+    margin-top: 10px; /* Add space when expanded */
 }
