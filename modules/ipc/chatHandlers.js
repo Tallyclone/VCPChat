@@ -557,8 +557,7 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
                 },
                 body: JSON.stringify({
                     messages: messages,
-                    model: modelConfig.model,
-                    temperature: modelConfig.temperature,
+                    ...modelConfig,
                     stream: modelConfig.stream === true
                 })
             });
@@ -720,7 +719,9 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
                 model: agentConfig.model,
                 temperature: agentConfig.temperature,
                 stream: false, // Force non-streaming
-                max_tokens: agentConfig.maxOutputTokens
+                max_tokens: agentConfig.maxOutputTokens,
+                top_p: agentConfig.top_p,
+                top_k: agentConfig.top_k
             };
 
             const response = await fetch(settings.vcpServerUrl, {

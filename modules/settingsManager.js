@@ -16,7 +16,7 @@ const settingsManager = (() => {
     let itemSettingsContainerTitle, selectedItemNameForSettingsSpan, deleteItemBtn;
     let agentSettingsForm, editingAgentIdInput, agentNameInput, agentAvatarInput, agentAvatarPreview;
     let agentSystemPromptTextarea, agentModelInput, agentTemperatureInput;
-    let agentContextTokenLimitInput, agentMaxOutputTokensInput;
+    let agentContextTokenLimitInput, agentMaxOutputTokensInput, agentTopPInput, agentTopKInput;
     let openModelSelectBtn, modelSelectModal, modelList, modelSearchInput, refreshModelsBtn;
     let agentTtsVoicePrimarySelect, agentTtsRegexPrimaryInput, agentTtsVoiceSecondarySelect, agentTtsRegexSecondaryInput, refreshTtsModelsBtn, agentTtsSpeedSlider, ttsSpeedValueSpan;
 
@@ -86,6 +86,8 @@ const settingsManager = (() => {
         agentTemperatureInput.value = agentConfig.temperature !== undefined ? agentConfig.temperature : 0.7;
         agentContextTokenLimitInput.value = agentConfig.contextTokenLimit !== undefined ? agentConfig.contextTokenLimit : 4000;
         agentMaxOutputTokensInput.value = agentConfig.maxOutputTokens !== undefined ? agentConfig.maxOutputTokens : 1000;
+        agentTopPInput.value = agentConfig.top_p !== undefined ? agentConfig.top_p : '';
+        agentTopKInput.value = agentConfig.top_k !== undefined ? agentConfig.top_k : '';
 
         const streamOutput = agentConfig.streamOutput !== undefined ? agentConfig.streamOutput : true;
         document.getElementById('agentStreamOutputTrue').checked = streamOutput === true || String(streamOutput) === 'true';
@@ -125,6 +127,8 @@ const settingsManager = (() => {
             temperature: parseFloat(agentTemperatureInput.value),
             contextTokenLimit: parseInt(agentContextTokenLimitInput.value),
             maxOutputTokens: parseInt(agentMaxOutputTokensInput.value),
+            top_p: parseFloat(agentTopPInput.value) || undefined,
+            top_k: parseInt(agentTopKInput.value) || undefined,
             streamOutput: document.getElementById('agentStreamOutputTrue').checked,
             ttsVoicePrimary: agentTtsVoicePrimarySelect.value,
             ttsRegexPrimary: agentTtsRegexPrimaryInput.value.trim(),
@@ -342,6 +346,8 @@ const settingsManager = (() => {
             agentTemperatureInput = options.elements.agentTemperatureInput;
             agentContextTokenLimitInput = options.elements.agentContextTokenLimitInput;
             agentMaxOutputTokensInput = options.elements.agentMaxOutputTokensInput;
+            agentTopPInput = document.getElementById('agentTopP');
+            agentTopKInput = document.getElementById('agentTopK');
             openModelSelectBtn = options.elements.openModelSelectBtn;
             modelSelectModal = options.elements.modelSelectModal;
             modelList = options.elements.modelList;
