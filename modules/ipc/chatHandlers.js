@@ -578,7 +578,8 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
                 body: JSON.stringify({
                     messages: messages,
                     ...modelConfig,
-                    stream: modelConfig.stream === true
+                    stream: modelConfig.stream === true,
+                    requestId: messageId
                 })
             });
     
@@ -779,6 +780,53 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
                     error: error.message
                 });
             }
+        }
+    });
+
+    ipcMain.handle('interrupt-vcp-request', async (event, { messageId }) => {
+        try {
+            const settingsPath = path.join(APP_DATA_ROOT_IN_PROJECT, 'settings.json');
+            if (!await fs.pathExists(settingsPath)) {
+                return { success: false, error: 'Settings file not found.' };
+            }
+            const settings = await fs.readJson(settingsPath);
+            const vcpUrl = settings.vcpServerUrl;
+            const vcpApiKey = settings.vcpApiKey;
+
+            if (!vcpUrl) {
+                return { success: false, error: 'VCP Server URL is not configured.' };
+            }
+
+            // Construct the interrupt URL from the base server URL
+            const urlObject = new URL(vcpUrl);
+            const interruptUrl = `${urlObject.protocol}//${urlObject.host}/v1/interrupt`;
+
+            console.log(`[Main - interrupt] Sending interrupt for messageId: ${messageId} to ${interruptUrl}`);
+
+            const response = await fetch(interruptUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${vcpApiKey}`
+                },
+                body: JSON.stringify({
+                    requestId: messageId // Corrected to requestId to match user's edit
+                })
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                console.error(`[Main - interrupt] Failed to send interrupt signal:`, result);
+                return { success: false, error: result.message || `Server returned status ${response.status}` };
+            }
+
+            console.log(`[Main - interrupt] Interrupt signal sent successfully for ${messageId}. Response:`, result.message);
+            return { success: true, message: result.message };
+
+        } catch (error) {
+            console.error(`[Main - interrupt] Error sending interrupt request for messageId ${messageId}:`, error);
+            return { success: false, error: error.message };
         }
     });
 }

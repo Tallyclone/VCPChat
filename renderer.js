@@ -122,6 +122,7 @@ const uiHelperFunctions = window.uiHelperFunctions;
 
 import searchManager from './modules/searchManager.js';
 import { initialize as initializeEmoticonFixer } from './modules/renderer/emoticonUrlFixer.js';
+import * as interruptHandler from './modules/interruptHandler.js';
  
  // --- Initialization ---
  document.addEventListener('DOMContentLoaded', async () => {
@@ -219,6 +220,8 @@ import { initialize as initializeEmoticonFixer } from './modules/renderer/emotic
 
     // Initialize other modules after GroupRenderer, in case they depend on its setup
     if (window.messageRenderer) {
+        interruptHandler.initialize(window.electronAPI);
+
         window.messageRenderer.initializeMessageRenderer({
             currentChatHistoryRef: { get: () => currentChatHistory, set: (val) => currentChatHistory = val },
             currentSelectedItemRef: { get: () => currentSelectedItem, set: (val) => currentSelectedItem = val },
@@ -228,6 +231,7 @@ import { initialize as initializeEmoticonFixer } from './modules/renderer/emotic
             electronAPI: window.electronAPI,
             markedInstance: markedInstance, // Assuming marked.js is loaded
             uiHelper: uiHelperFunctions,
+            interruptHandler: interruptHandler, // Pass the handler
             summarizeTopicFromMessages: (messages, agentName) => {
                 // Directly use the function from the summarizer module, which should be on the window scope
                 if (typeof window.summarizeTopicFromMessages === 'function') {

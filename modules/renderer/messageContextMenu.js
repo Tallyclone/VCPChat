@@ -55,18 +55,37 @@ function showContextMenu(event, messageItem, message) {
     const isError = message.finishReason === 'error';
 
     if (isThinkingOrStreaming) {
-        const cancelOption = document.createElement('div');
-        cancelOption.classList.add('context-menu-item');
-        cancelOption.textContent = message.isThinking ? "强制移除'思考中...'" : "取消回复生成";
-        cancelOption.onclick = () => {
-            if (message.isThinking) {
-                contextMenuDependencies.removeMessageById(message.id);
-            } else if (messageItem.classList.contains('streaming')) {
-                contextMenuDependencies.finalizeStreamedMessage(message.id, 'cancelled_by_user');
-            }
+        const interruptOption = document.createElement('div');
+        interruptOption.classList.add('context-menu-item', 'danger-item');
+        interruptOption.innerHTML = `<i class="fas fa-stop-circle"></i> 中止回复`;
+        interruptOption.onclick = async () => {
             closeContextMenu();
+            const { uiHelper } = mainRefs;
+            const activeMessageId = message.id; // The ID of the message being streamed or thought about
+
+            if (activeMessageId) {
+                console.log(`[ContextMenu] Attempting to interrupt message: ${activeMessageId}`);
+                // We need a reference to the interrupt handler, which should be initialized in renderer.js
+                // and passed into the context menu dependencies.
+                if (contextMenuDependencies.interruptHandler && typeof contextMenuDependencies.interruptHandler.interrupt === 'function') {
+                    const result = await contextMenuDependencies.interruptHandler.interrupt(activeMessageId);
+                    if (result.success) {
+                        uiHelper.showToastNotification("已发送中止信号。", "success");
+                        // The backend will stop the stream, which will trigger the 'end' event in chatHandlers,
+                        // which will then call finalizeStreamedMessage. We don't need to call it here.
+                    } else {
+                        uiHelper.showToastNotification(`中止失败: ${result.error}`, "error");
+                        // If interrupting fails, we might want to offer a manual cancel as a fallback.
+                        contextMenuDependencies.finalizeStreamedMessage(activeMessageId, 'cancelled_by_user');
+                    }
+                } else {
+                    console.error("[ContextMenu] Interrupt handler not available. Manually cancelling.");
+                    uiHelper.showToastNotification("无法发送中止信号，已在本地取消。", "warning");
+                    contextMenuDependencies.finalizeStreamedMessage(activeMessageId, 'cancelled_by_user');
+                }
+            }
         };
-        menu.appendChild(cancelOption);
+        menu.appendChild(interruptOption);
     }
     
     // For non-thinking/non-streaming messages (including errors and completed messages)

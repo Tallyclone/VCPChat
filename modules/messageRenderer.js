@@ -71,8 +71,74 @@ function escapeHtml(text) {
 function transformSpecialBlocks(text) {
     const toolRegex = /<<<\[TOOL_REQUEST\]>>>(.*?)<<<\[END_TOOL_REQUEST\]>>>/gs;
     const noteRegex = /<<<DailyNoteStart>>>(.*?)<<<DailyNoteEnd>>>/gs;
+    const toolResultRegex = /\[\[VCP调用结果信息汇总:(.*?)\]\]/gs;
 
     let processed = text;
+
+    // Process VCP Tool Results
+    processed = processed.replace(toolResultRegex, (match, rawContent) => {
+        const content = rawContent.trim();
+        const lines = content.split('\n').filter(line => line.trim() !== '');
+
+        let toolName = 'Unknown Tool';
+        let status = 'Unknown Status';
+        const details = [];
+        let otherContent = [];
+
+        lines.forEach(line => {
+            const kvMatch = line.match(/-\s*([^:]+):\s*(.*)/);
+            if (kvMatch) {
+                const key = kvMatch[1].trim();
+                const value = kvMatch[2].trim();
+                if (key === '工具名称') {
+                    toolName = value;
+                } else if (key === '执行状态') {
+                    status = value;
+                } else {
+                    details.push({ key, value });
+                }
+            } else {
+                otherContent.push(line);
+            }
+        });
+
+        let html = `<div class="vcp-tool-result-bubble">`;
+        html += `<div class="vcp-tool-result-header">`;
+        html += `<span class="vcp-tool-result-label">VCP-ToolResult</span>`;
+        html += `<span class="vcp-tool-result-name">${escapeHtml(toolName)}</span>`;
+        html += `<span class="vcp-tool-result-status">${escapeHtml(status)}</span>`;
+        html += `</div>`;
+
+        html += `<div class="vcp-tool-result-details">`;
+        details.forEach(({ key, value }) => {
+            const urlRegex = /(https?:\/\/[^\s]+)/g;
+            let processedValue = escapeHtml(value);
+            
+            if ((key === '可访问URL' || key === '返回内容') && value.match(/\.(jpeg|jpg|png|gif)$/i)) {
+                 processedValue = `<a href="${value}" target="_blank" rel="noopener noreferrer" title="点击预览"><img src="${value}" class="vcp-tool-result-image" alt="Generated Image"></a>`;
+            } else {
+                processedValue = processedValue.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+            }
+            
+            if (key === '返回内容') {
+                processedValue = processedValue.replace(/###(.*?)###/g, '<strong>$1</strong>');
+            }
+
+            html += `<div class="vcp-tool-result-item">`;
+            html += `<span class="vcp-tool-result-item-key">${escapeHtml(key)}:</span> `;
+            html += `<span class="vcp-tool-result-item-value">${processedValue}</span>`;
+            html += `</div>`;
+        });
+
+        if (otherContent.length > 0) {
+            html += `<div class="vcp-tool-result-footer"><pre>${escapeHtml(otherContent.join('\n'))}</pre></div>`;
+        }
+
+        html += `</div>`;
+        html += `</div>`;
+
+        return html;
+    });
 
     // Process Tool Requests
     processed = processed.replace(toolRegex, (match, content) => {
@@ -386,6 +452,7 @@ function initializeMessageRenderer(refs) {
        processRenderedContent: contentProcessor.processRenderedContent,
        preprocessFullContent: preprocessFullContent,
        renderAttachments: renderAttachments,
+       interruptHandler: mainRendererReferences.interruptHandler, // Pass the interrupt handler
    });
 
    streamManager.initStreamManager({
@@ -541,12 +608,14 @@ async function renderMessage(message, isInitialLoad = false) {
 
     const { messageItem, contentDiv, avatarImg, senderNameDiv } = createMessageSkeleton(message, globalSettings, currentSelectedItem);
 
-    if (message.role !== 'system' && !message.isThinking) {
-       messageItem.addEventListener('contextmenu', (e) => {
-           e.preventDefault();
-           contextMenu.showContextMenu(e, messageItem, message);
-       });
-   }
+    // Attach context menu to all assistant and user messages, regardless of state.
+    // The context menu itself will decide which options to show.
+    if (message.role === 'assistant' || message.role === 'user') {
+        messageItem.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            contextMenu.showContextMenu(e, messageItem, message);
+        });
+    }
 
     // Add logic for stopping TTS by clicking the avatar
     // Add logic for stopping TTS by clicking the avatar
