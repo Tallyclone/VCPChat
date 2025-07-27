@@ -225,10 +225,14 @@ window.GroupRenderer = (() => {
         messageRenderer.setCurrentItemAvatarColor(groupConfig?.avatarCalculatedColor || null); // CORRECTED FUNCTION NAME
 
 
-        mainRendererElements.currentChatNameH3.textContent = `与群组 ${groupName} 聊天中`;
-        mainRendererElements.currentItemActionBtn.textContent = '新建群聊话题';
-        mainRendererElements.currentItemActionBtn.title = `为群组 ${groupName} 新建群聊话题`;
-        mainRendererElements.currentItemActionBtn.style.display = 'inline-block';
+        if (mainRendererElements.currentChatNameH3) {
+            mainRendererElements.currentChatNameH3.textContent = `与群组 ${groupName} 聊天中`;
+        }
+        if (mainRendererElements.currentItemActionBtn) {
+            mainRendererElements.currentItemActionBtn.textContent = '新建群聊话题';
+            mainRendererElements.currentItemActionBtn.title = `为群组 ${groupName} 新建群聊话题`;
+            mainRendererElements.currentItemActionBtn.style.display = 'inline-block';
+        }
         // mainRendererElements.clearCurrentChatBtn.style.display = 'inline-block'; // This button is removed
 
         mainRendererFunctions.highlightActiveItem(groupId, 'group');
