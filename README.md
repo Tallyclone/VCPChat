@@ -8,6 +8,8 @@
 
 请下载壁纸包以避免元素窗口异常：https://github.com/lioensky/VCPChat/releases
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/lioensky/VCPChat)
+
 ## 前后端深度协同：释放 AI 的无限潜能
 
 VChat 不仅仅是一个聊天界面，它是强大的 VCP 后端生态（VCPToolBox）的“眼睛”和“画板”。两者深度结合，旨在释放 AI 的无限潜能：
