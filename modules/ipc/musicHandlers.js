@@ -186,6 +186,10 @@ function initialize(options) {
             return await audioEngineApi('/state', 'GET');
         });
 
+        ipcMain.handle('music-set-volume', (event, volume) => {
+            return audioEngineApi('/volume', 'POST', { volume });
+        });
+
         ipcMain.on('open-music-folder', async (event) => {
             const result = await dialog.showOpenDialog(mainWindow, {
                 properties: ['openDirectory']

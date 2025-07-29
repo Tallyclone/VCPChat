@@ -34,6 +34,7 @@ class AudioEngine:
         self.lock = threading.RLock() # 使用可重入锁解决死锁问题
         self.thread = None
         self.stop_event = threading.Event()
+        self.volume = 1.0  # 音量，范围 0.0 到 1.0
         self.fft_size = 1024  # FFT窗口大小
         self.fft_update_interval = 1.0 / 30.0  # 约每秒30次
 
@@ -45,7 +46,8 @@ class AudioEngine:
         with self.lock:
             if self.position + frames <= len(self.data):
                 chunk = self.data[self.position : self.position + frames]
-                outdata[:] = chunk
+                # 应用音量
+                outdata[:] = chunk * self.volume
                 self.position += frames
             else:
                 outdata.fill(0)
@@ -103,22 +105,32 @@ class AudioEngine:
 
     def load(self, file_path):
         """加载音频文件"""
-        with self.lock:
-            try:
+        try:
+            logging.info(f"Attempting to read file: {file_path}")
+            # 1. 先读取文件到临时变量
+            data, samplerate = sf.read(file_path, dtype='float64')
+            
+            # 2. 如果读取成功，再获取锁并修改引擎状态
+            with self.lock:
                 self.stop() # 停止当前播放
+                
                 self.file_path = file_path
-                self.data, self.samplerate = sf.read(file_path, dtype='float64')
+                self.data = data
+                self.samplerate = samplerate
                 self.channels = self.data.shape[1] if len(self.data.shape) > 1 else 1
                 self.position = 0
                 self.is_playing = False
                 self.is_paused = False
                 logging.info(f"Loaded '{file_path}', Samplerate: {self.samplerate}, Channels: {self.channels}, Duration: {len(self.data)/self.samplerate:.2f}s")
-                return True
-            except Exception as e:
-                logging.error(f"Failed to load file {file_path}: {e}")
+            return True
+        except Exception as e:
+            # 捕获所有异常，包括 soundfile 可能抛出的底层错误
+            logging.error(f"Failed to load file {file_path}: {e}", exc_info=True) # exc_info=True 会记录堆栈跟踪
+            # 确保即使加载失败，引擎状态也是干净的
+            with self.lock:
                 self.file_path = None
                 self.data = None
-                return False
+            return False
 
     def play(self):
         """开始或恢复播放"""
@@ -198,8 +210,16 @@ class AudioEngine:
                 'is_paused': self.is_paused,
                 'duration': duration,
                 'current_time': current_time,
-                'file_path': self.file_path
+                'file_path': self.file_path,
+                'volume': self.volume
             }
+
+    def set_volume(self, volume_level):
+        """设置音量"""
+        with self.lock:
+            self.volume = float(volume_level)
+            logging.info(f"Volume set to {self.volume}")
+            return True
 
 # --- 全局音频引擎实例 ---
 audio_engine = AudioEngine(socketio)
@@ -251,6 +271,18 @@ def get_state():
 def stop_track():
     audio_engine.stop()
     return jsonify({'status': 'success', 'message': 'Playback stopped', 'state': audio_engine.get_state()})
+
+@app.route('/volume', methods=['POST'])
+def set_volume():
+    data = request.get_json()
+    volume = data.get('volume')
+    if volume is None:
+        return jsonify({'status': 'error', 'message': 'Volume not provided'}), 400
+    
+    if audio_engine.set_volume(volume):
+        return jsonify({'status': 'success', 'message': 'Volume set', 'state': audio_engine.get_state()})
+    else:
+        return jsonify({'status': 'error', 'message': 'Failed to set volume'}), 500
 
 # --- SocketIO 事件处理 ---
 @socketio.on('connect')

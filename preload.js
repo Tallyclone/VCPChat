@@ -26,7 +26,8 @@ contextBridge.exposeInMainWorld('electron', {
             'music-play',
             'music-pause',
             'music-seek',
-            'music-get-state'
+            'music-get-state',
+            'music-set-volume'
         ];
         if (validChannels.includes(channel)) {
             return ipcRenderer.invoke(channel, data);

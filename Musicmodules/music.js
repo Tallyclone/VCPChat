@@ -318,12 +318,24 @@ document.addEventListener('DOMContentLoaded', () => {
     progressBar.addEventListener('click', setProgress);
     
     // 音量控制暂时保持前端控制，因为它不影响HIFI解码
-    volumeSlider.addEventListener('input', () => {
-        // This is a dummy implementation as volume is not controlled by the python engine in this setup.
-        // You could implement a separate volume control if needed.
+    volumeSlider.addEventListener('input', async (e) => {
+        const newVolume = parseFloat(e.target.value);
+        if (window.electron) {
+            await window.electron.invoke('music-set-volume', newVolume);
+        }
     });
     volumeBtn.addEventListener('click', () => {
-        // Dummy mute toggle
+        // Mute toggle logic can be implemented here if needed
+        const isMuted = volumeSlider.value === '0';
+        const newVolume = isMuted ? (volumeBtn.dataset.lastVolume || 1) : 0;
+        
+        if (!isMuted) {
+            volumeBtn.dataset.lastVolume = volumeSlider.value;
+        }
+        
+        volumeSlider.value = newVolume;
+        // Manually trigger the input event to send the new volume to the engine
+        volumeSlider.dispatchEvent(new Event('input'));
     });
 
     modeBtn.addEventListener('click', () => {
@@ -493,7 +505,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (savedPlaylist && savedPlaylist.length > 0) {
                 playlist = savedPlaylist;
                 renderPlaylist();
-                loadTrack(0, false);
+                await loadTrack(0, false); // Wait for the track to load
+            }
+            // Sync initial volume
+            const initialState = await window.electron.invoke('music-get-state');
+            if (initialState && initialState.state && initialState.state.volume !== undefined) {
+                volumeSlider.value = initialState.state.volume;
             }
         }
         
