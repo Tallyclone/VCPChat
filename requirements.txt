@@ -3,6 +3,8 @@ flask_cors
 flask_socketio
 soundfile
 sounddevice
+scipy
 numpy
 pydub
 gevent-websocket
+gevent gevent-websocket

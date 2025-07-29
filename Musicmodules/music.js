@@ -28,8 +28,12 @@ document.addEventListener('DOMContentLoaded', () => {
    // --- New UI Elements for WASAPI ---
    const deviceSelect = document.getElementById('device-select');
    const wasapiSwitch = document.getElementById('wasapi-switch');
+  const eqSwitch = document.getElementById('eq-switch');
+  const eqBandsContainer = document.getElementById('eq-bands');
+  const eqResetBtn = document.getElementById('eq-reset-btn');
+  const eqSection = document.getElementById('eq-section');
 
-    // --- State Variables ---
+   // --- State Variables ---
     let playlist = [];
     let currentTrackIndex = 0;
     let isPlaying = false; // 本地UI状态，会与引擎同步
@@ -40,8 +44,13 @@ document.addEventListener('DOMContentLoaded', () => {
     let statePollInterval; // 用于轮询状态的定时器
    let currentDeviceId = null;
    let useWasapiExclusive = false;
+  let eqEnabled = false;
+  const eqBands = {
+       '31': 0, '62': 0, '125': 0, '250': 0, '500': 0,
+       '1k': 0, '2k': 0, '4k': 0, '8k': 0, '16k': 0
+  };
 
-    // --- Visualizer State ---
+   // --- Visualizer State ---
     let animationFrameId;
     let targetVisualizerData = [];
     let currentVisualizerData = [];
@@ -220,9 +229,23 @@ document.addEventListener('DOMContentLoaded', () => {
        if (wasapiSwitch.checked !== state.exclusive_mode) {
            wasapiSwitch.checked = state.exclusive_mode;
        }
-    };
+      // Update EQ UI
+      if (state.eq_enabled !== undefined && eqSwitch.checked !== state.eq_enabled) {
+          eqSwitch.checked = state.eq_enabled;
+          eqSection.classList.toggle('expanded', state.eq_enabled);
+      }
+      if (state.eq_bands) {
+          for (const [band, gain] of Object.entries(state.eq_bands)) {
+              const slider = document.getElementById(`eq-${band}`);
+              if (slider && slider.value !== gain) {
+                  slider.value = gain;
+              }
+              eqBands[band] = gain;
+          }
+      }
+  };
 
-    const pollState = async () => {
+   const pollState = async () => {
         const result = await window.electron.invoke('music-get-state');
         if (result.status === 'success') {
             updateUIWithState(result.state);
@@ -448,8 +471,66 @@ document.addEventListener('DOMContentLoaded', () => {
    deviceSelect.addEventListener('change', configureOutput);
    wasapiSwitch.addEventListener('change', configureOutput);
 
+  // --- EQ Control ---
+  const createEqBands = () => {
+      eqBandsContainer.innerHTML = '';
+      for (const band in eqBands) {
+          const bandContainer = document.createElement('div');
+          bandContainer.className = 'eq-band';
 
-    // --- Electron IPC and Initialization ---
+          const label = document.createElement('label');
+          label.setAttribute('for', `eq-${band}`);
+          label.textContent = band;
+          
+          const slider = document.createElement('input');
+          slider.type = 'range';
+          slider.id = `eq-${band}`;
+          slider.min = -15;
+          slider.max = 15;
+          slider.step = 1;
+          slider.value = eqBands[band];
+          
+          slider.addEventListener('input', () => sendEqSettings());
+          
+          bandContainer.appendChild(label);
+          bandContainer.appendChild(slider);
+          eqBandsContainer.appendChild(bandContainer);
+      }
+  };
+
+  const sendEqSettings = async () => {
+      if (!window.electron) return;
+
+      const newBands = {};
+      for (const band in eqBands) {
+          const slider = document.getElementById(`eq-${band}`);
+          newBands[band] = parseInt(slider.value, 10);
+      }
+      
+      eqEnabled = eqSwitch.checked;
+
+      await window.electron.invoke('music-set-eq', {
+          bands: newBands,
+          enabled: eqEnabled
+      });
+  };
+
+  eqSwitch.addEventListener('change', () => {
+       eqSection.classList.toggle('expanded', eqSwitch.checked);
+       sendEqSettings();
+  });
+
+  eqResetBtn.addEventListener('click', () => {
+      for (const band in eqBands) {
+          const slider = document.getElementById(`eq-${band}`);
+          if (slider) {
+              slider.value = 0;
+          }
+      }
+      sendEqSettings();
+  });
+
+   // --- Electron IPC and Initialization ---
     const setupElectronHandlers = () => {
         if (!window.electron) return;
 
@@ -584,12 +665,29 @@ document.addEventListener('DOMContentLoaded', () => {
        
        // --- New: Populate devices and set initial state ---
        await populateDeviceList();
+      createEqBands(); // Create EQ sliders
        const initialDeviceState = await window.electron.invoke('music-get-state');
        if (initialDeviceState && initialDeviceState.state) {
            currentDeviceId = initialDeviceState.state.device_id;
            useWasapiExclusive = initialDeviceState.state.exclusive_mode;
            deviceSelect.value = currentDeviceId === null ? 'default' : currentDeviceId;
            wasapiSwitch.checked = useWasapiExclusive;
+
+           // Set initial EQ state from engine
+           if (initialDeviceState.state.eq_enabled !== undefined) {
+               eqEnabled = initialDeviceState.state.eq_enabled;
+               eqSwitch.checked = eqEnabled;
+               eqSection.classList.toggle('expanded', eqEnabled);
+           }
+           if (initialDeviceState.state.eq_bands) {
+                for (const [band, gain] of Object.entries(initialDeviceState.state.eq_bands)) {
+                   const slider = document.getElementById(`eq-${band}`);
+                   if (slider) {
+                       slider.value = gain;
+                   }
+                   eqBands[band] = gain;
+               }
+           }
        }
 
 

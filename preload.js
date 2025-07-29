@@ -30,7 +30,8 @@ contextBridge.exposeInMainWorld('electron', {
             'music-set-volume',
             // --- New channels for WASAPI and device selection ---
             'music-get-devices',
-            'music-configure-output'
+            'music-configure-output',
+            'music-set-eq'
         ];
         if (validChannels.includes(channel)) {
             return ipcRenderer.invoke(channel, data);

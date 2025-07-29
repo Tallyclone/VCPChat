@@ -4,6 +4,7 @@ import time
 import numpy as np
 import soundfile as sf
 import sounddevice as sd
+from scipy.signal import tf2sos, sosfilt
 from flask import Flask, request, jsonify
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
@@ -39,6 +40,14 @@ class AudioEngine:
         self.fft_update_interval = 1.0 / 30.0  # 约每秒30次
         self.device_id = None # Can be None for default device
         self.exclusive_mode = False
+       # --- EQ Settings ---
+        self.eq_enabled = False
+        self.eq_bands = {
+           '31': 0, '62': 0, '125': 0, '250': 0, '500': 0,
+           '1k': 0, '2k': 0, '4k': 0, '8k': 0, '16k': 0
+        }
+        self.eq_filters = {} # To store SOS filter coefficients
+        self.eq_zi = {} # To store initial filter conditions for each channel
 
     def _stream_callback(self, outdata, frames, time, status):
         """sounddevice的回调函数，用于填充音频数据"""
@@ -47,7 +56,27 @@ class AudioEngine:
 
         with self.lock:
             if self.position + frames <= len(self.data):
-                chunk = self.data[self.position : self.position + frames]
+                chunk = self.data[self.position : self.position + frames].copy() # Use a copy to modify
+                
+                # --- Apply EQ if enabled ---
+                if self.eq_enabled and self.eq_filters:
+                    for i in range(self.channels):
+                        # Ensure zi exists for the channel
+                        if i not in self.eq_zi:
+                            self._initialize_eq_zi(i)
+                        
+                        channel_data = chunk[:, i] if self.channels > 1 else chunk
+                        
+                        # Apply each filter band
+                        for band in self.eq_filters:
+                            if self.eq_bands[band] != 0: # Only apply if gain is not 0
+                                channel_data, self.eq_zi[i][band] = sosfilt(self.eq_filters[band], channel_data, zi=self.eq_zi[i][band])
+                        
+                        if self.channels > 1:
+                            chunk[:, i] = channel_data
+                        else:
+                            chunk = channel_data
+
                 # 应用音量
                 outdata[:] = chunk * self.volume
                 self.position += frames
@@ -242,6 +271,78 @@ class AudioEngine:
             logging.info(f"Volume set to {self.volume}")
             return True
 
+    def _design_eq_filters(self):
+        """Design IIR filters based on current EQ settings."""
+        if self.samplerate == 0:
+            return
+        
+        nyquist = 0.5 * self.samplerate
+        self.eq_filters = {}
+        
+        # Define band frequencies and Q factor
+        bands_config = {
+           '31': (31, 1.41), '62': (62, 1.41), '125': (125, 1.41),
+           '250': (250, 1.41), '500': (500, 1.41), '1k': (1000, 1.41),
+           '2k': (2000, 1.41), '4k': (4000, 1.41), '8k': (8000, 1.41),
+           '16k': (16000, 1.41)
+        }
+
+        for band, (f0, Q) in bands_config.items():
+            gain_db = self.eq_bands.get(band, 0)
+            if gain_db != 0:
+                # Correct implementation for a peaking EQ biquad filter
+                A = 10**(gain_db / 40.0)
+                w0 = 2 * np.pi * f0 / self.samplerate
+                alpha = np.sin(w0) / (2.0 * Q)
+
+                b0 = 1 + alpha * A
+                b1 = -2 * np.cos(w0)
+                b2 = 1 - alpha * A
+                a0 = 1 + alpha / A
+                a1 = -2 * np.cos(w0)
+                a2 = 1 - alpha / A
+                
+                b = np.array([b0, b1, b2]) / a0
+                a = np.array([a0, a1, a2]) / a0
+                
+                # Convert the transfer function (b, a) to second-order sections (SOS)
+                # This is the numerically stable way to implement higher-order filters.
+                sos = tf2sos(b, a, analog=False)
+                self.eq_filters[band] = sos
+        self._initialize_eq_zi()
+        logging.info(f"Designed EQ filters for bands: {list(self.eq_filters.keys())}")
+
+    def _initialize_eq_zi(self, channel_index=None):
+        """Initialize or reset the initial conditions for the EQ filters."""
+        if not self.eq_filters:
+            return
+
+        def init_channel(ch_idx):
+            self.eq_zi[ch_idx] = {}
+            for band, sos in self.eq_filters.items():
+                # The shape of zi for sosfilt is (n_sections, 2)
+                self.eq_zi[ch_idx][band] = np.zeros((sos.shape[0], 2))
+
+        if channel_index is not None:
+            init_channel(channel_index)
+        else:
+            self.eq_zi = {}
+            for i in range(self.channels if self.channels > 0 else 1):
+                init_channel(i)
+
+    def set_eq(self, bands, enabled):
+        """Set EQ parameters and redesign filters."""
+        with self.lock:
+            self.eq_enabled = enabled
+            if bands:
+                for band, gain in bands.items():
+                    if band in self.eq_bands:
+                        self.eq_bands[band] = gain
+            
+            self._design_eq_filters()
+            logging.info(f"EQ set. Enabled: {self.eq_enabled}, Bands: {self.eq_bands}")
+        return True
+
     def configure_output(self, device_id=None, exclusive=False):
         """配置音频输出设备和模式"""
         with self.lock:
@@ -261,6 +362,9 @@ class AudioEngine:
                 self.load(self.file_path) # Reload to reset state
                 self.seek(current_position_seconds)
                 self.play()
+           
+            # Redesign filters for the new sample rate if necessary
+            self._design_eq_filters()
         return True
 
 # --- 全局音频引擎实例 ---
@@ -322,6 +426,17 @@ def configure_output_device():
         return jsonify({'status': 'success', 'message': 'Output configured', 'state': audio_engine.get_state()})
     else:
         return jsonify({'status': 'error', 'message': 'Failed to configure output'}), 500
+
+@app.route('/set_eq', methods=['POST'])
+def set_eq():
+   data = request.get_json()
+   bands = data.get('bands') # e.g., {'60': 3, '1k': -2}
+   enabled = data.get('enabled')
+   
+   if audio_engine.set_eq(bands, enabled):
+       return jsonify({'status': 'success', 'message': 'EQ settings updated', 'state': audio_engine.get_state()})
+   else:
+       return jsonify({'status': 'error', 'message': 'Failed to update EQ settings'}), 500
 
 @app.route('/load', methods=['POST'])
 def load_track():

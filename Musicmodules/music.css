@@ -463,7 +463,119 @@ input:checked + .slider:before {
 }
 
 .slider.round:before {
- border-radius: 50%;
+  border-radius: 50%;
+}
+
+/* --- New EQ Section Styles --- */
+.eq-section {
+   padding: 15px;
+   border-bottom: 1px solid var(--glass-border);
+   margin-bottom: 10px;
+}
+
+.eq-header {
+   display: flex;
+   justify-content: space-between;
+   align-items: center;
+   margin-bottom: 15px;
+}
+
+.eq-header h4 {
+    margin: 0;
+    font-size: 1em;
+    font-weight: 500;
+    color: var(--music-text-secondary);
+}
+
+.eq-controls {
+   display: flex;
+   align-items: center;
+   gap: 15px;
+}
+
+.eq-reset-btn {
+   background: transparent;
+   border: 1px solid var(--glass-border);
+   color: var(--music-text-secondary);
+   padding: 4px 10px;
+   border-radius: 6px;
+   cursor: pointer;
+   font-size: 0.8em;
+   transition: all 0.2s ease;
+}
+
+.eq-reset-btn:hover {
+   background-color: var(--hover-bg);
+   color: var(--music-text);
+}
+
+.eq-bands {
+   display: flex;
+   justify-content: space-around;
+   align-items: center;
+   gap: 5px; /* Reduce gap for more bands */
+   max-height: 0;
+   overflow: hidden;
+   transition: max-height 0.4s ease-out, padding 0.4s ease-out;
+   padding-top: 0;
+}
+
+.eq-section.expanded .eq-bands {
+   max-height: 200px; /* A height large enough to show the sliders */
+   padding-top: 15px; /* Add some space when expanded */
+}
+
+.eq-band {
+   display: flex;
+   flex-direction: column;
+   align-items: center;
+   gap: 8px;
+   /* Add a container for rotation */
+   width: 30px;
+   height: 120px;
+   justify-content: center;
+}
+
+.eq-band label {
+   font-size: 0.75em;
+   color: var(--music-text-secondary);
+}
+
+.eq-band input[type="range"] {
+   -webkit-appearance: none;
+   appearance: none;
+   transform: rotate(-90deg);
+   width: 100px; /* This is the new height */
+   height: 8px; /* This is the new width */
+   background: var(--hover-bg);
+   border-radius: 4px;
+   outline: none;
+   transition: opacity 0.2s;
+   cursor: pointer;
+}
+
+.eq-band input[type="range"]::-webkit-slider-thumb {
+   -webkit-appearance: none;
+   appearance: none;
+   width: 16px;
+   height: 16px;
+   background: var(--music-text);
+   border-radius: 50%;
+   transition: background 0.3s ease;
+}
+.eq-band input[type="range"]::-webkit-slider-thumb:hover {
+   background: var(--music-highlight);
+}
+
+.eq-band input[type="range"]::-moz-range-thumb {
+   width: 16px;
+   height: 16px;
+   background: var(--music-text);
+   border-radius: 50%;
+   transition: background 0.3s ease;
+}
+.eq-band input[type="range"]::-moz-range-thumb:hover {
+   background: var(--music-highlight);
 }
 
 .playlist {

@@ -199,6 +199,11 @@ function initialize(options) {
             return audioEngineApi('/configure_output', 'POST', { device_id, exclusive });
         });
 
+        // --- New handler for EQ ---
+        ipcMain.handle('music-set-eq', (event, { bands, enabled }) => {
+           return audioEngineApi('/set_eq', 'POST', { bands, enabled });
+        });
+
         ipcMain.on('open-music-folder', async (event) => {
             const result = await dialog.showOpenDialog(mainWindow, {
                 properties: ['openDirectory']
