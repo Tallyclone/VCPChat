@@ -6,4 +6,3 @@ sounddevice
 numpy
 pydub
 gevent-websocket
-gevent gevent-websocket
