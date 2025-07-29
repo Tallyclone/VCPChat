@@ -32,6 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const eqBandsContainer = document.getElementById('eq-bands');
   const eqResetBtn = document.getElementById('eq-reset-btn');
   const eqSection = document.getElementById('eq-section');
+  const upsamplingSelect = document.getElementById('upsampling-select');
 
    // --- State Variables ---
     let playlist = [];
@@ -44,7 +45,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let statePollInterval; // 用于轮询状态的定时器
    let currentDeviceId = null;
    let useWasapiExclusive = false;
-  let eqEnabled = false;
+   let targetUpsamplingRate = 0;
+   let eqEnabled = false;
   const eqBands = {
        '31': 0, '62': 0, '125': 0, '250': 0, '500': 0,
        '1k': 0, '2k': 0, '4k': 0, '8k': 0, '16k': 0
@@ -242,6 +244,10 @@ document.addEventListener('DOMContentLoaded', () => {
               }
               eqBands[band] = gain;
           }
+      }
+      // Update upsampling UI
+      if (state.target_samplerate !== undefined && upsamplingSelect.value !== state.target_samplerate) {
+          upsamplingSelect.value = state.target_samplerate || 0;
       }
   };
 
@@ -471,6 +477,25 @@ document.addEventListener('DOMContentLoaded', () => {
    deviceSelect.addEventListener('change', configureOutput);
    wasapiSwitch.addEventListener('change', configureOutput);
 
+  // --- Upsampling Control ---
+  const configureUpsampling = async () => {
+      if (!window.electron) return;
+      const selectedRate = parseInt(upsamplingSelect.value, 10);
+      
+      if (selectedRate === targetUpsamplingRate) {
+          return;
+      }
+      
+      targetUpsamplingRate = selectedRate;
+      
+      console.log(`Configuring upsampling: Target Rate=${targetUpsamplingRate}`);
+      await window.electron.invoke('music-configure-upsampling', {
+          target_samplerate: targetUpsamplingRate > 0 ? targetUpsamplingRate : null
+      });
+  };
+
+  upsamplingSelect.addEventListener('change', configureUpsampling);
+
   // --- EQ Control ---
   const createEqBands = () => {
       eqBandsContainer.innerHTML = '';
@@ -687,6 +712,11 @@ document.addEventListener('DOMContentLoaded', () => {
                    }
                    eqBands[band] = gain;
                }
+           }
+           // Set initial upsampling state
+           if (initialDeviceState.state.target_samplerate !== undefined) {
+               targetUpsamplingRate = initialDeviceState.state.target_samplerate || 0;
+               upsamplingSelect.value = targetUpsamplingRate;
            }
        }
 

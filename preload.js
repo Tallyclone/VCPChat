@@ -31,7 +31,8 @@ contextBridge.exposeInMainWorld('electron', {
             // --- New channels for WASAPI and device selection ---
             'music-get-devices',
             'music-configure-output',
-            'music-set-eq'
+            'music-set-eq',
+            'music-configure-upsampling' // 新增：升频配置通道
         ];
         if (validChannels.includes(channel)) {
             return ipcRenderer.invoke(channel, data);

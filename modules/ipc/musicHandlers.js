@@ -204,7 +204,12 @@ function initialize(options) {
            return audioEngineApi('/set_eq', 'POST', { bands, enabled });
         });
 
-        ipcMain.on('open-music-folder', async (event) => {
+        // --- New handler for Upsampling ---
+        ipcMain.handle('music-configure-upsampling', (event, { target_samplerate }) => {
+            return audioEngineApi('/configure_upsampling', 'POST', { target_samplerate });
+        });
+ 
+         ipcMain.on('open-music-folder', async (event) => {
             const result = await dialog.showOpenDialog(mainWindow, {
                 properties: ['openDirectory']
             });

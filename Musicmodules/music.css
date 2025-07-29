@@ -391,7 +391,7 @@ body.light-theme #search-input:focus {
     min-width: 180px; /* Minimum width before it gets too small */
 }
 
-.device-selection, .wasapi-toggle {
+.device-selection, .wasapi-toggle, .upsampling-selection {
    display: flex;
    align-items: center;
    gap: 10px;
@@ -399,7 +399,7 @@ body.light-theme #search-input:focus {
    color: var(--music-text-secondary);
 }
 
-#device-select {
+#device-select, #upsampling-select {
     background-color: var(--hover-bg);
     color: var(--music-text);
     border: 1px solid var(--glass-border);
@@ -410,7 +410,11 @@ body.light-theme #search-input:focus {
     box-sizing: border-box; /* Include padding and border in the element's total width and height */
 }
 
-/* --- Toggle Switch Styles --- */
+#upsampling-select {
+    flex-grow: 1;
+}
+ 
+ /* --- Toggle Switch Styles --- */
 .switch {
  position: relative;
  display: inline-block;

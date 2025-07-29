@@ -4,7 +4,7 @@ import time
 import numpy as np
 import soundfile as sf
 import sounddevice as sd
-from scipy.signal import tf2sos, sosfilt
+from scipy.signal import tf2sos, sosfilt, resample
 from flask import Flask, request, jsonify
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
@@ -40,6 +40,7 @@ class AudioEngine:
         self.fft_update_interval = 1.0 / 30.0  # 约每秒30次
         self.device_id = None # Can be None for default device
         self.exclusive_mode = False
+        self.target_samplerate = None  # None代表不进行升频
        # --- EQ Settings ---
         self.eq_enabled = False
         self.eq_bands = {
@@ -143,11 +144,31 @@ class AudioEngine:
             
             # 2. 如果读取成功，再获取锁并修改引擎状态
             with self.lock:
-                self.stop() # 停止当前播放
-                
+                self.stop() # 先停止当前播放
+
+                # --- 新增：核心升频处理模块 ---
+                # 检查是否需要升频 (目标速率存在，且高于原始速率)
+                if self.target_samplerate and self.target_samplerate > samplerate:
+                    logging.info(f"Applying upsampling from {samplerate} Hz to {self.target_samplerate} Hz...")
+
+                    # 1. 计算新数据需要多少个采样点
+                    num_original_samples = len(data)
+                    num_new_samples = int(num_original_samples * self.target_samplerate / samplerate)
+
+                    # 2. 调用scipy进行高质量重采样
+                    #    scipy.signal.resample 对整个音频数据进行处理
+                    resampled_data = resample(data, num_new_samples)
+
+                    # 3. 更新引擎的数据和采样率
+                    self.data = resampled_data.astype(np.float64) # 确保数据类型正确
+                    self.samplerate = self.target_samplerate
+                    logging.info("Upsampling complete.")
+                else:
+                    # 不需要升频，直接使用原始数据
+                    self.data = data
+                    self.samplerate = samplerate
+
                 self.file_path = file_path
-                self.data = data
-                self.samplerate = samplerate
                 self.channels = self.data.shape[1] if len(self.data.shape) > 1 else 1
                 self.position = 0
                 self.is_playing = False
@@ -367,6 +388,24 @@ class AudioEngine:
             self._design_eq_filters()
         return True
 
+    def configure_upsampling(self, target_rate):
+        """配置目标升频采样率"""
+        with self.lock:
+            # 如果设置了新的速率，则设为None以使用原始速率
+            self.target_samplerate = int(target_rate) if target_rate else None
+            logging.info(f"Upsampling target rate set to: {self.target_samplerate} Hz.")
+
+            # 重要：如果当前有加载的音轨，需要重新加载以应用新的升频设置
+            if self.file_path:
+                logging.info("Re-loading current track to apply new upsampling settings...")
+                # 保存当前播放进度
+                current_position_seconds = self.position / self.samplerate if self.samplerate > 0 else 0
+                # 使用 self.load 会自动处理停止和状态重置
+                original_path = self.file_path
+                self.load(original_path)
+                self.seek(current_position_seconds)
+        return True
+ 
 # --- 全局音频引擎实例 ---
 audio_engine = AudioEngine(socketio)
 
@@ -427,6 +466,15 @@ def configure_output_device():
     else:
         return jsonify({'status': 'error', 'message': 'Failed to configure output'}), 500
 
+@app.route('/configure_upsampling', methods=['POST'])
+def configure_upsampling_route():
+    data = request.get_json()
+    target_rate = data.get('target_samplerate') # e.g., 96000, 192000, or null
+    if audio_engine.configure_upsampling(target_rate):
+        return jsonify({'status': 'success', 'message': f'Upsampling rate set to {target_rate}.'})
+    else:
+        return jsonify({'status': 'error', 'message': 'Failed to set upsampling rate.'}), 500
+ 
 @app.route('/set_eq', methods=['POST'])
 def set_eq():
    data = request.get_json()
