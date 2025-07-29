@@ -124,7 +124,15 @@ async function handleMusicControl(args) {
                     (t.artist || '').toLowerCase().includes(target.toLowerCase())
                 );
                 if (track) {
+                    // Load the track in the engine
                     await audioEngineApi('/load', 'POST', { path: track.path });
+                    
+                    // Tell the UI to update with the new track information
+                    if (musicWindow && !musicWindow.isDestroyed()) {
+                        musicWindow.webContents.send('music-set-track', track);
+                    }
+
+                    // Play the track
                     return audioEngineApi('/play', 'POST');
                 } else {
                     return { status: 'error', message: `Track '${target}' not found.` };

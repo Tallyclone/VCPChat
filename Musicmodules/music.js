@@ -413,6 +413,17 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error("Received error from main process:", message);
             // You can display this error to the user, e.g., in a toast notification
         });
+
+        // Listen for track changes from the main process (e.g., from AI control)
+        window.electron.on('music-set-track', (track) => {
+            if (!playlist.some(t => t.path === track.path)) {
+                playlist.unshift(track); // Add to playlist if not already there
+            }
+            const trackIndex = playlist.findIndex(t => t.path === track.path);
+            if (trackIndex !== -1) {
+                loadTrack(trackIndex, true); // Load and play the track
+            }
+        });
     };
 
     const renderPlaylist = (filteredPlaylist) => {

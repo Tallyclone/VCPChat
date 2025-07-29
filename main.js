@@ -73,8 +73,8 @@ function startAudioEngine() {
 
     audioEngineProcess.stderr.on('data', (data) => {
         const logLine = data.toString().trim();
-        // 过滤掉来自状态轮询的烦人日志
-        if (logLine && !logLine.includes('GET /state HTTP/1.1')) {
+        // 过滤掉来自状态轮询和特定警告的烦人日志
+        if (logLine && !logLine.includes('GET /state HTTP/1.1') && !logLine.includes('AudioEngine STDERR')) {
             console.error(`[AudioEngine STDERR]: ${logLine}`);
         }
     });
