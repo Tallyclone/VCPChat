@@ -540,3 +540,19 @@ input:checked + .slider:before {
 #toggleAssistantBtn.active svg {
     stroke: var(--text-on-accent);
 }
+
+.topics-header-container {
+    margin-bottom: 10px;
+}
+
+.agents-header {
+    margin-bottom: 10px;
+}
+
+/*
+  Reduce the default margin of h2 elements within the sidebar tabs
+  to create a more compact layout.
+*/
+aside.sidebar .sidebar-tab-content h2 {
+    margin-bottom: 2px;
+}

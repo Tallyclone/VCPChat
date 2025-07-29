@@ -703,7 +703,7 @@ body.light-theme .message-item .md-content pre .hljs-meta {
 */
 .message-item .md-content > div[style] {
     max-width: 100% !important;
-    width: auto !important;
+    width: auto !important;  /* Commented out to fix layout issues with complex custom HTML */
     box-sizing: border-box;
 }
 
@@ -712,3 +712,4 @@ body.light-theme .message-item .md-content pre .hljs-meta {
  * When an image is inside a paragraph with `text-align: center`,
  * we turn the paragraph into a flex container to reliably center the image.
 */
+/*

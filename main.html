@@ -51,7 +51,12 @@
                 <button class="sidebar-tab-button" data-tab="settings">设置</button>
             </div>
             <div class="sidebar-tab-content active" id="tabContentAgents">
-                <h2>VCP Agents</h2>
+                <div class="agents-header">
+                    <h2>VCP Agents</h2>
+                    <div class="topic-search-container">
+                        <input type="text" id="agentSearchInput" placeholder="搜索助手或群..." class="topic-search-input">
+                    </div>
+                </div>
                 <ul class="agent-list" id="agentList">
                     <!-- 示例:
                     <li class="active" data-agent-id="xiaoke">
@@ -67,7 +72,7 @@
             </div>
             <div class="sidebar-tab-content" id="tabContentTopics">
                 <!-- 话题内容区 -->
-                <div class="topics-header">
+                <div class="topics-header-container">
                     <h2>话题</h2>
                     <div class="topic-search-container">
                         <input type="text" id="topicSearchInput" placeholder="搜索话题..." class="topic-search-input">

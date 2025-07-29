@@ -92,6 +92,7 @@ const maximizeBtn = document.getElementById('maximize-btn');
 const restoreBtn = document.getElementById('restore-btn');
 const closeBtn = document.getElementById('close-btn');
 const settingsBtn = document.getElementById('settings-btn'); // DevTools button
+const agentSearchInput = document.getElementById('agentSearchInput');
 
 let croppedAgentAvatarFile = null; // For agent avatar
 let croppedUserAvatarFile = null; // For user avatar
@@ -1363,6 +1364,11 @@ function setupEventListeners() {
             }
         });
     }
+    if (agentSearchInput) {
+        agentSearchInput.addEventListener('input', (e) => {
+            filterAgentList(e.target.value);
+        });
+    }
 }
 
 // MOVED to settingsManager.js: populateAssistantAgentSelect
@@ -1370,6 +1376,23 @@ function setupEventListeners() {
  
 // MOVED to uiManager.js: initializeResizers
 
+
+function filterAgentList(searchTerm) {
+    const lowerCaseSearchTerm = searchTerm.toLowerCase().trim();
+    const items = itemListUl.querySelectorAll('li'); // Get all list items
+
+    items.forEach(item => {
+        const nameElement = item.querySelector('.agent-name');
+        if (nameElement) {
+            const name = nameElement.textContent.toLowerCase();
+            if (name.includes(lowerCaseSearchTerm)) {
+                item.style.display = ''; // Reset to default display style from CSS
+            } else {
+                item.style.display = 'none';
+            }
+        }
+    });
+}
 
 function updateAttachmentPreview() {
     if (!attachmentPreviewArea) {
