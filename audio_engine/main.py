@@ -107,7 +107,7 @@ class AudioEngine:
             try:
                 self.stop() # 停止当前播放
                 self.file_path = file_path
-                self.data, self.samplerate = sf.read(file_path, dtype='float32')
+                self.data, self.samplerate = sf.read(file_path, dtype='float64')
                 self.channels = self.data.shape[1] if len(self.data.shape) > 1 else 1
                 self.position = 0
                 self.is_playing = False
