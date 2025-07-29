@@ -1,4 +1,4 @@
-# VCP 聊天客户端
+# VCPChat 聊天客户端
 
 这是一个为 VCP (Variable & Command Protocol) 服务器打造的 AI 聊天桌面客户端。
 
@@ -7,6 +7,8 @@
 后端链接：https://github.com/lioensky/VCPToolBox
 
 请下载壁纸包以避免元素窗口异常：https://github.com/lioensky/VCPChat/releases
+
+请下载音频解码包：https://github.com/lioensky/VCPChat/releases/tag/%E8%A7%A3%E7%A0%81%E5%99%A8core
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/lioensky/VCPChat)
 
