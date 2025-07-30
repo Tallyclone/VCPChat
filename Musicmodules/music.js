@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const albumArt = document.querySelector('.album-art');
     const trackTitle = document.querySelector('.track-title');
     const trackArtist = document.querySelector('.track-artist');
+    const trackBitrate = document.querySelector('.track-bitrate');
     const playlistEl = document.getElementById('playlist');
     const addFolderBtn = document.getElementById('add-folder-btn');
     const searchInput = document.getElementById('search-input');
@@ -118,6 +119,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // 清空UI
             trackTitle.textContent = '未选择歌曲';
             trackArtist.textContent = '未知艺术家';
+            trackBitrate.textContent = '';
             const defaultArtUrl = `url('../assets/${currentTheme === 'light' ? 'musiclight.jpeg' : 'musicdark.jpeg'}')`;
             albumArt.style.backgroundImage = defaultArtUrl;
             updateBlurredBackground(defaultArtUrl);
@@ -131,6 +133,11 @@ document.addEventListener('DOMContentLoaded', () => {
         // 更新UI
         trackTitle.textContent = track.title || '未知标题';
         trackArtist.textContent = track.artist || '未知艺术家';
+        if (track.bitrate) {
+            trackBitrate.textContent = `${Math.round(track.bitrate / 1000)} kbps`;
+        } else {
+            trackBitrate.textContent = '';
+        }
         const defaultArtUrl = `url('../assets/${currentTheme === 'light' ? 'musiclight.jpeg' : 'musicdark.jpeg'}')`;
         const albumArtUrl = track.albumArt ? `url('file://${track.albumArt.replace(/\\/g, '/')}')` : defaultArtUrl;
         albumArt.style.backgroundImage = albumArtUrl;

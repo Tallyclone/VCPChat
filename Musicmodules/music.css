@@ -60,11 +60,39 @@ body {
 
 .music-player-container {
     display: flex;
-    flex-direction: column;
     height: 100vh;
     padding: 20px;
     box-sizing: border-box;
-    gap: 20px; /* 控制上下两块玻璃的间距 */
+    gap: 20px;
+}
+
+.main-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    overflow: hidden;
+}
+
+.right-sidebar {
+    width: 320px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.settings-container {
+    flex-shrink: 0;
+}
+
+.lyrics-container {
+    flex-grow: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2em;
+    color: var(--music-text-secondary);
 }
 
 /* 核心玻璃面板样式 */
@@ -144,6 +172,12 @@ body.light-theme .album-art {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.track-bitrate {
+    font-size: 0.9em;
+    color: var(--music-text-secondary);
+    margin-top: 4px;
 }
 
 
@@ -324,6 +358,7 @@ body.light-theme .album-art {
     display: flex;
     flex-direction: column;
     overflow: hidden; /* 防止内容溢出玻璃面板 */
+    padding-top: 15px; /* Add some padding to the top */
 }
 
 .playlist-header {
@@ -377,24 +412,27 @@ body.light-theme #search-input:focus {
 /* --- New Settings Section Styles --- */
 .settings-section {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0 15px 15px 15px; /* Add padding */
-    gap: 20px;
-    border-bottom: 1px solid var(--glass-border); /* Add a separator */
-    margin-bottom: 10px; /* Space before the list */
-    flex-wrap: wrap; /* Allow items to wrap */
-}
-
-.device-selection {
-    flex-grow: 1; /* Allow it to grow */
-    min-width: 180px; /* Minimum width before it gets too small */
+    flex-direction: column; /* Stack items vertically */
+    padding: 0;
+    gap: 15px; /* Adjust gap */
+    border-bottom: 1px solid var(--glass-border);
+    padding-bottom: 15px;
+    margin-bottom: 15px;
 }
 
 .device-selection, .wasapi-toggle, .upsampling-selection {
+    width: 100%; /* Make items take full width */
+}
+
+.wasapi-toggle {
+    justify-content: space-between; /* Push label and switch to opposite ends */
+}
+
+.device-selection, .upsampling-selection {
    display: flex;
-   align-items: center;
-   gap: 10px;
+   flex-direction: column; /* Stack label and select vertically */
+   align-items: flex-start;
+   gap: 8px;
    font-size: 0.9em;
    color: var(--music-text-secondary);
 }
@@ -472,9 +510,7 @@ input:checked + .slider:before {
 
 /* --- New EQ Section Styles --- */
 .eq-section {
-   padding: 15px;
-   border-bottom: 1px solid var(--glass-border);
-   margin-bottom: 10px;
+   padding: 0;
 }
 
 .eq-header {
@@ -584,7 +620,7 @@ input:checked + .slider:before {
 
 .playlist {
     list-style: none;
-    padding: 0;
+    padding: 0 10px 0 0; /* Add some padding to the right for the scrollbar */
     margin: 0;
     overflow-y: auto; /* 列表内容可滚动 */
     flex-grow: 1;

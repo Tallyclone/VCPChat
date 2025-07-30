@@ -26,8 +26,8 @@ function createOrFocusMusicWindow() {
 
         console.log('[Music] Creating new music window instance.');
         musicWindow = new BrowserWindow({
-            width: 550,
-            height: 800,
+            width: 900,
+            height: 700,
             minWidth: 400,
             minHeight: 600,
             title: '音乐播放器',
