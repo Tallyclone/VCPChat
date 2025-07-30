@@ -65,7 +65,7 @@ function initialize(mainWindow, openChildWindows) {
         }
     });
 
-    ipcMain.on('open-image-viewer', (event, { src, title }) => {
+    ipcMain.on('open-image-viewer', (event, { src, title, theme }) => {
         const imageViewerWindow = new BrowserWindow({
             width: 1000,
             height: 800,
@@ -73,8 +73,8 @@ function initialize(mainWindow, openChildWindows) {
             minHeight: 500,
             title: title || '图片预览',
             modal: false,
-            // frame: true is the default, so we can remove the false setting.
-            // titleBarStyle: 'hidden' is removed to show the native title bar.
+            frame: false, // 移除原生窗口框架
+            titleBarStyle: 'hidden', // 隐藏标题栏
             webPreferences: {
                 preload: path.join(__dirname, '../../preload.js'), // Correct path from this file's location
                 contextIsolation: true,
@@ -86,10 +86,10 @@ function initialize(mainWindow, openChildWindows) {
 
         imageViewerWindow.setMenu(null);
 
-        const url = `file://${path.join(__dirname, '../../modules/image-viewer.html')}?src=${encodeURIComponent(src)}&title=${encodeURIComponent(title)}`;
+        const url = `file://${path.join(__dirname, '../../modules/image-viewer.html')}?src=${encodeURIComponent(src)}&title=${encodeURIComponent(title)}&theme=${encodeURIComponent(theme || 'dark')}`;
         imageViewerWindow.loadURL(url);
-
-        imageViewerWindow.once('ready-to-show', () => {
+ 
+         imageViewerWindow.once('ready-to-show', () => {
             imageViewerWindow.show();
         });
 
