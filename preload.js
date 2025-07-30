@@ -33,7 +33,8 @@ contextBridge.exposeInMainWorld('electron', {
             'music-configure-output',
             'music-set-eq',
             'music-configure-upsampling', // 新增：升频配置通道
-            'music-get-lyrics' // 新增：获取歌词
+            'music-get-lyrics', // 新增：获取歌词
+            'music-fetch-lyrics' // 新增：从网络获取歌词
         ];
         if (validChannels.includes(channel)) {
             return ipcRenderer.invoke(channel, data);

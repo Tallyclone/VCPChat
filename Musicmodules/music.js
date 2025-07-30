@@ -662,7 +662,20 @@ document.addEventListener('DOMContentLoaded', () => {
            currentLyrics = parseLrc(lrcContent);
            renderLyrics();
        } else {
-           lyricsList.innerHTML = '<li class="no-lyrics">暂无歌词</li>';
+           // If no local lyrics, try fetching from network
+           lyricsList.innerHTML = '<li class="no-lyrics">正在网络上搜索歌词...</li>';
+           try {
+               const fetchedLrc = await window.electron.invoke('music-fetch-lyrics', { artist, title });
+               if (fetchedLrc) {
+                   currentLyrics = parseLrc(fetchedLrc);
+                   renderLyrics();
+               } else {
+                   lyricsList.innerHTML = '<li class="no-lyrics">暂无歌词</li>';
+               }
+           } catch (error) {
+               console.error('Failed to fetch lyrics from network:', error);
+               lyricsList.innerHTML = '<li class="no-lyrics">歌词获取失败</li>';
+           }
        }
    };
 

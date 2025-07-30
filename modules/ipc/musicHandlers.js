@@ -4,6 +4,7 @@ const { ipcMain, BrowserWindow, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs-extra');
 const { Worker } = require('worker_threads');
+const lyricFetcher = require('../lyricFetcher'); // Import the new lyric fetcher
 const AUDIO_ENGINE_URL = 'http://127.0.0.1:5555';
 let fetch;
 
@@ -345,6 +346,20 @@ function initialize(options) {
             }
 
             return null;
+        });
+
+        ipcMain.handle('music-fetch-lyrics', async (event, { artist, title }) => {
+            if (!title) return null;
+            console.log(`[Music] IPC: Received request to fetch lyrics for "${title}" by "${artist}"`);
+            try {
+                // Ensure the lyric directory exists before fetching
+                await fs.ensureDir(LYRIC_DIR);
+                const lrcContent = await lyricFetcher.fetchAndSaveLyrics(artist, title, LYRIC_DIR);
+                return lrcContent;
+            } catch (error) {
+                console.error(`[Music] Error fetching lyrics via IPC for "${title}":`, error);
+                return null;
+            }
         });
     };
 
