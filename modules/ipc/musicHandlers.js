@@ -13,6 +13,7 @@ let mainWindow = null; // To be initialized
 let openChildWindows = []; // To be initialized
 let MUSIC_PLAYLIST_FILE;
 let MUSIC_COVER_CACHE_DIR;
+let LYRIC_DIR;
 
 // --- Singleton Music Window Creation Function ---
 function createOrFocusMusicWindow() {
@@ -156,6 +157,7 @@ function initialize(options) {
     const APP_DATA_ROOT_IN_PROJECT = options.APP_DATA_ROOT_IN_PROJECT;
     MUSIC_PLAYLIST_FILE = path.join(APP_DATA_ROOT_IN_PROJECT, 'songlist.json');
     MUSIC_COVER_CACHE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'MusicCoverCache');
+    LYRIC_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'lyric');
 
     const registerIpcHandlers = () => {
         ipcMain.on('open-music-window', async () => {
@@ -315,6 +317,34 @@ function initialize(options) {
                 if (mainWindow.isMinimized()) mainWindow.restore();
                 mainWindow.focus();
             }
+        });
+
+        ipcMain.handle('music-get-lyrics', async (event, { artist, title }) => {
+            if (!title) return null;
+
+            // A simple sanitizer to remove characters that are invalid in file paths.
+            const sanitize = (str) => str.replace(/[\\/:"*?<>|]/g, '_');
+            const sanitizedTitle = sanitize(title);
+            
+            const possiblePaths = [];
+            if (artist) {
+                const sanitizedArtist = sanitize(artist);
+                possiblePaths.push(path.join(LYRIC_DIR, `${sanitizedArtist} - ${sanitizedTitle}.lrc`));
+            }
+            possiblePaths.push(path.join(LYRIC_DIR, `${sanitizedTitle}.lrc`));
+
+            for (const lrcPath of possiblePaths) {
+                try {
+                    if (await fs.pathExists(lrcPath)) {
+                        const content = await fs.readFile(lrcPath, 'utf-8');
+                        return content;
+                    }
+                } catch (error) {
+                    console.error(`[Music] Error reading lyric file ${lrcPath}:`, error);
+                }
+            }
+
+            return null;
         });
     };
 

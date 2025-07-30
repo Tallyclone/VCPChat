@@ -67,19 +67,20 @@ body {
 }
 
 .main-content {
-    flex: 1;
+    flex: 1.618; /* Golden ratio grow */
     display: flex;
     flex-direction: column;
     gap: 20px;
     overflow: hidden;
+    min-width: 400px; /* Prevent it from becoming too small */
 }
 
 .right-sidebar {
-    width: 320px;
-    flex-shrink: 0;
+    flex: 1; /* Golden ratio grow */
     display: flex;
     flex-direction: column;
     gap: 20px;
+    min-width: 320px; /* Keep sidebar usable */
 }
 
 .settings-container {
@@ -89,8 +90,46 @@ body {
 .lyrics-container {
     flex-grow: 1;
     display: flex;
-    align-items: center;
-    justify-content: center;
+    flex-direction: column;
+    justify-content: flex-start; /* 歌词从顶部开始显示 */
+    overflow: hidden; /* Crucial for smooth scrolling */
+    position: relative;
+}
+
+#lyrics-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    text-align: center;
+    transition: transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94); /* Smoother transition */
+    width: 100%;
+    /* Add padding to top and bottom to allow first and last lines to reach the golden ratio spot */
+    padding: 0;
+}
+
+#lyrics-list li {
+    font-size: 1.1em;
+    line-height: 2.2;
+    color: var(--music-text-secondary);
+    transition: color 0.4s ease, font-size 0.4s ease, font-weight 0.4s ease, opacity 0.4s ease, transform 0.3s ease;
+    font-weight: 500;
+    padding: 0 15px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    opacity: 0.5; /* Default opacity for non-active lines */
+    transform: scale(0.95);
+}
+
+#lyrics-list li.active {
+    color: var(--music-highlight) !important;
+    font-weight: 700;
+    font-size: 1.3em;
+    opacity: 1;
+    transform: scale(1);
+}
+
+#lyrics-list .no-lyrics {
     font-size: 1.2em;
     color: var(--music-text-secondary);
 }

@@ -34,6 +34,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const eqResetBtn = document.getElementById('eq-reset-btn');
   const eqSection = document.getElementById('eq-section');
   const upsamplingSelect = document.getElementById('upsampling-select');
+  const lyricsContainer = document.getElementById('lyrics-container');
+  const lyricsList = document.getElementById('lyrics-list');
 
    // --- State Variables ---
     let playlist = [];
@@ -42,6 +44,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const playModes = ['repeat', 'repeat-one', 'shuffle'];
     let currentPlayMode = 0;
     let currentTheme = 'dark';
+    let currentLyrics = [];
+    let currentLyricIndex = -1;
+    let lyricOffset = -0.05; // In seconds. Negative value makes lyrics appear earlier to compensate for UI lag.
+    let lyricSpeedFactor = 1.0; // Should be 1.0 for correctly timed LRC files.
+    let lastKnownCurrentTime = 0;
+    let lastStateUpdateTime = 0;
     let visualizerColor = { r: 118, g: 106, b: 226 };
     let statePollInterval; // 用于轮询状态的定时器
    let currentDeviceId = null;
@@ -143,6 +151,7 @@ document.addEventListener('DOMContentLoaded', () => {
         albumArt.style.backgroundImage = albumArtUrl;
         updateBlurredBackground(albumArtUrl);
         renderPlaylist();
+        fetchAndDisplayLyrics(track.artist, track.title);
 
         // 通过IPC让主进程通知Python引擎加载文件
         const result = await window.electron.invoke('music-load', track.path);
@@ -213,6 +222,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const duration = state.duration || 0;
         const currentTime = state.current_time || 0;
+        lastKnownCurrentTime = currentTime;
+        lastStateUpdateTime = Date.now();
         
         durationEl.textContent = formatTime(duration);
         currentTimeEl.textContent = formatTime(currentTime);
@@ -267,7 +278,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const startStatePolling = () => {
         if (statePollInterval) clearInterval(statePollInterval);
-        statePollInterval = setInterval(pollState, 500); // 每500ms更新一次进度
+        statePollInterval = setInterval(pollState, 250); // 每250ms更新一次进度
     };
 
     const stopStatePolling = () => {
@@ -290,6 +301,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Visualizer ---
     const startVisualizerAnimation = () => {
         const draw = () => {
+           if (isPlaying) {
+               animateLyrics();
+           }
+
             if (targetVisualizerData.length === 0) {
                 visualizerCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
                 animationFrameId = requestAnimationFrame(draw);
@@ -636,6 +651,131 @@ document.addEventListener('DOMContentLoaded', () => {
         playlistEl.appendChild(fragment);
     };
     
+   // --- Lyrics Handling ---
+   const fetchAndDisplayLyrics = async (artist, title) => {
+       resetLyrics();
+       if (!window.electron) return;
+
+       const lrcContent = await window.electron.invoke('music-get-lyrics', { artist, title });
+
+       if (lrcContent) {
+           currentLyrics = parseLrc(lrcContent);
+           renderLyrics();
+       } else {
+           lyricsList.innerHTML = '<li class="no-lyrics">暂无歌词</li>';
+       }
+   };
+
+   const parseLrc = (lrcContent) => {
+       const lyrics = [];
+       const lines = lrcContent.split('\n');
+       const timeRegex = /\[(\d{2}):(\d{2})[.:](\d{2,3})\]/g;
+ 
+       for (const line of lines) {
+           const trimmedLine = line.trim();
+           if (!trimmedLine) continue;
+ 
+           const text = trimmedLine.replace(timeRegex, '').trim();
+           if (text) {
+               let match;
+               timeRegex.lastIndex = 0;
+               while ((match = timeRegex.exec(trimmedLine)) !== null) {
+                   const minutes = parseInt(match[1], 10);
+                   const seconds = parseInt(match[2], 10);
+                   const milliseconds = parseInt(match[3].padEnd(3, '0'), 10);
+                   // Apply speed factor and offset during parsing for more accurate synchronization
+                   const time = (minutes * 60 + seconds + milliseconds / 1000) * lyricSpeedFactor + lyricOffset;
+                   lyrics.push({ time, text });
+               }
+           }
+       }
+ 
+       return lyrics.sort((a, b) => a.time - b.time);
+   };
+
+   const renderLyrics = () => {
+       lyricsList.innerHTML = '';
+       const fragment = document.createDocumentFragment();
+       currentLyrics.forEach((line, index) => {
+           const li = document.createElement('li');
+           li.textContent = line.text;
+           li.dataset.index = index;
+           fragment.appendChild(li);
+       });
+       lyricsList.appendChild(fragment);
+   };
+
+   const animateLyrics = () => {
+       if (currentLyrics.length === 0 || !isPlaying) return;
+
+       // Re-introduce client-side time estimation for smooth scrolling, anchored by backend state.
+       const elapsedTime = (Date.now() - lastStateUpdateTime) / 1000;
+       const estimatedTime = lastKnownCurrentTime + elapsedTime;
+
+       let newLyricIndex = -1;
+       for (let i = 0; i < currentLyrics.length; i++) {
+           if (estimatedTime >= currentLyrics[i].time) {
+               newLyricIndex = i;
+           } else {
+               break;
+           }
+       }
+
+       if (newLyricIndex !== currentLyricIndex) {
+           currentLyricIndex = newLyricIndex;
+       }
+       
+       // Update visual styles (like opacity) on every frame for smoothness.
+       const allLi = lyricsList.querySelectorAll('li');
+       allLi.forEach((li, index) => {
+           const distance = Math.abs(index - currentLyricIndex);
+           
+           if (index === currentLyricIndex) {
+               li.classList.add('active');
+               li.style.opacity = 1;
+           } else {
+               li.classList.remove('active');
+               li.style.opacity = Math.max(0.15, 1 - distance * 0.2).toFixed(2);
+           }
+       });
+
+       // Smooth scrolling logic
+       if (currentLyricIndex > -1) {
+           const currentLine = currentLyrics[currentLyricIndex];
+           const nextLine = currentLyrics[currentLyricIndex + 1];
+           
+           const currentLineLi = lyricsList.querySelector(`li[data-index='${currentLyricIndex}']`);
+           if (!currentLineLi) return;
+
+           let progress = 0;
+           if (nextLine) {
+               const timeIntoLine = estimatedTime - currentLine.time;
+               const lineDuration = nextLine.time - currentLine.time;
+               if (lineDuration > 0) {
+                   progress = Math.max(0, Math.min(1, timeIntoLine / lineDuration));
+               }
+           }
+
+           const nextLineLi = nextLine ? lyricsList.querySelector(`li[data-index='${currentLyricIndex + 1}']`) : null;
+           const currentOffset = currentLineLi.offsetTop;
+           const nextOffset = nextLineLi ? nextLineLi.offsetTop : currentOffset;
+           
+           const interpolatedOffset = currentOffset + (nextOffset - currentOffset) * progress;
+
+           const goldenRatioPoint = lyricsContainer.clientHeight * 0.382;
+           const scrollOffset = interpolatedOffset - goldenRatioPoint + (currentLineLi.clientHeight / 2);
+
+           lyricsList.style.transform = `translateY(-${scrollOffset}px)`;
+       }
+   };
+
+   const resetLyrics = () => {
+       currentLyrics = [];
+       currentLyricIndex = -1;
+       lyricsList.innerHTML = '<li class="no-lyrics">加载歌词中...</li>';
+       lyricsList.style.transform = 'translateY(0px)';
+   };
+
     // --- Theme Handling ---
     const applyTheme = (theme) => {
         currentTheme = theme;
