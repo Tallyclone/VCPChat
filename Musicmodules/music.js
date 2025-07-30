@@ -37,6 +37,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const lyricsContainer = document.getElementById('lyrics-container');
   const lyricsList = document.getElementById('lyrics-list');
 
+  // --- Custom Title Bar ---
+  const minimizeBtn = document.getElementById('minimize-music-btn');
+  const maximizeBtn = document.getElementById('maximize-music-btn');
+  const closeBtn = document.getElementById('close-music-btn');
+
    // --- State Variables ---
     let playlist = [];
     let currentTrackIndex = 0;
@@ -442,6 +447,19 @@ document.addEventListener('DOMContentLoaded', () => {
         if (track.path && window.electron) {
             window.electron.send('share-file-to-main', track.path);
         }
+    });
+
+    // --- Custom Title Bar Listeners ---
+    minimizeBtn.addEventListener('click', () => {
+        if (window.electronAPI) window.electronAPI.minimizeWindow();
+    });
+
+    maximizeBtn.addEventListener('click', () => {
+        if (window.electronAPI) window.electronAPI.maximizeWindow();
+    });
+
+    closeBtn.addEventListener('click', () => {
+        window.close();
     });
 
    // --- WASAPI and Device Control ---

@@ -33,6 +33,8 @@ function createOrFocusMusicWindow() {
             minWidth: 400,
             minHeight: 600,
             title: '音乐播放器',
+            frame: false, // 移除原生窗口框架
+            titleBarStyle: 'hidden', // 隐藏标题栏
             modal: false,
             webPreferences: {
                 preload: path.join(__dirname, '..', '..', 'preload.js'),

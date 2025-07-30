@@ -9,28 +9,41 @@ const path = require('path');
  */
 function initialize(mainWindow, openChildWindows) {
     // --- Window Control IPC Handlers ---
-    ipcMain.on('minimize-window', () => {
-        if (mainWindow) {
-            mainWindow.minimize();
+    ipcMain.on('minimize-window', (event) => {
+        const win = BrowserWindow.fromWebContents(event.sender);
+        if (win) {
+            win.minimize();
         }
     });
 
-    ipcMain.on('maximize-window', () => {
-        if (mainWindow) {
-            mainWindow.maximize();
+    ipcMain.on('maximize-window', (event) => {
+        const win = BrowserWindow.fromWebContents(event.sender);
+        if (win) {
+            if (win.isMaximized()) {
+                win.unmaximize();
+            } else {
+                win.maximize();
+            }
         }
     });
 
-    ipcMain.on('unmaximize-window', () => {
-        if (mainWindow) {
-            mainWindow.unmaximize();
+    ipcMain.on('unmaximize-window', (event) => {
+        const win = BrowserWindow.fromWebContents(event.sender);
+        if (win) {
+            win.unmaximize();
         }
     });
 
-    ipcMain.on('close-window', () => {
-        // Directly quit the app. This will trigger the 'will-quit' event
-        // which handles closing all windows and cleaning up resources.
-        app.quit();
+    ipcMain.on('close-window', (event) => {
+        const win = BrowserWindow.fromWebContents(event.sender);
+        if (win) {
+            // If it's the main window, quit the app. Otherwise, just close the child window.
+            if (win === mainWindow) {
+                app.quit();
+            } else {
+                win.close();
+            }
+        }
     });
 
     ipcMain.on('toggle-notifications-sidebar', () => {
