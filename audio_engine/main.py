@@ -11,6 +11,8 @@ from flask_cors import CORS
 import logging
 import argparse
 import hashlib
+import subprocess
+import io
 
 # --- 全局配置 ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -184,8 +186,54 @@ class AudioEngine:
             with self.lock:
                 self.stop() # 先停止当前播放
 
+                # --- Load Audio Data ---
+                try:
+                    # 尝试直接用 soundfile 加载
+                    logging.info(f"Attempting to load {file_path} with soundfile...")
+                    original_data, original_samplerate = sf.read(file_path, dtype='float64')
+                    logging.info(f"Successfully loaded with soundfile.")
+                except sf.LibsndfileError as e:
+                    # 如果是格式无法识别的错误，则尝试使用 FFmpeg 作为后备方案
+                    if 'Format not recognised' in str(e):
+                        logging.warning(f"Soundfile failed: {e}. Falling back to FFmpeg.")
+                        
+                        # 构建 ffmpeg 的路径
+                        ffmpeg_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'bin', 'ffmpeg.exe'))
+                        
+                        if not os.path.exists(ffmpeg_path):
+                            logging.warning(f"ffmpeg.exe not found at {ffmpeg_path}, assuming it's in PATH.")
+                            ffmpeg_path = 'ffmpeg'
+
+                        command = [
+                            ffmpeg_path,
+                            '-i', file_path,
+                            '-f', 'wav',       # 输出 WAV 格式到 stdout
+                            '-'
+                        ]
+
+                        # 使用 communicate() 来避免死锁，并捕获 stdout 和 stderr
+                        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        stdout_data, stderr_data = process.communicate()
+
+                        # 检查 ffmpeg 是否成功执行
+                        if process.returncode != 0:
+                            logging.error(f"FFmpeg failed with return code {process.returncode}.")
+                            logging.error(f"FFmpeg stderr: {stderr_data.decode(errors='ignore')}")
+                            # 抛出异常，让外层知道加载失败
+                            raise sf.LibsndfileError(f"FFmpeg decoding failed for {file_path}")
+
+                        # 如果成功，从内存中的 stdout 数据加载
+                        try:
+                            original_data, original_samplerate = sf.read(io.BytesIO(stdout_data), dtype='float64')
+                            logging.info(f"Successfully loaded {file_path} via FFmpeg.")
+                        except Exception as e:
+                            logging.error(f"Failed to read from FFmpeg stdout stream: {e}", exc_info=True)
+                            raise e
+                    else:
+                        # 如果是其他 soundfile 错误，重新抛出
+                        raise e
+
                 # --- Determine Target Samplerate ---
-                original_data, original_samplerate = sf.read(file_path, dtype='float64')
                 target_sr = original_samplerate
 
                 if self.target_samplerate and self.target_samplerate > target_sr:
