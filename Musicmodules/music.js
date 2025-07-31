@@ -366,7 +366,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let x = 0;
         for (let i = 0; i < bufferLength; i++) {
-            const barHeight = smoothedData[i] * visualizerCanvas.height * 0.9;
+            const barHeight = smoothedData[i] * visualizerCanvas.height * 1.316;
             const y = visualizerCanvas.height - barHeight;
             visualizerCtx.lineTo(x, y);
             x += barWidth;
