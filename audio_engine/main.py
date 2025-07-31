@@ -127,6 +127,11 @@ class AudioEngine:
                         fft_result = np.fft.rfft(fft_chunk)
                         magnitude = np.abs(fft_result)
                         
+                        # CRITICAL FIX: Normalize the FFT magnitude by the window size.
+                        # This is the root cause of all previous "clipping" and "flat" issues.
+                        # Without this, the magnitude scale is arbitrary and far too large.
+                        magnitude = magnitude / self.fft_size
+
                         # --- New Logarithmic Binning ---
                         freqs = np.fft.rfftfreq(self.fft_size, 1.0 / self.samplerate)
 
@@ -138,7 +143,7 @@ class AudioEngine:
                         if len(freqs) > 0:
                             # Define logarithmic bin edges
                             min_freq = 20
-                            max_freq = min(20000, self.samplerate / 2)
+                            max_freq = self.samplerate / 2
                             if max_freq > min_freq:
                                 log_min = np.log10(min_freq)
                                 log_max = np.log10(max_freq)
@@ -151,11 +156,14 @@ class AudioEngine:
                                 for i in range(1, self.num_log_bins + 1):
                                     in_bin_mask = (bin_indices == i)
                                     if np.any(in_bin_mask):
-                                        log_binned_magnitude[i-1] = magnitude[in_bin_mask].max()
+                                        # Use Root Mean Square (RMS) for a perceptually accurate representation of power.
+                                        log_binned_magnitude[i-1] = np.sqrt(np.mean(np.square(magnitude[in_bin_mask])))
 
                         # 转换为分贝并归一化
                         log_magnitude = 20 * np.log10(log_binned_magnitude + 1e-9) # 避免log(0)
-                        # 将范围从[-90, 0]映射到[0, 1]
+                        
+                        # With the FFT properly normalized, we can use a standard 90dB dynamic range.
+                        # This provides a good balance of sensitivity and headroom.
                         normalized_magnitude = np.clip((log_magnitude + 90) / 90, 0, 1)
 
                     # 通过WebSocket发送频谱数据
