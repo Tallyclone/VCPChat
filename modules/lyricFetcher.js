@@ -109,7 +109,7 @@ async function fetchAndSaveLyrics(artist, title, lyricDir) {
 
     if (lrcContent) {
         try {
-            await fs.ensureDir(lyricDir);
+            await fs.mkdir(lyricDir, { recursive: true });
             const sanitize = (str) => str.replace(/[\\/:"*?<>|]/g, '_').trim();
             const sanitizedTitle = sanitize(title);
             const lrcFileName = artist ? `${sanitize(artist)} - ${sanitizedTitle}.lrc` : `${sanitizedTitle}.lrc`;
