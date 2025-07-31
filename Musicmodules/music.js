@@ -827,19 +827,18 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     
     const initializeTheme = async () => {
-        if (!window.electronAPI) {
-            applyTheme('dark');
-            return;
-        }
-        try {
-            const theme = await window.electronAPI.getCurrentTheme();
-            applyTheme(theme || 'dark');
-            window.electronAPI.onThemeUpdated((newTheme) => {
-                applyTheme(newTheme);
-            });
-        } catch (error) {
-            console.error('Failed to initialize theme:', error);
-            applyTheme('dark');
+        if (window.electronAPI) {
+            // Use the new robust theme listener
+            window.electronAPI.onThemeUpdated(applyTheme);
+            try {
+                const theme = await window.electronAPI.getCurrentTheme();
+                applyTheme(theme || 'dark');
+            } catch (error) {
+                console.error('Failed to initialize theme:', error);
+                applyTheme('dark');
+            }
+        } else {
+            applyTheme('dark'); // Fallback for non-electron env
         }
     };
 

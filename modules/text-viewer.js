@@ -427,10 +427,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.log(`[TextViewer] Initial theme set from URL: ${initialTheme}`);
 
     if (window.electronAPI) {
-        window.electronAPI.onThemeUpdated((theme) => {
-            console.log(`Theme update received in text viewer: ${theme}`);
-            applyTheme(theme);
-        });
+        window.electronAPI.onThemeUpdated(applyTheme);
     } else {
         console.log('[TextViewer] electronAPI not found. Theme updates will not be received.');
     }
