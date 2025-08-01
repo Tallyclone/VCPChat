@@ -363,16 +363,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function preprocessFullContent(text) {
-        let processed = text;
+        const htmlBlockMap = new Map();
+        let placeholderId = 0;
+
+        // Step 1: Find and protect ```html blocks.
+        let processed = text.replace(/```html([\s\S]*?)```/g, (match) => {
+            const placeholder = `__VCP_HTML_BLOCK_PLACEHOLDER_${placeholderId}__`;
+            htmlBlockMap.set(placeholder, match);
+            placeholderId++;
+            return placeholder;
+        });
+
+        // Step 2: Run existing pre-processing on the modified text.
         processed = deIndentHtml(processed);
-        // Directly transform special blocks instead of fencing them
         processed = transformSpecialBlocksForViewer(processed);
         processed = ensureHtmlFenced(processed);
+        
         // Basic content processors from contentProcessor.js
         processed = processed.replace(/^(\s*```)(?![\r\n])/gm, '$1\n'); // ensureNewlineAfterCodeBlock
         processed = processed.replace(/~(?![\s~])/g, '~ '); // ensureSpaceAfterTilde
         processed = processed.replace(/^(\s*)(```.*)/gm, '$2'); // removeIndentationFromCodeBlockMarkers
         processed = processed.replace(/(<img[^>]+>)\s*(```)/g, '$1\n\n<!-- VCP-Renderer-Separator -->\n\n$2'); // ensureSeparatorBetweenImgAndCode
+
+        // Step 3: Restore the protected ```html blocks.
+        if (htmlBlockMap.size > 0) {
+            for (const [placeholder, block] of htmlBlockMap.entries()) {
+                processed = processed.replace(placeholder, block);
+            }
+        }
+
         return processed;
     }
 

@@ -229,9 +229,15 @@ function transformSpecialBlocks(text) {
 function ensureHtmlFenced(text) {
     const doctypeTag = '<!DOCTYPE html>';
     const htmlCloseTag = '</html>';
+    const lowerText = text.toLowerCase();
+
+    // If it's already in a proper html code block, do nothing. This is the fix.
+    if (lowerText.includes('```html\n' + doctypeTag.toLowerCase())) {
+        return text;
+    }
 
     // Quick exit if no doctype is present.
-    if (!text.toLowerCase().includes(doctypeTag.toLowerCase())) {
+    if (!lowerText.includes(doctypeTag.toLowerCase())) {
         return text;
     }
 
@@ -312,29 +318,43 @@ function deIndentHtml(text) {
  * @returns {string} The processed text.
  */
 function preprocessFullContent(text, settings = {}) {
-   let processed = text;
-   // The order here is critical.
+    const htmlBlockMap = new Map();
+    let placeholderId = 0;
 
-   // 1. Fix indented HTML that markdown might misinterpret as code blocks.
-   // This MUST run first, regardless of the theme, to correctly handle indented divs.
-   // The logic inside deIndentHtml is now smart enough to handle this correctly.
-   processed = deIndentHtml(processed);
+    // Step 1: Find and protect ```html blocks.
+    // The regex looks for ```html followed by anything until the next ```
+    let processed = text.replace(/```html([\s\S]*?)```/g, (match) => {
+        const placeholder = `__VCP_HTML_BLOCK_PLACEHOLDER_${placeholderId}__`;
+        htmlBlockMap.set(placeholder, match);
+        placeholderId++;
+        return placeholder;
+    });
 
-   // 2. Directly transform special blocks (Tool/Diary) into styled HTML divs.
-   // This runs before markdown parsing, so the HTML is treated as a block.
-   processed = transformSpecialBlocks(processed);
+    // The order of the remaining operations is critical.
+    // Step 2. Fix indented HTML that markdown might misinterpret as code blocks.
+    processed = deIndentHtml(processed);
 
-   // 3. Ensure raw HTML documents are fenced to be displayed as code.
-   // This is a safety measure for full HTML pages.
-   processed = ensureHtmlFenced(processed);
+    // Step 3. Directly transform special blocks (Tool/Diary) into styled HTML divs.
+    processed = transformSpecialBlocks(processed);
 
-   // 4. Run other standard content processors.
-   processed = contentProcessor.ensureNewlineAfterCodeBlock(processed);
-   processed = contentProcessor.ensureSpaceAfterTilde(processed);
-   processed = contentProcessor.removeIndentationFromCodeBlockMarkers(processed);
-   processed = contentProcessor.removeSpeakerTags(processed);
-   processed = contentProcessor.ensureSeparatorBetweenImgAndCode(processed);
-   return processed;
+    // Step 4. Ensure raw HTML documents are fenced to be displayed as code.
+    processed = ensureHtmlFenced(processed);
+
+    // Step 5. Run other standard content processors.
+    processed = contentProcessor.ensureNewlineAfterCodeBlock(processed);
+    processed = contentProcessor.ensureSpaceAfterTilde(processed);
+    processed = contentProcessor.removeIndentationFromCodeBlockMarkers(processed);
+    processed = contentProcessor.removeSpeakerTags(processed);
+    processed = contentProcessor.ensureSeparatorBetweenImgAndCode(processed);
+
+    // Step 6: Restore the protected ```html blocks.
+    if (htmlBlockMap.size > 0) {
+        for (const [placeholder, block] of htmlBlockMap.entries()) {
+            processed = processed.replace(placeholder, block);
+        }
+    }
+
+    return processed;
 }
 
 /**
