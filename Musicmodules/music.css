@@ -329,7 +329,10 @@ body.light-theme .album-art {
     appearance: none;
     width: 80px;
     height: 5px;
-    background: var(--hover-bg);
+    background-color: var(--hover-bg);
+    background-image: linear-gradient(to right, var(--music-highlight), var(--music-highlight));
+    background-repeat: no-repeat;
+    background-size: 0% 100%; /* Default to 0, will be updated by JS */
     border-radius: 3px;
     outline: none;
     transition: opacity 0.2s;
@@ -572,20 +575,24 @@ input:checked + .slider:before {
    gap: 15px;
 }
 
-.eq-reset-btn {
-   background: transparent;
-   border: 1px solid var(--glass-border);
-   color: var(--music-text-secondary);
-   padding: 4px 10px;
-   border-radius: 6px;
-   cursor: pointer;
-   font-size: 0.8em;
-   transition: all 0.2s ease;
+.eq-preset-select {
+    background-color: var(--hover-bg);
+    color: var(--music-text);
+    border: 1px solid var(--glass-border);
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 0.8em;
+    outline: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
 }
 
-.eq-reset-btn:hover {
-   background-color: var(--hover-bg);
-   color: var(--music-text);
+.eq-preset-select:hover {
+    background-color: rgba(255, 255, 255, 0.15);
+}
+
+body.light-theme .eq-preset-select:hover {
+    background-color: rgba(0, 0, 0, 0.1);
 }
 
 .eq-bands {

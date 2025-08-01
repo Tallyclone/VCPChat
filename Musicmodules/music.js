@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const modeBtn = document.getElementById('mode-btn');
     const volumeBtn = document.getElementById('volume-btn'); // 音量功能暂时由UI控制，不与引擎交互
     const volumeSlider = document.getElementById('volume-slider'); // 同上
+    const progressContainer = document.querySelector('.progress-container');
     const progressBar = document.querySelector('.progress-bar');
     const progress = document.querySelector('.progress');
     const currentTimeEl = document.querySelector('.current-time');
@@ -31,7 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
    const wasapiSwitch = document.getElementById('wasapi-switch');
   const eqSwitch = document.getElementById('eq-switch');
   const eqBandsContainer = document.getElementById('eq-bands');
-  const eqResetBtn = document.getElementById('eq-reset-btn');
+  const eqPresetSelect = document.getElementById('eq-preset-select');
   const eqSection = document.getElementById('eq-section');
   const upsamplingSelect = document.getElementById('upsampling-select');
   const lyricsContainer = document.getElementById('lyrics-container');
@@ -65,6 +66,14 @@ document.addEventListener('DOMContentLoaded', () => {
        '31': 0, '62': 0, '125': 0, '250': 0, '500': 0,
        '1k': 0, '2k': 0, '4k': 0, '8k': 0, '16k': 0
   };
+  const eqPresets = {
+       'balance': { '31': 0, '62': 0, '125': 0, '250': 0, '500': 0, '1k': 0, '2k': 0, '4k': 0, '8k': 0, '16k': 0 },
+       'classical': { '31': 0, '62': 0, '125': 0, '250': -2, '500': -4, '1k': -5, '2k': -4, '4k': -3, '8k': 2, '16k': 3 },
+       'pop': { '31': 2, '62': 4, '125': 5, '250': 2, '500': -1, '1k': -2, '2k': 0, '4k': 3, '8k': 4, '16k': 5 },
+       'rock': { '31': 5, '62': 3, '125': -2, '250': -4, '500': -1, '1k': 2, '2k': 5, '4k': 6, '8k': 7, '16k': 7 },
+       'electronic': { '31': 6, '62': 5, '125': 2, '250': 0, '500': -2, '1k': 0, '2k': 3, '4k': 5, '8k': 6, '16k': 7 },
+  };
+let isDraggingProgress = false;
 
    // --- Visualizer State ---
     let animationFrameId;
@@ -291,17 +300,6 @@ document.addEventListener('DOMContentLoaded', () => {
         statePollInterval = null;
     };
 
-    const setProgress = async (e) => {
-        const width = progressBar.clientWidth;
-        const clickX = e.offsetX;
-        const result = await window.electron.invoke('music-get-state');
-        if (result.status === 'success' && result.state.duration > 0) {
-            const newTime = (clickX / width) * result.state.duration;
-            await window.electron.invoke('music-seek', newTime);
-            // 立即更新UI以获得即时反馈
-            pollState();
-        }
-    };
 
     // --- Visualizer ---
     const startVisualizerAnimation = () => {
@@ -383,11 +381,72 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     prevBtn.addEventListener('click', prevTrack);
     nextBtn.addEventListener('click', nextTrack);
-    progressBar.addEventListener('click', setProgress);
+    // --- Progress Bar Drag Logic ---
+    let dragInProgress = false; // Use a different name to avoid conflict
     
+    const handleProgressUpdate = async (e, shouldSeek = false) => {
+        const rect = progressContainer.getBoundingClientRect();
+        // Ensure offsetX is within valid bounds
+        const offsetX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+        const width = rect.width;
+
+        const result = await window.electron.invoke('music-get-state');
+        if (result.status === 'success' && result.state.duration > 0) {
+            const duration = result.state.duration;
+            const newTime = (offsetX / width) * duration;
+
+            // Update UI immediately
+            progress.style.width = `${(newTime / duration) * 100}%`;
+            currentTimeEl.textContent = formatTime(newTime);
+
+            if (shouldSeek) {
+                await window.electron.invoke('music-seek', newTime);
+                // If still playing after drag, resume polling
+                if (isPlaying) {
+                    startStatePolling();
+                }
+            }
+        }
+    };
+
+    progressContainer.addEventListener('mousedown', (e) => {
+        dragInProgress = true;
+        stopStatePolling(); // Pause state polling during drag to prevent UI jumps
+        handleProgressUpdate(e);
+    });
+
+    window.addEventListener('mousemove', (e) => {
+        if (dragInProgress) {
+            handleProgressUpdate(e);
+        }
+    });
+
+    window.addEventListener('mouseup', (e) => {
+        if (dragInProgress) {
+            handleProgressUpdate(e, true); // Pass true to seek
+            // The click event will fire after mouseup, so we delay resetting the flag
+            setTimeout(() => {
+                dragInProgress = false;
+            }, 0);
+        }
+    });
+
+    progressContainer.addEventListener('click', (e) => {
+        // Only seek on click if not dragging
+        if (!dragInProgress) {
+             handleProgressUpdate(e, true);
+        }
+    });
+    
+    const updateVolumeSliderBackground = (value) => {
+        const percentage = value * 100;
+        volumeSlider.style.backgroundSize = `${percentage}% 100%`;
+    };
+
     // 音量控制暂时保持前端控制，因为它不影响HIFI解码
     volumeSlider.addEventListener('input', async (e) => {
         const newVolume = parseFloat(e.target.value);
+        updateVolumeSliderBackground(newVolume);
         if (window.electron) {
             await window.electron.invoke('music-set-volume', newVolume);
         }
@@ -537,6 +596,35 @@ document.addEventListener('DOMContentLoaded', () => {
   upsamplingSelect.addEventListener('change', configureUpsampling);
 
   // --- EQ Control ---
+  const populateEqPresets = () => {
+       const presetNames = {
+           'balance': '平衡',
+           'classical': '古典',
+           'pop': '流行',
+           'rock': '摇滚',
+           'electronic': '电子'
+       };
+       for (const preset in eqPresets) {
+           const option = document.createElement('option');
+           option.value = preset;
+           option.textContent = presetNames[preset] || preset;
+           eqPresetSelect.appendChild(option);
+       }
+  };
+
+  const applyEqPreset = (presetName) => {
+       const preset = eqPresets[presetName];
+       if (!preset) return;
+
+       for (const band in preset) {
+           const slider = document.getElementById(`eq-${band}`);
+           if (slider) {
+               slider.value = preset[band];
+           }
+       }
+       sendEqSettings();
+  };
+
   const createEqBands = () => {
       eqBandsContainer.innerHTML = '';
       for (const band in eqBands) {
@@ -585,14 +673,8 @@ document.addEventListener('DOMContentLoaded', () => {
        sendEqSettings();
   });
 
-  eqResetBtn.addEventListener('click', () => {
-      for (const band in eqBands) {
-          const slider = document.getElementById(`eq-${band}`);
-          if (slider) {
-              slider.value = 0;
-          }
-      }
-      sendEqSettings();
+  eqPresetSelect.addEventListener('change', (e) => {
+       applyEqPreset(e.target.value);
   });
 
    // --- Electron IPC and Initialization ---
@@ -862,12 +944,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const initialState = await window.electron.invoke('music-get-state');
             if (initialState && initialState.state && initialState.state.volume !== undefined) {
                 volumeSlider.value = initialState.state.volume;
+                updateVolumeSliderBackground(initialState.state.volume);
             }
         }
        
        // --- New: Populate devices and set initial state ---
        await populateDeviceList();
       createEqBands(); // Create EQ sliders
+      populateEqPresets(); // Populate EQ presets
        const initialDeviceState = await window.electron.invoke('music-get-state');
        if (initialDeviceState && initialDeviceState.state) {
            currentDeviceId = initialDeviceState.state.device_id;
