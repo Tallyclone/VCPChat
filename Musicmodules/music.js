@@ -780,42 +780,65 @@ let isDraggingProgress = false;
    };
 
    const parseLrc = (lrcContent) => {
-       const lyrics = [];
-       const lines = lrcContent.split('\n');
-       const timeRegex = /\[(\d{2}):(\d{2})[.:](\d{2,3})\]/g;
- 
-       for (const line of lines) {
-           const trimmedLine = line.trim();
-           if (!trimmedLine) continue;
- 
-           const text = trimmedLine.replace(timeRegex, '').trim();
-           if (text) {
-               let match;
-               timeRegex.lastIndex = 0;
-               while ((match = timeRegex.exec(trimmedLine)) !== null) {
-                   const minutes = parseInt(match[1], 10);
-                   const seconds = parseInt(match[2], 10);
-                   const milliseconds = parseInt(match[3].padEnd(3, '0'), 10);
-                   // Apply speed factor and offset during parsing for more accurate synchronization
-                   const time = (minutes * 60 + seconds + milliseconds / 1000) * lyricSpeedFactor + lyricOffset;
-                   lyrics.push({ time, text });
-               }
-           }
-       }
- 
-       return lyrics.sort((a, b) => a.time - b.time);
+        const lyricsMap = new Map();
+        const lines = lrcContent.split('\n');
+        const timeRegex = /\[(\d{2}):(\d{2})[.:](\d{2,3})\]/g;
+
+        for (const line of lines) {
+            const trimmedLine = line.trim();
+            if (!trimmedLine) continue;
+
+            const text = trimmedLine.replace(timeRegex, '').trim();
+            if (text) {
+                let match;
+                timeRegex.lastIndex = 0;
+                while ((match = timeRegex.exec(trimmedLine)) !== null) {
+                    const minutes = parseInt(match[1], 10);
+                    const seconds = parseInt(match[2], 10);
+                    const milliseconds = parseInt(match[3].padEnd(3, '0'), 10);
+                    const time = (minutes * 60 + seconds + milliseconds / 1000) * lyricSpeedFactor + lyricOffset;
+                    
+                    const timeKey = time.toFixed(4); // Use fixed precision for map key
+
+                    if (lyricsMap.has(timeKey)) {
+                        // This is likely the translation, append it.
+                        // This simple logic assumes original text comes before translation for the same timestamp.
+                        if (!lyricsMap.get(timeKey).translation) {
+                           lyricsMap.get(timeKey).translation = text;
+                        }
+                    } else {
+                        // This is the original lyric
+                        lyricsMap.set(timeKey, { time, original: text, translation: '' });
+                    }
+                }
+            }
+        }
+
+        return Array.from(lyricsMap.values()).sort((a, b) => a.time - b.time);
    };
 
    const renderLyrics = () => {
-       lyricsList.innerHTML = '';
-       const fragment = document.createDocumentFragment();
-       currentLyrics.forEach((line, index) => {
-           const li = document.createElement('li');
-           li.textContent = line.text;
-           li.dataset.index = index;
-           fragment.appendChild(li);
-       });
-       lyricsList.appendChild(fragment);
+        lyricsList.innerHTML = '';
+        const fragment = document.createDocumentFragment();
+        currentLyrics.forEach((line, index) => {
+            const li = document.createElement('li');
+            
+            const originalSpan = document.createElement('span');
+            originalSpan.textContent = line.original;
+            originalSpan.className = 'lyric-original';
+            li.appendChild(originalSpan);
+
+            if (line.translation) {
+                const translationSpan = document.createElement('span');
+                translationSpan.textContent = line.translation;
+                translationSpan.className = 'lyric-translation';
+                li.appendChild(translationSpan);
+            }
+
+            li.dataset.index = index;
+            fragment.appendChild(li);
+        });
+        lyricsList.appendChild(fragment);
    };
 
    const animateLyrics = () => {
@@ -848,7 +871,7 @@ let isDraggingProgress = false;
                li.style.opacity = 1;
            } else {
                li.classList.remove('active');
-               li.style.opacity = Math.max(0.15, 1 - distance * 0.2).toFixed(2);
+               li.style.opacity = Math.max(0.1, 1 - distance * 0.22).toFixed(2);
            }
        });
 
@@ -893,13 +916,19 @@ let isDraggingProgress = false;
     const applyTheme = (theme) => {
         currentTheme = theme;
         document.body.classList.toggle('light-theme', theme === 'light');
-        setTimeout(() => {
-            const highlightColor = getComputedStyle(document.body).getPropertyValue('--music-highlight');
-            const rgbColor = hexToRgb(highlightColor);
-            if (rgbColor) {
-                visualizerColor = rgbColor;
-            }
-        }, 50);
+        // Use requestAnimationFrame to wait for the styles to be applied
+        requestAnimationFrame(() => {
+            // A second frame might be needed for variables to be fully available
+            requestAnimationFrame(() => {
+                const highlightColor = getComputedStyle(document.body).getPropertyValue('--music-highlight');
+                const rgbColor = hexToRgb(highlightColor);
+                if (rgbColor) {
+                    visualizerColor = rgbColor;
+                }
+                 // Also re-apply volume slider background as it depends on a theme variable
+                updateVolumeSliderBackground(volumeSlider.value);
+            });
+        });
         const currentArt = albumArt.style.backgroundImage;
         if (!currentArt || currentArt.includes('musicdark.jpeg') || currentArt.includes('musiclight.jpeg')) {
             const defaultArtUrl = `url('../assets/${theme === 'light' ? 'musiclight.jpeg' : 'musicdark.jpeg'}')`;
