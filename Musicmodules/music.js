@@ -106,6 +106,19 @@ let isDraggingProgress = false;
 
     }
 
+    const recreateParticles = () => {
+        particles.length = 0; // Clear existing particles, more performant
+        if (visualizerCanvas.width > 0) {
+            // Distribute particles across the full width of the canvas
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                // This ensures the first particle is at x=0 and the last is at x=width
+                const x = visualizerCanvas.width * (i / (PARTICLE_COUNT - 1));
+                // Initially place them slightly above the bottom
+                particles.push(new Particle(x, visualizerCanvas.height - 10));
+            }
+        }
+    };
+ 
     // --- WebSocket for Visualization ---
     const socket = io("http://127.0.0.1:5555");
 
@@ -585,6 +598,7 @@ let isDraggingProgress = false;
     window.addEventListener('resize', () => {
         visualizerCanvas.width = visualizerCanvas.clientWidth;
         visualizerCanvas.height = visualizerCanvas.clientHeight;
+        recreateParticles(); // Re-distribute particles on resize
     });
 
     shareBtn.addEventListener('click', () => {
@@ -1046,13 +1060,7 @@ let isDraggingProgress = false;
         visualizerCanvas.height = visualizerCanvas.clientHeight;
 
         // --- Initialize Particles ---
-        // Distribute particles across the full width of the canvas
-        for (let i = 0; i < PARTICLE_COUNT; i++) {
-            // This ensures the first particle is at x=0 and the last is at x=width
-            const x = visualizerCanvas.width * (i / (PARTICLE_COUNT - 1));
-            // Initially place them slightly above the bottom
-            particles.push(new Particle(x, visualizerCanvas.height - 10));
-        }
+        recreateParticles();
 
 
         setupElectronHandlers();
