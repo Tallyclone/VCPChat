@@ -35,6 +35,13 @@
         ```bash
         pip install -r requirements.txt
         ```
+    *   **安装高性能音频重采样模块 (可选, 推荐)**:
+        本项目包含一个用 Rust 编写的高性能音频重采样模块，用于提升升频和 WASAPI 模式下的音质。
+        如果您的环境是 **64位 Windows** 且使用 **Python 3.13**，可直接安装预编译好的模块：
+        ```bash
+        pip install audio_engine/rust_audio_resampler_0.10.whl
+        ```
+        如果您的环境不同，则需要进入 `rust_audio_engine` 目录，自行编译。
 
 3.  **启动应用**
 
