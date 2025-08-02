@@ -62,6 +62,13 @@ const NOTES_MODULE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Notemodules');
 
 // --- Audio Engine Management ---
 function startAudioEngine() {
+    // --- Uniqueness Check ---
+    // If the process already exists and hasn't been killed, don't start another one.
+    if (audioEngineProcess && !audioEngineProcess.killed) {
+        console.log('[Main] Audio Engine process is already running.');
+        return;
+    }
+
     const scriptPath = path.join(__dirname, 'audio_engine', 'main.py');
     console.log(`[Main] Starting Python Audio Engine from: ${scriptPath}`);
 
@@ -202,7 +209,7 @@ if (!gotTheLock) {
 
 
   app.whenReady().then(async () => { // Make the function async
-    startAudioEngine(); // Start the Python Hi-Fi audio engine
+    // The audio engine will now be started by the music module when needed.
     // Register a custom protocol to handle loading local app files securely.
     fs.ensureDirSync(APP_DATA_ROOT_IN_PROJECT); // Ensure the main AppData directory in project exists
     fs.ensureDirSync(AGENT_DIR);
@@ -410,7 +417,7 @@ if (!gotTheLock) {
         getMusicState: musicHandlers.getMusicState
     });
     sovitsHandlers.initialize(mainWindow); // Initialize SovitsTTS handlers
-    musicHandlers.initialize({ mainWindow, openChildWindows, APP_DATA_ROOT_IN_PROJECT, stopAudioEngine });
+    musicHandlers.initialize({ mainWindow, openChildWindows, APP_DATA_ROOT_IN_PROJECT, startAudioEngine, stopAudioEngine });
     diceHandlers.initialize({ projectRoot: PROJECT_ROOT });
     themeHandlers.initialize({ mainWindow, openChildWindows, projectRoot: PROJECT_ROOT, APP_DATA_ROOT_IN_PROJECT });
     emoticonHandlers.initialize({ SETTINGS_FILE, APP_DATA_ROOT_IN_PROJECT });
