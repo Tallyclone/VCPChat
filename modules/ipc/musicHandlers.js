@@ -15,11 +15,17 @@ let openChildWindows = []; // To be initialized
 let MUSIC_PLAYLIST_FILE;
 let MUSIC_COVER_CACHE_DIR;
 let LYRIC_DIR;
+let startAudioEngine; // To hold the function from main.js
 let stopAudioEngine; // To hold the function from main.js
 
 // --- Singleton Music Window Creation Function ---
 function createOrFocusMusicWindow() {
     return new Promise((resolve, reject) => {
+        // Ensure the audio engine is running before creating the window.
+        if (typeof startAudioEngine === 'function') {
+            startAudioEngine();
+        }
+
         if (musicWindow && !musicWindow.isDestroyed()) {
             console.log('[Music] Music window already exists. Focusing it.');
             musicWindow.focus();
@@ -163,7 +169,8 @@ async function handleMusicControl(args) {
 function initialize(options) {
     mainWindow = options.mainWindow;
     openChildWindows = options.openChildWindows;
-    stopAudioEngine = options.stopAudioEngine; // Receive the function
+    startAudioEngine = options.startAudioEngine; // Receive the start function
+    stopAudioEngine = options.stopAudioEngine; // Receive the stop function
     const APP_DATA_ROOT_IN_PROJECT = options.APP_DATA_ROOT_IN_PROJECT;
     MUSIC_PLAYLIST_FILE = path.join(APP_DATA_ROOT_IN_PROJECT, 'songlist.json');
     MUSIC_COVER_CACHE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'MusicCoverCache');
