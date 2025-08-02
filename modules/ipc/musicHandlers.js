@@ -15,6 +15,7 @@ let openChildWindows = []; // To be initialized
 let MUSIC_PLAYLIST_FILE;
 let MUSIC_COVER_CACHE_DIR;
 let LYRIC_DIR;
+let stopAudioEngine; // To hold the function from main.js
 
 // --- Singleton Music Window Creation Function ---
 function createOrFocusMusicWindow() {
@@ -65,7 +66,12 @@ function createOrFocusMusicWindow() {
 
         musicWindow.on('closed', () => {
             console.log('[Music] Music window closed. Stopping playback.');
-            audioEngineApi('/stop'); // 发送停止指令
+            // First, try to gracefully stop the engine via its API
+            audioEngineApi('/stop');
+            // Then, ensure the process is terminated, even if the API call fails
+            if (typeof stopAudioEngine === 'function') {
+                stopAudioEngine();
+            }
             openChildWindows = openChildWindows.filter(win => win !== musicWindow);
             musicWindow = null;
         });
@@ -157,6 +163,7 @@ async function handleMusicControl(args) {
 function initialize(options) {
     mainWindow = options.mainWindow;
     openChildWindows = options.openChildWindows;
+    stopAudioEngine = options.stopAudioEngine; // Receive the function
     const APP_DATA_ROOT_IN_PROJECT = options.APP_DATA_ROOT_IN_PROJECT;
     MUSIC_PLAYLIST_FILE = path.join(APP_DATA_ROOT_IN_PROJECT, 'songlist.json');
     MUSIC_COVER_CACHE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'MusicCoverCache');

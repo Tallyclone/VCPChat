@@ -92,10 +92,11 @@ function startAudioEngine() {
 }
 
 function stopAudioEngine() {
-    if (audioEngineProcess) {
+    if (audioEngineProcess && !audioEngineProcess.killed) {
         console.log('[Main] Stopping Python Audio Engine...');
-        audioEngineProcess.kill('SIGTERM'); // Send a termination signal
-        audioEngineProcess = null;
+        // Send a termination signal. The 'close' event handler on the process
+        // will handle setting audioEngineProcess to null. This prevents a race condition.
+        audioEngineProcess.kill();
     }
 }
 
@@ -121,6 +122,13 @@ function createWindow() {
     });
 
     mainWindow.loadFile('main.html');
+
+    // 当主窗口关闭时，退出整个应用程序
+    // 这将触发 'will-quit' 事件，用于执行所有清理操作
+    mainWindow.on('closed', () => {
+        console.log('[Main] Main window closed, quitting application.');
+        app.quit();
+    });
 
     mainWindow.once('ready-to-show', () => {
         mainWindow.show();
@@ -402,7 +410,7 @@ if (!gotTheLock) {
         getMusicState: musicHandlers.getMusicState
     });
     sovitsHandlers.initialize(mainWindow); // Initialize SovitsTTS handlers
-    musicHandlers.initialize({ mainWindow, openChildWindows, APP_DATA_ROOT_IN_PROJECT });
+    musicHandlers.initialize({ mainWindow, openChildWindows, APP_DATA_ROOT_IN_PROJECT, stopAudioEngine });
     diceHandlers.initialize({ projectRoot: PROJECT_ROOT });
     themeHandlers.initialize({ mainWindow, openChildWindows, projectRoot: PROJECT_ROOT, APP_DATA_ROOT_IN_PROJECT });
     emoticonHandlers.initialize({ SETTINGS_FILE, APP_DATA_ROOT_IN_PROJECT });
