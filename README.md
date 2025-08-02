@@ -39,7 +39,7 @@
         本项目包含一个用 Rust 编写的高性能音频重采样模块，用于提升升频和 WASAPI 模式下的音质。
         如果您的环境是 **64位 Windows** 且使用 **Python 3.13**，可直接安装预编译好的模块：
         ```bash
-        pip install audio_engine/rustaudioresampler.whl
+        pip install audio_engine/rust_audio_resampler-0.1.0-cp313-cp313-win_amd64.whl
         ```
         如果您的环境不同，则需要进入 `rust_audio_engine` 目录，自行编译。
 
@@ -387,6 +387,7 @@ AI在生成表情包的`<img>`标签时，有时会因为模型幻觉或数据�
 本软件按“原样”提供，不提供任何明示或暗示的保证，包括但不限于对适销性、特定用途适用性和非侵权性的保证。
 
 在任何情况下，作者或版权持有人均不对因使用本软件或与本软件相关的其他行为所产生的任何索赔、损害或其他责任承担任何责任，无论是在合同、侵权或其他诉讼中。
+
 
 
 
