@@ -232,7 +232,8 @@ function ensureHtmlFenced(text) {
     const lowerText = text.toLowerCase();
 
     // If it's already in a proper html code block, do nothing. This is the fix.
-    if (lowerText.includes('```html\n' + doctypeTag.toLowerCase())) {
+    // This regex now checks for any language specifier (or none) after the fences.
+    if (/```\w*\n<!DOCTYPE html>/i.test(text)) {
         return text;
     }
 
@@ -318,14 +319,14 @@ function deIndentHtml(text) {
  * @returns {string} The processed text.
  */
 function preprocessFullContent(text, settings = {}) {
-    const htmlBlockMap = new Map();
+    const codeBlockMap = new Map();
     let placeholderId = 0;
 
-    // Step 1: Find and protect ```html blocks.
-    // The regex looks for ```html followed by anything until the next ```
-    let processed = text.replace(/```html([\s\S]*?)```/g, (match) => {
-        const placeholder = `__VCP_HTML_BLOCK_PLACEHOLDER_${placeholderId}__`;
-        htmlBlockMap.set(placeholder, match);
+    // Step 1: Find and protect all fenced code blocks.
+    // The regex looks for ``` followed by an optional language identifier, then anything until the next ```
+    let processed = text.replace(/```\w*([\s\S]*?)```/g, (match) => {
+        const placeholder = `__VCP_CODE_BLOCK_PLACEHOLDER_${placeholderId}__`;
+        codeBlockMap.set(placeholder, match);
         placeholderId++;
         return placeholder;
     });
@@ -347,9 +348,9 @@ function preprocessFullContent(text, settings = {}) {
     processed = contentProcessor.removeSpeakerTags(processed);
     processed = contentProcessor.ensureSeparatorBetweenImgAndCode(processed);
 
-    // Step 6: Restore the protected ```html blocks.
-    if (htmlBlockMap.size > 0) {
-        for (const [placeholder, block] of htmlBlockMap.entries()) {
+    // Step 6: Restore the protected code blocks.
+    if (codeBlockMap.size > 0) {
+        for (const [placeholder, block] of codeBlockMap.entries()) {
             processed = processed.replace(placeholder, block);
         }
     }
