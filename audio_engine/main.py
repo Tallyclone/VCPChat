@@ -320,8 +320,7 @@ class AudioEngine:
                 stream_args = {
                     'samplerate': self.samplerate,
                     'channels': self.channels,
-                    'callback': self._stream_callback,
-                    'finished_callback': self.stop_event.set
+                    'callback': self._stream_callback
                 }
                 if self.device_id is not None:
                     stream_args['device'] = self.device_id
