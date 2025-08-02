@@ -468,9 +468,6 @@ if (!gotTheLock) {
    // --- Assistant IPC Handlers are now in modules/ipc/assistantHandlers.js ---
 
     // Add the central theme getter
-    ipcMain.handle('get-current-theme', () => {
-        return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
-    });
 
     // --- Theme IPC Handlers are now in modules/ipc/themeHandlers.js ---
 });
