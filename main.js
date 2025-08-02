@@ -62,39 +62,53 @@ const NOTES_MODULE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Notemodules');
 
 // --- Audio Engine Management ---
 function startAudioEngine() {
-    // --- Uniqueness Check ---
-    // If the process already exists and hasn't been killed, don't start another one.
-    if (audioEngineProcess && !audioEngineProcess.killed) {
-        console.log('[Main] Audio Engine process is already running.');
-        return;
-    }
-
-    const scriptPath = path.join(__dirname, 'audio_engine', 'main.py');
-    console.log(`[Main] Starting Python Audio Engine from: ${scriptPath}`);
-
-    // Pass the cache directory path to the python script as a command-line argument
-    const args = ['-u', scriptPath, '--resample-cache-dir', RESAMPLE_CACHE_DIR];
-    audioEngineProcess = spawn('python', args);
-
-    audioEngineProcess.stdout.on('data', (data) => {
-        console.log(`[AudioEngine STDOUT]: ${data.toString().trim()}`);
-    });
-
-    audioEngineProcess.stderr.on('data', (data) => {
-        const logLine = data.toString().trim();
-        // 过滤掉来自状态轮询和特定警告的烦人日志
-        if (logLine && !logLine.includes('GET /state HTTP/1.1') && !logLine.includes('AudioEngine STDERR')) {
-            console.error(`[AudioEngine STDERR]: ${logLine}`);
+    return new Promise((resolve, reject) => {
+        // --- Uniqueness Check ---
+        if (audioEngineProcess && !audioEngineProcess.killed) {
+            console.log('[Main] Audio Engine process is already running.');
+            resolve(); // Already running, so we can consider it "ready"
+            return;
         }
-    });
 
-    audioEngineProcess.on('close', (code) => {
-        console.log(`[Main] Audio Engine process exited with code ${code}`);
-        audioEngineProcess = null; // Reset the process variable
-    });
+        const scriptPath = path.join(__dirname, 'audio_engine', 'main.py');
+        console.log(`[Main] Starting Python Audio Engine from: ${scriptPath}`);
 
-    audioEngineProcess.on('error', (err) => {
-        console.error('[Main] Failed to start Audio Engine process.', err);
+        const args = ['-u', scriptPath, '--resample-cache-dir', RESAMPLE_CACHE_DIR];
+        audioEngineProcess = spawn('python', args);
+
+        const readyTimeout = setTimeout(() => {
+            console.error('[Main] Audio Engine failed to start within 15 seconds.');
+            reject(new Error('Audio Engine timed out.'));
+        }, 15000); // 15-second timeout
+
+        audioEngineProcess.stdout.on('data', (data) => {
+            const output = data.toString().trim();
+            console.log(`[AudioEngine STDOUT]: ${output}`);
+            // Check for our ready signal
+            if (output.includes('FLASK_SERVER_READY')) {
+                console.log('[Main] Audio Engine is ready.');
+                clearTimeout(readyTimeout);
+                resolve();
+            }
+        });
+
+        audioEngineProcess.stderr.on('data', (data) => {
+            const logLine = data.toString().trim();
+            if (logLine && !logLine.includes('GET /state HTTP/1.1') && !logLine.includes('AudioEngine STDERR')) {
+                console.error(`[AudioEngine STDERR]: ${logLine}`);
+            }
+        });
+
+        audioEngineProcess.on('close', (code) => {
+            console.log(`[Main] Audio Engine process exited with code ${code}`);
+            audioEngineProcess = null;
+        });
+
+        audioEngineProcess.on('error', (err) => {
+            console.error('[Main] Failed to start Audio Engine process.', err);
+            clearTimeout(readyTimeout);
+            reject(err);
+        });
     });
 }
 
@@ -209,7 +223,12 @@ if (!gotTheLock) {
 
 
   app.whenReady().then(async () => { // Make the function async
-    // The audio engine will now be started by the music module when needed.
+    // Pre-warm the audio engine in the background. This doesn't block the main window.
+    startAudioEngine().catch(err => {
+        console.error('[Main] Failed to pre-warm audio engine on startup:', err);
+        // We don't need to show a dialog here, as it will be handled when the
+        // music window is actually opened.
+    });
     // Register a custom protocol to handle loading local app files securely.
     fs.ensureDirSync(APP_DATA_ROOT_IN_PROJECT); // Ensure the main AppData directory in project exists
     fs.ensureDirSync(AGENT_DIR);
@@ -468,6 +487,9 @@ if (!gotTheLock) {
    // --- Assistant IPC Handlers are now in modules/ipc/assistantHandlers.js ---
 
     // Add the central theme getter
+    ipcMain.handle('get-current-theme', () => {
+        return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+    });
 
     // --- Theme IPC Handlers are now in modules/ipc/themeHandlers.js ---
 });

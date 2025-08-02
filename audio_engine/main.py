@@ -690,4 +690,8 @@ if __name__ == '__main__':
     logging.getLogger('werkzeug').disabled = True
     
     logging.info(f"Starting Hi-Fi Audio Engine on http://127.0.0.1:{port}")
+    # Print a ready signal to stdout so the main process knows the server is up.
+    import sys
+    print("FLASK_SERVER_READY")
+    sys.stdout.flush()
     socketio.run(app, host='127.0.0.1', port=port, debug=False, log_output=False)
