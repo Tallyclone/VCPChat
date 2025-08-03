@@ -19,12 +19,30 @@ document.addEventListener('DOMContentLoaded', () => {
     let VCP_SERVER_URL = '';
     let VCP_API_KEY = '';
     let USER_NAME = 'Human'; // Default value in case it's not found
+    let settings = {}; // Make settings available in a wider scope
+    const settingsPath = path.join(__dirname, '..', 'AppData', 'settings.json');
+
+    function loadSettings() {
+        try {
+            const settingsData = fs.readFileSync(settingsPath, 'utf8');
+            settings = JSON.parse(settingsData);
+        } catch (error) {
+            console.error('Failed to load settings.json:', error);
+            settings = {}; // Reset to empty object on error
+        }
+    }
+
+    function saveSettings() {
+        try {
+            fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 4), 'utf8');
+        } catch (error) {
+            console.error('Failed to save settings.json:', error);
+        }
+    }
 
     try {
-        const settingsPath = path.join(__dirname, '..', 'AppData', 'settings.json');
-        const settingsData = fs.readFileSync(settingsPath, 'utf8');
-        const settings = JSON.parse(settingsData);
-        
+        loadSettings(); // Initial load
+
         if (settings.vcpServerUrl) {
             const url = new URL(settings.vcpServerUrl);
             url.pathname = '/v1/human/tool';
@@ -543,6 +561,30 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         document.getElementById('close-btn').addEventListener('click', () => {
             ipcRenderer.send('window-control', 'close');
+        });
+
+        // Theme toggle
+        const themeToggleBtn = document.getElementById('theme-toggle-btn');
+        
+        function applyTheme(theme) {
+            if (theme === 'light') {
+                document.body.classList.add('light-theme');
+                themeToggleBtn.textContent = '☀️';
+            } else {
+                document.body.classList.remove('light-theme');
+                themeToggleBtn.textContent = '🌙';
+            }
+        }
+
+        // Apply initial theme from settings
+        applyTheme(settings.vcpht_theme);
+
+        themeToggleBtn.addEventListener('click', () => {
+            const isLight = document.body.classList.toggle('light-theme');
+            const newTheme = isLight ? 'light' : 'dark';
+            applyTheme(newTheme);
+            settings.vcpht_theme = newTheme;
+            saveSettings();
         });
 
         // App controls

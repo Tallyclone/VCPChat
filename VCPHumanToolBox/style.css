@@ -64,6 +64,10 @@ body {
     color: white;
 }
 
+#theme-toggle-btn {
+    font-size: 16px; /* Adjust emoji size */
+}
+
 .container {
     height: 100vh;
     box-sizing: border-box;
