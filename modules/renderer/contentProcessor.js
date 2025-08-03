@@ -387,10 +387,15 @@ function handleAIButtonClick(event) {
         return false;
     }
 
-    let finalSendText = sendText;
-    if (sendText.length > 500) {
+    // Format the text to be sent
+    let finalSendText = `[[点击按钮:${sendText}]]`;
+
+    // Truncate if the final text is too long
+    if (finalSendText.length > 500) {
         console.warn('[ContentProcessor] Button text too long, truncating');
-        finalSendText = sendText.substring(0, 500);
+        const maxTextLength = 500 - '[[点击按钮:]]'.length; // Account for '[[点击按钮:' and ']]'
+        const truncatedText = sendText.substring(0, maxTextLength);
+        finalSendText = `[[点击按钮:${truncatedText}]]`;
     }
 
     // Disable button to prevent double-click
@@ -577,4 +582,5 @@ export {
     processInteractiveButtons,
     handleAIButtonClick,
     sendButtonMessage
+
 };
