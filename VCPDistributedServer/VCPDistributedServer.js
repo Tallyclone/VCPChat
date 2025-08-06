@@ -1,7 +1,11 @@
 // VCPDistributedServer.js
 // VCPDistributedServer.js
 const WebSocket = require('ws');
+const express = require('express');
+const http = require('http');
 const path = require('path');
+const fs = require('fs');
+const dotenv = require('dotenv');
 // const { ipcMain } = require('electron'); // This was incorrect. ipcMain should be injected.
 const pluginManager = require('./Plugin.js');
 
@@ -13,11 +17,14 @@ class DistributedServer {
         this.mainServerUrl = config.mainServerUrl;
         this.vcpKey = config.vcpKey;
         this.serverName = config.serverName || 'Unnamed-Distributed-Server';
+        this.port = config.port || 0; // 0 表示随机选择一个可用端口
         this.debugMode = config.debugMode || false;
         this.rendererProcess = config.rendererProcess; // To communicate with the renderer
         this.handleMusicControl = config.handleMusicControl; // Inject the music control handler
         this.handleDiceControl = config.handleDiceControl; // Inject the dice control handler
         this.ws = null;
+        this.app = express(); // 创建 Express 应用
+        this.server = http.createServer(this.app); // 创建 HTTP 服务器
         this.reconnectInterval = 5000;
         this.maxReconnectInterval = 60000;
         this.reconnectTimeoutId = null; // To keep track of the reconnect timeout
@@ -27,11 +34,38 @@ class DistributedServer {
 
     async initialize() {
         console.log(`[${this.serverName}] Initializing...`);
+
+        // Load server-specific config
+        const serverConfigPath = path.join(__dirname, 'config.env');
+        try {
+            if (fs.existsSync(serverConfigPath)) {
+                const serverEnv = dotenv.parse(fs.readFileSync(serverConfigPath));
+                if (serverEnv.DIST_SERVER_PORT) {
+                    const newPort = parseInt(serverEnv.DIST_SERVER_PORT, 10);
+                    if (!isNaN(newPort)) {
+                        this.port = newPort;
+                        console.log(`[${this.serverName}] Port loaded from config.env: ${this.port}`);
+                    }
+                }
+            }
+        } catch (e) {
+            console.error(`[${this.serverName}] Error reading server config.env:`, e);
+        }
+
         // The base path should be relative to this file's location.
         const basePath = path.dirname(require.resolve('./VCPDistributedServer.js'));
         pluginManager.setProjectBasePath(basePath);
         await pluginManager.loadPlugins();
-        this.connect();
+
+        // 初始化服务类插件
+        await pluginManager.initializeServices(this.app, null, basePath);
+
+        this.server.listen(this.port, '0.0.0.0', () => {
+            this.port = this.server.address().port; // 获取实际监听的端口
+            console.log(`[${this.serverName}] HTTP server listening on 0.0.0.0:${this.port}`);
+            // 在 HTTP 服务器启动后，再连接到主服务器
+            this.connect();
+        });
     }
 
     connect() {
@@ -44,29 +78,30 @@ class DistributedServer {
             return;
         }
 
-        const connectionUrl = `${this.mainServerUrl}/vcp-distributed-server/VCP_Key=${this.vcpKey}`;
-        console.log(`[${this.serverName}] Attempting to connect to main server at ${this.mainServerUrl}`);
+        const connectionUrl = `${this.mainServerUrl.replace(/^http/, 'ws')}/vcp-distributed-server/VCP_Key=${this.vcpKey}`;
+        console.log(`[${this.serverName}] Attempting to connect to main server at ${connectionUrl}`);
 
+        // this.ws 现在是一个纯粹的客户端实例
         this.ws = new WebSocket(connectionUrl);
 
         this.ws.on('open', () => {
             console.log(`[${this.serverName}] Successfully connected to main server.`);
-            this.reconnectInterval = 5000; // Reset reconnect interval on successful connection
+            this.reconnectInterval = 5000;
             this.registerTools();
         });
 
         this.ws.on('message', (message) => {
             this.handleMainServerMessage(message);
         });
-
+        
         this.ws.on('close', () => {
             console.log(`[${this.serverName}] Disconnected from main server.`);
             this.scheduleReconnect();
         });
 
         this.ws.on('error', (error) => {
-            console.error(`[${this.serverName}] WebSocket error:`, error.message);
-            // The 'close' event will be triggered next, which handles reconnection.
+            console.error(`[${this.serverName}] WebSocket client error:`, error.message);
+            // 'close' 事件会自动被触发，所以这里不需要额外的处理
         });
     }
 

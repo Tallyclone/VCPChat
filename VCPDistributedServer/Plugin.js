@@ -11,6 +11,7 @@ const manifestFileName = 'plugin-manifest.json';
 class PluginManager {
     constructor() {
         this.plugins = new Map();
+        this.serviceModules = new Map(); // 新增：用于存储服务类插件
         this.projectBasePath = null;
         this.debugMode = (process.env.DebugMode || "False").toLowerCase() === "true";
     }
@@ -84,12 +85,20 @@ class PluginManager {
                             // Ignore if config.env doesn't exist
                         }
 
-                        // Only load synchronous plugins that use stdio
-                        if ((manifest.pluginType === 'synchronous' || manifest.pluginType === 'asynchronous') && manifest.communication?.protocol === 'stdio') {
-                            this.plugins.set(manifest.name, manifest);
-                            console.log(`[DistPluginManager] Loaded manifest: ${manifest.displayName} (${manifest.name})`);
-                        } else {
-                            if (this.debugMode) console.log(`[DistPluginManager] Skipping non-synchronous/non-stdio plugin: ${manifest.name}`);
+                        // 加载所有类型的插件
+                        this.plugins.set(manifest.name, manifest);
+                        console.log(`[DistPluginManager] Loaded manifest: ${manifest.displayName} (${manifest.name}, Type: ${manifest.pluginType})`);
+
+                        // 如果是服务类插件，则加载其模块以备初始化
+                        if (manifest.pluginType === 'service' && manifest.entryPoint.script && manifest.communication?.protocol === 'direct') {
+                            try {
+                                const scriptPath = path.join(pluginPath, manifest.entryPoint.script);
+                                const serviceModule = require(scriptPath);
+                                this.serviceModules.set(manifest.name, { manifest, module: serviceModule });
+                                if (this.debugMode) console.log(`[DistPluginManager] Loaded service module: ${manifest.name}`);
+                            } catch (e) {
+                                console.error(`[DistPluginManager] Error requiring service module for ${manifest.name}:`, e);
+                            }
                         }
                     } catch (error) {
                         if (this.debugMode) console.error(`[DistPluginManager] Error loading plugin from ${folder.name}:`, error);
@@ -185,6 +194,28 @@ class PluginManager {
             }
             pluginProcess.stdin.end();
         });
+    }
+    // 新增：初始化服务类插件的方法
+    async initializeServices(app, adminApiRouter, projectBasePath) {
+        if (!app) {
+            console.error('[DistPluginManager] Cannot initialize services without Express app instance.');
+            return;
+        }
+        console.log('[DistPluginManager] Initializing service plugins...');
+        for (const [name, serviceData] of this.serviceModules) {
+            try {
+                const pluginConfig = this._getPluginConfig(serviceData.manifest);
+                if (this.debugMode) console.log(`[DistPluginManager] Registering routes for service plugin: ${name}.`);
+                
+                if (serviceData.module && typeof serviceData.module.registerRoutes === 'function') {
+                    // 分布式服务器只传递核心参数
+                    serviceData.module.registerRoutes(app, pluginConfig, projectBasePath);
+                }
+            } catch (e) {
+                console.error(`[DistPluginManager] Error initializing service plugin ${name}:`, e);
+            }
+        }
+        console.log('[DistPluginManager] Service plugins initialized.');
     }
 }
 
