@@ -4,10 +4,13 @@ const WebSocket = require('ws');
 const express = require('express');
 const http = require('http');
 const path = require('path');
-const fs = require('fs');
+const fs = require('fs').promises;
+const fsSync = require('fs');
 const dotenv = require('dotenv');
-// const { ipcMain } = require('electron'); // This was incorrect. ipcMain should be injected.
-const pluginManager = require('./Plugin.js');
+const os = require('os');
+const mime = require('mime-types');
+ // const { ipcMain } = require('electron'); // This was incorrect. ipcMain should be injected.
+ const pluginManager = require('./Plugin.js');
 
 // DEBUG_MODE is now passed in config
 // const DEBUG_MODE = (process.env.DebugMode || "False").toLowerCase() === "true";
@@ -38,8 +41,8 @@ class DistributedServer {
         // Load server-specific config
         const serverConfigPath = path.join(__dirname, 'config.env');
         try {
-            if (fs.existsSync(serverConfigPath)) {
-                const serverEnv = dotenv.parse(fs.readFileSync(serverConfigPath));
+            if (fsSync.existsSync(serverConfigPath)) {
+                const serverEnv = dotenv.parse(fsSync.readFileSync(serverConfigPath));
                 if (serverEnv.DIST_SERVER_PORT) {
                     const newPort = parseInt(serverEnv.DIST_SERVER_PORT, 10);
                     if (!isNaN(newPort)) {
@@ -84,10 +87,11 @@ class DistributedServer {
         // this.ws 现在是一个纯粹的客户端实例
         this.ws = new WebSocket(connectionUrl);
 
-        this.ws.on('open', () => {
+        this.ws.on('open', async () => {
             console.log(`[${this.serverName}] Successfully connected to main server.`);
             this.reconnectInterval = 5000;
             this.registerTools();
+            await this.reportIPAddress();
         });
 
         this.ws.on('message', (message) => {
@@ -159,6 +163,45 @@ class DistributedServer {
         }
     }
 
+    async reportIPAddress() {
+        const { default: fetch } = await import('node-fetch');
+        const networkInterfaces = os.networkInterfaces();
+        const ipv4Addresses = [];
+        let publicIp = null;
+
+        for (const interfaceName in networkInterfaces) {
+            const interfaces = networkInterfaces[interfaceName];
+            for (const iface of interfaces) {
+                if (iface.family === 'IPv4' && !iface.internal) {
+                    ipv4Addresses.push(iface.address);
+                }
+            }
+        }
+
+        try {
+            const response = await fetch('https://api.ipify.org?format=json');
+            if (response.ok) {
+                const data = await response.json();
+                publicIp = data.ip;
+            } else {
+                console.error(`[${this.serverName}] Failed to fetch public IP, status: ${response.status}`);
+            }
+        } catch (e) {
+            console.error(`[${this.serverName}] Could not fetch public IP:`, e.message);
+        }
+        
+        const payload = {
+            type: 'report_ip',
+            data: {
+                serverName: this.serverName,
+                localIPs: ipv4Addresses,
+                publicIP: publicIp
+            }
+        };
+        this.sendMessage(payload);
+        console.log(`[${this.serverName}] Reported IP addresses to main server: Local: ${ipv4Addresses.join(', ')}, Public: ${publicIp || 'N/A'}`);
+    }
+
     async handleMainServerMessage(message) {
         try {
             const parsedMessage = JSON.parse(message);
@@ -183,6 +226,38 @@ class DistributedServer {
 
         let responsePayload;
         try {
+            // --- 新增：处理内部文件请求 ---
+            if (toolName === 'internal_request_file') {
+                const filePath = toolArgs.filePath;
+                try {
+                    const fileBuffer = await fs.readFile(filePath);
+                    const mimeType = mime.lookup(filePath) || 'application/octet-stream';
+                    
+                    responsePayload = {
+                        type: 'tool_result',
+                        data: {
+                            requestId,
+                            status: 'success',
+                            result: {
+                                status: 'success',
+                                fileData: fileBuffer.toString('base64'),
+                                mimeType: mimeType
+                            }
+                        }
+                    };
+                } catch (e) {
+                    if (e.code === 'ENOENT') {
+                        throw new Error(`File not found on distributed server: ${filePath}`);
+                    } else {
+                        throw new Error(`Error reading file on distributed server: ${e.message}`);
+                    }
+                }
+                this.sendMessage(responsePayload);
+                if (this.debugMode) console.log(`[${this.serverName}] Sent file content for request ID: ${requestId}`);
+                return; // 处理完毕，直接返回
+            }
+            // --- 结束：处理内部文件请求 ---
+
             const result = await pluginManager.processToolCall(toolName, toolArgs);
             let finalResult;
 
