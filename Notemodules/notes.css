@@ -26,17 +26,20 @@ body {
     flex: 1; /* Take up remaining vertical space */
     overflow: hidden; /* Prevent container itself from scrolling */
     padding: 15px;
-    gap: 15px; /* Space between sidebar and main content */
+    /* gap: 15px; */ /* Let resizer handle the spacing */
     position: relative; /* For z-index context if needed */
     z-index: 1;
 }
 
 .resizer {
     width: 5px;
+    flex-shrink: 0; /* Prevent shrinking */
     cursor: col-resize;
     background-color: var(--border-color);
     z-index: 2;
     transition: background-color 0.2s;
+    border-radius: 3px;
+    margin: 0 7px; /* Creates a ~19px gap total */
 }
 
 .resizer:hover {
