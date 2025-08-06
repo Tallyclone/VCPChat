@@ -173,35 +173,6 @@ function createWindow() {
     });
 
     // Listen for theme changes and notify all relevant windows
-    nativeTheme.on('updated', () => {
-        const theme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
-        console.log(`[Main] Theme updated to: ${theme}. Notifying windows.`);
-        
-        // Notify main window
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('theme-updated', theme);
-        }
-        // Notify assistant bar
-        const { assistantWindow, assistantBarWindow } = assistantHandlers.getAssistantWindows();
-        if (assistantBarWindow && !assistantBarWindow.isDestroyed()) {
-            assistantBarWindow.webContents.send('theme-updated', theme);
-        }
-        // Notify assistant window
-        if (assistantWindow && !assistantWindow.isDestroyed()) {
-            assistantWindow.webContents.send('theme-updated', theme);
-        }
-        // Notify dice window
-        const diceWindow = diceHandlers.getDiceWindow();
-        if (diceWindow && !diceWindow.isDestroyed()) {
-            diceWindow.webContents.send('theme-updated', theme);
-        }
-        // Notify any other open child windows that might need theme updates
-        openChildWindows.forEach(win => {
-            if (win && !win.isDestroyed()) {
-                win.webContents.send('theme-updated', theme);
-            }
-        });
-    });
 }
 
 // --- App Lifecycle ---
@@ -485,11 +456,6 @@ if (!gotTheLock) {
 
 
    // --- Assistant IPC Handlers are now in modules/ipc/assistantHandlers.js ---
-
-    // Add the central theme getter
-    ipcMain.handle('get-current-theme', () => {
-        return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
-    });
 
     // --- Theme IPC Handlers are now in modules/ipc/themeHandlers.js ---
 });
