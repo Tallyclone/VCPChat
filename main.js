@@ -173,35 +173,6 @@ function createWindow() {
     });
 
     // Listen for theme changes and notify all relevant windows
-    nativeTheme.on('updated', () => {
-        const theme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
-        console.log(`[Main] Theme updated to: ${theme}. Notifying windows.`);
-        
-        // Notify main window
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('theme-updated', theme);
-        }
-        // Notify assistant bar
-        const { assistantWindow, assistantBarWindow } = assistantHandlers.getAssistantWindows();
-        if (assistantBarWindow && !assistantBarWindow.isDestroyed()) {
-            assistantBarWindow.webContents.send('theme-updated', theme);
-        }
-        // Notify assistant window
-        if (assistantWindow && !assistantWindow.isDestroyed()) {
-            assistantWindow.webContents.send('theme-updated', theme);
-        }
-        // Notify dice window
-        const diceWindow = diceHandlers.getDiceWindow();
-        if (diceWindow && !diceWindow.isDestroyed()) {
-            diceWindow.webContents.send('theme-updated', theme);
-        }
-        // Notify any other open child windows that might need theme updates
-        openChildWindows.forEach(win => {
-            if (win && !win.isDestroyed()) {
-                win.webContents.send('theme-updated', theme);
-            }
-        });
-    });
 }
 
 // --- App Lifecycle ---
@@ -486,11 +457,6 @@ if (!gotTheLock) {
 
    // --- Assistant IPC Handlers are now in modules/ipc/assistantHandlers.js ---
 
-    // Add the central theme getter
-    ipcMain.handle('get-current-theme', () => {
-        return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
-    });
-
     // --- Theme IPC Handlers are now in modules/ipc/themeHandlers.js ---
 });
 
@@ -592,8 +558,7 @@ function formatTimestampForFilename(timestamp) {
     const hours = date.getHours().toString().padStart(2, '0');
     const minutes = date.getMinutes().toString().padStart(2, '0');
     const seconds = date.getSeconds().toString().padStart(2, '0');
-    const milliseconds = date.getMilliseconds().toString().padStart(3, '0');
-    return `${year}${month}${day}_${hours}${minutes}${seconds}_${milliseconds}`;
+    return `${year}${month}${day}_${hours}${minutes}${seconds}`;
 }
 
 // --- IPC Handlers ---
@@ -745,4 +710,38 @@ ipcMain.on('start-speech-recognition', (event) => {
 
 ipcMain.on('stop-speech-recognition', () => {
     speechRecognizer.stop();
+});
+
+ipcMain.handle('export-topic-as-markdown', async (event, exportData) => {
+    const { topicName, markdownContent } = exportData;
+
+    if (!topicName || !markdownContent) {
+        return { success: false, error: '缺少导出所需的必要信息（话题名称或内容）。' };
+    }
+
+    // 1. Show Save Dialog
+    const safeTopicName = topicName.replace(/[/\\?%*:|"<>]/g, '-');
+    const defaultFileName = `${safeTopicName}-${formatTimestampForFilename(Date.now())}.md`;
+    const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+        title: '导出话题为 Markdown',
+        defaultPath: defaultFileName,
+        filters: [
+            { name: 'Markdown 文件', extensions: ['md'] },
+            { name: '所有文件', extensions: ['*'] }
+        ]
+    });
+
+    if (canceled || !filePath) {
+        return { success: false, error: '用户取消了导出操作。' };
+    }
+
+    // 2. Write to File
+    try {
+        await fs.writeFile(filePath, markdownContent, 'utf8');
+        shell.showItemInFolder(filePath); // Open the folder containing the file
+        return { success: true, path: filePath };
+    } catch (e) {
+        console.error(`[Export] 写入Markdown文件失败:`, e);
+        return { success: false, error: `写入文件失败: ${e.message}` };
+    }
 });
