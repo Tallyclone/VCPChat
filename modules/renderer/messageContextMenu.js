@@ -176,6 +176,17 @@ function showContextMenu(event, messageItem, message) {
             menu.appendChild(createBranchOption);
         }
 
+        const forwardOption = document.createElement('div');
+        forwardOption.classList.add('context-menu-item');
+        forwardOption.innerHTML = `<i class="fas fa-share"></i> 转发消息`;
+        forwardOption.onclick = () => {
+            if (contextMenuDependencies.showForwardModal && typeof contextMenuDependencies.showForwardModal === 'function') {
+                contextMenuDependencies.showForwardModal(message);
+            }
+            closeContextMenu();
+        };
+        menu.appendChild(forwardOption);
+
         // Add "Read Aloud" option for assistant messages
         if (message.role === 'assistant') {
             const readAloudOption = document.createElement('div');
@@ -667,7 +678,7 @@ async function handleRegenerateResponse(originalAssistantMessage) {
             topicId: currentTopicIdVal,
             isGroupMessage: false
         };
-
+        
         const vcpResult = await electronAPI.sendToVCP(
             globalSettingsVal.vcpServerUrl,
             globalSettingsVal.vcpApiKey,
@@ -705,10 +716,15 @@ async function handleRegenerateResponse(originalAssistantMessage) {
     }
 }
 
+function setContextMenuDependencies(newDependencies) {
+    contextMenuDependencies = { ...contextMenuDependencies, ...newDependencies };
+}
+
 export {
     initializeContextMenu,
     showContextMenu,
     closeContextMenu,
     toggleEditMode,
-    handleRegenerateResponse
+    handleRegenerateResponse,
+    setContextMenuDependencies
 };

@@ -344,6 +344,84 @@ function initialize(context) {
             if (listenerWasActive) context.startSelectionListener();
         }
     });
+
+    ipcMain.handle('get-all-items', async () => {
+        const agents = await getAgentsInternal(context);
+        const groups = await getGroupsInternal(context);
+        return { success: true, items: [...agents, ...groups] };
+    });
+}
+
+async function getAgentsInternal({ AGENT_DIR }) {
+    try {
+        const agentDirs = await fs.readdir(AGENT_DIR);
+        const agentConfigs = await Promise.all(agentDirs.map(async (agentId) => {
+            const configPath = path.join(AGENT_DIR, agentId, 'config.json');
+            if (await fs.pathExists(configPath)) {
+                try {
+                    const config = await fs.readJson(configPath);
+                    const agentDir = path.join(AGENT_DIR, agentId);
+                    const avatarPathPng = path.join(agentDir, 'avatar.png');
+                    const avatarPathJpg = path.join(agentDir, 'avatar.jpg');
+                    const avatarPathJpeg = path.join(agentDir, 'avatar.jpeg');
+                    const avatarPathGif = path.join(agentDir, 'avatar.gif');
+                    let avatarUrl = null;
+                    if (await fs.pathExists(avatarPathPng)) avatarUrl = `file://${avatarPathPng}`;
+                    else if (await fs.pathExists(avatarPathJpg)) avatarUrl = `file://${avatarPathJpg}`;
+                    else if (await fs.pathExists(avatarPathJpeg)) avatarUrl = `file://${avatarPathJpeg}`;
+                    else if (await fs.pathExists(avatarPathGif)) avatarUrl = `file://${avatarPathGif}`;
+                    
+                    return { ...config, id: agentId, type: 'agent', avatarUrl };
+                } catch (e) {
+                    console.error(`Error reading agent config for ${agentId}:`, e);
+                    return null;
+                }
+            }
+            return null;
+        }));
+        return agentConfigs.filter(Boolean);
+    } catch (error) {
+        console.error('Failed to get agents internally:', error);
+        return [];
+    }
+}
+
+async function getGroupsInternal({ USER_DATA_DIR }) {
+     const groupsDir = path.join(path.dirname(USER_DATA_DIR), 'VCPChat', 'AppData', 'AgentGroups');
+    try {
+        if (!await fs.pathExists(groupsDir)) {
+            return [];
+        }
+        const groupDirs = await fs.readdir(groupsDir);
+        const groupConfigs = await Promise.all(groupDirs.map(async (groupId) => {
+            const configPath = path.join(groupsDir, groupId, 'config.json');
+            if (await fs.pathExists(configPath)) {
+                try {
+                    const config = await fs.readJson(configPath);
+                    const groupDir = path.join(groupsDir, groupId);
+                    const avatarPathPng = path.join(groupDir, 'avatar.png');
+                    const avatarPathJpg = path.join(groupDir, 'avatar.jpg');
+                    const avatarPathJpeg = path.join(groupDir, 'avatar.jpeg');
+                    const avatarPathGif = path.join(groupDir, 'avatar.gif');
+                    let avatarUrl = null;
+                    if (await fs.pathExists(avatarPathPng)) avatarUrl = `file://${avatarPathPng}`;
+                    else if (await fs.pathExists(avatarPathJpg)) avatarUrl = `file://${avatarPathJpg}`;
+                    else if (await fs.pathExists(avatarPathJpeg)) avatarUrl = `file://${avatarPathJpeg}`;
+                    else if (await fs.pathExists(avatarPathGif)) avatarUrl = `file://${avatarPathGif}`;
+
+                    return { ...config, id: groupId, type: 'group', avatarUrl };
+                } catch (e) {
+                    console.error(`Error reading group config for ${groupId}:`, e);
+                    return null;
+                }
+            }
+            return null;
+        }));
+        return groupConfigs.filter(Boolean);
+    } catch (error) {
+        console.error('Failed to get groups internally:', error);
+        return [];
+    }
 }
 
 module.exports = {

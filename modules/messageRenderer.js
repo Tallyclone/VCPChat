@@ -970,5 +970,12 @@ window.messageRenderer = {
             return mainRendererReferences.summarizeTopicFromMessages(history, agentName);
         }
         return null;
+    },
+setContextMenuDependencies: (deps) => {
+    if (contextMenu && typeof contextMenu.setContextMenuDependencies === 'function') {
+        contextMenu.setContextMenuDependencies(deps);
+    } else {
+        console.error("contextMenu or setContextMenuDependencies not available.");
     }
+}
 };

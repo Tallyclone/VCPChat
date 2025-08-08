@@ -15,7 +15,6 @@ let currentSelectedItem = {
 let currentTopicId = null;
 let currentChatHistory = [];
 let attachedFiles = [];
-// let activeStreamingMessageId = null; // REMOVED
 let audioContext = null;
 let currentAudioSource = null;
 let ttsAudioQueue = []; // 新增：TTS音频播放队列
@@ -250,6 +249,12 @@ import * as interruptHandler from './modules/interruptHandler.js';
                 }
             }
         });
+
+        // Pass the new function to the context menu
+        window.messageRenderer.setContextMenuDependencies({
+            showForwardModal: showForwardModal,
+        });
+
     } else {
         console.error('[RENDERER_INIT] messageRenderer module not found!');
     }
@@ -842,11 +847,6 @@ function prepareGroupSettingsDOM() {
 }
 
 
-// MOVED to uiManager.js: initializeDigitalClock
-// MOVED to uiManager.js: updateDateTimeDisplay
-// MOVED to uiManager.js: loadAndApplyThemePreference
-// MOVED to uiManager.js: applyTheme
-
 async function loadAndApplyGlobalSettings() {
     const settings = await window.electronAPI.loadSettings();
     if (settings && !settings.error) {
@@ -941,34 +941,7 @@ async function loadAndApplyGlobalSettings() {
         if (window.notificationRenderer) window.notificationRenderer.updateVCPLogStatus({ status: 'error', message: 'VCPLog未配置' }, vcpLogConnectionStatusDiv);
     }
 }
-
-// --- Item (Agent/Group) Management ---
-// MOVED to modules/itemListManager.js: loadItems, initializeItemSortable
-
-// MOVED to modules/itemListManager.js: saveItemOrder
-
-
-
-
-
-
-
-// MOVED to modules/itemListManager.js: highlightActiveItem
-
 // --- Chat Functionality ---
-
-// MOVED to modules/ui-helpers.js: scrollToBottom
-
-
-
-
-
-// MOVED to uiManager.js: setupSidebarTabs, switchToTab
-
-
-// MOVED to modules/topicListManager.js: loadTopicList, setupTopicSearch, setupTopicSearchListener, filterTopicList, initializeTopicSortable, showTopicContextMenu, closeTopicContextMenu, closeTopicContextMenuOnClickOutside
-
-
 // --- UI Event Listeners & Helpers ---
 function addNetworkPathInput(path = '') {
     const container = document.getElementById('networkNotesPathsContainer');
@@ -1231,19 +1204,11 @@ function setupEventListeners() {
         await window.chatManager.createNewTopicForItem(currentSelectedItem.id, currentSelectedItem.type);
     });
 
-    // MOVED to settingsManager.js: agentSettingsForm listener
-    // MOVED to settingsManager.js: deleteItemBtn listener
-    // MOVED to settingsManager.js: agentAvatarInput listener
-
-
-    // The clearCurrentChatBtn logic is now removed as the button is replaced.
-    // If a clear chat functionality is needed, it should be re-added elsewhere.
 
     clearNotificationsBtn.addEventListener('click', () => {
         notificationsListUl.innerHTML = '';
     });
 
-    // MOVED to uiManager.js: themeToggleBtn listener
 
     const openTranslatorBtn = document.getElementById('openTranslatorBtn');
     const openNotesBtn = document.getElementById('openNotesBtn');
@@ -1371,10 +1336,8 @@ function setupEventListeners() {
     }
 }
 
-// MOVED to settingsManager.js: populateAssistantAgentSelect
 
  
-// MOVED to uiManager.js: initializeResizers
 
 
 function filterAgentList(searchTerm) {
@@ -1463,12 +1426,6 @@ function updateAttachmentPreview() {
 }
 
 
-// MOVED to modules/ui-helpers.js: autoResizeTextarea, openModal, closeModal, openAvatarCropper
-
-// MOVED to settingsManager.js: displaySettingsForItem
-// MOVED to settingsManager.js: populateAgentSettingsForm
-// MOVED to settingsManager.js: saveCurrentAgentSettings
-// MOVED to settingsManager.js: handleDeleteCurrentItem
 
 
  
@@ -1506,7 +1463,6 @@ window.addEventListener('contextmenu', (e) => {
     }
 }, false);
  
-// MOVED to uiManager.js: setupTitleBarControls
 
 
 // Helper to get a centrally stored cropped file (agent, group, or user)
@@ -1524,6 +1480,142 @@ function setCroppedFile(type, file) {
     else if (type === 'user') croppedUserAvatarFile = file;
 }
 
+// --- Forward Message Functionality ---
+let messageToForward = null;
+let selectedForwardTarget = null;
+
+async function showForwardModal(message) {
+    messageToForward = message;
+    selectedForwardTarget = null; // Reset selection
+    const modal = document.getElementById('forwardMessageModal');
+    const targetList = document.getElementById('forwardTargetList');
+    const searchInput = document.getElementById('forwardTargetSearch');
+    const commentInput = document.getElementById('forwardAdditionalComment');
+    const confirmBtn = document.getElementById('confirmForwardBtn');
+
+    targetList.innerHTML = '<li>Loading...</li>';
+    commentInput.value = '';
+    searchInput.value = '';
+    confirmBtn.disabled = true;
+
+    uiHelperFunctions.openModal('forwardMessageModal');
+
+    const result = await window.electronAPI.getAllItems();
+    if (result.success) {
+        renderForwardTargetList(result.items);
+    } else {
+        targetList.innerHTML = '<li>Failed to load targets.</li>';
+    }
+
+    searchInput.oninput = () => {
+        const searchTerm = searchInput.value.toLowerCase();
+        const items = targetList.querySelectorAll('.agent-item');
+        items.forEach(item => {
+            const name = item.dataset.name.toLowerCase();
+            if (name.includes(searchTerm)) {
+                item.style.display = '';
+            } else {
+                item.style.display = 'none';
+            }
+        });
+    };
+
+    confirmBtn.onclick = handleConfirmForward;
+}
+
+function renderForwardTargetList(items) {
+    const targetList = document.getElementById('forwardTargetList');
+    const confirmBtn = document.getElementById('confirmForwardBtn');
+    targetList.innerHTML = '';
+
+    items.forEach(item => {
+        const li = document.createElement('li');
+        li.className = 'agent-item';
+        li.dataset.id = item.id;
+        li.dataset.type = item.type;
+        li.dataset.name = item.name;
+
+        const avatar = document.createElement('img');
+        avatar.className = 'avatar';
+        avatar.src = item.avatarUrl || (item.type === 'group' ? 'assets/default_group_avatar.png' : 'assets/default_user_avatar.png');
+        
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'agent-name';
+        nameSpan.textContent = `${item.name} (${item.type === 'group' ? '群组' : 'Agent'})`;
+
+        li.appendChild(avatar);
+        li.appendChild(nameSpan);
+
+        li.onclick = () => {
+            const currentSelected = targetList.querySelector('.selected');
+            if (currentSelected) {
+                currentSelected.classList.remove('selected');
+            }
+            li.classList.add('selected');
+            selectedForwardTarget = { id: item.id, type: item.type, name: item.name };
+            confirmBtn.disabled = false;
+        };
+        targetList.appendChild(li);
+    });
+}
+
+async function handleConfirmForward() {
+    if (!messageToForward || !selectedForwardTarget) {
+        uiHelperFunctions.showToastNotification('错误：未选择消息或转发目标。', 'error');
+        return;
+    }
+
+    const additionalComment = document.getElementById('forwardAdditionalComment').value.trim();
+    
+    // We need to get the original message from history to ensure we have all data
+    const originalMessageResult = await window.electronAPI.getOriginalMessageContent(
+        currentSelectedItem.id,
+        currentSelectedItem.type,
+        currentTopicId,
+        messageToForward.id
+    );
+
+    if (!originalMessageResult.success) {
+        uiHelperFunctions.showToastNotification(`无法获取原始消息内容: ${originalMessageResult.error}`, 'error');
+        return;
+    }
+    
+    const originalMessage = { ...messageToForward, content: originalMessageResult.content };
+
+    let forwardedContent = '';
+    const senderName = originalMessage.name || (originalMessage.role === 'user' ? '用户' : '助手');
+    forwardedContent += `> 转发自 **${senderName}** 的消息:\n\n`;
+    
+    let originalText = '';
+    if (typeof originalMessage.content === 'string') {
+        originalText = originalMessage.content;
+    } else if (originalMessage.content && typeof originalMessage.content.text === 'string') {
+        originalText = originalMessage.content.text;
+    }
+    
+    forwardedContent += originalText;
+
+    if (additionalComment) {
+        forwardedContent += `\n\n---\n${additionalComment}`;
+    }
+
+    const attachments = originalMessage.attachments || [];
+
+    // This is a simplified send. We might need a more robust solution
+    // that re-uses the logic from chatManager.handleSendMessage
+    // For now, let's create a new function in chatManager for this.
+    if (window.chatManager && typeof window.chatManager.handleForwardMessage === 'function') {
+        window.chatManager.handleForwardMessage(selectedForwardTarget, forwardedContent, attachments);
+        uiHelperFunctions.showToastNotification(`消息已转发给 ${selectedForwardTarget.name}`, 'success');
+    } else {
+        uiHelperFunctions.showToastNotification('转发功能尚未完全实现。', 'error');
+        console.error('chatManager.handleForwardMessage is not defined');
+    }
+
+    uiHelperFunctions.closeModal('forwardMessageModal');
+    messageToForward = null;
+    selectedForwardTarget = null;
+}
 // Expose these functions globally for ui-helpers.js
 window.getCroppedFile = getCroppedFile;
 window.setCroppedFile = setCroppedFile;
