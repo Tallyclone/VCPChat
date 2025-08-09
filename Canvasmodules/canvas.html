@@ -61,21 +61,21 @@
         </aside>
     </div>
 
-    <div id="context-menu" class="custom-context-menu" style="display: none; position: absolute; z-index: 1001; background-color: var(--canvas-code-bg); border: 1px solid var(--canvas-border-color); padding: 5px; border-radius: 4px;">
-        <button id="rename-btn" style="background: none; border: none; color: var(--canvas-primary-text); cursor: pointer; padding: 5px 10px; width: 100%; text-align: left;">重命名</button>
-        <button id="copy-btn" style="background: none; border: none; color: var(--canvas-primary-text); cursor: pointer; padding: 5px 10px; width: 100%; text-align: left;">复制文件</button>
-        <button id="delete-btn" style="background: none; border: none; color: var(--canvas-primary-text); cursor: pointer; padding: 5px 10px; width: 100%; text-align: left;">删除文件</button>
+    <div id="context-menu" class="custom-context-menu">
+        <button id="rename-btn">重命名</button>
+        <button id="copy-btn">复制文件</button>
+        <button id="delete-btn">删除文件</button>
     </div>
 
-    <div id="editor-context-menu" class="custom-context-menu" style="display: none; position: absolute; z-index: 1001; background-color: var(--canvas-code-bg); border: 1px solid var(--canvas-border-color); padding: 5px; border-radius: 4px;">
-        <button data-action="undo" style="background: none; border: none; color: var(--canvas-primary-text); cursor: pointer; padding: 5px 10px; width: 100%; text-align: left;">撤销</button>
-        <button data-action="redo" style="background: none; border: none; color: var(--canvas-primary-text); cursor: pointer; padding: 5px 10px; width: 100%; text-align: left;">重做</button>
-        <hr style="border-color: var(--canvas-border-color); margin: 5px 0;">
-        <button data-action="cut" style="background: none; border: none; color: var(--canvas-primary-text); cursor: pointer; padding: 5px 10px; width: 100%; text-align: left;">剪切</button>
-        <button data-action="copy" style="background: none; border: none; color: var(--canvas-primary-text); cursor: pointer; padding: 5px 10px; width: 100%; text-align: left;">复制</button>
-        <button data-action="paste" style="background: none; border: none; color: var(--canvas-primary-text); cursor: pointer; padding: 5px 10px; width: 100%; text-align: left;">粘贴</button>
-        <hr style="border-color: var(--canvas-border-color); margin: 5px 0;">
-        <button data-action="selectAll" style="background: none; border: none; color: var(--canvas-primary-text); cursor: pointer; padding: 5px 10px; width: 100%; text-align: left;">全选</button>
+    <div id="editor-context-menu" class="custom-context-menu">
+        <button data-action="undo">撤销</button>
+        <button data-action="redo">重做</button>
+        <hr>
+        <button data-action="cut">剪切</button>
+        <button data-action="copy">复制</button>
+        <button data-action="paste">粘贴</button>
+        <hr>
+        <button data-action="selectAll">全选</button>
     </div>
 
     <!-- CodeMirror 5 JS -->
@@ -89,5 +89,4 @@
     <script src="../node_modules/codemirror/addon/comment/continuecomment.js"></script>
     <script src="canvas.js"></script>
 </body>
-
 </html>
