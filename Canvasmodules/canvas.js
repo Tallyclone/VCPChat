@@ -124,14 +124,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- IPC Event Listeners ---
     if (window.electronAPI) {
-        window.electronAPI.onThemeUpdated(applyTheme);
-
         window.electronAPI.onCanvasLoadData(async (data) => {
             initializeEditor(data);
             // After editor is initialized, get and apply the current theme
             try {
                 const theme = await window.electronAPI.getCurrentTheme();
                 applyTheme(theme);
+
+                // Attach the theme update listener only after the editor is initialized
+                // to prevent race conditions where the theme updates before the editor exists.
+                if (!window.isThemeListenerAttached) {
+                    window.electronAPI.onThemeUpdated(applyTheme);
+                    window.isThemeListenerAttached = true;
+                }
+
             } catch (error) {
                 console.error('Failed to get current theme on load:', error);
                 applyTheme('dark'); // Fallback to dark theme
