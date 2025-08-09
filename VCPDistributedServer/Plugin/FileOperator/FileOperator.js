@@ -100,23 +100,25 @@ function applyDiffLogic(originalContent, diffContent) {
 
   let modifiedContent = originalContent;
 
-  for (const block of diffBlocks) {
-    const parts = block.split('=======');
-    if (parts.length !== 2) {
-      throw new Error('Invalid diff format: Missing ======= separator.');
-    }
+  // Per user feedback, only process the first SEARCH block.
+  const block = diffBlocks[0];
+  const parts = block.split('=======');
+  if (parts.length !== 2) {
+    throw new Error('Invalid diff format: Missing ======= separator.');
+  }
 
-    const searchPart = parts[0];
-    const replacePart = parts[1].split('>>>>>>> REPLACE')[0];
+  const searchPart = parts[0];
+  const replacePart = parts[1].split('>>>>>>> REPLACE')[0];
 
-    const searchContent = searchPart.substring(searchPart.indexOf('-------') + '-------'.length).trim();
-    const replaceContent = replacePart.trim();
-    
-    if (modifiedContent.includes(searchContent)) {
-      modifiedContent = modifiedContent.replace(searchContent, replaceContent);
-    } else {
-      throw new Error('Diff application failed: SEARCH content not found in the original file.');
-    }
+  // This logic correctly ignores line numbers and only takes content after '-------'
+  const searchContent = searchPart.substring(searchPart.indexOf('-------') + '-------'.length).trim();
+  const replaceContent = replacePart.trim();
+  
+  if (modifiedContent.includes(searchContent)) {
+    // .replace() will only replace the first occurrence found in the file.
+    modifiedContent = modifiedContent.replace(searchContent, replaceContent);
+  } else {
+    throw new Error(`Diff application failed: SEARCH content not found in the original file. Content not found: "${searchContent}"`);
   }
 
   return modifiedContent;
@@ -1049,13 +1051,34 @@ async function processRequest(request) {
         return await createCanvas(parameters.fileName, parameters.content, parameters.encoding);
     case 'ApplyDiff':
       try {
-        const { filePath, diffContent, encoding } = parameters;
+        const { filePath, diffContent, searchString, replaceString, encoding } = parameters;
+
         const readResult = await readFile(filePath, encoding);
         if (!readResult.success) {
           throw new Error(`Failed to read file for applying diff: ${readResult.error}`);
         }
+        // We can only apply diff to string content.
+        if (typeof readResult.data.content !== 'string') {
+            throw new Error('ApplyDiff can only be used on plain text files.');
+        }
         const originalContent = readResult.data.content;
-        const newContent = applyDiffLogic(originalContent, diffContent);
+        let newContent;
+
+        if (diffContent) {
+          // Use the existing diff logic if diffContent is provided
+          newContent = applyDiffLogic(originalContent, diffContent);
+        } else if (searchString !== undefined && replaceString !== undefined) {
+          // Handle the legacy format with searchString and replaceString
+          if (!originalContent.includes(searchString)) {
+            // Make error more specific for debugging
+            throw new Error(`Diff application failed: searchString content not found in the original file. Content not found: "${searchString}"`);
+          }
+          // Per user feedback, use .replace() to only replace the first occurrence.
+          newContent = originalContent.replace(searchString, replaceString);
+        } else {
+          throw new Error('ApplyDiff requires either "diffContent" or both "searchString" and "replaceString" parameters.');
+        }
+        
         return await editFile(filePath, newContent, encoding);
       } catch (error) {
         return { success: false, error: `Failed to apply diff: ${error.message}` };

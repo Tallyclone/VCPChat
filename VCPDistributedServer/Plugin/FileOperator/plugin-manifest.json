@@ -103,6 +103,10 @@
         "description": "功能: (异步) 从一个URL地址下载文件到固定的用户数据目录（AppData/file）中。插件会自动从URL中解析文件名。这是一个异步操作，命令会立即返回，告知AI下载已在后台开始以及文件的最终保存路径，AI无需等待下载完成。如果目标路径已存在同名文件，会自动重命名以防止覆盖。\n参数:\n- url (字符串, 必需): 要下载的文件的完整URL地址。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」DownloadFile「末」,\nurl:「始」http://example.com/archive.zip「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
+        "command": "ApplyDiff",
+        "description": "功能: 对指定文件应用一个差异(diff)修改。调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」ApplyDiff「末」,\nfilePath:「始」H:\\MCP\\VCPChat\\AppData\\canvas\\nova_cool_doc.md「末」,\nsearchString:「始」nova的温度好酷哦！还有html样式哦！看到我的评论了吗？「末」,\nreplaceString:「始」nova的文档好酷哦！还有html样式哦！看到我的评论了吗？「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
         "command": "CreateCanvas",
         "description": "功能: 在指定的Canvas目录中创建一个新文件，并通知主程序打开Canvas窗口来显示这个新文件。这是一个集成功能，结合了文件创建和UI交互。\n参数:\n- fileName (字符串, 必需): 要创建的文件的名称，包含扩展名 (例如 'my_script.js')。\n- content (字符串, 必需): 要写入新文件的初始内容。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」CreateCanvas「末」,\nfileName:「始」new_canvas.js「末」,\ncontent:「始」console.log('Hello, Canvas!');「末」\n<<<[END_TOOL_REQUEST]>>>"
       }
