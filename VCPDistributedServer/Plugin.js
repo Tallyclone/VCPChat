@@ -152,7 +152,7 @@ class PluginManager {
 
             let outputBuffer = '';
             let errorOutput = '';
-            const timeoutDuration = plugin.communication?.timeout || 60000;
+            const timeoutDuration = plugin.entryPoint?.timeout || plugin.communication?.timeout || 60000;
 
             const timeoutId = setTimeout(() => {
                 pluginProcess.kill('SIGKILL');

@@ -320,8 +320,8 @@ class DistributedServer {
                         // Check for special actions after a successful command
                         if (toolName === 'FileOperator' && finalResult._specialAction === 'create_canvas') {
                             if (typeof this.handleCanvasControl === 'function') {
-                                // Don't wait for this to complete. It's a fire-and-forget UI action.
-                                this.handleCanvasControl(finalResult.payload);
+                                // The payload is { filePath: '...' }, we extract the path.
+                                this.handleCanvasControl(finalResult.payload.filePath);
                             }
                             // The message for the AI is already in the finalResult.
                         }
