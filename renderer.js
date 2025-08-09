@@ -1276,13 +1276,13 @@ function setupEventListeners() {
         });
     }
 
-    const openDiceBtn = document.getElementById('openDiceBtn');
-    if (openDiceBtn) {
-        openDiceBtn.addEventListener('click', () => {
-            if (window.electronAPI && window.electronAPI.openDiceWindow) {
-                window.electronAPI.openDiceWindow();
+    const openCanvasBtn = document.getElementById('openCanvasBtn');
+    if (openCanvasBtn) {
+        openCanvasBtn.addEventListener('click', () => {
+            if (window.electronAPI && window.electronAPI.openCanvasWindow) {
+                window.electronAPI.openCanvasWindow();
             } else {
-                console.error('Dice Roller: electronAPI.openDiceWindow not found.');
+                console.error('Canvas: electronAPI.openCanvasWindow not found.');
             }
         });
     }

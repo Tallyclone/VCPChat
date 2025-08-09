@@ -30,6 +30,7 @@ const themeHandlers = require('./modules/ipc/themeHandlers'); // Import theme ha
 const emoticonHandlers = require('./modules/ipc/emoticonHandlers'); // Import emoticon handlers
 const musicMetadata = require('music-metadata');
 const speechRecognizer = require('./modules/speechRecognizer'); // Import the new speech recognizer
+const canvasHandlers = require('./modules/ipc/canvasHandlers'); // Import canvas handlers
 
 // --- Configuration Paths ---
 // Data storage will be within the project's 'AppData' directory
@@ -45,6 +46,7 @@ const MUSIC_COVER_CACHE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'MusicCoverCac
 const NETWORK_NOTES_CACHE_FILE = path.join(APP_DATA_ROOT_IN_PROJECT, 'network-notes-cache.json'); // Cache for network notes
 const WALLPAPER_THUMBNAIL_CACHE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'WallpaperThumbnailCache');
 const RESAMPLE_CACHE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'ResampleCache');
+const CANVAS_CACHE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'canvas'); // Canvas cache directory
 
 // Define a specific agent ID for notes attachments
 const NOTES_AGENT_ID = 'notes_attachments_agent';
@@ -207,6 +209,7 @@ if (!gotTheLock) {
     fs.ensureDirSync(MUSIC_COVER_CACHE_DIR);
     fs.ensureDirSync(WALLPAPER_THUMBNAIL_CACHE_DIR); // Ensure the thumbnail cache directory exists
     fs.ensureDirSync(RESAMPLE_CACHE_DIR); // Ensure the resample cache directory exists
+    fs.ensureDirSync(CANVAS_CACHE_DIR); // Ensure the canvas cache directory exists
     fileManager.initializeFileManager(USER_DATA_DIR, AGENT_DIR); // Initialize FileManager
     groupChat.initializePaths({ APP_DATA_ROOT_IN_PROJECT, AGENT_DIR, USER_DATA_DIR, SETTINGS_FILE }); // Initialize GroupChat paths
     settingsHandlers.initialize({ SETTINGS_FILE, USER_AVATAR_FILE, AGENT_DIR }); // Initialize settings handlers
@@ -412,6 +415,7 @@ if (!gotTheLock) {
     themeHandlers.initialize({ mainWindow, openChildWindows, projectRoot: PROJECT_ROOT, APP_DATA_ROOT_IN_PROJECT });
     emoticonHandlers.initialize({ SETTINGS_FILE, APP_DATA_ROOT_IN_PROJECT });
     emoticonHandlers.setupEmoticonHandlers();
+    canvasHandlers.initialize({ mainWindow, openChildWindows, CANVAS_CACHE_DIR });
  
      // --- Distributed Server Initialization ---
      (async () => {
@@ -426,7 +430,8 @@ if (!gotTheLock) {
                     debugMode: true, // Or read from settings if you add this option
                     rendererProcess: mainWindow.webContents, // Pass the renderer process object
                     handleMusicControl: musicHandlers.handleMusicControl, // Inject the music control handler
-                    handleDiceControl: diceHandlers.handleDiceControl // Inject the dice control handler
+                    handleDiceControl: diceHandlers.handleDiceControl, // Inject the dice control handler
+                    handleCanvasControl: handleCanvasControl // Inject the new canvas control handler
                 };
                 distributedServer = new DistributedServer(config);
                 distributedServer.initialize();
@@ -745,3 +750,30 @@ ipcMain.handle('export-topic-as-markdown', async (event, exportData) => {
         return { success: false, error: `写入文件失败: ${e.message}` };
     }
 });
+
+// --- Canvas Control Handler (for Distributed Server) ---
+async function handleCanvasControl(payload) {
+    try {
+        const { filePath } = payload;
+        if (!filePath) {
+            throw new Error('No filePath provided for canvas control.');
+        }
+
+        // First, ensure the canvas window is open.
+        await canvasHandlers.createCanvasWindow();
+
+        // Then, send a command to load the specific file.
+        // This requires the canvas window to be ready and listening.
+        // We might need a slight delay or a ready check.
+        setTimeout(() => {
+            if (canvasHandlers.getCanvasWindow() && !canvasHandlers.getCanvasWindow().isDestroyed()) {
+                canvasHandlers.getCanvasWindow().webContents.send('load-canvas-file-by-path', filePath);
+            }
+        }, 500); // 500ms delay to allow window to open
+
+        return { status: 'success', message: 'Canvas window opened and file loading initiated.' };
+    } catch (error) {
+        console.error('[Main] handleCanvasControl error:', error);
+        return { status: 'error', message: error.message };
+    }
+}

@@ -280,6 +280,22 @@ exportTopicAsMarkdown: (exportData) => ipcRenderer.invoke('export-topic-as-markd
     startSpeechRecognition: () => ipcRenderer.send('start-speech-recognition'),
     stopSpeechRecognition: () => ipcRenderer.send('stop-speech-recognition'),
     onSpeechRecognitionResult: (callback) => ipcRenderer.on('speech-recognition-result', (_event, text) => callback(text)),
+
+    // Canvas Module
+    openCanvasWindow: () => ipcRenderer.invoke('open-canvas-window'),
+    canvasReady: () => ipcRenderer.send('canvas-ready'),
+    createNewCanvas: () => ipcRenderer.send('create-new-canvas'),
+    loadCanvasFile: (filePath) => ipcRenderer.send('load-canvas-file', filePath),
+    saveCanvasFile: (file) => ipcRenderer.send('save-canvas-file', file),
+    onCanvasLoadData: (callback) => ipcRenderer.on('canvas-load-data', (_event, data) => callback(data)),
+    onCanvasFileChanged: (callback) => ipcRenderer.on('canvas-file-changed', (_event, file) => callback(file)),
+    onCanvasContentUpdate: (callback) => ipcRenderer.on('canvas-content-update', (_event, data) => callback(data)),
+    onLoadCanvasFileByPath: (callback) => ipcRenderer.on('load-canvas-file-by-path', (_event, filePath) => callback(filePath)),
+    onCanvasWindowClosed: (callback) => ipcRenderer.on('canvas-window-closed', (_event) => callback()),
+    renameCanvasFile: (data) => ipcRenderer.invoke('rename-canvas-file', data), // { oldPath, newTitle }
+    copyCanvasFile: (filePath) => ipcRenderer.send('copy-canvas-file', filePath),
+    deleteCanvasFile: (filePath) => ipcRenderer.send('delete-canvas-file', filePath),
+    getLatestCanvasContent: () => ipcRenderer.invoke('get-latest-canvas-content'),
 });
 
 // Log the electronAPI object as it's defined in preload.js right after exposing it
