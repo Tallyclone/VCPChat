@@ -157,6 +157,7 @@ async function handleCreateNewCanvas(event) {
         const history = await getCanvasHistory();
         const current = await getCanvasFileContent(newFilePath);
         history.forEach(h => h.isActive = (h.path === newFilePath));
+        activeCanvasPath = newFilePath; // Set the active path
 
         sender.send('canvas-load-data', { history, current });
     } catch (error) {
@@ -170,6 +171,7 @@ async function handleLoadCanvasFile(event, filePath) {
         const history = await getCanvasHistory();
         const current = await getCanvasFileContent(filePath);
         history.forEach(h => h.isActive = (h.path === filePath));
+        activeCanvasPath = filePath; // Set the active path
 
         sender.send('canvas-load-data', { history, current });
     } catch (error) {
@@ -248,6 +250,9 @@ async function handleDeleteCanvasFile(event, filePath) {
                // Load the first file in the list as the new current file
                current = await getCanvasFileContent(history[0].path);
                history[0].isActive = true;
+               activeCanvasPath = current ? current.path : null; // Set active path
+           } else {
+               activeCanvasPath = null; // No files left
            }
            canvasWindow.webContents.send('canvas-load-data', { history, current });
        }
