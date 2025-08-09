@@ -477,6 +477,10 @@ body:not(.light-theme) { /* Or just .dark-theme if that's how your theme switchi
     --tool-result-item-link-color: #82b1ff;
     --tool-result-item-strong-color: #ffd54f;
     --tool-result-footer-color: #b0bec5;
+    --vcp-canvas-bg: #2d3748;
+    --vcp-canvas-text-color: #e2e8f0;
+    --vcp-canvas-border-color: #4a5568;
+    --vcp-canvas-dots-color: #48bb78;
 }
 
 body.light-theme {
@@ -501,6 +505,10 @@ body.light-theme {
     --tool-result-item-link-color: #1976d2;
     --tool-result-item-strong-color: #b8860b; /* DarkGoldenRod */
     --tool-result-footer-color: #78909c;
+    --vcp-canvas-bg: #f7fafc;
+    --vcp-canvas-text-color: #2d3748;
+    --vcp-canvas-border-color: #e2e8f0;
+    --vcp-canvas-dots-color: #38a169;
 }
 
 .md-content table {
@@ -785,4 +793,36 @@ body.light-theme .vcp-tool-result-status:containing("SUCCESS") {
 .user-clicked-button-bubble:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* --- VCPChatCanvas Placeholder (Mini IDE Style) --- */
+@keyframes vcp-canvas-border-pulse {
+    0% { border-color: var(--vcp-canvas-border-color); }
+    50% { border-color: var(--vcp-canvas-dots-color); }
+    100% { border-color: var(--vcp-canvas-border-color); }
+}
+
+.vcp-chat-canvas-placeholder {
+    display: block;
+    width: -moz-fit-content;
+    width: fit-content;
+    background-color: var(--vcp-canvas-bg);
+    color: var(--vcp-canvas-text-color);
+    border: 1px solid var(--vcp-canvas-border-color);
+    padding: 8px 15px;
+    border-radius: 6px; /* More rectangular */
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace; /* IDE font */
+    font-size: 0.9em;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    position: relative;
+    margin-bottom: 10px;
+    transition: background-color 0.3s, color 0.3s, border-color 0.3s;
+    animation: vcp-canvas-border-pulse 4s infinite;
+}
+
+.vcp-chat-canvas-placeholder .thinking-indicator-dots {
+    color: var(--vcp-canvas-dots-color);
+    font-size: 1.2em;
+    text-shadow: none;
+    /* The original vcp-loading-dots animation is reused */
 }

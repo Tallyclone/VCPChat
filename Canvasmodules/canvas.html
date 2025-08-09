@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>协同 Canvas</title>
+    <link rel="stylesheet" href="../styles/themes.css">
+    <link rel="stylesheet" href="../style.css">
+    <!-- CodeMirror 5 CSS -->
+    <link rel="stylesheet" href="../node_modules/codemirror/lib/codemirror.css">
+    <link rel="stylesheet" href="../node_modules/codemirror/theme/material-darker.css">
+    <style>
+        :root {
+            --canvas-bg-color: var(--primary-bg);
+            --canvas-primary-text: var(--primary-text);
+            --canvas-secondary-text: var(--secondary-text);
+            --canvas-code-bg: var(--secondary-bg);
+            --canvas-border-color: var(--border-color);
+            --canvas-button-bg: var(--button-bg);
+            --canvas-button-hover-bg: var(--button-hover-bg);
+            --canvas-accent-bg: var(--accent-bg);
+        }
+        body.light-theme {
+            --canvas-bg-color: var(--primary-bg);
+            --canvas-primary-text: var(--primary-text);
+            --canvas-secondary-text: var(--secondary-text);
+            --canvas-code-bg: var(--secondary-bg);
+            --canvas-border-color: var(--border-color);
+            --canvas-button-bg: var(--button-bg);
+            --canvas-button-hover-bg: var(--button-hover-bg);
+            --canvas-accent-bg: var(--accent-bg);
+        }
+        body {
+            font-family: var(--font-family-sans-serif, sans-serif);
+            background-color: var(--canvas-bg-color);
+            color: var(--canvas-primary-text);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+            padding-top: 40px; /* Space for the title bar */
+            box-sizing: border-box;
+        }
+
+        /* --- Custom Title Bar --- */
+       #custom-title-bar {
+           position: fixed;
+           top: 0;
+           left: 0;
+           right: 0;
+           height: 40px;
+           display: flex;
+           justify-content: space-between;
+           align-items: center;
+           padding: 0 10px 0 20px;
+           background-color: var(--canvas-bg-color);
+           border-bottom: 1px solid var(--canvas-border-color);
+           z-index: 1000;
+           -webkit-app-region: drag;
+           user-select: none;
+       }
+       .title-text-container {
+           overflow: hidden;
+           text-overflow: ellipsis;
+           white-space: nowrap;
+           -webkit-app-region: no-drag;
+       }
+       #custom-title-bar .title {
+           font-size: 14px;
+           font-weight: 600;
+           color: var(--canvas-primary-text);
+           opacity: 0.9;
+       }
+       #custom-title-bar .window-controls {
+           display: flex;
+           gap: 10px;
+           -webkit-app-region: no-drag;
+       }
+       .window-control-btn {
+           width: 30px;
+           height: 30px;
+           border: none;
+           background-color: transparent;
+           color: var(--canvas-secondary-text);
+           border-radius: 8px;
+           display: flex;
+           align-items: center;
+           justify-content: center;
+           cursor: pointer;
+           transition: background-color 0.2s ease, color 0.2s ease;
+       }
+       .window-control-btn:hover {
+           background-color: var(--canvas-button-hover-bg);
+           color: var(--canvas-primary-text);
+       }
+       #close-btn:hover {
+           background-color: #e81123;
+           color: white;
+       }
+
+        .main-container {
+            display: flex;
+            flex-grow: 1;
+            overflow: hidden;
+        }
+        .sidebar {
+            width: 250px; /* Increased default width */
+            min-width: 150px; /* Added min-width */
+            max-width: 500px; /* Added max-width */
+            background-color: var(--canvas-code-bg);
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            box-sizing: border-box;
+            position: relative;
+            z-index: 2;
+        }
+        .resizer {
+            flex: 0 0 5px;
+            cursor: col-resize;
+            background-color: var(--canvas-border-color);
+            transition: background-color 0.2s;
+        }
+        .resizer:hover {
+            background-color: var(--canvas-accent-bg);
+        }
+        .sidebar h3 {
+            margin-top: 0;
+        }
+        #historyList {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+        #historyList li {
+            padding: 8px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        #historyList li:hover {
+            background-color: var(--canvas-button-hover-bg);
+        }
+        #historyList li.active {
+            background-color: var(--canvas-accent-bg);
+        }
+        #historyList li .rename-input {
+            width: calc(100% - 16px);
+            padding: 6px;
+            border: 1px solid var(--canvas-accent-bg);
+            background-color: var(--canvas-code-bg);
+            color: var(--canvas-primary-text);
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: inherit;
+        }
+        .editor-container {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+        .editor-top-bar {
+           flex-shrink: 0;
+           height: 40px;
+           background-color: var(--canvas-code-bg);
+           border-bottom: 1px solid var(--canvas-border-color);
+           display: flex;
+           align-items: center;
+           padding: 0 10px;
+           gap: 10px;
+        }
+        .action-btn {
+           background-color: var(--canvas-button-bg);
+           color: var(--canvas-primary-text);
+           border: 1px solid var(--canvas-border-color);
+           border-radius: 5px;
+           padding: 5px 10px;
+           cursor: pointer;
+           transition: background-color 0.2s;
+           display: none; /* Hidden by default */
+        }
+        .action-btn:hover {
+           background-color: var(--canvas-button-hover-bg);
+        }
+        #editor {
+            flex-grow: 1;
+            width: 100%;
+            height: 100%;
+            border: none;
+            outline: none;
+        }
+        .CodeMirror {
+             height: 100%;
+        }
+        .status-bar {
+            height: 25px;
+            background-color: var(--canvas-code-bg);
+            border-top: 1px solid var(--canvas-border-color);
+            padding: 0 10px;
+            display: flex;
+            align-items: center;
+            font-size: 12px;
+        }
+        #filePath, #errorInfo {
+            margin-right: 20px;
+        }
+
+        /* --- Global Button Style --- */
+        .global-action-button {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px 18px;
+            background-color: var(--canvas-button-bg);
+            color: var(--canvas-primary-text);
+            border: 1px solid var(--canvas-border-color);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            font-size: 14px;
+            text-align: center;
+            margin-top: auto; /* Push to bottom */
+        }
+        .global-action-button:hover {
+            background-color: var(--canvas-button-hover-bg);
+        }
+    </style>
+</head>
+<body>
+    <div id="custom-title-bar">
+        <div class="title-text-container">
+            <span class="title">协同 Canvas</span>
+        </div>
+        <div class="window-controls">
+            <button id="minimize-btn" class="window-control-btn" title="最小化">
+                <svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1.2"></line></svg>
+            </button>
+            <button id="maximize-btn" class="window-control-btn" title="最大化">
+                <svg width="10" height="10" viewBox="0 0 10 10"><path fill="none" stroke="currentColor" stroke-width="1" d="M0.5,0.5 h9 v9 h-9 z"></path></svg>
+            </button>
+            <button id="close-btn" class="window-control-btn" title="关闭">
+                <svg width="10" height="10" viewBox="0 0 10 10"><path fill="currentColor" d="M0.5,0.5 9.5,9.5 M9.5,0.5 0.5,9.5" stroke="currentColor" stroke-width="1.2"></path></svg>
+            </button>
+        </div>
+    </div>
+    <div class="main-container">
+        <aside class="sidebar">
+            <h3>历史记录</h3>
+            <ul id="historyList">
+                <!-- 历史记录将在这里动态加载 -->
+            </ul>
+            <button id="newCanvasBtn" class="global-action-button">新建 Canvas</button>
+        </aside>
+        <div class="resizer" id="resizer"></div>
+        <div class="editor-container">
+            <div class="editor-top-bar">
+                <button id="run-py-btn" class="action-btn">运行</button>
+                <button id="render-md-btn" class="action-btn">渲染</button>
+                <button id="render-html-btn" class="action-btn">渲染</button>
+            </div>
+            <textarea id="editor"></textarea> <!-- CodeMirror 5 will replace this -->
+            <div class="status-bar">
+                <span id="filePath">未保存</span>
+                <span id="errorInfo">无错误</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="context-menu" class="custom-context-menu" style="display: none; position: absolute; z-index: 1001; background-color: var(--canvas-code-bg); border: 1px solid var(--canvas-border-color); padding: 5px; border-radius: 4px;">
+        <button id="rename-btn" style="background: none; border: none; color: var(--canvas-primary-text); cursor: pointer; padding: 5px 10px; width: 100%; text-align: left;">重命名</button>
+        <button id="copy-btn" style="background: none; border: none; color: var(--canvas-primary-text); cursor: pointer; padding: 5px 10px; width: 100%; text-align: left;">复制文件</button>
+        <button id="delete-btn" style="background: none; border: none; color: var(--canvas-primary-text); cursor: pointer; padding: 5px 10px; width: 100%; text-align: left;">删除文件</button>
+    </div>
+
+    <div id="editor-context-menu" class="custom-context-menu" style="display: none; position: absolute; z-index: 1001; background-color: var(--canvas-code-bg); border: 1px solid var(--canvas-border-color); padding: 5px; border-radius: 4px;">
+        <button data-action="undo" style="background: none; border: none; color: var(--canvas-primary-text); cursor: pointer; padding: 5px 10px; width: 100%; text-align: left;">撤销</button>
+        <button data-action="redo" style="background: none; border: none; color: var(--canvas-primary-text); cursor: pointer; padding: 5px 10px; width: 100%; text-align: left;">重做</button>
+        <hr style="border-color: var(--canvas-border-color); margin: 5px 0;">
+        <button data-action="cut" style="background: none; border: none; color: var(--canvas-primary-text); cursor: pointer; padding: 5px 10px; width: 100%; text-align: left;">剪切</button>
+        <button data-action="copy" style="background: none; border: none; color: var(--canvas-primary-text); cursor: pointer; padding: 5px 10px; width: 100%; text-align: left;">复制</button>
+        <button data-action="paste" style="background: none; border: none; color: var(--canvas-primary-text); cursor: pointer; padding: 5px 10px; width: 100%; text-align: left;">粘贴</button>
+        <hr style="border-color: var(--canvas-border-color); margin: 5px 0;">
+        <button data-action="selectAll" style="background: none; border: none; color: var(--canvas-primary-text); cursor: pointer; padding: 5px 10px; width: 100%; text-align: left;">全选</button>
+    </div>
+
+    <!-- CodeMirror 5 JS -->
+    <script src="../node_modules/codemirror/lib/codemirror.js"></script>
+    <script src="../node_modules/codemirror/mode/javascript/javascript.js"></script>
+    <script src="../node_modules/codemirror/mode/python/python.js"></script>
+    <script src="../node_modules/codemirror/mode/css/css.js"></script>
+    <script src="../node_modules/codemirror/mode/xml/xml.js"></script>
+    <script src="../node_modules/codemirror/mode/htmlmixed/htmlmixed.js"></script>
+    <script src="../node_modules/codemirror/mode/markdown/markdown.js"></script>
+    <script src="canvas.js"></script>
+</body>
+</html>

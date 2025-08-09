@@ -520,14 +520,31 @@ async function handleRegenerateResponse(originalAssistantMessage) {
     try {
         const agentConfig = await electronAPI.getAgentConfig(currentSelectedItemVal.id);
         
-        const messagesForVCP = await Promise.all(historyForRegeneration.map(async msg => {
+        const messagesForVCP = await Promise.all(historyForRegeneration.map(async (msg, index) => {
             let vcpImageAttachmentsPayload = [];
             let vcpAudioAttachmentsPayload = [];
             let vcpVideoAttachmentsPayload = [];
             let currentMessageTextContent;
-
+ 
             let originalText = (typeof msg.content === 'string') ? msg.content : (msg.content?.text || '');
 
+            // Check if this is the last user message in the history for regeneration
+            const isLastUserMessage = msg.role === 'user' && !historyForRegeneration.slice(index + 1).some(futureMsg => futureMsg.role === 'user');
+
+            if (isLastUserMessage && originalText.includes('{{VCPChatCanvas}}')) {
+                 try {
+                    const canvasData = await electronAPI.getLatestCanvasContent();
+                    if (canvasData && !canvasData.error) {
+                        const formattedCanvasContent = `\n[Canvas Content]\n${canvasData.content || ''}\n[Canvas Path]\n${canvasData.path || 'No file path'}\n[Canvas Errors]\n${canvasData.errors || 'No errors'}\n`;
+                        originalText = originalText.replace(/\{\{VCPChatCanvas\}\}/g, formattedCanvasContent);
+                    } else {
+                        originalText = originalText.replace(/\{\{VCPChatCanvas\}\}/g, '\n[Canvas content could not be loaded]\n');
+                    }
+                } catch (error) {
+                    originalText = originalText.replace(/\{\{VCPChatCanvas\}\}/g, '\n[Error loading canvas content]\n');
+                }
+            }
+ 
             if (msg.attachments && msg.attachments.length > 0) {
                 let historicalAppendedText = "";
                 for (const att of msg.attachments) {
