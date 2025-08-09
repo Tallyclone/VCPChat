@@ -743,3 +743,60 @@ body.light-theme .message-item .md-content pre .hljs-meta {
  * we turn the paragraph into a flex container to reliably center the image.
 */
  /*
+
+/* --- Forward Message Modal --- */
+#forwardMessageModal .modal-content {
+   max-width: 450px;
+}
+
+#forwardTargetList {
+   max-height: 200px;
+   overflow-y: auto;
+   border: 1px solid var(--border-color);
+   border-radius: 6px;
+   margin-top: 8px;
+   margin-bottom: 15px;
+   padding: 5px;
+}
+
+#forwardTargetList .agent-item {
+   display: flex;
+   align-items: center;
+   padding: 8px 10px;
+   border-radius: 4px;
+   cursor: pointer;
+   transition: background-color 0.2s ease;
+}
+
+#forwardTargetList .agent-item:hover,
+#forwardTargetList .agent-item.selected {
+   background-color: var(--accent-bg);
+}
+
+#forwardTargetList .agent-item.selected {
+   color: var(--highlight-text);
+   font-weight: 500;
+}
+
+#forwardTargetList .avatar {
+   width: 32px;
+   height: 32px;
+   border-radius: 50%;
+   margin-right: 12px;
+}
+
+#forwardTargetSearch,
+#forwardAdditionalComment {
+   width: 100%;
+   padding: 8px;
+   border-radius: 6px;
+   border: 1px solid var(--border-color);
+   background-color: var(--input-bg);
+   color: var(--primary-text);
+   box-sizing: border-box;
+}
+
+#forwardAdditionalComment {
+   resize: vertical;
+   min-height: 60px;
+}

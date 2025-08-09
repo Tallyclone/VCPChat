@@ -833,6 +833,52 @@ window.chatManager = (() => {
         }
     }
 
+    async function handleForwardMessage(target, content, attachments) {
+        const { messageInput } = elements;
+        
+        // 1. Find the target item's full config to select it
+        let targetItemFullConfig;
+        if (target.type === 'agent') {
+            targetItemFullConfig = await electronAPI.getAgentConfig(target.id);
+        } else {
+            targetItemFullConfig = await electronAPI.getAgentGroupConfig(target.id);
+        }
+
+        if (!targetItemFullConfig || targetItemFullConfig.error) {
+            uiHelper.showToastNotification(`转发失败: 无法获取目标配置。`, 'error');
+            return;
+        }
+
+        // 2. Select the item. This will automatically handle finding the last active topic or creating a new one.
+        await selectItem(target.id, target.type, target.name, targetItemFullConfig.avatarUrl, targetItemFullConfig);
+
+        // 3. After a brief delay to allow the UI to update from selectItem, populate and send.
+        setTimeout(async () => {
+            // 4. Populate the message input and attachments ref
+            messageInput.value = content;
+            
+            const uiAttachments = attachments.map(att => ({
+                file: { name: att.name, type: att.type, size: att.size },
+                localPath: att.src,
+                originalName: att.name,
+                _fileManagerData: att._fileManagerData || {}
+            }));
+            attachedFilesRef.set(uiAttachments);
+            
+            // Manually trigger attachment preview update
+            if (mainRendererFunctions.updateAttachmentPreview) {
+                mainRendererFunctions.updateAttachmentPreview();
+            }
+            
+            // Manually trigger textarea resize
+            uiHelper.autoResizeTextarea(messageInput);
+
+            // 5. Call the standard send message handler to trigger the full AI response flow
+            await handleSendMessage();
+
+        }, 200); // 200ms delay seems reasonable for UI transition
+    }
+
     // --- Public API ---
     return {
         init,
@@ -845,5 +891,6 @@ window.chatManager = (() => {
         displayNoItemSelected,
         attemptTopicSummarizationIfNeeded,
         handleCreateBranch,
+        handleForwardMessage,
     };
 })();

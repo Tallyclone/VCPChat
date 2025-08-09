@@ -520,5 +520,30 @@
     </div>
 
     <div id="floating-toast-notifications-container"></div>
+
+    <!-- Forward Message Modal -->
+    <div class="modal" id="forwardMessageModal">
+        <div class="modal-content">
+            <span class="close-button" onclick="uiHelperFunctions.closeModal('forwardMessageModal')">×</span>
+            <h2>转发消息</h2>
+            <div id="forward-modal-body">
+                <div class="form-group">
+                    <label for="forwardTargetSearch">转发给:</label>
+                    <input type="text" id="forwardTargetSearch" placeholder="搜索 Agent 或群组...">
+                </div>
+                <ul id="forwardTargetList" class="agent-list">
+                    <!-- Target agents will be populated here -->
+                </ul>
+                <div class="form-group">
+                    <label for="forwardAdditionalComment">附加评论 (可选):</label>
+                    <textarea id="forwardAdditionalComment" rows="3" placeholder="例如：你怎么看？"></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="button-secondary" onclick="uiHelperFunctions.closeModal('forwardMessageModal')">取消</button>
+                    <button type="button" id="confirmForwardBtn" class="button-primary">确认转发</button>
+                </div>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
