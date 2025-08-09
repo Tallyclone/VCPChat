@@ -89,7 +89,7 @@ VChat 不仅仅是一个聊天界面，它是强大的 VCP 后端生态（VCPToo
     *   创建、删除和配置多个 AI Agent。
     *   为每个 Agent 设置名称、系统提示、模型参数（如温度、上下文Token限制、最大输出Token）。
     *   管理 Agent 的头像。
-    *   支持每个 Agent 拥有多个独立的聊天话题 (Topics)，包括话题的创建、删除、重命名和排序。
+    *   支持每个 Agent 拥有多个独立的聊天话题 (Topics)，包括话题的创建、删除、重命名、排序和**导出**（支持导出为 Markdown 或 HTML 格式）。
     *   支持 Agent 列表的自定义排序。
 *   **高级上下文管理 (兼容 SillyTavern)**: VChat 基于后端服务器节点实现了与 SillyTavern 高度兼容的上下文管理机制，为精细化、可复用的对话背景设定提供了强大支持。
     *  **预设、角色卡与世界书**: 现在VCP系统完全兼容并支持挂载 SillyTavern 的 `预设 (Preset) `、 `角色卡 (Character Card) ` 和  `世界书 (World Book)`。您可以无缝导入和使用已有的 SillyTavern 资源，或在 VCP 内直接创建和管理。
