@@ -79,7 +79,7 @@ body {
 
 .sidebar-actions .button {
     flex: 1; /* Each button takes a third of the space */
-    padding: 8px 10px; /* Reduced padding for a more compact look */
+    padding: 3px 10px; /* Reduced padding for a more compact look */
     font-size: 0.9em; /* Slightly smaller font size */
 }
 
@@ -824,5 +824,5 @@ body.light-theme .markdown-preview pre .hljs-meta {
 
 /* 调整主容器，为标题栏留出空间 */
 .container {
-    padding-top: 55px; /* 15px 原有 padding + 40px 标题栏高度 */
+    padding-top: 40px; /* 5px 间距 + 40px 标题栏高度 */
 }
