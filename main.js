@@ -752,26 +752,17 @@ ipcMain.handle('export-topic-as-markdown', async (event, exportData) => {
 });
 
 // --- Canvas Control Handler (for Distributed Server) ---
-async function handleCanvasControl(payload) {
+async function handleCanvasControl(filePath) {
     try {
-        const { filePath } = payload;
         if (!filePath) {
             throw new Error('No filePath provided for canvas control.');
         }
 
-        // First, ensure the canvas window is open.
-        await canvasHandlers.createCanvasWindow();
+        // The updated createCanvasWindow now handles both opening the window
+        // and loading the specific file, or focusing and loading if already open.
+        await canvasHandlers.createCanvasWindow(filePath);
 
-        // Then, send a command to load the specific file.
-        // This requires the canvas window to be ready and listening.
-        // We might need a slight delay or a ready check.
-        setTimeout(() => {
-            if (canvasHandlers.getCanvasWindow() && !canvasHandlers.getCanvasWindow().isDestroyed()) {
-                canvasHandlers.getCanvasWindow().webContents.send('load-canvas-file-by-path', filePath);
-            }
-        }, 500); // 500ms delay to allow window to open
-
-        return { status: 'success', message: 'Canvas window opened and file loading initiated.' };
+        return { status: 'success', message: 'Canvas window command processed.' };
     } catch (error) {
         console.error('[Main] handleCanvasControl error:', error);
         return { status: 'error', message: error.message };

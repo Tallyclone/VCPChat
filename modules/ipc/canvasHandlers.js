@@ -7,6 +7,7 @@ let openChildWindows;
 let CANVAS_CACHE_DIR;
 let canvasWindow = null;
 let fileWatcher = null;
+let initialFilePath = null;
 const SUPPORTED_EXTENSIONS = ['.txt', '.js', '.py', '.css', '.html', '.json', '.md'];
  
 function initialize(config) {
@@ -31,11 +32,18 @@ function initialize(config) {
     });
 }
 
-async function createCanvasWindow() {
+async function createCanvasWindow(filePath = null) {
     console.log('[CanvasHandlers] Received request to open canvas window.');
     if (canvasWindow && !canvasWindow.isDestroyed()) {
         canvasWindow.focus();
+        if (filePath) {
+            canvasWindow.webContents.send('load-canvas-file-by-path', filePath);
+        }
         return;
+    }
+
+    if (filePath) {
+        initialFilePath = filePath;
     }
 
     canvasWindow = new BrowserWindow({
@@ -66,6 +74,7 @@ async function createCanvasWindow() {
     canvasWindow.on('closed', () => {
         openChildWindows = openChildWindows.filter(win => win !== canvasWindow);
         canvasWindow = null;
+        initialFilePath = null;
         if (mainWindow && !mainWindow.isDestroyed()) {
             try {
                 mainWindow.webContents.send('canvas-window-closed');
@@ -123,7 +132,12 @@ async function handleCanvasReady(event) {
     try {
         const history = await getCanvasHistory();
         let current = null;
-        if (history.length > 0) {
+        if (initialFilePath && (await fs.pathExists(initialFilePath))) {
+            current = await getCanvasFileContent(initialFilePath);
+            history.forEach(h => h.isActive = (h.path === initialFilePath));
+            initialFilePath = null; // Consume it
+        } else if (history.length > 0) {
+            // Default behavior: load the first file
             current = await getCanvasFileContent(history[0].path);
             history[0].isActive = true;
         }

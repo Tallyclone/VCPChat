@@ -16,6 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const runPyBtn = document.getElementById('run-py-btn');
     const renderMdBtn = document.getElementById('render-md-btn');
     const renderHtmlBtn = document.getElementById('render-html-btn');
+    const toggleWrapBtn = document.getElementById('toggle-wrap-btn');
 
     let editor;
     const editorContextMenu = document.getElementById('editor-context-menu');
@@ -44,6 +45,8 @@ document.addEventListener('DOMContentLoaded', () => {
             lineNumbers: true,
             mode: 'javascript',
             theme: 'material-darker',
+            lineWrapping: false,
+            continueComments: "Enter",
         });
 
         // --- Event Listeners (only bind once) ---
@@ -148,6 +151,14 @@ document.addEventListener('DOMContentLoaded', () => {
     newCanvasBtn.addEventListener('click', () => {
         if (window.electronAPI) {
             window.electronAPI.createNewCanvas();
+        }
+    });
+
+    toggleWrapBtn.addEventListener('click', () => {
+        if (editor) {
+            const currentStatus = editor.getOption('lineWrapping');
+            editor.setOption('lineWrapping', !currentStatus);
+            toggleWrapBtn.textContent = `自动换行: ${!currentStatus ? '开' : '关'}`;
         }
     });
 

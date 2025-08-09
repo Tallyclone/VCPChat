@@ -38,7 +38,7 @@
             display: flex;
             flex-direction: column;
             height: 100vh;
-            overflow: hidden;
+            /* overflow: hidden; */ /* Disabling this to allow editor scrollbars */
             padding-top: 40px; /* Space for the title bar */
             box-sizing: border-box;
         }
@@ -161,6 +161,7 @@
             display: flex;
             flex-direction: column;
             position: relative;
+            overflow: auto;
         }
         .editor-top-bar {
            flex-shrink: 0;
@@ -195,6 +196,23 @@
         .CodeMirror {
              height: 100%;
         }
+       /* --- Custom Scrollbar for Editor Container --- */
+       .editor-container::-webkit-scrollbar {
+           width: 12px;
+           height: 12px;
+       }
+       .editor-container::-webkit-scrollbar-track {
+           background: var(--canvas-code-bg);
+       }
+       .editor-container::-webkit-scrollbar-thumb {
+           background-color: var(--canvas-button-bg);
+           border-radius: 6px;
+           border: 3px solid var(--canvas-code-bg);
+       }
+       .editor-container::-webkit-scrollbar-thumb:hover {
+           background-color: var(--canvas-button-hover-bg);
+       }
+
         .status-bar {
             height: 25px;
             background-color: var(--canvas-code-bg);
@@ -260,6 +278,7 @@
                 <button id="run-py-btn" class="action-btn">运行</button>
                 <button id="render-md-btn" class="action-btn">渲染</button>
                 <button id="render-html-btn" class="action-btn">渲染</button>
+                <button id="toggle-wrap-btn" class="action-btn" style="display: block;">自动换行: 关</button>
             </div>
             <textarea id="editor"></textarea> <!-- CodeMirror 5 will replace this -->
             <div class="status-bar">
@@ -294,6 +313,7 @@
     <script src="../node_modules/codemirror/mode/xml/xml.js"></script>
     <script src="../node_modules/codemirror/mode/htmlmixed/htmlmixed.js"></script>
     <script src="../node_modules/codemirror/mode/markdown/markdown.js"></script>
+    <script src="../node_modules/codemirror/addon/comment/continuecomment.js"></script>
     <script src="canvas.js"></script>
 </body>
 </html>
