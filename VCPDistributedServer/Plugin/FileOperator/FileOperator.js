@@ -40,7 +40,8 @@ function isPathAllowed(targetPath, operationType = 'generic') {
   if (ALLOWED_DIRECTORIES.length > 0) {
     const isInAllowedDir = ALLOWED_DIRECTORIES.some(allowedDir => {
       const resolvedAllowedDir = path.resolve(allowedDir);
-      return resolvedPath.startsWith(resolvedAllowedDir);
+      // Normalize to lower case for case-insensitive comparison, crucial for Windows
+      return resolvedPath.toLowerCase().startsWith(resolvedAllowedDir.toLowerCase());
     });
     if (isInAllowedDir) {
       debugLog(`Path is within allowed directories. Access granted.`, { targetPath, operationType });
@@ -91,6 +92,36 @@ function getUniqueFilePath(filePath) {
   }
 }
 
+function applyDiffLogic(originalContent, diffContent) {
+  const diffBlocks = diffContent.split('<<<<<<< SEARCH').slice(1);
+  if (diffBlocks.length === 0) {
+    throw new Error('Invalid diff format: No SEARCH blocks found.');
+  }
+
+  let modifiedContent = originalContent;
+
+  for (const block of diffBlocks) {
+    const parts = block.split('=======');
+    if (parts.length !== 2) {
+      throw new Error('Invalid diff format: Missing ======= separator.');
+    }
+
+    const searchPart = parts[0];
+    const replacePart = parts[1].split('>>>>>>> REPLACE')[0];
+
+    const searchContent = searchPart.substring(searchPart.indexOf('-------') + '-------'.length).trim();
+    const replaceContent = replacePart.trim();
+    
+    if (modifiedContent.includes(searchContent)) {
+      modifiedContent = modifiedContent.replace(searchContent, replaceContent);
+    } else {
+      throw new Error('Diff application failed: SEARCH content not found in the original file.');
+    }
+  }
+
+  return modifiedContent;
+}
+ 
 // File operation functions
 async function webReadFile(fileUrl) {
   try {
@@ -831,6 +862,48 @@ async function listAllowedDirectories() {
   }
 }
 
+async function createCanvas(fileName, content, encoding = 'utf8') {
+  try {
+    debugLog('Creating canvas file', { fileName });
+
+    // The first allowed directory is assumed to be the canvas directory.
+    if (!ALLOWED_DIRECTORIES || ALLOWED_DIRECTORIES.length === 0) {
+        throw new Error('No ALLOWED_DIRECTORIES configured for Canvas.');
+    }
+    const canvasDir = ALLOWED_DIRECTORIES[0];
+    const filePath = path.join(canvasDir, fileName);
+
+    // Use the existing writeFile function which handles unique filenames and permissions
+    const writeResult = await writeFile(filePath, content, encoding);
+
+    if (!writeResult.success) {
+      throw new Error(`Failed to write file: ${writeResult.error}`);
+    }
+
+    // This is the special object that will be caught by VCPDistributedServer.js
+    return {
+      success: true,
+      data: {
+        // This is a special action key that VCPDistributedServer will look for
+        _specialAction: 'create_canvas',
+        // Payload for the main process handler
+        payload: {
+          filePath: writeResult.data.path,
+        },
+        // This message is for the AI
+        message: `Canvas file '${path.basename(writeResult.data.path)}' created successfully. The user has been notified to view it.`
+      }
+    };
+
+  } catch (error) {
+    debugLog('Error creating canvas file', { fileName, error: error.message });
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+}
+ 
 // Batch processing for legacy format with robust content and action aggregation
 async function processBatchRequest(request) {
   debugLog('Processing legacy batch request with robust aggregation', { request });
@@ -972,6 +1045,21 @@ async function processRequest(request) {
       return await searchFiles(parameters.searchPath, parameters.pattern, parameters.options);
     case 'DownloadFile':
       return await downloadFile(parameters.url);
+    case 'CreateCanvas':
+        return await createCanvas(parameters.fileName, parameters.content, parameters.encoding);
+    case 'ApplyDiff':
+      try {
+        const { filePath, diffContent, encoding } = parameters;
+        const readResult = await readFile(filePath, encoding);
+        if (!readResult.success) {
+          throw new Error(`Failed to read file for applying diff: ${readResult.error}`);
+        }
+        const originalContent = readResult.data.content;
+        const newContent = applyDiffLogic(originalContent, diffContent);
+        return await editFile(filePath, newContent, encoding);
+      } catch (error) {
+        return { success: false, error: `Failed to apply diff: ${error.message}` };
+      }
     default:
       return {
         success: false,
