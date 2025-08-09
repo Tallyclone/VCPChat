@@ -115,12 +115,17 @@
             box-sizing: border-box;
             position: relative;
             z-index: 2;
+            flex-shrink: 0; /* Prevent sidebar from shrinking */
+        }
+        #change-history-sidebar {
+             width: 200px; /* Default width for the new sidebar */
         }
         .resizer {
             flex: 0 0 5px;
             cursor: col-resize;
             background-color: var(--canvas-border-color);
             transition: background-color 0.2s;
+            z-index: 2;
         }
         .resizer:hover {
             background-color: var(--canvas-accent-bg);
@@ -128,23 +133,31 @@
         .sidebar h3 {
             margin-top: 0;
         }
-        #historyList {
+        #historyList, #changeHistoryList {
             list-style: none;
             padding: 0;
             margin: 0;
             overflow-y: auto;
             flex-grow: 1;
         }
-        #historyList li {
+        #historyList li, #changeHistoryList li {
             padding: 8px;
             cursor: pointer;
             border-radius: 4px;
+            font-size: 13px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
-        #historyList li:hover {
+        #historyList li:hover, #changeHistoryList li:hover {
             background-color: var(--canvas-button-hover-bg);
         }
         #historyList li.active {
             background-color: var(--canvas-accent-bg);
+        }
+        #changeHistoryList li.active {
+            background-color: var(--canvas-accent-bg);
+            color: var(--primary-text);
         }
         #historyList li .rename-input {
             width: calc(100% - 16px);
@@ -286,6 +299,13 @@
                 <span id="errorInfo">无错误</span>
             </div>
         </div>
+        <div class="resizer" id="resizer-right"></div>
+        <aside class="sidebar" id="change-history-sidebar">
+            <h3>文档变动</h3>
+            <ul id="changeHistoryList">
+                <!-- 变动历史将在这里动态加载 -->
+            </ul>
+        </aside>
     </div>
 
     <div id="context-menu" class="custom-context-menu" style="display: none; position: absolute; z-index: 1001; background-color: var(--canvas-code-bg); border: 1px solid var(--canvas-border-color); padding: 5px; border-radius: 4px;">

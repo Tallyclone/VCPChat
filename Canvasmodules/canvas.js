@@ -9,6 +9,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const closeBtn = document.getElementById('close-btn');
     const sidebar = document.querySelector('.sidebar');
     const resizer = document.getElementById('resizer');
+    const changeHistorySidebar = document.getElementById('change-history-sidebar');
+    const resizerRight = document.getElementById('resizer-right');
+    const changeHistoryList = document.getElementById('changeHistoryList');
     const contextMenu = document.getElementById('context-menu');
     const renameBtn = document.getElementById('rename-btn');
     const copyBtn = document.getElementById('copy-btn');
@@ -20,6 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let editor;
     const editorContextMenu = document.getElementById('editor-context-menu');
+    let filesHistory = {}; // Object to store history arrays, keyed by file path
 
     // --- CodeMirror 5 Initialization ---
     function initializeEditor(initialData) {
@@ -60,8 +64,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 const path = filePathSpan.textContent;
                 if (path !== '未保存' && window.electronAPI) {
                     window.electronAPI.saveCanvasFile({ path, content });
+                    addContentHistory(path, content);
                 }
-            }, 2000); // Increased delay to reduce saves during continuous typing
+            }, 2000);
         });
 
         // Editor Context Menu
@@ -84,12 +89,20 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         if (initialData.current) {
-            editor.setValue(initialData.current.content);
-            filePathSpan.textContent = initialData.current.path;
+            const path = initialData.current.path;
+            const initialContent = initialData.current.content;
+            editor.setValue(initialContent);
+            filePathSpan.textContent = path;
+            // Initialize history for this file path if it doesn't exist
+            if (!filesHistory[path]) {
+                filesHistory[path] = [];
+            }
+            addContentHistory(path, initialContent, true); // Add initial state
+            updateChangeHistoryList(path); // Display history for the current file
             // Set initial syntax highlighting
-            const mode = getModeForFilePath(initialData.current.path);
+            const mode = getModeForFilePath(path);
             editor.setOption('mode', mode);
-            updateTopBarButtons(initialData.current.path);
+            updateTopBarButtons(path);
         } else {
             editor.setValue('// Welcome to Canvas with CodeMirror 5!');
         }
@@ -126,14 +139,25 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         window.electronAPI.onCanvasFileChanged((file) => {
+            const path = file.path;
+            // Initialize history for this file path if it doesn't exist
+            if (!filesHistory[path]) {
+                filesHistory[path] = [];
+            }
+
             if (editor && editor.getValue() !== file.content) {
                 editor.setValue(file.content);
-                // Update syntax highlighting when file changes
-                const mode = getModeForFilePath(file.path);
+                const mode = getModeForFilePath(path);
                 editor.setOption('mode', mode);
-                updateTopBarButtons(file.path);
+                updateTopBarButtons(path);
+                addContentHistory(path, file.content);
+                // Immediately update the UI after setting the value
+                updateChangeHistoryList(path);
             }
-            filePathSpan.textContent = file.path;
+            filePathSpan.textContent = path;
+            // Also ensure the list is updated even if content is the same
+            // (e.g., switching back and forth between files)
+            updateChangeHistoryList(path);
         });
 
         // Listen for direct load commands from the main process
@@ -335,6 +359,32 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // --- Right Sidebar Resizing ---
+    let isResizingRight = false;
+    resizerRight.addEventListener('mousedown', (e) => {
+        isResizingRight = true;
+        document.addEventListener('mousemove', handleRightMouseMove);
+        document.addEventListener('mouseup', () => {
+            isResizingRight = false;
+            document.removeEventListener('mousemove', handleRightMouseMove);
+            if (editor) {
+                editor.refresh();
+            }
+        });
+    });
+
+    function handleRightMouseMove(e) {
+        if (!isResizingRight) return;
+        const containerWidth = document.querySelector('.main-container').offsetWidth;
+        const newWidth = containerWidth - e.clientX;
+        const minWidth = 150; // Or get from CSS
+        const maxWidth = 500;  // Or get from CSS
+
+        if (newWidth >= minWidth && newWidth <= maxWidth) {
+            changeHistorySidebar.style.width = `${newWidth}px`;
+        }
+    }
+
     // --- Top Bar Button Logic ---
     function updateTopBarButtons(filePath) {
        const extension = filePath ? filePath.split('.').pop().toLowerCase() : '';
@@ -411,4 +461,75 @@ document.addEventListener('DOMContentLoaded', () => {
             historyList.appendChild(li);
         });
     }
+
+    // --- Document Change History Logic ---
+    function addContentHistory(path, content, isInitial = false) {
+        if (!path || !filesHistory[path]) return;
+
+        const history = filesHistory[path];
+        // Avoid adding duplicates
+        if (!isInitial && history.length > 0 && history[history.length - 1].content === content) {
+            return;
+        }
+        const historyEntry = {
+            content: content,
+            timestamp: new Date(),
+        };
+        history.push(historyEntry);
+        updateChangeHistoryList(path);
+    }
+
+    async function updateChangeHistoryList(path) {
+        changeHistoryList.innerHTML = '';
+        if (!path || !filesHistory[path]) return;
+
+        const history = filesHistory[path];
+        const currentContent = editor.getValue();
+        let activeIndex = -1;
+
+        // Find which history entry matches the current content to highlight it
+        for(let i = history.length - 1; i >= 0; i--) {
+            if (history[i].content === currentContent) {
+                activeIndex = i;
+                break;
+            }
+        }
+
+        const fileName = window.electronPath ? await window.electronPath.basename(path) : path;
+
+        history.forEach((item, index) => {
+            const li = document.createElement('li');
+            li.textContent = `${item.timestamp.toLocaleTimeString()} - ${fileName}`;
+            li.dataset.index = index;
+            if (index === activeIndex) {
+                li.classList.add('active');
+            }
+            changeHistoryList.appendChild(li);
+        });
+        // Auto-scroll to the bottom
+        changeHistoryList.scrollTop = changeHistoryList.scrollHeight;
+    }
+
+    changeHistoryList.addEventListener('click', (e) => {
+        if (e.target && e.target.matches('li[data-index]')) {
+            const path = filePathSpan.textContent;
+            if (!path || !filesHistory[path]) return;
+
+            const history = filesHistory[path];
+            const index = parseInt(e.target.dataset.index, 10);
+
+            if (index >= 0 && index < history.length) {
+                const selectedContent = history[index].content;
+                if (editor.getValue() !== selectedContent) {
+                    editor.setValue(selectedContent);
+                    // The editor 'change' event will fire, which will trigger a save
+                    // and add a new history item. This is desired behavior if the user
+                    // reverts and then starts typing again.
+                }
+                // Update the active state in the list
+                updateChangeHistoryList(path);
+            }
+        }
+    });
+
 });
