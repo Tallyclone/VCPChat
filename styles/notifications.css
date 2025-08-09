@@ -197,7 +197,8 @@ body.light-theme .notes-section {
 body.light-theme .notes-section #openTranslatorBtn,
 body.light-theme .notes-section #openNotesBtn,
 body.light-theme .notes-section #openMusicBtn,
-body.light-theme .notes-section #openDiceBtn {
+body.light-theme .notes-section #openDiceBtn,
+body.light-theme .notes-section #openCanvasBtn {
     color: #ffffff;
     border: 1px solid var(--button-bg-light);
 }
@@ -205,33 +206,8 @@ body.light-theme .notes-section #openDiceBtn {
 body.light-theme .notes-section #openTranslatorBtn:hover,
 body.light-theme .notes-section #openNotesBtn:hover,
 body.light-theme .notes-section #openMusicBtn:hover,
-body.light-theme .notes-section #openDiceBtn:hover {
-    color: #ffffff;
-    border-color: var(--button-hover-bg-light);
-}
-
-.notes-section #openTranslatorBtn:hover,
-.notes-section #openNotesBtn:hover {
-    background-color: var(--button-hover-bg);
-    border-color: var(--button-hover-bg);
-    color: var(--primary-text);
-}
-
-.notes-section #openTranslatorBtn svg,
-.notes-section #openNotesBtn svg {
-    stroke: currentColor;
-    width: 18px;
-    height: 18px;
-}
-
-body.light-theme .notes-section #openTranslatorBtn,
-body.light-theme .notes-section #openNotesBtn {
-    color: #ffffff;
-    border: 1px solid var(--button-bg-light);
-}
-
-body.light-theme .notes-section #openTranslatorBtn:hover,
-body.light-theme .notes-section #openNotesBtn:hover {
+body.light-theme .notes-section #openDiceBtn:hover,
+body.light-theme .notes-section #openCanvasBtn:hover {
     color: #ffffff;
     border-color: var(--button-hover-bg-light);
 }
