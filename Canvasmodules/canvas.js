@@ -61,7 +61,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (path !== '未保存' && window.electronAPI) {
                     window.electronAPI.saveCanvasFile({ path, content });
                 }
-            }, 500);
+            }, 2000); // Increased delay to reduce saves during continuous typing
         });
 
         // Editor Context Menu
