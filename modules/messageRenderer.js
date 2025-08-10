@@ -232,6 +232,14 @@ function transformUserButtonClick(text) {
     });
 }
 
+function transformVCPChatCanvas(text) {
+    const canvasPlaceholderRegex = /\{\{VCPChatCanvas\}\}/g;
+    return text.replace(canvasPlaceholderRegex, () => {
+        // Use a div for better block-level layout and margin behavior
+        return `<div class="vcp-chat-canvas-placeholder">Canvas协同中<span class="thinking-indicator-dots">...</span></div>`;
+    });
+}
+
 
 /**
  * Wraps raw HTML documents in markdown code fences if they aren't already.
@@ -719,6 +727,7 @@ async function renderMessage(message, isInitialLoad = false) {
         // Apply special formatting for user button clicks
         if (message.role === 'user') {
             textToRender = transformUserButtonClick(textToRender);
+            textToRender = transformVCPChatCanvas(textToRender);
         }
         
         const processedContent = preprocessFullContent(textToRender, globalSettings);

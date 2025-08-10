@@ -251,5 +251,5 @@ body {
 
 /* 调整 body 元素的 padding 以适应标题栏 */
 body {
-    padding-top: 55px; /* 15px 原有 padding + 40px 标题栏高度 */
+    padding-top: 40px; /* 15px 原有 padding + 40px 标题栏高度 */
 }

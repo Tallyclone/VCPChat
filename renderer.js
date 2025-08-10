@@ -429,6 +429,13 @@ import * as interruptHandler from './modules/interruptHandler.js';
                  console.log(`[onVCPStreamEvent] No AI response needed for messageId: ${messageId}. Message: ${eventData.message}`);
                 break;
 
+            case 'remove_message':
+                if (isRelevantToCurrentView) {
+                    console.log(`[onVCPStreamEvent] Removing message ${messageId} from UI.`);
+                    window.messageRenderer.removeMessageById(messageId, false); // false: don't save history again
+                }
+                break;
+
             default:
                 console.warn(`[onVCPStreamEvent] Received unhandled event type: '${type}'`, eventData);
         }
@@ -1276,13 +1283,13 @@ function setupEventListeners() {
         });
     }
 
-    const openDiceBtn = document.getElementById('openDiceBtn');
-    if (openDiceBtn) {
-        openDiceBtn.addEventListener('click', () => {
-            if (window.electronAPI && window.electronAPI.openDiceWindow) {
-                window.electronAPI.openDiceWindow();
+    const openCanvasBtn = document.getElementById('openCanvasBtn');
+    if (openCanvasBtn) {
+        openCanvasBtn.addEventListener('click', () => {
+            if (window.electronAPI && window.electronAPI.openCanvasWindow) {
+                window.electronAPI.openCanvasWindow();
             } else {
-                console.error('Dice Roller: electronAPI.openDiceWindow not found.');
+                console.error('Canvas: electronAPI.openCanvasWindow not found.');
             }
         });
     }

@@ -25,6 +25,7 @@ class DistributedServer {
         this.rendererProcess = config.rendererProcess; // To communicate with the renderer
         this.handleMusicControl = config.handleMusicControl; // Inject the music control handler
         this.handleDiceControl = config.handleDiceControl; // Inject the dice control handler
+        this.handleCanvasControl = config.handleCanvasControl; // Inject the canvas control handler
         this.ws = null;
         this.app = express(); // 创建 Express 应用
         this.server = http.createServer(this.app); // 创建 HTTP 服务器
@@ -315,6 +316,16 @@ class DistributedServer {
                     const parsedPluginResult = JSON.parse(result);
                     if (parsedPluginResult.status === 'success') {
                         finalResult = parsedPluginResult.result;
+
+                        // Check for special actions after a successful command
+                        if (toolName === 'FileOperator' && finalResult._specialAction === 'create_canvas') {
+                            if (typeof this.handleCanvasControl === 'function') {
+                                // The payload is { filePath: '...' }, we extract the path.
+                                this.handleCanvasControl(finalResult.payload.filePath);
+                            }
+                            // The message for the AI is already in the finalResult.
+                        }
+
                     } else {
                         // If the plugin itself reported an error, throw it to be caught below.
                         throw new Error(parsedPluginResult.error || 'Plugin reported an error without a message.');

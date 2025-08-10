@@ -978,16 +978,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                             </style>
                         </head>
                         <body>
-                            <script type="importmap">
-                            {
-                                "imports": {
-                                    "three": "../vendor/three.module.js",
-                                    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.166.1/examples/jsm/"
-                                }
-                            }
-                            <\/script>
-                            <script type="module">
+                            <script src="../vendor/three.min.js"><\/script>
+                            <script>
+                                // Defer execution until three.js is loaded
+                                window.addEventListener('load', () => {
+                                    try {
 ${codeContent}
+                                    } catch (e) {
+                                        document.body.innerHTML = '<div style="color: #ff5555; font-family: sans-serif; padding: 20px;"><h3>An error occurred while running the script:</h3><pre>' + e.stack + '</pre></div>';
+                                    }
+                                });
                             <\/script>
                         </body>
                         </html>
