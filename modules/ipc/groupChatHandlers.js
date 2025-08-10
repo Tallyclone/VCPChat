@@ -160,6 +160,25 @@ function initialize(mainWindow, context) {
             return { success: false, error: error.message };
         }
     });
+
+    ipcMain.handle('redo-group-chat-message', async (event, groupId, topicId, messageId, agentId) => {
+        console.log(`[Main IPC] Received redo-group-chat-message for Group: ${groupId}, Topic: ${topicId}, Message: ${messageId}, Agent: ${agentId}`);
+        try {
+            const sendStreamChunkToRenderer = (data) => {
+                if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+                    mainWindow.webContents.send('vcp-stream-event', data);
+                }
+            };
+
+            // This new function will be created in groupchat.js
+            await groupChat.redoGroupChatMessage(groupId, topicId, messageId, agentId, sendStreamChunkToRenderer, getAgentConfigById);
+            
+            return { success: true, message: "Redo group chat message processing started." };
+        } catch (error) {
+            console.error(`[Main IPC] Error in redo-group-chat-message handler for Group ${groupId}, Message ${messageId}:`, error);
+            return { success: false, error: error.message };
+        }
+    });
 }
 
 module.exports = {

@@ -326,6 +326,27 @@ function showContextMenu(event, messageItem, message) {
             };
             menu.appendChild(regenerateOption);
         }
+        
+        // 新增：群聊中的“重新回复”功能
+        if (message.role === 'assistant' && message.isGroupMessage) {
+            const redoGroupOption = document.createElement('div');
+            redoGroupOption.classList.add('context-menu-item', 'regenerate-text');
+            redoGroupOption.innerHTML = `<i class="fas fa-sync-alt"></i> 重新回复`;
+            redoGroupOption.onclick = () => {
+                const { electronAPI, uiHelper } = mainRefs;
+                const currentSelectedItem = mainRefs.currentSelectedItemRef.get();
+                const currentTopicId = mainRefs.currentTopicIdRef.get();
+
+                if (currentSelectedItem.type === 'group' && currentTopicId && message.id && message.agentId) {
+                    // 调用新的IPC接口
+                    electronAPI.redoGroupChatMessage(currentSelectedItem.id, currentTopicId, message.id, message.agentId);
+                } else {
+                    uiHelper.showToastNotification("无法重新回复：缺少群聊上下文信息。", "error");
+                }
+                closeContextMenu();
+            };
+            menu.appendChild(redoGroupOption);
+        }
 
         menu.appendChild(deleteOption);
     }

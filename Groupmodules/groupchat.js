@@ -2,7 +2,7 @@
 
 const fs = require('fs-extra');
 const path = require('path');
-const { handleGetLatestCanvasContent } = require('../modules/ipc/canvasHandlers');
+const { ipcMain } = require('electron');
 const fileManager = require('../modules/fileManager'); // Import fileManager
 // const { v4: uuidv4 } = require('uuid'); // 如果需要唯一ID生成
 
@@ -386,7 +386,7 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
                 
                 if (textForAIContext.includes(CANVAS_PLACEHOLDER)) {
                     try {
-                        const canvasData = await handleGetLatestCanvasContent();
+                        const canvasData = await ipcMain.invoke('get-latest-canvas-content');
                         if (canvasData && !canvasData.error) {
                             const formattedCanvasContent = `\n[Canvas Content]\n${canvasData.content || ''}\n[Canvas Path]\n${canvasData.path || 'No file path'}\n[Canvas Errors]\n${canvasData.errors || 'No errors'}\n`;
                             textForAIContext = textForAIContext.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), formattedCanvasContent);
@@ -770,7 +770,7 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
         // 仅当是最后一条用户消息时，才解析Canvas占位符
         if (isLastUserMessageInContext && textForAIContext.includes(CANVAS_PLACEHOLDER)) {
             try {
-                const canvasData = await handleGetLatestCanvasContent();
+                const canvasData = await ipcMain.invoke('get-latest-canvas-content');
                 if (canvasData && !canvasData.error) {
                     const formattedCanvasContent = `\n[Canvas Content]\n${canvasData.content || ''}\n[Canvas Path]\n${canvasData.path || 'No file path'}\n[Canvas Errors]\n${canvasData.errors || 'No errors'}\n`;
                     textForAIContext = textForAIContext.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), formattedCanvasContent);
@@ -1512,6 +1512,71 @@ async function getGroupChatHistory(groupId, topicId) {
 }
 
 
+/**
+ * 新增：处理“重新回复”群聊消息的逻辑
+ * @param {string} groupId - 群组ID
+ * @param {string} topicId - 话题ID
+ * @param {string} messageIdToDelete - 要删除并重新生成的消息ID
+ * @param {string} agentIdToReInvite - 要重新邀请发言的Agent ID
+ * @param {function} sendStreamChunkToRenderer - 用于发送流式数据的回调函数
+ * @param {function} getAgentConfigById - 用于根据Agent ID获取其完整配置的函数
+ * @returns {Promise<void>}
+ */
+async function redoGroupChatMessage(groupId, topicId, messageIdToDelete, agentIdToReInvite, sendStreamChunkToRenderer, getAgentConfigById) {
+    console.log(`[GroupChat] redoGroupChatMessage invoked for message ${messageIdToDelete} by agent ${agentIdToReInvite}`);
+
+    const groupHistoryPath = path.join(mainAppPaths.USER_DATA_DIR, groupId, 'topics', topicId, 'history.json');
+    
+    if (!await fs.pathExists(groupHistoryPath)) {
+        console.error(`[GroupChat Redo] History file not found at ${groupHistoryPath}`);
+        // Optionally send an error to renderer
+        if (typeof sendStreamChunkToRenderer === 'function') {
+            sendStreamChunkToRenderer({ type: 'error', error: '无法重新回复：找不到历史记录文件。', context: { groupId, topicId, agentId: agentIdToReInvite, isGroupMessage: true } });
+        }
+        return;
+    }
+
+    try {
+        // 1. 读取、过滤并保存历史记录
+        let groupHistory = await fs.readJson(groupHistoryPath);
+        const initialLength = groupHistory.length;
+        const updatedHistory = groupHistory.filter(msg => msg.id !== messageIdToDelete);
+
+        if (updatedHistory.length === initialLength) {
+            console.warn(`[GroupChat Redo] Message with ID ${messageIdToDelete} not found in history. Cannot redo.`);
+            // No need to proceed if the message wasn't found
+            return;
+        }
+
+        await fs.writeJson(groupHistoryPath, updatedHistory, { spaces: 2 });
+        console.log(`[GroupChat Redo] Message ${messageIdToDelete} removed from history.`);
+
+        // 2. 通知渲染器删除该消息
+        if (typeof sendStreamChunkToRenderer === 'function') {
+            sendStreamChunkToRenderer({
+                type: 'remove_message',
+                messageId: messageIdToDelete,
+                context: {
+                    groupId,
+                    topicId,
+                    isGroupMessage: true
+                }
+            });
+        }
+
+        // 3. 调用现有的邀请函数来重新生成回复
+        // handleInviteAgentToSpeak 将处理后续的所有逻辑，包括发送 'agent_thinking' 等事件
+        await handleInviteAgentToSpeak(groupId, topicId, agentIdToReInvite, sendStreamChunkToRenderer, getAgentConfigById);
+
+    } catch (error) {
+        console.error(`[GroupChat Redo] Error during redo process for message ${messageIdToDelete}:`, error);
+        if (typeof sendStreamChunkToRenderer === 'function') {
+            sendStreamChunkToRenderer({ type: 'error', error: `重新回复时发生错误: ${error.message}`, context: { groupId, topicId, agentId: agentIdToReInvite, isGroupMessage: true } });
+        }
+    }
+}
+
+
 module.exports = {
     initializePaths,
     createAgentGroup,
@@ -1521,6 +1586,7 @@ module.exports = {
     deleteAgentGroup,
     handleGroupChatMessage,
     handleInviteAgentToSpeak, // 新增导出
+    redoGroupChatMessage, // 新增导出
     saveAgentGroupAvatar,
     getGroupTopics,
     createNewTopicForGroup,

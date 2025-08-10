@@ -429,6 +429,13 @@ import * as interruptHandler from './modules/interruptHandler.js';
                  console.log(`[onVCPStreamEvent] No AI response needed for messageId: ${messageId}. Message: ${eventData.message}`);
                 break;
 
+            case 'remove_message':
+                if (isRelevantToCurrentView) {
+                    console.log(`[onVCPStreamEvent] Removing message ${messageId} from UI.`);
+                    window.messageRenderer.removeMessageById(messageId, false); // false: don't save history again
+                }
+                break;
+
             default:
                 console.warn(`[onVCPStreamEvent] Received unhandled event type: '${type}'`, eventData);
         }

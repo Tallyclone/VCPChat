@@ -311,4 +311,5 @@ module.exports = {
     initialize,
     createCanvasWindow, // Export for direct calling
     getCanvasWindow,    // Export for direct access
+    handleGetLatestCanvasContent,
 };
