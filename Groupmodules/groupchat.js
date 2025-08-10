@@ -2,8 +2,11 @@
 
 const fs = require('fs-extra');
 const path = require('path');
+const { handleGetLatestCanvasContent } = require('../modules/ipc/canvasHandlers');
 const fileManager = require('../modules/fileManager'); // Import fileManager
 // const { v4: uuidv4 } = require('uuid'); // 如果需要唯一ID生成
+
+const CANVAS_PLACEHOLDER = '{{VCPChatCanvas}}';
 
 // 新增：话题总结相关常量
 const MIN_MESSAGES_FOR_SUMMARY = 4;
@@ -380,6 +383,22 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
                 textForAIContext = (userMessage.content && typeof userMessage.content.text === 'string')
                                    ? userMessage.content.text
                                    : '';
+                
+                if (textForAIContext.includes(CANVAS_PLACEHOLDER)) {
+                    try {
+                        const canvasData = await handleGetLatestCanvasContent();
+                        if (canvasData && !canvasData.error) {
+                            const formattedCanvasContent = `\n[Canvas Content]\n${canvasData.content || ''}\n[Canvas Path]\n${canvasData.path || 'No file path'}\n[Canvas Errors]\n${canvasData.errors || 'No errors'}\n`;
+                            textForAIContext = textForAIContext.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), formattedCanvasContent);
+                        } else {
+                            console.error("[GroupChat] Failed to get latest canvas content:", canvasData?.error);
+                            textForAIContext = textForAIContext.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), '\n[Canvas content could not be loaded]\n');
+                        }
+                    } catch (error) {
+                        console.error("[GroupChat] Error fetching canvas content:", error);
+                        textForAIContext = textForAIContext.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), '\n[Error loading canvas content]\n');
+                    }
+                }
             } else {
                 // This is a historical message. msg.content is now the original user text.
                 // We need to reconstruct the text with appended file contents for the AI.
@@ -740,10 +759,31 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
     // 2. 构建上下文结构 (基于最新的 groupHistory)
     // 注意：这里需要确定用户消息是否应该从 groupHistory 的最后一条获取，或者由调用者传递
     // 假设 groupHistory 已经包含了最新的用户消息（如果有的话）
-    const contextForAgentPromises = groupHistory.slice(-20).map(async msg => {
+    const contextForAgentPromises = groupHistory.slice(-20).map(async (msg, index, arr) => {
         const speakerName = msg.name || (msg.role === 'user' ? (globalVcpSettings.userName || '用户') : (msg.agentName || 'AI')); // Use msg.agentName if available for AI
         
         let textForAIContext = (typeof msg.content === 'string') ? msg.content : (msg.content?.text || '');
+        
+        // 检查当前消息是否为上下文中的最后一条用户消息
+        const isLastUserMessageInContext = msg.role === 'user' && !arr.slice(index + 1).some(futureMsg => futureMsg.role === 'user');
+
+        // 仅当是最后一条用户消息时，才解析Canvas占位符
+        if (isLastUserMessageInContext && textForAIContext.includes(CANVAS_PLACEHOLDER)) {
+            try {
+                const canvasData = await handleGetLatestCanvasContent();
+                if (canvasData && !canvasData.error) {
+                    const formattedCanvasContent = `\n[Canvas Content]\n${canvasData.content || ''}\n[Canvas Path]\n${canvasData.path || 'No file path'}\n[Canvas Errors]\n${canvasData.errors || 'No errors'}\n`;
+                    textForAIContext = textForAIContext.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), formattedCanvasContent);
+                } else {
+                    console.error("[GroupChat Invite] Failed to get latest canvas content:", canvasData?.error);
+                    textForAIContext = textForAIContext.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), '\n[Canvas content could not be loaded]\n');
+                }
+            } catch (error) {
+                console.error("[GroupChat Invite] Error fetching canvas content:", error);
+                textForAIContext = textForAIContext.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), '\n[Error loading canvas content]\n');
+            }
+        }
+
         if (msg.attachments && msg.attachments.length > 0) {
             for (const att of msg.attachments) {
                 if (att._fileManagerData && typeof att._fileManagerData.extractedText === 'string' && att._fileManagerData.extractedText.trim() !== '') {
