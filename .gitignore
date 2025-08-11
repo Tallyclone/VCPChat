@@ -8,3 +8,5 @@ AppData/
 assets/wallpaper/
 
 node_modules/
+
+.env
