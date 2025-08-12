@@ -2,6 +2,22 @@
 const { ipcRenderer } = require('electron');
 const { marked } = require('marked');
 
+// 创建 electronAPI 对象以支持 ComfyUI 模块
+window.electronAPI = {
+    invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
+    send: (channel, ...args) => ipcRenderer.send(channel, ...args),
+    on: (channel, callback) => {
+        // 为了安全，只允许特定的通道
+        const validChannels = ['comfyui:config-changed', 'comfyui:workflows-changed'];
+        if (validChannels.includes(channel)) {
+            ipcRenderer.on(channel, callback);
+        }
+    },
+    removeListener: (channel, callback) => {
+        ipcRenderer.removeListener(channel, callback);
+    }
+};
+
 document.addEventListener('DOMContentLoaded', () => {
     // --- 元素获取 ---
     const toolGrid = document.getElementById('tool-grid');
@@ -200,6 +216,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     ]
                 }
             }
+        },
+        // ComfyUI 图像生成
+        'ComfyUIGen': {
+            displayName: 'ComfyUI 生成',
+            description: '使用本地 ComfyUI 后端进行图像生成',
+            params: [
+                { name: 'prompt', type: 'textarea', required: true, placeholder: '图像生成的正面提示词，描述想要生成的图像内容、风格、细节等' },
+                { name: 'negative_prompt', type: 'textarea', required: false, placeholder: '额外的负面提示词，将与用户配置的负面提示词合并' },
+                { name: 'workflow', type: 'text', required: false, placeholder: '例如: text2img_basic, text2img_advanced' },
+                { name: 'width', type: 'number', required: false, placeholder: '默认使用用户配置的值' },
+                { name: 'height', type: 'number', required: false, placeholder: '默认使用用户配置的值' }
+            ]
         }
     };
 
@@ -268,10 +296,27 @@ document.addEventListener('DOMContentLoaded', () => {
             renderFormParams(tool.params, paramsContainer);
         }
 
+        // 添加按钮容器
+        const buttonContainer = document.createElement('div');
+        buttonContainer.style.cssText = 'display: flex; gap: 10px; margin-top: 15px;';
+        
         const submitButton = document.createElement('button');
         submitButton.type = 'submit';
         submitButton.textContent = '执行';
-        toolForm.appendChild(submitButton);
+        buttonContainer.appendChild(submitButton);
+
+        // 为 ComfyUI 工具添加设置按钮
+        if (toolName === 'ComfyUIGen') {
+            const settingsButton = document.createElement('button');
+            settingsButton.type = 'button';
+            settingsButton.textContent = '⚙️ 设置';
+            settingsButton.className = 'back-btn';
+            settingsButton.style.cssText = 'margin-left: auto;';
+            settingsButton.addEventListener('click', () => openComfyUISettings());
+            buttonContainer.appendChild(settingsButton);
+        }
+
+        toolForm.appendChild(buttonContainer);
 
         toolForm.onsubmit = (e) => {
             e.preventDefault();
@@ -427,6 +472,20 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function attachEventListenersToImages(container) {
+        const images = container.querySelectorAll('img');
+        images.forEach(img => {
+            // Prevent adding the listener multiple times
+            if (img.dataset.contextMenuAttached) return;
+
+            img.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                ipcRenderer.send('show-image-context-menu', img.src);
+            });
+            img.dataset.contextMenuAttached = 'true';
+        });
+    }
+
     function renderResult(data, toolName) {
         resultContainer.innerHTML = '';
     
@@ -437,21 +496,28 @@ document.addEventListener('DOMContentLoaded', () => {
             pre.className = 'error';
             pre.textContent = typeof errorMessage === 'object' ? JSON.stringify(errorMessage, null, 2) : errorMessage;
             resultContainer.appendChild(pre);
-            return;
+            return; // Exit on error, no images to process
         }
     
-        const content = data.result || data.message || data;
+        // 2. Extract the core content, handling nested JSON from certain tools
+        let content = data.result || data.message || data;
+        if (content && typeof content.content === 'string') {
+            try {
+                const parsedContent = JSON.parse(content.content);
+                // Prioritize 'original_plugin_output' as it often contains the final, formatted result.
+                content = parsedContent.original_plugin_output || parsedContent;
+            } catch (e) {
+                // If it's not a valid JSON string, just use the string from 'content' property.
+                content = content.content;
+            }
+        }
     
-        // If content is null or undefined
+        // 3. Render content based on its type
         if (content == null) {
             const p = document.createElement('p');
             p.textContent = '插件执行完毕，但没有返回明确内容。';
             resultContainer.appendChild(p);
-            return;
-        }
-    
-        // 2. Handle multi-modal content (images, text)
-        if (content && Array.isArray(content.content)) {
+        } else if (content && Array.isArray(content.content)) { // Multi-modal content (e.g., from GPT-4V)
             content.content.forEach(item => {
                 if (item.type === 'text') {
                     const pre = document.createElement('pre');
@@ -460,64 +526,110 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (item.type === 'image_url' && item.image_url && item.image_url.url) {
                     const imgElement = document.createElement('img');
                     imgElement.src = item.image_url.url;
-                    imgElement.addEventListener('contextmenu', (e) => {
-                        e.preventDefault();
-                        ipcRenderer.send('show-image-context-menu', imgElement.src);
-                    });
                     resultContainer.appendChild(imgElement);
                 }
             });
-            return; // Handled
-        }
-    
-        // 3. Handle string content (now with Markdown rendering)
-        if (typeof content === 'string') {
-            const renderedHTML = marked(content);
+        } else if (typeof content === 'string' && (content.startsWith('data:image') || /\.(jpg|jpeg|png|gif|webp)$/i.test(content))) { // Direct image URL string
+            const imgElement = document.createElement('img');
+            imgElement.src = content;
+            resultContainer.appendChild(imgElement);
+        } else if (typeof content === 'string') { // Markdown/HTML string
             const div = document.createElement('div');
-            div.innerHTML = renderedHTML;
+            // Use marked to render markdown, which will also render raw HTML like <img> tags
+            div.innerHTML = marked(content);
             resultContainer.appendChild(div);
-            return;
-        }
+        } else if (typeof content === 'object') { // Generic object
+            // Check for common image/text properties within the object
+            const imageUrl = content.image_url || content.url || content.image;
+            const textResult = content.result || content.message || content.original_plugin_output || content.content;
     
-        // 4. Handle object content
-        if (typeof content === 'object') {
-            // Check for common text fields first, and render them as Markdown
-            if (typeof content.result === 'string') {
-                resultContainer.innerHTML = marked(content.result);
-                return;
+            if (typeof imageUrl === 'string') {
+                const imgElement = document.createElement('img');
+                imgElement.src = imageUrl;
+                resultContainer.appendChild(imgElement);
+            } else if (typeof textResult === 'string') {
+                resultContainer.innerHTML = marked(textResult);
+            } else {
+                // Fallback for other objects: pretty-print the JSON
+                const pre = document.createElement('pre');
+                pre.textContent = JSON.stringify(content, null, 2);
+                resultContainer.appendChild(pre);
             }
-            if (typeof content.message === 'string') {
-                resultContainer.innerHTML = marked(content.message);
-                return;
-            }
-            
-            // Special handling for original_plugin_output
-            if (typeof content.original_plugin_output === 'string') {
-                const sciMatch = content.original_plugin_output.match(/###计算结果：(.*?)###/);
-                if (sciMatch && sciMatch[1]) {
-                     resultContainer.innerHTML = marked(sciMatch[1]);
-                } else {
-                     resultContainer.innerHTML = marked(content.original_plugin_output);
-                }
-                return;
-            }
-    
-            if (typeof content.content === 'string') {
-                resultContainer.innerHTML = marked(content.content);
-                return;
-            }
-    
-            // Fallback for other objects: pretty-print the JSON inside a <pre> tag
+        } else { // Fallback for any other data type
             const pre = document.createElement('pre');
-            pre.textContent = JSON.stringify(content, null, 2);
+            pre.textContent = `插件返回了未知类型的数据: ${String(content)}`;
             resultContainer.appendChild(pre);
-            return;
         }
     
-        // 5. Fallback for any other data type
-        const pre = document.createElement('pre');
-        pre.textContent = `插件返回了未知类型的数据: ${String(content)}`;
-        resultContainer.appendChild(pre);
+        // 4. Finally, ensure all rendered images (newly created or from HTML) have the context menu
+        attachEventListenersToImages(resultContainer);
+    }
+
+    // --- Image Viewer Modal ---
+    function setupImageViewer() {
+        if (document.getElementById('image-viewer-modal')) return;
+
+        const viewer = document.createElement('div');
+        viewer.id = 'image-viewer-modal';
+        viewer.style.cssText = `
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.85);
+            justify-content: center;
+            align-items: center;
+        `;
+        viewer.innerHTML = `
+            <span style="position: absolute; top: 15px; right: 35px; color: #f1f1f1; font-size: 40px; font-weight: bold; cursor: pointer;">&times;</span>
+            <img style="margin: auto; display: block; max-width: 90%; max-height: 90%;">
+        `;
+        document.body.appendChild(viewer);
+
+        const modalImg = viewer.querySelector('img');
+        const closeBtn = viewer.querySelector('span');
+
+        function openModal(src) {
+            viewer.style.display = 'flex';
+            modalImg.src = src;
+            document.addEventListener('keydown', handleEscKeyModal);
+        }
+
+        function closeModal() {
+            viewer.style.display = 'none';
+            modalImg.src = '';
+            document.removeEventListener('keydown', handleEscKeyModal);
+        }
+
+        function handleEscKeyModal(e) {
+            if (e.key === 'Escape') {
+                closeModal();
+            }
+        }
+
+        closeBtn.onclick = closeModal;
+        viewer.onclick = function(e) {
+            if (e.target === viewer) {
+                closeModal();
+            }
+        };
+
+        resultContainer.addEventListener('click', (e) => {
+            let target = e.target;
+            // Handle case where user clicks an IMG inside an A tag
+            if (target.tagName === 'IMG' && target.parentElement.tagName === 'A') {
+                target = target.parentElement;
+            }
+
+            if (target.tagName === 'A' && target.href && (target.href.match(/\.(jpeg|jpg|gif|png|webp)$/i) || target.href.startsWith('data:image'))) {
+                e.preventDefault();
+                openModal(target.href);
+            }
+        });
     }
 
     // --- 初始化 ---
@@ -595,7 +707,121 @@ document.addEventListener('DOMContentLoaded', () => {
 
         renderToolGrid();
         loadAndProcessWallpaper(); // Process the wallpaper on startup
+        setupImageViewer();
     }
 
     initialize();
+
+    // --- ComfyUI 集成功能 ---
+    let comfyUIDrawer = null;
+    let comfyUILoaded = false;
+
+    // 创建抽屉容器
+    function createComfyUIDrawer() {
+        // 创建遮罩层
+        const overlay = document.createElement('div');
+        overlay.className = 'drawer-overlay hidden';
+        overlay.addEventListener('click', closeComfyUISettings);
+
+        // 创建抽屉面板
+        const drawer = document.createElement('div');
+        drawer.className = 'drawer-panel';
+        drawer.innerHTML = `
+            <div class="drawer-content" id="comfyui-drawer-content">
+                <div style="text-align: center; padding: 50px; color: var(--secondary-text);">
+                    正在加载 ComfyUI 配置...
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+        document.body.appendChild(drawer);
+
+        return { overlay, drawer };
+    }
+
+    // 打开 ComfyUI 设置
+    async function openComfyUISettings() {
+        if (!comfyUIDrawer) {
+            comfyUIDrawer = createComfyUIDrawer();
+        }
+
+        // 显示抽屉
+        comfyUIDrawer.overlay.classList.remove('hidden');
+        comfyUIDrawer.drawer.classList.add('open');
+        document.body.classList.add('drawer-open');
+
+        // 动态加载 ComfyUI 模块
+        if (!comfyUILoaded) {
+            try {
+                // 加载 ComfyUILoader
+                await loadComfyUIModules();
+                
+                // 等待 ComfyUILoader 可用
+                if (window.ComfyUILoader) {
+                    await window.ComfyUILoader.load();
+                    
+                    // 创建配置 UI
+                    const drawerContent = document.getElementById('comfyui-drawer-content');
+                    if (window.comfyUI && drawerContent) {
+                        window.comfyUI.createUI(drawerContent, {
+                            defaultTab: 'connection',
+                            onClose: closeComfyUISettings
+                        });
+                    }
+                    
+                    comfyUILoaded = true;
+                } else {
+                    throw new Error('ComfyUILoader 未能正确加载');
+                }
+            } catch (error) {
+                console.error('加载 ComfyUI 模块失败:', error);
+                const drawerContent = document.getElementById('comfyui-drawer-content');
+                if (drawerContent) {
+                    drawerContent.innerHTML = `
+                        <div style="text-align: center; padding: 50px; color: var(--danger-color);">
+                            加载 ComfyUI 配置失败: ${error.message}
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        // 绑定 ESC 键关闭
+        document.addEventListener('keydown', handleEscKey);
+    }
+
+    // 关闭 ComfyUI 设置
+    function closeComfyUISettings() {
+        if (comfyUIDrawer) {
+            comfyUIDrawer.overlay.classList.add('hidden');
+            comfyUIDrawer.drawer.classList.remove('open');
+            document.body.classList.remove('drawer-open');
+        }
+        document.removeEventListener('keydown', handleEscKey);
+    }
+
+    // ESC 键处理
+    function handleEscKey(e) {
+        if (e.key === 'Escape') {
+            closeComfyUISettings();
+        }
+    }
+
+    // 动态加载 ComfyUI 模块
+    async function loadComfyUIModules() {
+        // 首先加载 ComfyUILoader 脚本
+        const loaderScript = document.createElement('script');
+        loaderScript.src = 'ComfyUImodules/ComfyUILoader.js';
+        
+        return new Promise((resolve, reject) => {
+            loaderScript.onload = resolve;
+            loaderScript.onerror = () => reject(new Error('无法加载 ComfyUILoader.js'));
+            document.head.appendChild(loaderScript);
+        });
+    }
+
+    // 将函数暴露到全局作用域，以便按钮点击时调用
+    window.openComfyUISettings = openComfyUISettings;
+    window.closeComfyUISettings = closeComfyUISettings;
 });

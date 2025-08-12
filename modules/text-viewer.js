@@ -509,7 +509,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 });
             }
             statusElement.textContent = 'Initializing Pyodide core... (this may take a moment)';
-            pyodide = await window.loadPyodide();
+            pyodide = await window.loadPyodide({
+                indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.1/full/"
+            });
             console.log("Pyodide initialized successfully.");
             return pyodide;
         } catch (error) {
@@ -524,12 +526,24 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- Start: Python Executors as requested ---
 
+    function displayPythonResult(outputContainer, result) {
+        const trimmedResult = result.trim();
+        // A simple check for HTML content. It looks for a string that starts with a tag.
+        const isHtml = /^<[a-z][\s\S]*>/i.test(trimmedResult);
+        if (isHtml) {
+            outputContainer.innerHTML = trimmedResult;
+        } else {
+            outputContainer.textContent = trimmedResult || 'Execution finished with no output.';
+        }
+    }
+
     async function py_safe_executor(code, outputContainer) {
         outputContainer.textContent = 'Preparing Python sandbox environment...';
         const pyodideInstance = await initializePyodide(outputContainer);
         if (!pyodideInstance) return;
 
         try {
+            // First, handle packages specified in comments
             const packageRegex = /^#\s*requires:\s*([a-zA-Z0-9_,\s-]+)/gm;
             const packages = new Set();
             let match;
@@ -542,11 +556,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             if (packages.size > 0) {
                 const packageList = Array.from(packages);
-                outputContainer.textContent = `Installing required packages: ${packageList.join(', ')}...`;
-                await pyodideInstance.loadPackage("micropip");
-                const micropip = pyodideInstance.pyimport("micropip");
-                await micropip.install(packageList);
-                outputContainer.textContent = 'Packages installed. Executing code...';
+                outputContainer.textContent = `Loading required packages: ${packageList.join(', ')}...`;
+                await pyodideInstance.loadPackage(packageList);
+                outputContainer.textContent = 'Packages loaded. Executing code...';
             } else {
                 outputContainer.textContent = 'Executing code in sandbox...';
             }
@@ -555,15 +567,47 @@ document.addEventListener('DOMContentLoaded', async () => {
             let stderr = '';
             pyodideInstance.setStdout({ batched: (s) => { stdout += s + '\n'; } });
             pyodideInstance.setStderr({ batched: (s) => { stderr += s + '\n'; } });
+            
             await pyodideInstance.runPythonAsync(code);
 
             let result = '';
             if (stdout) result += stdout;
             if (stderr) result += `\n--- ERRORS ---\n${stderr}`;
-            outputContainer.textContent = result.trim() || 'Execution finished with no output.';
+            
+            displayPythonResult(outputContainer, result);
+
         } catch (error) {
-            console.error("Sandbox Python execution error:", error);
-            outputContainer.textContent = `Sandbox Execution Error:\n${error.toString()}`;
+            const errorMessage = error.toString();
+            const packageMatch = errorMessage.match(/await pyodide\.loadPackage\("([^"]+)"\)/) || errorMessage.match(/await micropip\.install\("([^"]+)"\)/);
+
+            if (packageMatch && packageMatch[1]) {
+                const missingPackage = packageMatch[1];
+                try {
+                    outputContainer.textContent = `Detected missing package: ${missingPackage}. Attempting to install...`;
+                    await pyodideInstance.loadPackage(missingPackage);
+                    outputContainer.textContent = `Package ${missingPackage} installed. Retrying execution...`;
+                    
+                    let stdout = '';
+                    let stderr = '';
+                    pyodideInstance.setStdout({ batched: (s) => { stdout += s + '\n'; } });
+                    pyodideInstance.setStderr({ batched: (s) => { stderr += s + '\n'; } });
+                    
+                    await pyodideInstance.runPythonAsync(code);
+
+                    let result = '';
+                    if (stdout) result += stdout;
+                    if (stderr) result += `\n--- ERRORS ---\n${stderr}`;
+                    
+                    displayPythonResult(outputContainer, result);
+
+                } catch (retryError) {
+                    console.error(`Sandbox Python execution error on retry for ${missingPackage}:`, retryError);
+                    outputContainer.textContent = `Sandbox Execution Error:\nFailed to install or run after installing '${missingPackage}'.\n${retryError.toString()}`;
+                }
+            } else {
+                console.error("Sandbox Python execution error:", error);
+                outputContainer.textContent = `Sandbox Execution Error:\n${error.toString()}`;
+            }
         }
     }
 
