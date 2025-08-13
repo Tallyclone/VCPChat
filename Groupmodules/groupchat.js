@@ -373,7 +373,7 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
         }
 
         // 2. 构建上下文结构 (每次循环都基于最新的 groupHistory)
-        const contextForAgentPromises = groupHistory.slice(-20).map(async msg => {
+        const contextForAgentPromises = groupHistory.map(async msg => {
             const speakerName = msg.name || (msg.role === 'user' ? userNameForMessage : (memberAgentConfigs[msg.agentId]?.name || 'AI'));
             
             let textForAIContext;
@@ -759,7 +759,7 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
     // 2. 构建上下文结构 (基于最新的 groupHistory)
     // 注意：这里需要确定用户消息是否应该从 groupHistory 的最后一条获取，或者由调用者传递
     // 假设 groupHistory 已经包含了最新的用户消息（如果有的话）
-    const contextForAgentPromises = groupHistory.slice(-20).map(async (msg, index, arr) => {
+    const contextForAgentPromises = groupHistory.map(async (msg, index, arr) => {
         const speakerName = msg.name || (msg.role === 'user' ? (globalVcpSettings.userName || '用户') : (msg.agentName || 'AI')); // Use msg.agentName if available for AI
         
         let textForAIContext = (typeof msg.content === 'string') ? msg.content : (msg.content?.text || '');
