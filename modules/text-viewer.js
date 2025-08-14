@@ -825,16 +825,22 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const codeBlocksToProcess = [];
         const mermaidBlocksToRender = [];
+        const drawioBlocksToRender = [];
 
-        // First pass: Separate Mermaid blocks from regular code blocks
+        // First pass: Separate Mermaid and Draw.io blocks from regular code blocks
         container.querySelectorAll('pre code').forEach((codeBlock) => {
             const firstLine = (codeBlock.textContent.trim().split('\n')[0] || '').trim().toLowerCase();
             const isMermaidByClass = codeBlock.classList.contains('language-mermaid');
             const isMermaidByContent = firstLine === 'mermaid';
+            const isDrawioByClass = codeBlock.classList.contains('language-drawio');
+            const isDrawioByContent = codeBlock.textContent.trim().startsWith('<mxfile');
 
             if (isMermaidByClass || isMermaidByContent) {
                 mermaidBlocksToRender.push({ codeBlock, isMermaidByContent });
-            } else {
+            } else if (isDrawioByClass || isDrawioByContent) {
+                drawioBlocksToRender.push(codeBlock);
+            }
+            else {
                 codeBlocksToProcess.push(codeBlock);
             }
         });
@@ -866,6 +872,42 @@ document.addEventListener('DOMContentLoaded', async () => {
                 mermaidElements.forEach(block => {
                     block.innerHTML = `Mermaid Error: ${e.message}`;
                 });
+            }
+        }
+
+        // --- RENDER DRAW.IO ---
+        if (window.GraphViewer && drawioBlocksToRender.length > 0) {
+            drawioBlocksToRender.forEach(codeBlock => {
+                const preElement = codeBlock.parentElement;
+                const drawioContainer = document.createElement('div');
+                // The viewer script looks for the 'mxgraph' class.
+                drawioContainer.className = 'mxgraph';
+                
+                let xmlContent = codeBlock.textContent.trim();
+                // Remove HTML comments from the XML content to prevent parsing issues.
+                xmlContent = xmlContent.replace(/<!--[\s\S]*?-->/g, '');
+                
+                // The configuration is passed via a data-mxgraph attribute.
+                const config = {
+                    "highlight": "#0000ff",
+                    "target": "blank",
+                    "nav": true,
+                    "resize": true,
+                    "toolbar": "zoom layers lightbox",
+                    "edit": "_blank",
+                    "xml": xmlContent
+                };
+                drawioContainer.setAttribute('data-mxgraph', JSON.stringify(config));
+                
+                preElement.parentNode.replaceChild(drawioContainer, preElement);
+            });
+            
+            // After creating the elements, we need to tell the viewer to render them.
+            // This is a more robust method than relying on automatic rendering.
+            try {
+                window.GraphViewer.processElements();
+            } catch (e) {
+                console.error("Draw.io rendering error (processElements):", e);
             }
         }
 
@@ -1119,10 +1161,19 @@ ${codeContent}
         try {
             let decodedText;
             if (encoding === 'base64') {
-                const rawDecoded = atob(textContent);
-                decodedText = decodeURIComponent(rawDecoded.split('').map(function(c) {
-                    return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-                }).join(''));
+                try {
+                    // This is a more robust way to decode base64 with UTF-8 characters.
+                    const binaryString = atob(textContent);
+                    const bytes = new Uint8Array(binaryString.length);
+                    for (let i = 0; i < binaryString.length; i++) {
+                        bytes[i] = binaryString.charCodeAt(i);
+                    }
+                    decodedText = new TextDecoder('utf-8').decode(bytes);
+                } catch (e) {
+                    console.error("Base64 decoding failed:", e);
+                    // Fallback to the old method for simpler cases, just in case.
+                    decodedText = decodeURIComponent(escape(window.atob(textContent)));
+                }
             } else {
                 decodedText = decodeURIComponent(textContent);
             }
