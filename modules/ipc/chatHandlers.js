@@ -17,7 +17,12 @@ const fileManager = require('../fileManager');
  * @param {function} context.startSelectionListener - Function to start the selection listener.
  */
 function initialize(mainWindow, context) {
-    const { AGENT_DIR, USER_DATA_DIR, APP_DATA_ROOT_IN_PROJECT, NOTES_AGENT_ID, getMusicState } = context;
+    const { AGENT_DIR, USER_DATA_DIR, APP_DATA_ROOT_IN_PROJECT, NOTES_AGENT_ID, getMusicState, fileWatcher } = context;
+
+    // Ensure the watcher is in a clean state on initialization
+    if (fileWatcher) {
+        fileWatcher.stopWatching();
+    }
 
     ipcMain.handle('save-topic-order', async (event, agentId, orderedTopicIds) => {
         if (!agentId || !Array.isArray(orderedTopicIds)) {
@@ -149,11 +154,21 @@ function initialize(mainWindow, context) {
         if (!topicId) return { error: `获取Agent ${agentId} 聊天历史失败: topicId 未提供。` };
         try {
             const historyFile = path.join(USER_DATA_DIR, agentId, 'topics', topicId, 'history.json');
-            await fs.ensureDir(path.dirname(historyFile)); 
+            await fs.ensureDir(path.dirname(historyFile));
+
+            // Start watching the new history file
+            if (fileWatcher) {
+                fileWatcher.watchFile(historyFile, (changedPath) => {
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        mainWindow.webContents.send('history-file-updated', { agentId, topicId, path: changedPath });
+                    }
+                });
+            }
+
             if (await fs.pathExists(historyFile)) {
                 return await fs.readJson(historyFile);
             }
-            return []; 
+            return [];
         } catch (error) {
             console.error(`获取Agent ${agentId} 话题 ${topicId} 聊天历史失败:`, error);
             return { error: error.message };
@@ -163,6 +178,9 @@ function initialize(mainWindow, context) {
     ipcMain.handle('save-chat-history', async (event, agentId, topicId, history) => {
         if (!topicId) return { error: `保存Agent ${agentId} 聊天历史失败: topicId 未提供。` };
         try {
+            if (fileWatcher) {
+                fileWatcher.signalInternalSave();
+            }
             const historyDir = path.join(USER_DATA_DIR, agentId, 'topics', topicId);
             await fs.ensureDir(historyDir);
             const historyFile = path.join(historyDir, 'history.json');

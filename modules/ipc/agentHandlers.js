@@ -29,6 +29,8 @@ async function getAgentConfigById(agentId) {
             config.avatarUrl = `file://${avatarPathGif}?t=${Date.now()}`;
         }
         config.id = agentId;
+        // 注入正确的用户数据目录路径，而不是Agent定义目录
+        config.agentDataPath = path.join(AGENT_DIR_CACHE.replace('Agents', 'UserData'), agentId);
         return config;
     }
     return { error: `Agent config for ${agentId} not found.` };
@@ -84,6 +86,8 @@ function initialize(context) {
                         }
                         agentData.topics = topicsArray;
                         agentData.config = config;
+                        // 注入正确的用户数据目录路径
+                        agentData.config.agentDataPath = path.join(AGENT_DIR, '..', 'UserData', folderName);
                     } else {
                         agentData.name = folderName;
                         agentData.topics = [{ id: "default", name: "主要对话", createdAt: Date.now() }];

@@ -5,8 +5,9 @@ const streamingChunkQueues = new Map(); // messageId -> array of original chunk 
 const streamingTimers = new Map();      // messageId -> intervalId
 const accumulatedStreamText = new Map(); // messageId -> string
 const streamingHistory = new Map(); // NEW: messageId -> historyArray reference
-
-// --- Local Reference Store ---
+let activeStreamingMessageId = null; // Track the currently active streaming message
+ 
+ // --- Local Reference Store ---
 let refs = {};
 
 /**
@@ -156,16 +157,21 @@ function renderChunkDirectlyToDOM(messageId, textToAppend, context) {
     }
 }
 
-export function startStreamingMessage(message) {
+export function startStreamingMessage(message, passedMessageItem = null) {
+    activeStreamingMessageId = message.id; // Set the active streaming ID
     const { chatMessagesDiv, uiHelper } = refs;
     if (!message || !message.id) return null;
 
-    let messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${message.id}"]`);
+    let messageItem = passedMessageItem || chatMessagesDiv.querySelector(`.message-item[data-message-id="${message.id}"]`);
 
     if (!messageItem) {
+        console.warn(`[StreamManager] Could not find or receive messageItem for ${message.id}. Attempting to re-render.`);
         const placeholderMessage = { ...message, content: '', isThinking: false, timestamp: message.timestamp || Date.now(), isGroupMessage: message.isGroupMessage || false };
-        messageItem = refs.renderMessage(placeholderMessage, false); 
-        if (!messageItem) return null;
+        messageItem = refs.renderMessage(placeholderMessage, false);
+        if (!messageItem) {
+            console.error(`[StreamManager] CRITICAL: Failed to re-render message item for ${message.id}. Aborting stream start.`);
+            return null;
+        }
     }
     
     messageItem.classList.add('streaming');
@@ -271,6 +277,9 @@ export async function finalizeStreamedMessage(messageId, finishReason, context) 
     if (streamingTimers.has(messageId)) {
         clearInterval(streamingTimers.get(messageId));
         streamingTimers.delete(messageId);
+    }
+    if (activeStreamingMessageId === messageId) {
+        activeStreamingMessageId = null; // Clear the active ID when stream finishes
     }
 
     const { chatMessagesDiv, electronAPI, uiHelper, markedInstance } = refs;
@@ -390,5 +399,6 @@ window.streamManager = {
     initStreamManager,
     startStreamingMessage,
     appendStreamChunk,
-    finalizeStreamedMessage
+    finalizeStreamedMessage,
+    getActiveStreamingMessageId: () => activeStreamingMessageId, // Expose a getter
 };

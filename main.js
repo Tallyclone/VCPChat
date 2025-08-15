@@ -31,8 +31,49 @@ const emoticonHandlers = require('./modules/ipc/emoticonHandlers'); // Import em
 const musicMetadata = require('music-metadata');
 const speechRecognizer = require('./modules/speechRecognizer'); // Import the new speech recognizer
 const canvasHandlers = require('./modules/ipc/canvasHandlers'); // Import canvas handlers
+const chokidar = require('chokidar'); // 引入 chokidar
+ 
+ // --- File Watcher ---
+let historyWatcher = null;
+let isInternalSaveExpected = false; // A one-shot flag to signal an internal save is happening.
 
-// --- Configuration Paths ---
+const fileWatcher = {
+  watchFile: (filePath, callback) => {
+    if (historyWatcher) {
+      historyWatcher.close();
+    }
+    console.log(`[FileWatcher] Watching new file: ${filePath}`);
+    historyWatcher = chokidar.watch(filePath, {
+        persistent: true,
+        ignoreInitial: true,
+        awaitWriteFinish: {
+            stabilityThreshold: 200,
+            pollInterval: 100
+        }
+    });
+    historyWatcher.on('all', (event, path) => {
+      if (isInternalSaveExpected) {
+        isInternalSaveExpected = false; // Consume the one-shot flag
+        console.log(`[FileWatcher] Ignored internal save event '${event}' for: ${path}`);
+        return;
+      }
+      console.log(`[FileWatcher] Detected external event '${event}' for: ${path}`);
+      callback(path);
+    });
+    historyWatcher.on('error', error => console.error(`[FileWatcher] Error: ${error}`));
+  },
+  stopWatching: () => {
+    if (historyWatcher) {
+      console.log('[FileWatcher] Stopping file watch.');
+      historyWatcher.close();
+      historyWatcher = null;
+    }
+  },
+  signalInternalSave: () => {
+    isInternalSaveExpected = true;
+  }
+};
+ // --- Configuration Paths ---
 // Data storage will be within the project's 'AppData' directory
 const PROJECT_ROOT = __dirname; // __dirname is the directory of main.js
 const APP_DATA_ROOT_IN_PROJECT = path.join(PROJECT_ROOT, 'AppData');
@@ -388,7 +429,8 @@ if (!gotTheLock) {
         USER_DATA_DIR,
         getSelectionListenerStatus: assistantHandlers.getSelectionListenerStatus,
         stopSelectionListener: assistantHandlers.stopSelectionListener,
-        startSelectionListener: assistantHandlers.startSelectionListener
+        startSelectionListener: assistantHandlers.startSelectionListener,
+        fileWatcher // Inject fileWatcher here as well
     });
     agentHandlers.initialize({
         AGENT_DIR,
@@ -407,7 +449,8 @@ if (!gotTheLock) {
         getSelectionListenerStatus: assistantHandlers.getSelectionListenerStatus,
         stopSelectionListener: assistantHandlers.stopSelectionListener,
         startSelectionListener: assistantHandlers.startSelectionListener,
-        getMusicState: musicHandlers.getMusicState
+        getMusicState: musicHandlers.getMusicState,
+        fileWatcher // 注入文件监控器
     });
     sovitsHandlers.initialize(mainWindow); // Initialize SovitsTTS handlers
     musicHandlers.initialize({ mainWindow, openChildWindows, APP_DATA_ROOT_IN_PROJECT, startAudioEngine, stopAudioEngine });

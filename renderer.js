@@ -667,6 +667,16 @@ import * as interruptHandler from './modules/interruptHandler.js';
     
     // --- TTS Audio Playback and Visuals ---
     setupTtsListeners();
+    // --- File Watcher Listener ---
+    window.electronAPI.onHistoryFileUpdated(({ agentId, topicId, path }) => {
+        if (currentSelectedItem && currentSelectedItem.id === agentId && currentTopicId === topicId) {
+            console.log('[Renderer] Active chat history was modified externally. Syncing...');
+            uiHelperFunctions.showToastNotification("聊天记录已同步。", "info");
+            if (window.chatManager && typeof window.chatManager.syncHistoryFromFile === 'function') {
+                window.chatManager.syncHistoryFromFile(agentId, currentSelectedItem.type, topicId);
+            }
+        }
+    });
 });
 
 function setupTtsListeners() {

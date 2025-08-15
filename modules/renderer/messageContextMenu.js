@@ -694,7 +694,30 @@ async function handleRegenerateResponse(originalAssistantMessage) {
         }));
 
         if (agentConfig.systemPrompt) {
-            messagesForVCP.unshift({ role: 'system', content: agentConfig.systemPrompt.replace(/\{\{AgentName\}\}/g, agentConfig.name) });
+            let systemPromptContent = agentConfig.systemPrompt.replace(/\{\{AgentName\}\}/g, agentConfig.name);
+            const prependedContent = [];
+
+            // 注入聊天记录文件路径
+            if (agentConfig.agentDataPath && currentTopicIdVal) {
+                const historyPath = `${agentConfig.agentDataPath}\\topics\\${currentTopicIdVal}\\history.json`;
+                prependedContent.push(`当前聊天记录文件路径: ${historyPath}`);
+            }
+
+            // 注入话题创建时间
+            if (agentConfig.topics && currentTopicIdVal) {
+                const currentTopicObj = agentConfig.topics.find(t => t.id === currentTopicIdVal);
+                if (currentTopicObj && currentTopicObj.createdAt) {
+                    const date = new Date(currentTopicObj.createdAt);
+                    const formattedDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+                    prependedContent.push(`当前话题创建于: ${formattedDate}`);
+                }
+            }
+
+            if (prependedContent.length > 0) {
+                systemPromptContent = prependedContent.join('\n') + '\n\n' + systemPromptContent;
+            }
+
+            messagesForVCP.unshift({ role: 'system', content: systemPromptContent });
         }
 
         const modelConfigForVCP = {

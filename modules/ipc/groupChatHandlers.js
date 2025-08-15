@@ -15,7 +15,7 @@ const groupChat = require('../../Groupmodules/groupchat');
  * @param {function} context.startSelectionListener - Function to start the selection listener.
  */
 function initialize(mainWindow, context) {
-    const { AGENT_DIR, USER_DATA_DIR, getSelectionListenerStatus, stopSelectionListener, startSelectionListener } = context;
+    const { AGENT_DIR, USER_DATA_DIR, getSelectionListenerStatus, stopSelectionListener, startSelectionListener, fileWatcher } = context;
 
     // Helper function to get agent config, needed by multiple handlers
     const getAgentConfigById = async (agentId) => {
@@ -109,6 +109,9 @@ function initialize(mainWindow, context) {
             return { success: false, error: errorMsg };
         }
         try {
+            if (fileWatcher) {
+                fileWatcher.signalInternalSave();
+            }
             // Construct path similar to getGroupChatHistory in groupchat.js
             const historyDir = path.join(USER_DATA_DIR, groupId, 'topics', topicId);
             await fs.ensureDir(historyDir);

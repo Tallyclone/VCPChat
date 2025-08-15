@@ -844,8 +844,8 @@ async function renderMessage(message, isInitialLoad = false) {
    return messageItem;
 }
 
-function startStreamingMessage(message) {
-    return streamManager.startStreamingMessage(message);
+function startStreamingMessage(message, messageItem = null) {
+    return streamManager.startStreamingMessage(message, messageItem);
 }
 
 
@@ -955,6 +955,47 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId) {
     mainRendererReferences.uiHelper.scrollToBottom();
 }
 
+function updateMessageContent(messageId, newContent) {
+    const { chatMessagesDiv, markedInstance, globalSettingsRef } = mainRendererReferences;
+    const messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
+    if (!messageItem) return;
+
+    const contentDiv = messageItem.querySelector('.md-content');
+    if (!contentDiv) return;
+
+    const globalSettings = globalSettingsRef.get();
+    let textToRender = (typeof newContent === 'string') ? newContent : (newContent?.text || "[内容格式异常]");
+    
+    const processedContent = preprocessFullContent(textToRender, globalSettings);
+    let rawHtml = markedInstance.parse(processedContent);
+
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = rawHtml;
+    const images = tempDiv.querySelectorAll('img');
+    images.forEach(img => {
+        const originalSrc = img.getAttribute('src');
+        if (originalSrc) {
+            const fixedSrc = emoticonUrlFixer.fixEmoticonUrl(originalSrc);
+            if (originalSrc !== fixedSrc) {
+                img.src = fixedSrc;
+            }
+        }
+    });
+
+    setContentAndProcessImages(contentDiv, tempDiv.innerHTML, messageId);
+    contentProcessor.processRenderedContent(contentDiv);
+
+    // Re-render attachments if they exist in the new content object
+    const messageInHistory = mainRendererReferences.currentChatHistoryRef.get().find(m => m.id === messageId);
+    if (messageInHistory) {
+        // First, remove any existing attachments container
+        const existingAttachments = contentDiv.querySelector('.message-attachments');
+        if (existingAttachments) existingAttachments.remove();
+        // Then, render new ones if they exist
+        renderAttachments({ ...messageInHistory, content: newContent }, contentDiv);
+    }
+}
+
 // Expose methods to renderer.js
 window.messageRenderer = {
     initializeMessageRenderer,
@@ -971,6 +1012,7 @@ window.messageRenderer = {
     renderFullMessage,
     clearChat,
     removeMessageById,
+    updateMessageContent, // Expose the new function
     summarizeTopicFromMessages: async (history, agentName) => { // Example: Keep this if it's generic enough
         // This function was passed in, so it's likely defined in renderer.js or another module.
         // If it's meant to be internal to messageRenderer, its logic would go here.

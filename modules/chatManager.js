@@ -494,8 +494,9 @@ window.chatManager = (() => {
             avatarColor: currentSelectedItem.config?.avatarCalculatedColor
         };
 
+        let thinkingMessageItem = null;
         if (messageRenderer) {
-            messageRenderer.renderMessage(thinkingMessage);
+            thinkingMessageItem = await messageRenderer.renderMessage(thinkingMessage);
         }
 
         try {
@@ -658,7 +659,31 @@ window.chatManager = (() => {
             }));
 
             if (agentConfig && agentConfig.systemPrompt) {
-                const systemPromptContent = agentConfig.systemPrompt.replace(/\{\{AgentName\}\}/g, agentConfig.name || currentSelectedItem.id);
+                let systemPromptContent = agentConfig.systemPrompt.replace(/\{\{AgentName\}\}/g, agentConfig.name || currentSelectedItem.id);
+                const prependedContent = [];
+
+                // 任务2: 注入聊天记录文件路径
+                // 假设 agentConfig 对象中包含一个 agentDataPath 属性，该属性由主进程在加载代理配置时提供。
+                if (agentConfig.agentDataPath && currentTopicId) {
+                    // 修正：currentTopicId 本身就包含 "topic_" 前缀，无需重复添加
+                    const historyPath = `${agentConfig.agentDataPath}\\topics\\${currentTopicId}\\history.json`;
+                    prependedContent.push(`当前聊天记录文件路径: ${historyPath}`);
+                }
+
+                // 任务1: 注入话题创建时间
+                if (agentConfig.topics && currentTopicId) {
+                    const currentTopicObj = agentConfig.topics.find(t => t.id === currentTopicId);
+                    if (currentTopicObj && currentTopicObj.createdAt) {
+                        const date = new Date(currentTopicObj.createdAt);
+                        const formattedDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+                        prependedContent.push(`当前话题创建于: ${formattedDate}`);
+                    }
+                }
+
+                if (prependedContent.length > 0) {
+                    systemPromptContent = prependedContent.join('\n') + '\n\n' + systemPromptContent;
+                }
+
                 messagesForVCP.unshift({ role: 'system', content: systemPromptContent });
             }
 
@@ -675,7 +700,8 @@ window.chatManager = (() => {
             if (useStreaming) {
                 if (messageRenderer) {
                     await new Promise(resolve => setTimeout(resolve, 500));
-                    messageRenderer.startStreamingMessage({ ...thinkingMessage, content: "" });
+                    // Pass the created DOM element directly to avoid race conditions with querySelector
+                    messageRenderer.startStreamingMessage({ ...thinkingMessage, content: "" }, thinkingMessageItem);
                 }
             }
 
@@ -938,6 +964,62 @@ window.chatManager = (() => {
     }
 
 
+    async function syncHistoryFromFile(itemId, itemType, topicId) {
+        if (!messageRenderer) return;
+
+        // 1. Fetch the latest history from the file
+        let newHistory;
+        if (itemType === 'agent') {
+            newHistory = await electronAPI.getChatHistory(itemId, topicId);
+        } else if (itemType === 'group') {
+            newHistory = await electronAPI.getGroupChatHistory(itemId, topicId);
+        }
+
+        if (!newHistory || newHistory.error) {
+            console.error("Sync failed: Could not fetch new history.", newHistory?.error);
+            return;
+        }
+
+        const oldHistory = currentChatHistoryRef.get();
+        const oldHistoryMap = new Map(oldHistory.map(msg => [msg.id, msg]));
+        const newHistoryMap = new Map(newHistory.map(msg => [msg.id, msg]));
+        const activeStreamingId = window.streamManager ? window.streamManager.getActiveStreamingMessageId() : null;
+
+        // 2. Find deleted and modified messages
+        for (const oldMsg of oldHistory) {
+            if (oldMsg.id === activeStreamingId) {
+                continue; // Protect the currently streaming message from being removed or modified by sync
+            }
+            if (!newHistoryMap.has(oldMsg.id)) {
+                // Message was deleted
+                messageRenderer.removeMessageById(oldMsg.id, false); // false: don't re-save
+            } else {
+                const newMsg = newHistoryMap.get(oldMsg.id);
+                // Simple content comparison for now
+                if (JSON.stringify(oldMsg.content) !== JSON.stringify(newMsg.content)) {
+                    // Message was modified
+                    if (typeof messageRenderer.updateMessageContent === 'function') {
+                        messageRenderer.updateMessageContent(oldMsg.id, newMsg.content);
+                    }
+                }
+            }
+        }
+
+        // 3. Find added messages
+        for (const newMsg of newHistory) {
+            if (!oldHistoryMap.has(newMsg.id)) {
+                // Message was added. We need to find its correct position and insert it.
+                // For simplicity, we'll just append for now. A more robust solution
+                // would involve finding the previous message in the DOM and inserting after it.
+                messageRenderer.renderMessage(newMsg, true); // true: isInitialLoad to prevent re-adding to history ref
+            }
+        }
+
+        // 4. Finally, update the in-memory history ref to be the single source of truth
+        currentChatHistoryRef.set(newHistory);
+    }
+
+
     // --- Public API ---
     return {
         init,
@@ -951,5 +1033,6 @@ window.chatManager = (() => {
         attemptTopicSummarizationIfNeeded,
         handleCreateBranch,
         handleForwardMessage,
+        syncHistoryFromFile, // Expose the new function
     };
 })();
