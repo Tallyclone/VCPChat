@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const sourceTextarea = document.getElementById('sourceText');
     const translatedTextarea = document.getElementById('translatedText');
     const targetLanguageSelect = document.getElementById('targetLanguageSelect');
+    const modelSelect = document.getElementById('modelSelect');
     const customPromptVarInput = document.getElementById('customPromptVar');
     const translateBtn = document.getElementById('translateBtn');
     const copyBtn = document.getElementById('copyBtn');
@@ -136,7 +137,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         systemPrompt += ` 仅返回翻译结果，不要包含任何解释或额外信息。`;
 
         const messages = [{ role: 'system', content: systemPrompt }, { role: 'user', content: sourceText }];
-        const modelConfig = { model: 'gemini-2.5-flash-lite-preview-06-17', temperature: 0.7 };
+        const selectedModel = modelSelect.value;
+        const modelConfig = { model: selectedModel, temperature: 0.7 };
 
         performDirectTranslation(messages, modelConfig);
     });
