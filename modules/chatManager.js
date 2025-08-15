@@ -1000,42 +1000,71 @@ window.chatManager = (() => {
         }
 
         const oldHistory = currentChatHistoryRef.get();
+        let historyInMem = [...oldHistory]; // Create a mutable copy to work with
+
         const oldHistoryMap = new Map(oldHistory.map(msg => [msg.id, msg]));
         const newHistoryMap = new Map(newHistory.map(msg => [msg.id, msg]));
         const activeStreamingId = window.streamManager ? window.streamManager.getActiveStreamingMessageId() : null;
 
-        // 2. Find deleted and modified messages
+        // --- Perform UI and Memory updates ---
+
+        // 2. Handle DELETED and MODIFIED messages
         for (const oldMsg of oldHistory) {
             if (oldMsg.id === activeStreamingId) {
-                continue; // Protect the currently streaming message from being removed or modified by sync
+                continue; // Protect the currently streaming message
             }
-            if (!newHistoryMap.has(oldMsg.id)) {
-                // Message was deleted
-                messageRenderer.removeMessageById(oldMsg.id, false); // false: don't re-save
+            
+            const newMsgData = newHistoryMap.get(oldMsg.id);
+
+            if (!newMsgData) {
+                // Message was DELETED from the file
+                messageRenderer.removeMessageById(oldMsg.id, false); // Update UI
+                const indexToRemove = historyInMem.findIndex(m => m.id === oldMsg.id);
+                if (indexToRemove > -1) {
+                    historyInMem.splice(indexToRemove, 1); // Update Memory
+                }
             } else {
-                const newMsg = newHistoryMap.get(oldMsg.id);
-                // Simple content comparison for now
-                if (JSON.stringify(oldMsg.content) !== JSON.stringify(newMsg.content)) {
-                    // Message was modified
+                // Message exists, check for MODIFICATION
+                if (JSON.stringify(oldMsg.content) !== JSON.stringify(newMsgData.content)) {
                     if (typeof messageRenderer.updateMessageContent === 'function') {
-                        messageRenderer.updateMessageContent(oldMsg.id, newMsg.content);
+                        messageRenderer.updateMessageContent(oldMsg.id, newMsgData.content); // Update UI
+                    }
+                    const indexToUpdate = historyInMem.findIndex(m => m.id === oldMsg.id);
+                    if (indexToUpdate > -1) {
+                        historyInMem[indexToUpdate] = newMsgData; // Update Memory
                     }
                 }
             }
         }
 
-        // 3. Find added messages
+        // 3. Handle ADDED messages
+        let messagesWereAdded = false;
         for (const newMsg of newHistory) {
             if (!oldHistoryMap.has(newMsg.id)) {
-                // Message was added. We need to find its correct position and insert it.
-                // For simplicity, we'll just append for now. A more robust solution
-                // would involve finding the previous message in the DOM and inserting after it.
-                messageRenderer.renderMessage(newMsg, true); // true: isInitialLoad to prevent re-adding to history ref
+                // Message was ADDED
+                messageRenderer.renderMessage(newMsg, true); // Update UI (true = don't modify history ref inside)
+                historyInMem.push(newMsg); // Update Memory
+                messagesWereAdded = true;
             }
         }
 
-        // 4. Finally, update the in-memory history ref to be the single source of truth
-        currentChatHistoryRef.set(newHistory);
+        // 4. If messages were added or removed, the order might be wrong. Re-sort.
+        // Also ensures the streaming message (if any) is at the very end.
+        historyInMem.sort((a, b) => {
+            if (a.id === activeStreamingId) return 1;
+            if (b.id === activeStreamingId) return -1;
+            return a.timestamp - b.timestamp;
+        });
+
+        // 5. Commit the fully merged and sorted history back to the ref. This is the new source of truth.
+        currentChatHistoryRef.set(historyInMem);
+
+        // If messages were added, the DOM order might be incorrect. A full re-render is safest
+        // but can cause flicker. For now, we accept this as the individual DOM operations
+        // are faster. A subsequent topic load will fix any visual misordering.
+        if (messagesWereAdded) {
+             console.log('[Sync] New messages were added. DOM might require a refresh to be perfectly ordered.');
+        }
     }
 
 
