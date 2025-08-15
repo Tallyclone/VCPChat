@@ -905,6 +905,63 @@ async function createCanvas(fileName, content, encoding = 'utf8') {
     };
   }
 }
+
+async function updateHistory(filePath, searchString, replaceString, encoding = 'utf8') {
+  try {
+    debugLog('Updating history file', { filePath, searchString, replaceString });
+
+    if (!isPathAllowed(filePath, 'UpdateHistory')) {
+      throw new Error(`Access denied: Path '${filePath}' is not in allowed directories`);
+    }
+
+    // 1. Read the file content
+    const fileContent = await fs.readFile(filePath, encoding);
+    
+    // 2. Parse the JSON content
+    const history = JSON.parse(fileContent);
+
+    if (!Array.isArray(history)) {
+      throw new Error('Invalid history format: root is not an array.');
+    }
+
+    let updateApplied = false;
+
+    // 3. Iterate through the history to find and replace the content
+    for (let i = 0; i < history.length; i++) {
+      const entry = history[i];
+      if (entry.role === 'assistant' && typeof entry.content === 'string' && entry.content.includes(searchString)) {
+        // Replace only the first occurrence found
+        entry.content = entry.content.replace(searchString, replaceString);
+        updateApplied = true;
+        debugLog(`Found and replaced content in message at index ${i}.`);
+        break; // Stop after the first successful replacement
+      }
+    }
+
+    if (!updateApplied) {
+      throw new Error(`Content to replace was not found in any assistant message. Search string: "${searchString}"`);
+    }
+
+    // 4. Stringify the modified history and write it back to the file
+    const updatedContent = JSON.stringify(history, null, 2); // Pretty print JSON
+    await fs.writeFile(filePath, updatedContent, encoding);
+
+    return {
+      success: true,
+      data: {
+        message: 'History file updated successfully.',
+        path: filePath,
+      },
+    };
+
+  } catch (error) {
+    debugLog('Error updating history file', { filePath, error: error.message });
+    return {
+      success: false,
+      error: `Failed to update history: ${error.message}`,
+    };
+  }
+}
  
 // Batch processing for legacy format with robust content and action aggregation
 async function processBatchRequest(request) {
@@ -1049,6 +1106,8 @@ async function processRequest(request) {
       return await downloadFile(parameters.url);
     case 'CreateCanvas':
         return await createCanvas(parameters.fileName, parameters.content, parameters.encoding);
+    case 'UpdateHistory':
+        return await updateHistory(parameters.filePath, parameters.searchString, parameters.replaceString, parameters.encoding);
     case 'ApplyDiff':
       try {
         const { filePath, diffContent, searchString, replaceString, encoding } = parameters;
