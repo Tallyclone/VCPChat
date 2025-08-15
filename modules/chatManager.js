@@ -78,6 +78,11 @@ window.chatManager = (() => {
     }
 
     async function selectItem(itemId, itemType, itemName, itemAvatarUrl, itemFullConfig) {
+        // Stop any previous watcher when switching items
+        if (electronAPI.watcherStop) {
+            await electronAPI.watcherStop();
+        }
+
         const { currentChatNameH3, currentItemActionBtn, messageInput, sendMessageBtn, attachFileBtn } = elements;
         let currentSelectedItem = currentSelectedItemRef.get();
         let currentTopicId = currentTopicIdRef.get();
@@ -193,6 +198,13 @@ window.chatManager = (() => {
             if (messageRenderer) messageRenderer.setCurrentTopicId(topicId);
             
             const currentSelectedItem = currentSelectedItemRef.get();
+            
+            // Explicitly start watcher for the new topic
+            if (electronAPI.watcherStart && currentSelectedItem.config?.agentDataPath) {
+                const historyFilePath = `${currentSelectedItem.config.agentDataPath}\\topics\\${topicId}\\history.json`;
+                await electronAPI.watcherStart(historyFilePath, currentSelectedItem.id, topicId);
+            }
+
             document.querySelectorAll('#topicList .topic-item').forEach(item => {
                 const isClickedItem = item.dataset.topicId === topicId && item.dataset.itemId === currentSelectedItem.id;
                 item.classList.toggle('active', isClickedItem);
@@ -264,6 +276,13 @@ window.chatManager = (() => {
             historyResult = await electronAPI.getChatHistory(itemId, topicId);
         } else if (itemType === 'group') {
             historyResult = await electronAPI.getGroupChatHistory(itemId, topicId);
+        }
+
+        // Also ensure watcher is started when history is loaded directly
+        const currentSelectedItem = currentSelectedItemRef.get();
+        if (electronAPI.watcherStart && currentSelectedItem.config?.agentDataPath) {
+            const historyFilePath = `${currentSelectedItem.config.agentDataPath}\\topics\\${topicId}\\history.json`;
+            await electronAPI.watcherStart(historyFilePath, itemId, topicId);
         }
         
         if (messageRenderer) messageRenderer.removeMessageById('loading_history');

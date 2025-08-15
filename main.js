@@ -452,6 +452,28 @@ if (!gotTheLock) {
         getMusicState: musicHandlers.getMusicState,
         fileWatcher // 注入文件监控器
     });
+
+    // New dedicated watcher IPC handlers
+    ipcMain.handle('watcher:start', (event, filePath, agentId, topicId) => {
+        if (fileWatcher) {
+            fileWatcher.watchFile(filePath, (changedPath) => {
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    // Pass back the agentId and topicId to the renderer for context
+                    mainWindow.webContents.send('history-file-updated', { path: changedPath, agentId, topicId });
+                }
+            });
+            return { success: true, watching: filePath };
+        }
+        return { success: false, error: 'File watcher not initialized.' };
+    });
+
+    ipcMain.handle('watcher:stop', () => {
+        if (fileWatcher) {
+            fileWatcher.stopWatching();
+            return { success: true };
+        }
+        return { success: false, error: 'File watcher not initialized.' };
+    });
     sovitsHandlers.initialize(mainWindow); // Initialize SovitsTTS handlers
     musicHandlers.initialize({ mainWindow, openChildWindows, APP_DATA_ROOT_IN_PROJECT, startAudioEngine, stopAudioEngine });
     diceHandlers.initialize({ projectRoot: PROJECT_ROOT });

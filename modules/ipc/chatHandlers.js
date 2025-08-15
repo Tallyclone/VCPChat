@@ -156,14 +156,6 @@ function initialize(mainWindow, context) {
             const historyFile = path.join(USER_DATA_DIR, agentId, 'topics', topicId, 'history.json');
             await fs.ensureDir(path.dirname(historyFile));
 
-            // Start watching the new history file
-            if (fileWatcher) {
-                fileWatcher.watchFile(historyFile, (changedPath) => {
-                    if (mainWindow && !mainWindow.isDestroyed()) {
-                        mainWindow.webContents.send('history-file-updated', { agentId, topicId, path: changedPath });
-                    }
-                });
-            }
 
             if (await fs.pathExists(historyFile)) {
                 return await fs.readJson(historyFile);

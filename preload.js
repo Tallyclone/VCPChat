@@ -298,6 +298,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     copyCanvasFile: (filePath) => ipcRenderer.send('copy-canvas-file', filePath),
     deleteCanvasFile: (filePath) => ipcRenderer.send('delete-canvas-file', filePath),
     getLatestCanvasContent: () => ipcRenderer.invoke('get-latest-canvas-content'),
+    // Watcher controls
+    watcherStart: (filePath, agentId, topicId) => ipcRenderer.invoke('watcher:start', filePath, agentId, topicId),
+    watcherStop: () => ipcRenderer.invoke('watcher:stop'),
 });
 
 // Log the electronAPI object as it's defined in preload.js right after exposing it
