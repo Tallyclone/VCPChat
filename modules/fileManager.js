@@ -150,7 +150,10 @@ async function getFileAsBase64(internalPath) {
         
         // 直接根据用户反馈和日志进行路径清理
         // 'file:///H:/...' -> 'H:/...'
-        let cleanPath = decodeURIComponent(internalPath.substring('file:///'.length));
+        let cleanPath = decodeURIComponent(internalPath.replace(/^file:\/\//, ''));
+        if (process.platform === 'win32' && cleanPath.startsWith('/')) {
+            cleanPath = cleanPath.substring(1);
+        }
 
         console.log(`[Main - get-file-as-base64] Received raw filePath: "${internalPath}"`);
         console.log(`[Main - get-file-as-base64] Cleaned path: "${cleanPath}"`);
