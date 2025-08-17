@@ -145,8 +145,10 @@ document.addEventListener('DOMContentLoaded', () => {
             params: [
                 { name: 'query', type: 'text', required: true, placeholder: '搜索的关键词或问题' },
                 { name: 'topic', type: 'text', required: false, placeholder: "general, news, finance..." },
-                { name: 'search_depth', type: 'select', required: false, options: ['basic', 'advanced'] },
-                { name: 'max_results', type: 'number', required: false, placeholder: '10' }
+                { name: 'max_results', type: 'number', required: false, placeholder: '10 (范围 5-100)' },
+                { name: 'include_raw_content', type: 'select', required: false, options: ['', 'text', 'markdown'] },
+                { name: 'start_date', type: 'text', required: false, placeholder: 'YYYY-MM-DD' },
+                { name: 'end_date', type: 'text', required: false, placeholder: 'YYYY-MM-DD' }
             ]
         },
         'GoogleSearch': {
@@ -538,6 +540,60 @@ document.addEventListener('DOMContentLoaded', () => {
             // Use marked to render markdown, which will also render raw HTML like <img> tags
             div.innerHTML = marked(content);
             resultContainer.appendChild(div);
+        } else if (toolName === 'TavilySearch' && content && (content.results || content.images)) {
+            const searchResultsWrapper = document.createElement('div');
+            searchResultsWrapper.className = 'tavily-search-results';
+
+            // Render images
+            if (content.images && content.images.length > 0) {
+                const imagesContainer = document.createElement('div');
+                imagesContainer.className = 'tavily-images-container';
+                content.images.forEach(image => {
+                    const imageWrapper = document.createElement('figure');
+                    imageWrapper.className = 'tavily-image-wrapper';
+                    const img = document.createElement('img');
+                    img.src = image.url;
+                    const figcaption = document.createElement('figcaption');
+                    figcaption.textContent = image.description;
+                    imageWrapper.appendChild(img);
+                    imageWrapper.appendChild(figcaption);
+                    imagesContainer.appendChild(imageWrapper);
+                });
+                searchResultsWrapper.appendChild(imagesContainer);
+            }
+
+            // Render search results
+            if (content.results && content.results.length > 0) {
+                const resultsContainer = document.createElement('div');
+                resultsContainer.className = 'tavily-results-container';
+                content.results.forEach(result => {
+                    const resultItem = document.createElement('div');
+                    resultItem.className = 'tavily-result-item';
+
+                    const title = document.createElement('h4');
+                    const link = document.createElement('a');
+                    link.href = result.url;
+                    link.textContent = result.title;
+                    link.target = '_blank'; // Open in new tab
+                    title.appendChild(link);
+
+                    const url = document.createElement('p');
+                    url.className = 'tavily-result-url';
+                    url.textContent = result.url;
+
+                    const snippet = document.createElement('div');
+                    snippet.className = 'tavily-result-snippet';
+                    snippet.innerHTML = marked(result.content);
+
+                    resultItem.appendChild(title);
+                    resultItem.appendChild(url);
+                    resultItem.appendChild(snippet);
+                    resultsContainer.appendChild(resultItem);
+                });
+                searchResultsWrapper.appendChild(resultsContainer);
+            }
+
+            resultContainer.appendChild(searchResultsWrapper);
         } else if (typeof content === 'object') { // Generic object
             // Check for common image/text properties within the object
             const imageUrl = content.image_url || content.url || content.image;
@@ -705,6 +761,12 @@ document.addEventListener('DOMContentLoaded', () => {
             toolGrid.style.display = 'grid';
         });
 
+        // 工作流编排按钮
+        const workflowBtn = document.getElementById('workflow-btn');
+        if (workflowBtn) {
+            workflowBtn.addEventListener('click', openWorkflowEditor);
+        }
+
         renderToolGrid();
         loadAndProcessWallpaper(); // Process the wallpaper on startup
         setupImageViewer();
@@ -821,7 +883,60 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // --- 工作流编排集成功能 ---
+    let workflowEditorLoaded = false;
+
+    // 打开工作流编排器
+    async function openWorkflowEditor() {
+        try {
+            // 动态加载工作流编排模块
+            if (!workflowEditorLoaded) {
+                await loadWorkflowEditorModules();
+                workflowEditorLoaded = true;
+            }
+
+            // 显示工作流编排器
+            if (window.workflowEditor) {
+                window.workflowEditor.show();
+            } else {
+                throw new Error('工作流编排器未能正确初始化');
+            }
+        } catch (error) {
+            console.error('打开工作流编排器失败:', error);
+            alert(`打开工作流编排器失败: ${error.message}`);
+        }
+    }
+
+    // 动态加载工作流编排模块
+    async function loadWorkflowEditorModules() {
+        // 首先加载 WorkflowEditorLoader 脚本
+        const loaderScript = document.createElement('script');
+        loaderScript.src = 'WorkflowEditormodules/WorkflowEditorLoader.js';
+        
+        await new Promise((resolve, reject) => {
+            loaderScript.onload = resolve;
+            loaderScript.onerror = () => reject(new Error('无法加载 WorkflowEditorLoader.js'));
+            document.head.appendChild(loaderScript);
+        });
+
+        // 等待 WorkflowEditorLoader 可用并加载所有模块
+        if (window.WorkflowEditorLoader) {
+            await window.WorkflowEditorLoader.load();
+            
+            // 初始化工作流编排器
+            if (window.workflowEditor) {
+                await window.workflowEditor.init();
+                console.log('工作流编排器初始化成功');
+            } else {
+                throw new Error('WorkflowEditor 配置模块未能正确加载');
+            }
+        } else {
+            throw new Error('WorkflowEditorLoader 未能正确加载');
+        }
+    }
+
     // 将函数暴露到全局作用域，以便按钮点击时调用
     window.openComfyUISettings = openComfyUISettings;
     window.closeComfyUISettings = closeComfyUISettings;
+    window.openWorkflowEditor = openWorkflowEditor;
 });

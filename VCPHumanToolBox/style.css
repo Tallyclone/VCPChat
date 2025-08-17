@@ -21,16 +21,16 @@ body {
     top: 0;
     left: 0;
     right: 0;
-    z-index: 100;
-    height: 40px; /* Increased height for easier dragging */
+    z-index: 50; /* 降低 z-index，确保工作流编辑器在上层 */
+    height: 30px; /* 设置固定高度，避免与工作流编辑器重叠 */
     background-color: transparent;
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 0 10px;
     color: var(--secondary-text);
-    -webkit-app-region: drag; /* 整个标题栏可拖拽 */
-    pointer-events: none; /* Allow clicks to pass through */
+    -webkit-app-region: drag; /* 恢复拖拽功能，但限制在较小区域 */
+    pointer-events: auto; /* 启用事件处理 */
 }
 
 .title-bar > * {
@@ -101,6 +101,45 @@ header h1 {
 
 header p {
     color: var(--secondary-text);
+}
+
+.header-actions {
+    margin-top: 15px;
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+}
+
+.workflow-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 20px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.workflow-btn:hover {
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
+}
+
+.workflow-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}
+
+.workflow-btn svg {
+    width: 20px;
+    height: 20px;
 }
 
 .tool-grid {
@@ -278,4 +317,137 @@ header p {
 
 .info-box strong {
     color: var(--highlight-text);
+}
+/* --- Tavily Search Results --- */
+.tavily-search-results {
+    margin-top: 20px;
+    border-top: 1px solid var(--border-color);
+    padding-top: 15px;
+}
+
+.tavily-images-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.tavily-image-wrapper {
+    flex: 1 1 200px; /* Flexbox for responsive sizing */
+    max-width: 250px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+    background-color: var(--secondary-bg);
+    margin: 0;
+}
+
+.tavily-image-wrapper img {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+.tavily-image-wrapper figcaption {
+    padding: 8px;
+    font-size: 0.85em;
+    color: var(--secondary-text);
+    text-align: center;
+}
+
+.tavily-results-container .tavily-result-item {
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid var(--border-color-light);
+}
+
+.tavily-results-container .tavily-result-item:last-child {
+    border-bottom: none;
+}
+
+.tavily-result-item h4 {
+    margin: 0 0 5px 0;
+}
+
+.tavily-result-item h4 a {
+    color: var(--link-color);
+    text-decoration: none;
+    font-size: 1.1em;
+}
+
+.tavily-result-item h4 a:hover {
+    text-decoration: underline;
+}
+
+.tavily-result-url {
+    font-size: 0.9em;
+    color: var(--accent-color);
+    margin: 0 0 8px 0;
+    word-break: break-all;
+}
+
+.tavily-result-snippet {
+    font-size: 1em;
+    color: var(--primary-text);
+    line-height: 1.6;
+    margin: 0;
+}
+
+/* --- Workflow Editor UI Fixes --- */
+
+/* Sidebar Search Box Fix */
+.workflow-sidebar .sidebar-search {
+    box-sizing: border-box;
+    width: 100%;
+}
+
+/* Canvas Controls Button Fix */
+.zoom-controls .zoom-btn {
+    min-width: auto; /* Reset min-width */
+    padding: 6px 12px; /* Adjust padding */
+}
+
+#zoomInBtn, #zoomOutBtn {
+    width: 36px; /* Fixed width for +/- buttons */
+}
+
+#zoomFitBtn {
+    min-width: 50px; /* Ensure enough width for "适应" */
+}
+
+
+/* Canvas Node Remove Button */
+.canvas-node-header {
+    position: relative !important; /* Ensure positioning context */
+}
+
+.canvas-node-remove-btn {
+    position: absolute;
+    top: -17px;  
+    right: -17px; 
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background-color: #ef4444;
+    color: #fff;
+    border: 2px solid #1e293b; /* Add a border to match the background */
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    line-height: 1;
+    z-index: 10; /* Ensure the button is on top of other elements */
+    opacity: 0;
+    transform: scale(0.8);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.canvas-node:hover .canvas-node-remove-btn {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.canvas-node-remove-btn:hover {
+    transform: scale(1.15);
 }
