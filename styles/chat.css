@@ -289,47 +289,47 @@ body.light-theme .message-item.system.welcome-bubble {
     font-size: 0.9em;
     margin-top: 8px;
     border: 1px solid var(--border-color);
-    color: #e0e0e0; /* Default text color for dark theme code blocks */
+    color: #abb2bf; /* Default text color for dark theme code blocks (soft white) */
 }
 .message-item .md-content pre code {
     padding: 0;
     background: none;
-    color: #e0e0e0; /* Ensure code text is visible */
+    color: #abb2bf; /* Ensure code text is visible (soft white) */
 }
 
-/* Dark Theme Syntax Highlighting Overrides */
+/* Dark Theme Syntax Highlighting Overrides (inspired by Atom One Dark / Dracula) */
 .message-item .md-content pre .hljs-comment {
-    color: #888888; /* Lighter grey for comments */
+    color: #5c6370; /* Soft grey for comments */
     font-style: italic;
 }
 
 .message-item .md-content pre .hljs-keyword {
-    color: #ff79c6; /* Pink */
+    color: #c678dd; /* Soft purple */
 }
 
 .message-item .md-content pre .hljs-built_in {
-    color: #bd93f9; /* Light Purple */
+    color: #e06c75; /* Soft red/pink */
 }
 
 .message-item .md-content pre .hljs-string {
-    color: #f1fa8c; /* Yellow */
+    color: #98c379; /* Soft green */
 }
 
 .message-item .md-content pre .hljs-number {
-    color: #bd93f9; /* Light Purple */
+    color: #d19a66; /* Soft orange */
 }
 
 .message-item .md-content pre .hljs-title,
 .message-item .md-content pre .hljs-class .hljs-title {
-    color: #50fa7b; /* Green */
+    color: #61afef; /* Soft blue */
 }
 
 .message-item .md-content pre .hljs-params {
-    color: #f8f8f2; /* White */
+    color: #abb2bf; /* Soft white */
 }
 
 .message-item .md-content pre .hljs-meta {
-    color: #ffb86c; /* Orange */
+    color: #e5c07b; /* Soft yellow/orange */
 }
 
 /* Attachments inside the bubble */
