@@ -820,10 +820,12 @@ async function handleRegenerateResponse(originalAssistantMessage) {
                 contextMenuDependencies.renderMessage({ role: 'system', content: `VCP错误 (重新生成): ${vcpResult.error}`, timestamp: Date.now() });
             } else if (vcpResult.choices && vcpResult.choices.length > 0) {
                 const assistantMessageContent = vcpResult.choices[0].message.content;
+                // renderMessage 函数会处理历史记录的更新和保存，因此此处无需再手动操作
                 contextMenuDependencies.renderMessage({ role: 'assistant', name: agentConfig.name, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor, content: assistantMessageContent, timestamp: Date.now() });
             }
-            mainRefs.currentChatHistoryRef.set([...currentChatHistoryArray]);
-            if (currentSelectedItemVal.id && currentTopicIdVal) await electronAPI.saveChatHistory(currentSelectedItemVal.id, currentTopicIdVal, currentChatHistoryArray);
+            // 移除冗余的保存和滚动操作，因为 renderMessage 已经处理
+            // mainRefs.currentChatHistoryRef.set([...currentChatHistoryArray]);
+            // if (currentSelectedItemVal.id && currentTopicIdVal) await electronAPI.saveChatHistory(currentSelectedItemVal.id, currentTopicIdVal, currentChatHistoryArray);
             uiHelper.scrollToBottom();
         }
 
