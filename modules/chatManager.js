@@ -986,6 +986,13 @@ window.chatManager = (() => {
     async function syncHistoryFromFile(itemId, itemType, topicId) {
         if (!messageRenderer) return;
 
+        // 🔧 检查是否有正在进行的编辑操作
+        const isEditing = document.querySelector('.message-item-editing');
+        if (isEditing) {
+            console.log('[Sync] Aborting sync because a message is currently being edited.');
+            return;
+        }
+
         // 1. Fetch the latest history from the file
         let newHistory;
         if (itemType === 'agent') {
