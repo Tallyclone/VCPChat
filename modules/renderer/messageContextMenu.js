@@ -496,7 +496,9 @@ function toggleEditMode(messageItem, message) {
                     await electronAPI.watcherStart(historyFilePath, currentSelectedItemVal.id, currentTopicIdVal);
                 }
                 
-                uiHelper.showToastNotification("消息编辑已保存。", "success");
+                if (uiHelper && typeof uiHelper.showToastNotification === 'function') {
+                    uiHelper.showToastNotification("消息编辑已保存。", "success");
+                }
                 
             } catch (error) {
                 // 🔧 保存失败时回滚状态
@@ -515,7 +517,9 @@ function toggleEditMode(messageItem, message) {
                     }
                 }
                 
-                uiHelper.showToastNotification(`编辑保存失败: ${error.message}`, "error");
+                if (uiHelper && typeof uiHelper.showToastNotification === 'function') {
+                    uiHelper.showToastNotification(`编辑保存失败: ${error.message}`, "error");
+                }
                 return; // 不退出编辑模式，让用户重试
             }
             
