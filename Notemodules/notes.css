@@ -826,3 +826,31 @@ body.light-theme .markdown-preview pre .hljs-meta {
 .container {
     padding-top: 40px; /* 5px 间距 + 40px 标题栏高度 */
 }
+
+/* Loading Overlay */
+#loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+    flex-direction: column;
+}
+
+#loading-overlay p {
+    color: white;
+    font-size: 18px;
+    margin-top: 20px;
+}
+
+/* Info/Error Modal - 复用现有的 confirmation-modal 样式 */
+#info-modal .modal-content,
+#error-modal .modal-content {
+    min-width: 300px;
+    max-width: 500px;
+}

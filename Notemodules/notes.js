@@ -120,6 +120,66 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    // --- Loading & Notification Helpers ---
+    function showLoadingOverlay(message) {
+        let overlay = document.getElementById('loading-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'loading-overlay';
+            // Using CSS text for simplicity; ideally this would be a class
+            overlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); display:flex; justify-content:center; align-items:center; z-index:10000; color:white; flex-direction:column;';
+            const p = document.createElement('p');
+            overlay.appendChild(p);
+            document.body.appendChild(overlay);
+        }
+        overlay.querySelector('p').textContent = message;
+        overlay.style.display = 'flex';
+    }
+
+    function hideLoadingOverlay() {
+        const overlay = document.getElementById('loading-overlay');
+        if (overlay) overlay.style.display = 'none';
+    }
+
+    function createModal(title, message, id) {
+        return new Promise((resolve) => {
+            const existingModal = document.getElementById(id);
+            if (existingModal) existingModal.remove();
+
+            const modal = document.createElement('div');
+            modal.id = id;
+            modal.className = 'confirmation-modal'; // Reuse existing styles if possible
+            modal.style.display = 'flex';
+            // Inlined some styles to ensure it's visible without external CSS
+            modal.innerHTML = `
+                <div class="modal-content" style="background:var(--bg-color, #222); border: 1px solid var(--border-color, #444); padding: 20px; border-radius: 5px; box-shadow: 0 5px 15px rgba(0,0,0,0.5);">
+                    <h2 class="modal-title" style="margin-top:0;">${title}</h2>
+                    <p class="modal-message">${message}</p>
+                    <div class="modal-buttons" style="text-align: right; margin-top: 20px;">
+                        <button class="modal-ok-btn a-button">好</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+
+            const okButton = modal.querySelector('.modal-ok-btn');
+            const closeHandler = () => {
+                modal.remove();
+                resolve();
+            };
+            okButton.addEventListener('click', closeHandler);
+        });
+    }
+
+    async function showInfoModal(title, message) {
+        // We don't use the promise here, but it standardizes the interface
+        await createModal(title, message, 'info-modal');
+    }
+
+    async function showErrorModal(title, message) {
+        await createModal(title, `<span style="color:var(--error-color, #f44336);">${message}</span>`, 'error-modal');
+    }
+
     // --- Theme Management ---
     function applyTheme(theme) {
         const currentTheme = theme || 'dark'; // Fallback to dark if theme is null/undefined
@@ -734,20 +794,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('application/vnd.vcp-notes.items+json', JSON.stringify(dragState.sourceIds));
     
-        // Defer adding the 'dragging' class to ensure the drag ghost image is correct.
-        setTimeout(() => {
-            dragState.sourceIds.forEach(selectedId => {
-                const el = noteList.querySelector(`li[data-id='${selectedId}']`);
-                if (el) el.classList.add('dragging');
-            });
-        }, 0);
+        // Immediately add dragging class synchronously for snappier visual feedback
+        dragState.sourceIds.forEach(selectedId => {
+            const el = noteList.querySelector(`li[data-id='${selectedId}']`);
+            if (el) el.classList.add('dragging');
+        });
         
-        // Check original state, store it, and then disable if it was active.
+        // Asynchronously check and disable selection listener without blocking dragstart
         if (window.electronAPI && window.electronAPI.getSelectionListenerStatus) {
-            wasSelectionListenerActive = await window.electronAPI.getSelectionListenerStatus();
-            if (wasSelectionListenerActive) {
-                window.electronAPI.toggleSelectionListener(false);
-            }
+            window.electronAPI.getSelectionListenerStatus().then(isActive => {
+                wasSelectionListenerActive = isActive;
+                if (isActive && window.electronAPI.toggleSelectionListener) {
+                    window.electronAPI.toggleSelectionListener(false);
+                }
+            }).catch(err => {
+                console.error('Failed to get selection listener status:', err);
+            });
         }
     }
 
@@ -756,7 +818,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!dragState.sourceIds) {
             return;
         }
-
+ 
         // Clear previous target's visuals
         if (dragState.lastDragOverElement && dragState.lastDragOverElement !== targetElement) {
             dragState.lastDragOverElement.classList.remove('drag-over-folder', 'drag-over-target-top', 'drag-over-target-bottom');
@@ -792,91 +854,150 @@ document.addEventListener('DOMContentLoaded', async () => {
         targetElement.classList.toggle('drag-over-target-top', dragState.dropAction === 'before');
         targetElement.classList.toggle('drag-over-target-bottom', dragState.dropAction === 'after');
     
-    }, 50);
+    }, 16);
 
     function handleListDragOver(e) {
         e.preventDefault(); // Necessary to allow for dropping
-        const targetElement = e.target.closest('li[draggable="true"]');
+        e.dataTransfer.dropEffect = 'move'; // 明确指示移动操作
+
+        // 缓存 closest 查询结果 on the target to avoid repeated DOM traversal
+        if (!e.target._cachedDraggable) {
+            e.target._cachedDraggable = e.target.closest('li[draggable="true"]');
+        }
+        const targetElement = e.target._cachedDraggable;
+
         if (targetElement) {
             throttledUpdateDragOverVisuals(targetElement, e);
         }
     }
 
-    function handleListDragLeave(e) {
-        // When leaving a specific item, remove its visuals
-        // If the mouse leaves an element that had visuals, clear them.
-        const targetElement = e.target.closest('li[draggable="true"]');
-        if (targetElement && dragState.lastDragOverElement === targetElement) {
+function handleListDragLeave(e) {
+    // When leaving a specific item, remove its visuals
+    const targetElement = e.target.closest('li[draggable="true"]');
+    
+    // 只有当鼠标真正离开了整个列表项时才清理
+    if (targetElement && dragState.lastDragOverElement === targetElement) {
+        // 检查相关目标是否仍在同一个列表项内
+        const relatedTarget = e.relatedTarget;
+        const stillInSameItem = relatedTarget && targetElement.contains(relatedTarget);
+        
+        if (!stillInSameItem) {
             dragState.lastDragOverElement.classList.remove('drag-over-folder', 'drag-over-target-top', 'drag-over-target-bottom');
             dragState.lastDragOverElement = null;
             dragState.dropAction = null;
         }
     }
+}
 
-    async function handleListDrop(e) {
-        e.preventDefault();
-        e.stopPropagation();
+async function handleListDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Keep local references to avoid race conditions if dragState is mutated elsewhere.
+    const dropTargetElement = dragState.lastDragOverElement;
+    const dropAction = dragState.dropAction;
+    const sourceIds = Array.isArray(dragState.sourceIds) ? [...dragState.sourceIds] : null;
+
+    // --- Cleanup visuals first ---
+    if (dropTargetElement) {
+        dropTargetElement.classList.remove('drag-over-folder', 'drag-over-target-top', 'drag-over-target-bottom');
+    }
     
-        const dropTargetElement = dragState.lastDragOverElement;
-        const dropAction = dragState.dropAction;
+    // --- Validate Drop ---
+    if (!dropTargetElement || !dropAction || !sourceIds || sourceIds.length === 0) {
+        handleListDragEnd(e);
+        return;
+    }
     
-        // --- Cleanup ---
-        if (dropTargetElement) {
-            dropTargetElement.classList.remove('drag-over-folder', 'drag-over-target-top', 'drag-over-target-bottom');
-        }
-        // Reset state immediately after drop
-        const sourceIds = dragState.sourceIds;
-        dragState = { sourceIds: null, lastDragOverElement: null, dropAction: null };
+    const sourcePaths = sourceIds.map(id => findItemById(getCombinedTree(), id)?.path).filter(Boolean);
+    if (sourcePaths.length !== sourceIds.length) {
+        console.error("Could not find paths for all source IDs.");
+        handleListDragEnd(e);
+        return;
+    }
     
-        // --- Validate Drop ---
-        if (!dropTargetElement || !dropAction || !sourceIds) {
-            await loadNoteTree(); // Reload to clean up any visual artifacts
-            return;
-        }
+    const targetId = dropTargetElement.dataset.id;
+    const targetItem = findItemById(getCombinedTree(), targetId);
+    if (!targetItem) {
+        handleListDragEnd(e);
+        return;
+    }
     
-        const sourcePaths = sourceIds.map(id => findItemById(getCombinedTree(), id)?.path).filter(Boolean);
-        if (sourcePaths.length === 0) return;
-    
-        const targetId = dropTargetElement.dataset.id;
-        const targetItem = findItemById(getCombinedTree(), targetId);
-        if (!targetItem) return;
-    
-        // --- Build Intent ---
-        let target = {
+    // --- Build Intent ---
+    let target;
+    try {
+        target = {
             targetId: targetItem.id,
             position: dropAction,
+            destPath: dropAction === 'inside' ? targetItem.path : await window.electronPath.dirname(targetItem.path)
         };
+    } catch(error) {
+        console.error("Error building drop target:", error);
+        handleListDragEnd(e);
+        return;
+    }
     
-        if (dropAction === 'inside') {
-            target.destPath = targetItem.path;
-        } else {
-            target.destPath = await window.electronPath.dirname(targetItem.path);
-        }
+    // Before executing heavy async work, clear UI dragging classes but keep local data intact.
+    noteList.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
+    // Do NOT immediately null out dragState.sourceIds here — let handleListDragEnd manage final reset.
     
-        // --- Send Intent & Reload ---
+    // --- Execute operation with feedback ---
+    try {
         const result = await window.electronAPI['notes:move-items']({ sourcePaths, target });
-        if (!result.success) {
-            console.error('Move operation failed:', result.error);
+        
+        if (!result || !result.success) {
+            await showErrorModal('移动失败', result.error || '发生未知错误。');
+        } else if (result.renamedItems && result.renamedItems.length > 0) {
+            // 使用简单的字符串处理来获取文件名
+            const getFileName = (path) => {
+                const parts = path.split(/[\\/]/);
+                return parts[parts.length - 1];
+            };
+            
+            const message = result.renamedItems.map(item =>
+                `"${getFileName(item.oldPath)}" 已重命名为 "${getFileName(item.newPath)}"`
+            ).join('<br>');
+            await showInfoModal('文件已自动重命名', message);
         }
+    } catch (error) {
+        console.error('handleListDrop failed unexpectedly:', error);
+        await showErrorModal('移动失败', error.message);
+    } finally {
+        // ALWAYS reload the tree. Avoid showing a full-screen overlay to prevent flashing.
         await loadNoteTree();
+        // Now perform the definitive cleanup of drag state & visuals
+        handleListDragEnd(e);
+    }
+}
+
+function handleListDragEnd(e) {
+    // Prevent double execution: if there is no sourceIds and no lastDragOverElement, nothing to do.
+    if (!dragState.sourceIds && !dragState.lastDragOverElement) return;
+
+    // Clear dragging classes
+    noteList.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
+
+    // Clear drag over visuals
+    if (dragState.lastDragOverElement) {
+        dragState.lastDragOverElement.classList.remove('drag-over-folder', 'drag-over-target-top', 'drag-over-target-bottom');
     }
 
-    function handleListDragEnd(e) {
-        // This is a catch-all to ensure dragging classes and state are cleared.
-        noteList.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
-        if (dragState.lastDragOverElement) {
-            dragState.lastDragOverElement.classList.remove('drag-over-folder', 'drag-over-target-top', 'drag-over-target-bottom');
-        }
-        dragState = { sourceIds: null, lastDragOverElement: null, dropAction: null };
+    // Reset drag state
+    dragState = { sourceIds: null, lastDragOverElement: null, dropAction: null };
 
-        // Re-enable global selection listener only if it was active before the drag.
-        if (window.electronAPI && window.electronAPI.toggleSelectionListener) {
-            if (wasSelectionListenerActive) {
-                window.electronAPI.toggleSelectionListener(true);
-            }
-            wasSelectionListenerActive = false; // Reset state
+    // 更彻底地清理缓存（改进版）
+    noteList.querySelectorAll('[_cachedDraggable]').forEach(el => {
+        delete el._cachedDraggable;
+    });
+
+    // Re-enable global selection listener only if it was active before the drag.
+    if (window.electronAPI && window.electronAPI.toggleSelectionListener) {
+        if (wasSelectionListenerActive) {
+            window.electronAPI.toggleSelectionListener(true);
         }
+        wasSelectionListenerActive = false; // Reset state
     }
+}
 
     let NOTES_DIR_CACHE = null; // Cache for the root directory
 
