@@ -7,6 +7,10 @@ const accumulatedStreamText = new Map(); // messageId -> string
 // const streamingHistory = new Map(); // DEPRECATED: This was the source of the sync bug.
 let activeStreamingMessageId = null; // Track the currently active streaming message
 
+// --- 新增：预缓冲系统 ---
+const preBufferedChunks = new Map(); // messageId -> array of chunks waiting for initialization
+const messageInitializationStatus = new Map(); // messageId -> 'pending' | 'ready' | 'finalized'
+
 // --- Local Reference Store ---
 let refs = {};
 
@@ -152,9 +156,14 @@ function renderChunkDirectlyToDOM(messageId, textToAppend, context) {
 }
 
 export function startStreamingMessage(message, passedMessageItem = null) {
-    activeStreamingMessageId = message.id;
+    const messageId = message.id;
+    
+    // 标记消息为初始化中
+    messageInitializationStatus.set(messageId, 'pending');
+    
+    activeStreamingMessageId = messageId;
     const { chatMessagesDiv, electronAPI, currentChatHistoryRef, currentSelectedItemRef, currentTopicIdRef, uiHelper } = refs;
-    if (!message || !message.id) return null;
+    if (!message || !messageId) return null;
 
     const currentSelectedItem = currentSelectedItemRef.get();
     const currentTopicId = currentTopicIdRef.get();
@@ -181,9 +190,9 @@ export function startStreamingMessage(message, passedMessageItem = null) {
 
     // Always prepare the message data for history.
     let initialContentForHistory = '';
-    if (shouldEnableSmoothStreaming(message.id)) {
-        streamingChunkQueues.set(message.id, []);
-        accumulatedStreamText.set(message.id, '');
+    if (shouldEnableSmoothStreaming(messageId)) {
+        streamingChunkQueues.set(messageId, []);
+        accumulatedStreamText.set(messageId, '');
     }
     
     const placeholderForHistory = {
@@ -224,6 +233,21 @@ export function startStreamingMessage(message, passedMessageItem = null) {
         }
     }
 
+    // 处理预缓冲的chunks（如果有）
+    const bufferedChunks = preBufferedChunks.get(messageId);
+    if (bufferedChunks && bufferedChunks.length > 0) {
+        console.log(`[StreamManager] Processing ${bufferedChunks.length} pre-buffered chunks for message ${messageId}`);
+        
+        // 将预缓冲的chunks转移到正式队列
+        for (const chunkData of bufferedChunks) {
+            // 重新调用appendStreamChunk处理这些chunks
+            appendStreamChunk(messageId, chunkData.chunk, chunkData.context);
+        }
+        preBufferedChunks.delete(messageId);
+    }
+    
+    // 标记消息为就绪
+    messageInitializationStatus.set(messageId, 'ready');
 
     if (isForActiveChat) {
         uiHelper.scrollToBottom();
@@ -233,6 +257,25 @@ export function startStreamingMessage(message, passedMessageItem = null) {
 }
 
 export function appendStreamChunk(messageId, chunkData, context) {
+    // 检查消息是否已初始化
+    const initStatus = messageInitializationStatus.get(messageId);
+    
+    // 如果消息还未初始化，先缓冲chunk
+    if (!initStatus || initStatus === 'pending') {
+        if (!preBufferedChunks.has(messageId)) {
+            preBufferedChunks.set(messageId, []);
+        }
+        preBufferedChunks.get(messageId).push({ chunk: chunkData, context });
+        console.log(`[StreamManager] Pre-buffering chunk for uninitialized message ${messageId}`);
+        return;
+    }
+    
+    // 如果消息已经finalized，忽略迟到的chunks（但记录日志）
+    if (initStatus === 'finalized') {
+        console.warn(`[StreamManager] Received chunk for already finalized message ${messageId}. This chunk will be ignored.`);
+        return;
+    }
+
     const currentChatHistoryArray = refs.currentChatHistoryRef.get();
 
     let textToAppend = "";
@@ -299,6 +342,24 @@ export function appendStreamChunk(messageId, chunkData, context) {
 }
 
 export async function finalizeStreamedMessage(messageId, finishReason, context) {
+    // 先处理所有剩余的队列chunks
+    if (shouldEnableSmoothStreaming(messageId)) {
+        const queue = streamingChunkQueues.get(messageId);
+        
+        // 强制处理所有剩余的chunks
+        if (queue && queue.length > 0) {
+            console.log(`[StreamManager] Processing ${queue.length} remaining chunks before finalization`);
+            
+            // 批量处理所有剩余chunks
+            while (queue.length > 0) {
+                processAndRenderSmoothChunk(messageId);
+            }
+            
+            // 等待一个小延迟确保DOM更新
+            await new Promise(resolve => setTimeout(resolve, 50));
+        }
+    }
+
     // Stop timers and clear active streaming ID
     if (streamingTimers.has(messageId)) {
         clearInterval(streamingTimers.get(messageId));
@@ -307,6 +368,9 @@ export async function finalizeStreamedMessage(messageId, finishReason, context) 
     if (activeStreamingMessageId === messageId) {
         activeStreamingMessageId = null;
     }
+    
+    // 标记为已完成
+    messageInitializationStatus.set(messageId, 'finalized');
 
     const { chatMessagesDiv, electronAPI, uiHelper, markedInstance } = refs;
     const currentSelectedItem = refs.currentSelectedItemRef.get();
@@ -432,6 +496,12 @@ export async function finalizeStreamedMessage(messageId, finishReason, context) 
     // 6. Final cleanup.
     streamingChunkQueues.delete(messageId);
     accumulatedStreamText.delete(messageId);
+    
+    // 清理所有相关数据
+    setTimeout(() => {
+        messageInitializationStatus.delete(messageId);
+        preBufferedChunks.delete(messageId);
+    }, 5000); // 5秒后清理，防止极端延迟的chunks
 }
 
 // Expose to global scope for classic scripts
