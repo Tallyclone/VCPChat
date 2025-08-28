@@ -474,6 +474,25 @@
             align-items: center; /* 新增：使其内容居中 */
         }
 
+        /* Style for Draw.io diagrams */
+        .drawio-diagram {
+            background-color: var(--viewer-code-bg);
+            padding: 1em;
+            border-radius: 5px;
+            margin-bottom: 1em;
+            overflow: hidden; /* Ensure content stays within bounds */
+            border: 1px solid var(--viewer-code-bg-hover);
+            display: flex; /* Use flexbox to center content if needed */
+            justify-content: center;
+            align-items: center;
+            min-height: 200px; /* Minimum height for visibility */
+        }
+        .drawio-diagram svg {
+            max-width: 100%;
+            height: auto;
+            display: block; /* Remove extra space below image */
+        }
+
         /* Styles for Python execution output */
         .python-output-container {
             background-color: var(--viewer-code-bg);
@@ -919,6 +938,8 @@
     <script src="../vendor/marked.min.js"></script>
     <script src="../vendor/highlight.min.js"></script>
     <script src="../vendor/html2canvas.min.js"></script>
+    <!-- draw.io viewer for embedding diagrams -->
+    <script src="https://app.diagrams.net/js/viewer.min.js"></script>
     <script src="text-viewer.js"></script>
 </body>
 </html>

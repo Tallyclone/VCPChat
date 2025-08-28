@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const sourceTextarea = document.getElementById('sourceText');
     const translatedTextarea = document.getElementById('translatedText');
     const targetLanguageSelect = document.getElementById('targetLanguageSelect');
+    const modelSelect = document.getElementById('modelSelect');
     const customPromptVarInput = document.getElementById('customPromptVar');
     const translateBtn = document.getElementById('translateBtn');
     const copyBtn = document.getElementById('copyBtn');
@@ -113,17 +114,31 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
-        const targetLanguage = targetLanguageSelect.value;
+        const targetLanguageValue = targetLanguageSelect.value;
         const customPromptVar = customPromptVarInput.value.trim();
+        let targetLanguageText = '';
 
-        let systemPrompt = `你是一个专业的翻译助手。请将用户提供的文本翻译成${targetLanguageSelect.options[targetLanguageSelect.selectedIndex].text}。`;
-        if (customPromptVar) {
+        if (targetLanguageValue === 'custom') {
+            targetLanguageText = customPromptVar;
+            if (!targetLanguageText) {
+                alert('请在“自定义提示词”框中输入您想翻译的目标语言。');
+                return;
+            }
+            // 当使用自定义语言时，我们将自定义提示词框的内容作为目标语言。
+        } else {
+            targetLanguageText = targetLanguageSelect.options[targetLanguageSelect.selectedIndex].text;
+        }
+
+        let systemPrompt = `你是一个专业的翻译助手。请将用户提供的文本翻译成${targetLanguageText}。`;
+        // 如果不是自定义模式，并且自定义提示词有内容，则添加为额外要求
+        if (targetLanguageValue !== 'custom' && customPromptVar) {
             systemPrompt += ` 额外要求: ${customPromptVar}。`;
         }
         systemPrompt += ` 仅返回翻译结果，不要包含任何解释或额外信息。`;
 
         const messages = [{ role: 'system', content: systemPrompt }, { role: 'user', content: sourceText }];
-        const modelConfig = { model: 'gemini-2.5-flash-lite-preview-06-17', temperature: 0.7 };
+        const selectedModel = modelSelect.value;
+        const modelConfig = { model: selectedModel, temperature: 0.7 };
 
         performDirectTranslation(messages, modelConfig);
     });

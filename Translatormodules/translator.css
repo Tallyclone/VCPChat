@@ -71,6 +71,16 @@ body {
     box-sizing: border-box; /* 确保 padding 和 border 包含在 height 内 */
 }
 
+/* --- 自定义下拉箭头 --- */
+.translator-controls select {
+    -webkit-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' viewBox='0 0 24 24'%3E%3Cpath stroke='%23cccccc' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m19 9-7 7-7-7'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 30px; /* 为自定义箭头留出空间 */
+}
+
 .translator-controls select:focus,
 .translator-controls input[type="text"]:focus,
 .translator-main textarea:focus {

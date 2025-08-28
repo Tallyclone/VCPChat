@@ -6,6 +6,7 @@
     <title>VCP 人类工具箱</title>
     <link rel="stylesheet" href="../styles/themes.css">
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="WorkflowEditormodules/WorkflowEditor_ApiConfigDialog.css">
 </head>
 <body>
     <div class="title-bar">
@@ -21,6 +22,14 @@
         <header>
             <h1>工具箱</h1>
             <p>一个为人类设计的直观工具调用界面。</p>
+            <div class="header-actions">
+                <button id="workflow-btn" class="workflow-btn">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                    </svg>
+                    工作流编排
+                </button>
+            </div>
         </header>
 
         <main id="main-content">
@@ -38,6 +47,20 @@
         </main>
     </div>
 
+    <!-- 引入jsPlumb库 -->
+    <script src="WorkflowEditormodules/jsplumb.min.js"></script>
+    
+    <!-- 引入工作流编辑器模块 -->
+    <script src="WorkflowEditormodules/WorkflowEditor_ApiConfigDialog.js"></script>
+    <script src="WorkflowEditormodules/WorkflowEditor_PluginManager.js"></script>
+    <script src="WorkflowEditormodules/WorkflowEditor_StateManager.js"></script>
+    <script src="WorkflowEditormodules/WorkflowEditor_CanvasManager_JSPlumb.js"></script>
+    <script src="WorkflowEditormodules/WorkflowEditor_NodeManager.js"></script>
+    <script src="WorkflowEditormodules/WorkflowEditor_UIManager.js"></script>
+    <script src="WorkflowEditormodules/WorkflowEditor_Config.js"></script>
+    <script src="WorkflowEditormodules/WorkflowEditor_PluginDialog.js"></script>
+    <script src="WorkflowEditormodules/WorkflowEditorLoader.js"></script>
+    
     <script src="renderer.js"></script>
 </body>
 </html>

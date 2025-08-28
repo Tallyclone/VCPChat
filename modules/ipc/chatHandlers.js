@@ -17,7 +17,12 @@ const fileManager = require('../fileManager');
  * @param {function} context.startSelectionListener - Function to start the selection listener.
  */
 function initialize(mainWindow, context) {
-    const { AGENT_DIR, USER_DATA_DIR, APP_DATA_ROOT_IN_PROJECT, NOTES_AGENT_ID, getMusicState } = context;
+    const { AGENT_DIR, USER_DATA_DIR, APP_DATA_ROOT_IN_PROJECT, NOTES_AGENT_ID, getMusicState, fileWatcher } = context;
+
+    // Ensure the watcher is in a clean state on initialization
+    if (fileWatcher) {
+        fileWatcher.stopWatching();
+    }
 
     ipcMain.handle('save-topic-order', async (event, agentId, orderedTopicIds) => {
         if (!agentId || !Array.isArray(orderedTopicIds)) {
@@ -149,11 +154,13 @@ function initialize(mainWindow, context) {
         if (!topicId) return { error: `获取Agent ${agentId} 聊天历史失败: topicId 未提供。` };
         try {
             const historyFile = path.join(USER_DATA_DIR, agentId, 'topics', topicId, 'history.json');
-            await fs.ensureDir(path.dirname(historyFile)); 
+            await fs.ensureDir(path.dirname(historyFile));
+
+
             if (await fs.pathExists(historyFile)) {
                 return await fs.readJson(historyFile);
             }
-            return []; 
+            return [];
         } catch (error) {
             console.error(`获取Agent ${agentId} 话题 ${topicId} 聊天历史失败:`, error);
             return { error: error.message };
@@ -163,6 +170,9 @@ function initialize(mainWindow, context) {
     ipcMain.handle('save-chat-history', async (event, agentId, topicId, history) => {
         if (!topicId) return { error: `保存Agent ${agentId} 聊天历史失败: topicId 未提供。` };
         try {
+            if (fileWatcher) {
+                fileWatcher.signalInternalSave();
+            }
             const historyDir = path.join(USER_DATA_DIR, agentId, 'topics', topicId);
             await fs.ensureDir(historyDir);
             const historyFile = path.join(historyDir, 'history.json');
@@ -463,6 +473,43 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
         console.log(`[Main - sendToVCP] ***** sendToVCP HANDLER EXECUTED for messageId: ${messageId}, isGroupCall: ${isGroupCall} *****`, context);
         const streamChannel = 'vcp-stream-event'; // Use a single, unified channel for all stream events.
         
+        // 🔧 数据验证和规范化
+        try {
+            // 确保messages数组中的content都是正确的格式
+            messages = messages.map(msg => {
+                if (!msg || typeof msg !== 'object') {
+                    console.error('[Main - sendToVCP] Invalid message object:', msg);
+                    return { role: 'system', content: '[Invalid message]' };
+                }
+                
+                // 如果content是对象，尝试提取text字段或转为JSON字符串
+                if (msg.content && typeof msg.content === 'object') {
+                    if (msg.content.text) {
+                        // 如果有text字段，使用它
+                        return { ...msg, content: String(msg.content.text) };
+                    } else if (Array.isArray(msg.content)) {
+                        // 如果是数组（多模态消息），保持原样
+                        return msg;
+                    } else {
+                        // 否则转为JSON字符串
+                        console.warn('[Main - sendToVCP] Message content is object without text field, stringifying:', msg.content);
+                        return { ...msg, content: JSON.stringify(msg.content) };
+                    }
+                }
+                
+                // 确保content是字符串（除非是多模态数组）
+                if (msg.content && !Array.isArray(msg.content) && typeof msg.content !== 'string') {
+                    console.warn('[Main - sendToVCP] Converting non-string content to string:', msg.content);
+                    return { ...msg, content: String(msg.content) };
+                }
+                
+                return msg;
+            });
+        } catch (validationError) {
+            console.error('[Main - sendToVCP] Error validating messages:', validationError);
+            return { error: `消息格式验证失败: ${validationError.message}` };
+        }
+        
         let finalVcpUrl = vcpUrl;
         let settings = {};
         try {
@@ -569,18 +616,33 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
             console.log('模型配置:', modelConfig);
             if (context) console.log('上下文:', context);
     
+            // 🔧 在发送前验证请求体
+            const requestBody = {
+                messages: messages,
+                ...modelConfig,
+                stream: modelConfig.stream === true,
+                requestId: messageId
+            };
+            
+            // 验证JSON可序列化性
+            let serializedBody;
+            try {
+                serializedBody = JSON.stringify(requestBody);
+                // 调试：记录前100个字符
+                console.log('[Main - sendToVCP] Request body preview:', serializedBody.substring(0, 100) + '...');
+            } catch (serializeError) {
+                console.error('[Main - sendToVCP] Failed to serialize request body:', serializeError);
+                console.error('[Main - sendToVCP] Problematic request body:', requestBody);
+                return { error: `请求体序列化失败: ${serializeError.message}` };
+            }
+    
             const response = await fetch(finalVcpUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${vcpApiKey}`
                 },
-                body: JSON.stringify({
-                    messages: messages,
-                    ...modelConfig,
-                    stream: modelConfig.stream === true,
-                    requestId: messageId
-                })
+                body: serializedBody
             });
     
             if (!response.ok) {
@@ -594,21 +656,45 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
                     }
                 } catch (e) { /* Not JSON, use raw text */ }
                 
-                const errorMessageToPropagate = `VCP请求失败: ${response.status} - ${errorData.message || errorData.error || (typeof errorData === 'string' ? errorData : '未知服务端错误')}`;
+                // 🔧 改进错误消息构造，防止 [object Object]
+                let errorMessage = '';
+                if (errorData.message && typeof errorData.message === 'string') {
+                    errorMessage = errorData.message;
+                } else if (errorData.error) {
+                    if (typeof errorData.error === 'string') {
+                        errorMessage = errorData.error;
+                    } else if (errorData.error.message && typeof errorData.error.message === 'string') {
+                        errorMessage = errorData.error.message;
+                    } else if (typeof errorData.error === 'object') {
+                        // 如果error是对象，尝试JSON序列化
+                        errorMessage = JSON.stringify(errorData.error);
+                    }
+                } else if (typeof errorData === 'string') {
+                    errorMessage = errorData;
+                } else {
+                    errorMessage = '未知服务端错误';
+                }
+                
+                const errorMessageToPropagate = `VCP请求失败: ${response.status} - ${errorMessage}`;
                 
                 if (modelConfig.stream === true && event && event.sender && !event.sender.isDestroyed()) {
                     // 构造更详细的错误信息
                     let detailedErrorMessage = `服务器返回状态 ${response.status}.`;
-                    if (errorData && errorData.message) detailedErrorMessage += ` 错误: ${errorData.message}`;
-                    else if (errorData && errorData.error && errorData.error.message) detailedErrorMessage += ` 错误: ${errorData.error.message}`;
-                    else if (typeof errorData === 'string' && errorData.length < 200) detailedErrorMessage += ` 响应: ${errorData}`;
-                    else if (errorData && errorData.details && typeof errorData.details === 'string' && errorData.details.length < 200) detailedErrorMessage += ` 详情: ${errorData.details}`;
+                    if (errorData && errorData.message && typeof errorData.message === 'string') {
+                        detailedErrorMessage += ` 错误: ${errorData.message}`;
+                    } else if (errorData && errorData.error && errorData.error.message && typeof errorData.error.message === 'string') {
+                        detailedErrorMessage += ` 错误: ${errorData.error.message}`;
+                    } else if (typeof errorData === 'string' && errorData.length < 200) {
+                        detailedErrorMessage += ` 响应: ${errorData}`;
+                    } else if (errorData && errorData.details && typeof errorData.details === 'string' && errorData.details.length < 200) {
+                        detailedErrorMessage += ` 详情: ${errorData.details}`;
+                    }
     
                     const errorPayload = { type: 'error', error: `VCP请求失败: ${detailedErrorMessage}`, details: errorData, messageId: messageId };
                     if (context) errorPayload.context = context;
                     event.sender.send(streamChannel, errorPayload);
                     // 为函数返回值构造统一的 errorDetail.message
-                    const finalErrorMessageForReturn = `VCP请求失败: ${response.status} - ${errorData.message || (errorData.error && errorData.error.message) || (typeof errorData === 'string' ? errorData : '详细错误请查看控制台')}`;
+                    const finalErrorMessageForReturn = `VCP请求失败: ${response.status} - ${errorMessage}`;
                     return { streamError: true, error: `VCP请求失败 (${response.status})`, errorDetail: { message: finalErrorMessageForReturn, originalData: errorData } };
                 }
                 const err = new Error(errorMessageToPropagate);

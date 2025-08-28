@@ -423,19 +423,22 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
             // msg.attachments contains _fileManagerData which has internalPath
             if (msg.attachments && msg.attachments.length > 0) {
                 for (const att of msg.attachments) {
-                    if (att._fileManagerData && att._fileManagerData.type && att._fileManagerData.type.startsWith('image/') && att._fileManagerData.internalPath) {
+                    const isSupportedMediaType = att._fileManagerData.type.startsWith('image/') || att._fileManagerData.type.startsWith('audio/') || att._fileManagerData.type.startsWith('video/');
+                    if (att._fileManagerData && att._fileManagerData.type && isSupportedMediaType && att._fileManagerData.internalPath) {
                         try {
-                            const base64Data = await fileManager.getFileAsBase64(att._fileManagerData.internalPath);
-                            if (base64Data && !base64Data.error) {
+                            const result = await fileManager.getFileAsBase64(att._fileManagerData.internalPath);
+                            if (result && result.success && result.base64Frames && result.base64Frames.length > 0) {
+                                // 对于多帧的媒体（如GIF），我们这里只取第一帧给AI，以避免上下文过长。
+                                // 未来可以根据模型能力进行优化。
                                 vcpMessageContent.push({
                                     type: 'image_url',
-                                    image_url: { url: `data:${att._fileManagerData.type};base64,${base64Data}` }
+                                    image_url: { url: `data:${att._fileManagerData.type};base64,${result.base64Frames[0]}` }
                                 });
                             } else {
-                                console.warn(`[GroupChat] Failed to get base64 for image ${att.name || att._fileManagerData.name}: ${base64Data?.error}`);
+                                console.warn(`[GroupChat] Failed to get base64 for media ${att.name || att._fileManagerData.name}: ${result?.error}`);
                             }
                         } catch (e) {
-                            console.error(`[GroupChat] Error getting base64 for image ${att.name || att._fileManagerData.name} in context:`, e);
+                            console.error(`[GroupChat] Error getting base64 for media ${att.name || att._fileManagerData.name} in context:`, e);
                         }
                     }
                 }
@@ -801,17 +804,20 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
 
         if (msg.attachments && msg.attachments.length > 0) {
             for (const att of msg.attachments) {
-                if (att._fileManagerData && att._fileManagerData.type && att._fileManagerData.type.startsWith('image/') && att._fileManagerData.internalPath) {
+                const isSupportedMediaType = att._fileManagerData.type.startsWith('image/') || att._fileManagerData.type.startsWith('audio/') || att._fileManagerData.type.startsWith('video/');
+                if (att._fileManagerData && att._fileManagerData.type && isSupportedMediaType && att._fileManagerData.internalPath) {
                     try {
-                        const base64Data = await fileManager.getFileAsBase64(att._fileManagerData.internalPath);
-                        if (base64Data && !base64Data.error) {
+                        const result = await fileManager.getFileAsBase64(att._fileManagerData.internalPath);
+                        if (result && result.success && result.base64Frames && result.base64Frames.length > 0) {
                             vcpMessageContent.push({
                                 type: 'image_url',
-                                image_url: { url: `data:${att._fileManagerData.type};base64,${base64Data}` }
+                                image_url: { url: `data:${att._fileManagerData.type};base64,${result.base64Frames[0]}` }
                             });
+                        } else {
+                             console.warn(`[GroupChat Invite] Failed to get base64 for media ${att.name || att._fileManagerData.name}: ${result?.error}`);
                         }
                     } catch (e) {
-                        console.error(`[GroupChat Invite] Error getting base64 for image ${att.name || att._fileManagerData.name} in context:`, e);
+                        console.error(`[GroupChat Invite] Error getting base64 for media ${att.name || att._fileManagerData.name} in context:`, e);
                     }
                 }
             }

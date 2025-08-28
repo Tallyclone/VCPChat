@@ -4,7 +4,12 @@
 const streamingChunkQueues = new Map(); // messageId -> array of original chunk strings
 const streamingTimers = new Map();      // messageId -> intervalId
 const accumulatedStreamText = new Map(); // messageId -> string
-const streamingHistory = new Map(); // NEW: messageId -> historyArray reference
+// const streamingHistory = new Map(); // DEPRECATED: This was the source of the sync bug.
+let activeStreamingMessageId = null; // Track the currently active streaming message
+
+// --- 新增：预缓冲系统 ---
+const preBufferedChunks = new Map(); // messageId -> array of chunks waiting for initialization
+const messageInitializationStatus = new Map(); // messageId -> 'pending' | 'ready' | 'finalized'
 
 // --- Local Reference Store ---
 let refs = {};
@@ -34,11 +39,8 @@ function messageIsFinalized(messageId) {
 
 function processAndRenderSmoothChunk(messageId) {
     const { chatMessagesDiv, markedInstance, uiHelper } = refs;
-    const historyForThisMessage = streamingHistory.get(messageId);
-    if (!historyForThisMessage) {
-        // This can happen if a timer fires after a stream is force-closed.
-        return;
-    }
+    // ALWAYS get the LATEST history. This is the core fix.
+    const historyForThisMessage = refs.currentChatHistoryRef.get();
     
     const messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
     // If the message item doesn't exist in the DOM (because it's for a non-visible chat),
@@ -103,11 +105,8 @@ function processAndRenderSmoothChunk(messageId) {
 
 function renderChunkDirectlyToDOM(messageId, textToAppend, context) {
     const { chatMessagesDiv, markedInstance, uiHelper } = refs;
-    const historyForThisMessage = streamingHistory.get(messageId);
-    if (!historyForThisMessage) {
-        console.error(`[StreamManager] Direct render: No history cached for message ${messageId}`);
-        return;
-    }
+    // ALWAYS get the LATEST history. This is the core fix.
+    const historyForThisMessage = refs.currentChatHistoryRef.get();
 
     const messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
     // if (!messageItem) return; // Don't return, allow history to be updated.
@@ -156,51 +155,127 @@ function renderChunkDirectlyToDOM(messageId, textToAppend, context) {
     }
 }
 
-export function startStreamingMessage(message) {
-    const { chatMessagesDiv, uiHelper } = refs;
-    if (!message || !message.id) return null;
+export function startStreamingMessage(message, passedMessageItem = null) {
+    const messageId = message.id;
+    
+    // 标记消息为初始化中
+    messageInitializationStatus.set(messageId, 'pending');
+    
+    activeStreamingMessageId = messageId;
+    const { chatMessagesDiv, electronAPI, currentChatHistoryRef, currentSelectedItemRef, currentTopicIdRef, uiHelper } = refs;
+    if (!message || !messageId) return null;
 
-    let messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${message.id}"]`);
+    const currentSelectedItem = currentSelectedItemRef.get();
+    const currentTopicId = currentTopicIdRef.get();
 
-    if (!messageItem) {
-        const placeholderMessage = { ...message, content: '', isThinking: false, timestamp: message.timestamp || Date.now(), isGroupMessage: message.isGroupMessage || false };
-        messageItem = refs.renderMessage(placeholderMessage, false); 
-        if (!messageItem) return null;
+    // Determine if the message is for the active chat.
+    // This is a simplified check. A more robust solution might pass the message's context.
+    const isForActiveChat = (passedMessageItem !== null) || (document.querySelector(`.message-item[data-message-id="${message.id}"]`) !== null);
+
+    let messageItem = passedMessageItem || chatMessagesDiv.querySelector(`.message-item[data-message-id="${message.id}"]`);
+
+    // We only need to manipulate the DOM if the message is for the currently visible chat.
+    if (isForActiveChat) {
+        if (!messageItem) {
+            const placeholderMessage = { ...message, content: '', isThinking: false, timestamp: message.timestamp || Date.now(), isGroupMessage: message.isGroupMessage || false };
+            messageItem = refs.renderMessage(placeholderMessage, false);
+            if (!messageItem) {
+                console.error(`[StreamManager] CRITICAL: Failed to render message item for active chat ${message.id}.`);
+                return null;
+            }
+        }
+        messageItem.classList.add('streaming');
+        messageItem.classList.remove('thinking');
+    }
+
+    // Always prepare the message data for history.
+    let initialContentForHistory = '';
+    if (shouldEnableSmoothStreaming(messageId)) {
+        streamingChunkQueues.set(messageId, []);
+        accumulatedStreamText.set(messageId, '');
     }
     
-    messageItem.classList.add('streaming');
-    messageItem.classList.remove('thinking'); 
+    const placeholderForHistory = {
+        ...message,
+        content: initialContentForHistory,
+        isThinking: false,
+        timestamp: message.timestamp || Date.now(),
+        isGroupMessage: message.isGroupMessage || false
+    };
 
-    const currentChatHistoryArray = refs.currentChatHistoryRef.get();
-    const historyIndex = currentChatHistoryArray.findIndex(m => m.id === message.id);
-
-    let initialContentForHistory = '';
-    if (shouldEnableSmoothStreaming(message.id)) {
-        streamingChunkQueues.set(message.id, []);
-        accumulatedStreamText.set(message.id, '');
-    }
-    // When a stream starts, it's always for the current chat.
-    // So we can safely cache the current history array for this stream.
-    streamingHistory.set(message.id, currentChatHistoryArray);
+    // Update the history. This part is crucial and now handles both active and background chats.
+    const history = currentChatHistoryRef.get();
+    const historyIndex = history.findIndex(m => m.id === message.id);
 
     if (historyIndex === -1) {
-        currentChatHistoryArray.push({ ...message, content: initialContentForHistory, isThinking: false, timestamp: message.timestamp || Date.now(), isGroupMessage: message.isGroupMessage || false });
+        history.push(placeholderForHistory);
     } else {
-        currentChatHistoryArray[historyIndex].isThinking = false;
-        currentChatHistoryArray[historyIndex].content = initialContentForHistory;
-        currentChatHistoryArray[historyIndex].timestamp = message.timestamp || Date.now();
-        currentChatHistoryArray[historyIndex].name = message.name || currentChatHistoryArray[historyIndex].name;
-        currentChatHistoryArray[historyIndex].agentId = message.agentId || currentChatHistoryArray[historyIndex].agentId;
-        currentChatHistoryArray[historyIndex].isGroupMessage = message.isGroupMessage || currentChatHistoryArray[historyIndex].isGroupMessage || false;
+        history[historyIndex] = { ...history[historyIndex], ...placeholderForHistory };
     }
-    refs.currentChatHistoryRef.set(currentChatHistoryArray);
+    
+    // This is the key change: We are now explicitly updating the history for the *current* chat.
+    // When a background chat finishes, its *full* history will be loaded from disk, updated, and saved.
+    // This immediate update is primarily for the active chat's UI consistency.
+    currentChatHistoryRef.set([...history]);
+    
+    // Save the history immediately to ensure the placeholder is on disk before finalization.
+    // This is critical for the background chat scenario.
+    const itemId = currentSelectedItem.id;
+    const topicId = currentTopicId;
+    const itemType = currentSelectedItem.type;
 
-    // 调用现在已经内置了条件检查的 scrollToBottom
-    refs.uiHelper.scrollToBottom();
+    if (itemId && topicId) {
+        const historyToSave = history.filter(msg => !msg.isThinking);
+         if (itemType === 'agent') {
+            electronAPI.saveChatHistory(itemId, topicId, historyToSave);
+        } else if (itemType === 'group') {
+            electronAPI.saveGroupChatHistory(itemId, topicId, historyToSave);
+        }
+    }
+
+    // 处理预缓冲的chunks（如果有）
+    const bufferedChunks = preBufferedChunks.get(messageId);
+    if (bufferedChunks && bufferedChunks.length > 0) {
+        console.log(`[StreamManager] Processing ${bufferedChunks.length} pre-buffered chunks for message ${messageId}`);
+        
+        // 将预缓冲的chunks转移到正式队列
+        for (const chunkData of bufferedChunks) {
+            // 重新调用appendStreamChunk处理这些chunks
+            appendStreamChunk(messageId, chunkData.chunk, chunkData.context);
+        }
+        preBufferedChunks.delete(messageId);
+    }
+    
+    // 标记消息为就绪
+    messageInitializationStatus.set(messageId, 'ready');
+
+    if (isForActiveChat) {
+        uiHelper.scrollToBottom();
+    }
+
     return messageItem;
 }
 
 export function appendStreamChunk(messageId, chunkData, context) {
+    // 检查消息是否已初始化
+    const initStatus = messageInitializationStatus.get(messageId);
+    
+    // 如果消息还未初始化，先缓冲chunk
+    if (!initStatus || initStatus === 'pending') {
+        if (!preBufferedChunks.has(messageId)) {
+            preBufferedChunks.set(messageId, []);
+        }
+        preBufferedChunks.get(messageId).push({ chunk: chunkData, context });
+        console.log(`[StreamManager] Pre-buffering chunk for uninitialized message ${messageId}`);
+        return;
+    }
+    
+    // 如果消息已经finalized，忽略迟到的chunks（但记录日志）
+    if (initStatus === 'finalized') {
+        console.warn(`[StreamManager] Received chunk for already finalized message ${messageId}. This chunk will be ignored.`);
+        return;
+    }
+
     const currentChatHistoryArray = refs.currentChatHistoryRef.get();
 
     let textToAppend = "";
@@ -267,64 +342,123 @@ export function appendStreamChunk(messageId, chunkData, context) {
 }
 
 export async function finalizeStreamedMessage(messageId, finishReason, context) {
-    // 停止所有与此消息相关的定时器
+    // 先处理所有剩余的队列chunks
+    if (shouldEnableSmoothStreaming(messageId)) {
+        const queue = streamingChunkQueues.get(messageId);
+        
+        // 强制处理所有剩余的chunks
+        if (queue && queue.length > 0) {
+            console.log(`[StreamManager] Processing ${queue.length} remaining chunks before finalization`);
+            
+            // 批量处理所有剩余chunks
+            while (queue.length > 0) {
+                processAndRenderSmoothChunk(messageId);
+            }
+            
+            // 等待一个小延迟确保DOM更新
+            await new Promise(resolve => setTimeout(resolve, 50));
+        }
+    }
+
+    // Stop timers and clear active streaming ID
     if (streamingTimers.has(messageId)) {
         clearInterval(streamingTimers.get(messageId));
         streamingTimers.delete(messageId);
     }
+    if (activeStreamingMessageId === messageId) {
+        activeStreamingMessageId = null;
+    }
+    
+    // 标记为已完成
+    messageInitializationStatus.set(messageId, 'finalized');
 
     const { chatMessagesDiv, electronAPI, uiHelper, markedInstance } = refs;
     const currentSelectedItem = refs.currentSelectedItemRef.get();
     const currentTopicIdVal = refs.currentTopicIdRef.get();
-    const historyForThisMessage = streamingHistory.get(messageId);
 
+    // 1. Determine if the message belongs to the currently active chat window.
+    const isRelevant = context && currentSelectedItem &&
+        (context.groupId ? context.groupId === currentSelectedItem.id : context.agentId === currentSelectedItem.id) &&
+        context.topicId === currentTopicIdVal;
+
+    // 2. Get the appropriate chat history.
+    let historyForThisMessage;
+    if (isRelevant) {
+        // For the active chat, use the in-memory history reference.
+        historyForThisMessage = refs.currentChatHistoryRef.get();
+    } else if (context) {
+        // For a background chat, we must fetch the history from the file system.
+        const { agentId, groupId, topicId } = context;
+        const itemId = groupId || agentId;
+        const itemType = groupId ? 'group' : 'agent';
+        if (itemId && topicId) {
+            try {
+                const historyResult = itemType === 'agent'
+                    ? await electronAPI.getChatHistory(itemId, topicId)
+                    : await electronAPI.getGroupChatHistory(itemId, topicId);
+                
+                if (historyResult && !historyResult.error) {
+                    historyForThisMessage = historyResult;
+                } else {
+                    console.error(`[StreamManager] Finalize: Failed to get history for background chat`, context, historyResult?.error);
+                }
+            } catch (e) {
+                console.error(`[StreamManager] Finalize: Exception getting history for background chat`, context, e);
+            }
+        }
+    }
+
+    // Abort if we couldn't retrieve the history.
     if (!historyForThisMessage) {
-        console.error(`[StreamManager] Finalize: Could not find a cached history for messageId: ${messageId}. The stream may have been orphaned.`);
-        // Clean up other maps just in case
-        streamingChunkQueues.delete(messageId);
+        console.error(`[StreamManager] Finalize: Could not retrieve history for message ${messageId}. Aborting.`);
         accumulatedStreamText.delete(messageId);
+        streamingChunkQueues.delete(messageId);
         return;
     }
 
-    const messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
-    if (!messageItem) {
-        console.log(`[StreamManager] Finalize: Message item ${messageId} not found in DOM. Will still process history.`);
-        // Don't return early. We must update the history regardless of UI visibility.
-    }
-
-    if (messageItem) {
-        messageItem.classList.remove('streaming', 'thinking');
-    }
-
-    // 【决定性逻辑】无条件地从内部状态获取最终文本
+    // 3. Find and update the message in the retrieved history.
     const finalFullText = accumulatedStreamText.get(messageId) || "";
-
     const messageIndex = historyForThisMessage.findIndex(msg => msg.id === messageId);
 
-    if (messageIndex > -1) {
-        const message = historyForThisMessage[messageIndex];
-        message.content = finalFullText; // Use the authoritative internal text to update history
-        message.finishReason = finishReason;
-        message.isThinking = false;
+    if (messageIndex === -1) {
+        console.error(`[StreamManager] Finalize: Message ${messageId} not found in its history array. The message might have been deleted.`, { isRelevant, context });
+        // Clean up and exit if message not found.
+        accumulatedStreamText.delete(messageId);
+        streamingChunkQueues.delete(messageId);
+        return;
+    }
 
-        // Update metadata
-        if (message.isGroupMessage && context) {
-            message.name = context.agentName || message.name;
-            message.agentId = context.agentId || message.agentId;
-        }
+    const message = historyForThisMessage[messageIndex];
+    message.content = finalFullText;
+    message.finishReason = finishReason;
+    message.isThinking = false;
+    if (message.isGroupMessage && context) {
+        message.name = context.agentName || message.name;
+        message.agentId = context.agentId || message.agentId;
+    }
 
-        // Check if this is the current view
-        const isRelevant = context && currentSelectedItem &&
-            (context.groupId ? context.groupId === currentSelectedItem.id : context.agentId === currentSelectedItem.id) &&
-            context.topicId === currentTopicIdVal;
-
-        if (isRelevant) {
-            // If it's the current chat, update the main ref to sync UI state
-            refs.currentChatHistoryRef.set([...historyForThisMessage]);
-        }
+    // 4. If it's the active chat, update the UI and the in-memory state.
+    if (isRelevant) {
+        refs.currentChatHistoryRef.set([...historyForThisMessage]);
         
+        const messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
         if (messageItem) {
-            // Ensure timestamp and context menu exist
+            messageItem.classList.remove('streaming', 'thinking');
+            
+            // Final, authoritative DOM render
+            const contentDiv = messageItem.querySelector('.md-content');
+            if (contentDiv) {
+                const globalSettings = refs.globalSettingsRef.get();
+                const processedFinalText = refs.preprocessFullContent(finalFullText, globalSettings);
+                const rawHtml = markedInstance.parse(processedFinalText);
+                refs.setContentAndProcessImages(contentDiv, rawHtml, messageId);
+                refs.processRenderedContent(contentDiv);
+                if (globalSettings.enableAgentBubbleTheme && refs.processAnimationsInContent) {
+                    refs.processAnimationsInContent(contentDiv);
+                }
+            }
+            
+            // Add context menu and update timestamp if needed
             const nameTimeBlock = messageItem.querySelector('.name-time-block');
             if (nameTimeBlock && !nameTimeBlock.querySelector('.message-timestamp')) {
                 const timestampDiv = document.createElement('div');
@@ -336,53 +470,38 @@ export async function finalizeStreamedMessage(messageId, finishReason, context) 
                 e.preventDefault();
                 refs.showContextMenu(e, messageItem, message);
             });
+
+            refs.uiHelper.scrollToBottom();
         }
+    }
 
-        // Always save the modified history to disk using the context
-        const historyToSave = historyForThisMessage.filter(msg => !msg.isThinking);
-        if (context) {
-            const { agentId, groupId, topicId } = context;
-            const itemId = groupId || agentId;
-            const itemType = groupId ? 'group' : 'agent';
+    // 5. Always save the updated history back to the file system.
+    const historyToSave = historyForThisMessage.filter(msg => !msg.isThinking);
+    if (context) {
+        const { agentId, groupId, topicId } = context;
+        const itemId = groupId || agentId;
+        const itemType = groupId ? 'group' : 'agent';
 
-            if (itemId && topicId) {
-                if (itemType === 'agent') {
-                    await electronAPI.saveChatHistory(itemId, topicId, historyToSave);
-                } else if (itemType === 'group' && electronAPI.saveGroupChatHistory) {
-                    await electronAPI.saveGroupChatHistory(itemId, topicId, historyToSave);
-                }
+        if (itemId && topicId) {
+            if (itemType === 'agent') {
+                await electronAPI.saveChatHistory(itemId, topicId, historyToSave);
+            } else if (itemType === 'group' && electronAPI.saveGroupChatHistory) {
+                await electronAPI.saveGroupChatHistory(itemId, topicId, historyToSave);
             }
-        } else {
-            console.warn(`[StreamManager] Finalize: Cannot save history for message ${messageId} because context is missing.`);
         }
     } else {
-        console.error(`[StreamManager] Finalize: Message ${messageId} not found in its own cached history array.`);
+        console.warn(`[StreamManager] Finalize: Cannot save history for message ${messageId} because context is missing.`);
     }
 
-    // 执行最终的、权威的DOM渲染 (仅当 messageItem 存在时)
-    if (messageItem) {
-        const contentDiv = messageItem.querySelector('.md-content');
-        if (contentDiv) {
-            const globalSettings = refs.globalSettingsRef.get();
-            // Pass settings to the preprocessor
-            let processedFinalText = refs.preprocessFullContent(finalFullText, globalSettings);
-            const rawHtml = markedInstance.parse(processedFinalText);
-            refs.setContentAndProcessImages(contentDiv, rawHtml, messageId);
-            refs.processRenderedContent(contentDiv);
-
-            // After final content is rendered, check if we need to run animations
-            if (globalSettings.enableAgentBubbleTheme && refs.processAnimationsInContent) {
-                refs.processAnimationsInContent(contentDiv);
-            }
-        }
-        // 调用现在已经内置了条件检查的 scrollToBottom
-        refs.uiHelper.scrollToBottom();
-    }
-    
-    // 清理工作
+    // 6. Final cleanup.
     streamingChunkQueues.delete(messageId);
     accumulatedStreamText.delete(messageId);
-    streamingHistory.delete(messageId); // Clean up the history cache for this message
+    
+    // 清理所有相关数据
+    setTimeout(() => {
+        messageInitializationStatus.delete(messageId);
+        preBufferedChunks.delete(messageId);
+    }, 5000); // 5秒后清理，防止极端延迟的chunks
 }
 
 // Expose to global scope for classic scripts
@@ -390,5 +509,6 @@ window.streamManager = {
     initStreamManager,
     startStreamingMessage,
     appendStreamChunk,
-    finalizeStreamedMessage
+    finalizeStreamedMessage,
+    getActiveStreamingMessageId: () => activeStreamingMessageId, // Expose a getter
 };

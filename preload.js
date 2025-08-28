@@ -145,6 +145,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     saveGroupChatHistory: (groupId, topicId, history) => ipcRenderer.invoke('save-group-chat-history', groupId, topicId, history), // Added for saving group chat history
     sendGroupChatMessage: (groupId, topicId, userMessage) => ipcRenderer.invoke('send-group-chat-message', groupId, topicId, userMessage),
     onVCPGroupTopicUpdated: (callback) => ipcRenderer.on('vcp-group-topic-updated', (_event, eventData) => callback(eventData)), // Added for topic title updates
+    onHistoryFileUpdated: (callback) => ipcRenderer.on('history-file-updated', (_event, data) => callback(data)), // For file watcher
     saveGroupTopicOrder: (groupId, orderedTopicIds) => ipcRenderer.invoke('save-group-topic-order', groupId, orderedTopicIds), // Added for group topic order
     searchTopicsByContent: (itemId, itemType, searchTerm) => ipcRenderer.invoke('search-topics-by-content', itemId, itemType, searchTerm), // Added for content search
     inviteAgentToSpeak: (groupId, topicId, invitedAgentId) => ipcRenderer.invoke('inviteAgentToSpeak', groupId, topicId, invitedAgentId), // 新增：邀请Agent发言
@@ -297,6 +298,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     copyCanvasFile: (filePath) => ipcRenderer.send('copy-canvas-file', filePath),
     deleteCanvasFile: (filePath) => ipcRenderer.send('delete-canvas-file', filePath),
     getLatestCanvasContent: () => ipcRenderer.invoke('get-latest-canvas-content'),
+    // Watcher controls
+    watcherStart: (filePath, agentId, topicId) => ipcRenderer.invoke('watcher:start', filePath, agentId, topicId),
+    watcherStop: () => ipcRenderer.invoke('watcher:stop'),
 });
 
 // Log the electronAPI object as it's defined in preload.js right after exposing it

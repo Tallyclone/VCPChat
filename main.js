@@ -31,8 +31,71 @@ const emoticonHandlers = require('./modules/ipc/emoticonHandlers'); // Import em
 const musicMetadata = require('music-metadata');
 const speechRecognizer = require('./modules/speechRecognizer'); // Import the new speech recognizer
 const canvasHandlers = require('./modules/ipc/canvasHandlers'); // Import canvas handlers
+const chokidar = require('chokidar'); // 引入 chokidar
+ 
+ // --- File Watcher ---
+let historyWatcher = null;
+let isInternalSaveExpected = false; // A one-shot flag to signal an internal save is happening.
+let internalSaveTimeout = null; // 🔧 新增：超时保护
+let isEditingInProgress = false; // 🔧 新增：编辑状态标识
 
-// --- Configuration Paths ---
+const fileWatcher = {
+  watchFile: (filePath, callback) => {
+    if (historyWatcher) {
+      historyWatcher.close();
+    }
+    console.log(`[FileWatcher] Watching new file: ${filePath}`);
+    historyWatcher = chokidar.watch(filePath, {
+        persistent: true,
+        ignoreInitial: true,
+        awaitWriteFinish: {
+            stabilityThreshold: 300, // 🔧 增加稳定性阈值
+            pollInterval: 100
+        }
+    });
+    historyWatcher.on('all', (event, path) => {
+      // 🔧 改进：检查多个条件来决定是否忽略事件
+      if (isInternalSaveExpected || isEditingInProgress) {
+        console.log(`[FileWatcher] Ignored ${isInternalSaveExpected ? 'internal save' : 'editing'} event '${event}' for: ${path}`);
+        if (isInternalSaveExpected) {
+          isInternalSaveExpected = false; // Consume the one-shot flag
+        }
+        return;
+      }
+      console.log(`[FileWatcher] Detected external event '${event}' for: ${path}`);
+      callback(path);
+    });
+    historyWatcher.on('error', error => console.error(`[FileWatcher] Error: ${error}`));
+  },
+  stopWatching: () => {
+    if (historyWatcher) {
+      console.log('[FileWatcher] Stopping file watch.');
+      historyWatcher.close();
+      historyWatcher = null;
+    }
+    // 🔧 清理状态
+    isEditingInProgress = false;
+    if (internalSaveTimeout) {
+      clearTimeout(internalSaveTimeout);
+      internalSaveTimeout = null;
+    }
+  },
+  signalInternalSave: () => {
+    isInternalSaveExpected = true;
+    // 🔧 设置超时保护，防止标志永远不被重置
+    if (internalSaveTimeout) clearTimeout(internalSaveTimeout);
+    internalSaveTimeout = setTimeout(() => {
+      isInternalSaveExpected = false;
+      console.log('[FileWatcher] Internal save flag auto-reset due to timeout');
+    }, 5000); // 5秒超时
+  },
+  // 🔧 新增：编辑状态管理
+  setEditingMode: (editing) => {
+    isEditingInProgress = editing;
+    console.log(`[FileWatcher] Editing mode set to: ${editing}`);
+  }
+};
+ // --- Configuration Paths ---
 // Data storage will be within the project's 'AppData' directory
 const PROJECT_ROOT = __dirname; // __dirname is the directory of main.js
 const APP_DATA_ROOT_IN_PROJECT = path.join(PROJECT_ROOT, 'AppData');
@@ -388,7 +451,8 @@ if (!gotTheLock) {
         USER_DATA_DIR,
         getSelectionListenerStatus: assistantHandlers.getSelectionListenerStatus,
         stopSelectionListener: assistantHandlers.stopSelectionListener,
-        startSelectionListener: assistantHandlers.startSelectionListener
+        startSelectionListener: assistantHandlers.startSelectionListener,
+        fileWatcher // Inject fileWatcher here as well
     });
     agentHandlers.initialize({
         AGENT_DIR,
@@ -407,7 +471,30 @@ if (!gotTheLock) {
         getSelectionListenerStatus: assistantHandlers.getSelectionListenerStatus,
         stopSelectionListener: assistantHandlers.stopSelectionListener,
         startSelectionListener: assistantHandlers.startSelectionListener,
-        getMusicState: musicHandlers.getMusicState
+        getMusicState: musicHandlers.getMusicState,
+        fileWatcher // 注入文件监控器
+    });
+
+    // New dedicated watcher IPC handlers
+    ipcMain.handle('watcher:start', (event, filePath, agentId, topicId) => {
+        if (fileWatcher) {
+            fileWatcher.watchFile(filePath, (changedPath) => {
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    // Pass back the agentId and topicId to the renderer for context
+                    mainWindow.webContents.send('history-file-updated', { path: changedPath, agentId, topicId });
+                }
+            });
+            return { success: true, watching: filePath };
+        }
+        return { success: false, error: 'File watcher not initialized.' };
+    });
+
+    ipcMain.handle('watcher:stop', () => {
+        if (fileWatcher) {
+            fileWatcher.stopWatching();
+            return { success: true };
+        }
+        return { success: false, error: 'File watcher not initialized.' };
     });
     sovitsHandlers.initialize(mainWindow); // Initialize SovitsTTS handlers
     musicHandlers.initialize({ mainWindow, openChildWindows, APP_DATA_ROOT_IN_PROJECT, startAudioEngine, stopAudioEngine });

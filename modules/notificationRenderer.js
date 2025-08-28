@@ -174,7 +174,13 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
             //     closeToastNotification(element);
             // };
             // element.appendChild(closeButton);
-            element.onclick = () => closeToastNotification(element); // Click on bubble itself still closes it
+            element.onclick = () => {
+                // 清除自动消失的timeout
+                if (element.dataset.autoDismissTimeout) {
+                    clearTimeout(parseInt(element.dataset.autoDismissTimeout));
+                }
+                closeToastNotification(element);
+            }; // Click on bubble itself still closes it
         } else { // For persistent list item
             const copyButton = document.createElement('button');
             copyButton.className = 'notification-copy-btn';
@@ -215,26 +221,45 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
 
     const closeToastNotification = (toastElement) => {
         toastElement.classList.add('exiting');
+        
+        // 设置一个fallback timeout，确保元素一定会被移除
+        const fallbackTimeout = setTimeout(() => {
+            if (toastElement.parentNode) {
+                toastElement.parentNode.removeChild(toastElement);
+            }
+        }, 500); // 500ms后强制移除，即使transition没有完成
+        
         toastElement.addEventListener('transitionend', () => {
+            clearTimeout(fallbackTimeout); // 如果transition正常完成，清除fallback
             if (toastElement.parentNode) {
                 toastElement.parentNode.removeChild(toastElement);
             }
         }, { once: true });
     };
 
+    // 初始化焦点清理机制
+    initializeFocusCleanup();
+
     // Render Floating Toast only if the sidebar is not already active
     const notificationsSidebarElement = document.getElementById('notificationsSidebar');
     if (toastContainer && (!notificationsSidebarElement || !notificationsSidebarElement.classList.contains('active'))) {
         const toastBubble = document.createElement('div');
         toastBubble.classList.add('floating-toast-notification');
+        // 添加创建时间戳
+        toastBubble.dataset.createdAt = Date.now().toString();
         populateNotificationElement(toastBubble, true);
         toastContainer.prepend(toastBubble);
         setTimeout(() => toastBubble.classList.add('visible'), 50);
-        setTimeout(() => {
+        
+        // 增强自动消失逻辑
+        const autoDismissTimeout = setTimeout(() => {
             if (toastBubble.parentNode && toastBubble.classList.contains('visible') && !toastBubble.classList.contains('exiting')) {
                 closeToastNotification(toastBubble);
             }
         }, 7000); // Auto-dismiss after 7 seconds
+        
+        // 保存timeout ID，以便在手动关闭时清除
+        toastBubble.dataset.autoDismissTimeout = autoDismissTimeout.toString();
     } else if (toastContainer && notificationsSidebarElement && notificationsSidebarElement.classList.contains('active')) {
         // console.log('Notification sidebar is active, suppressing floating toast.');
     } else if (!toastContainer) {
@@ -254,8 +279,70 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
     }
 }
 
+// 添加窗口焦点变化监听，清理残留的通知元素
+let focusCleanupInitialized = false;
+
+function initializeFocusCleanup() {
+    if (focusCleanupInitialized) return;
+    focusCleanupInitialized = true;
+
+    // 当窗口重新获得焦点时，清理所有可能残留的通知元素
+    window.addEventListener('focus', () => {
+        const toastContainer = document.getElementById('floating-toast-notifications-container');
+        if (toastContainer) {
+            // 查找所有添加了 exiting 类但仍在 DOM 中的元素
+            const exitingToasts = toastContainer.querySelectorAll('.floating-toast-notification.exiting');
+            exitingToasts.forEach(toast => {
+                if (toast.parentNode) {
+                    console.log('[NotificationRenderer] 清理残留的通知元素');
+                    toast.parentNode.removeChild(toast);
+                }
+            });
+            
+            // 清理超时的通知元素（显示超过10秒的）
+            const allToasts = toastContainer.querySelectorAll('.floating-toast-notification');
+            allToasts.forEach(toast => {
+                // 检查元素创建时间，如果没有时间戳则设置一个
+                if (!toast.dataset.createdAt) {
+                    toast.dataset.createdAt = Date.now().toString();
+                } else {
+                    const createdAt = parseInt(toast.dataset.createdAt);
+                    const now = Date.now();
+                    if (now - createdAt > 10000) { // 超过10秒
+                        console.log('[NotificationRenderer] 清理超时的通知元素');
+                        if (toast.parentNode) {
+                            toast.parentNode.removeChild(toast);
+                        }
+                    }
+                }
+            });
+        }
+    });
+
+    // 定期清理机制，每30秒检查一次
+    setInterval(() => {
+        const toastContainer = document.getElementById('floating-toast-notifications-container');
+        if (toastContainer) {
+            const allToasts = toastContainer.querySelectorAll('.floating-toast-notification');
+            allToasts.forEach(toast => {
+                if (toast.dataset.createdAt) {
+                    const createdAt = parseInt(toast.dataset.createdAt);
+                    const now = Date.now();
+                    if (now - createdAt > 15000) { // 超过15秒强制清理
+                        console.log('[NotificationRenderer] 定期清理超时的通知元素');
+                        if (toast.parentNode) {
+                            toast.parentNode.removeChild(toast);
+                        }
+                    }
+                }
+            });
+        }
+    }, 30000); // 每30秒检查一次
+}
+
 // Expose functions to be used by renderer.js
 window.notificationRenderer = {
     updateVCPLogStatus,
-    renderVCPLogNotification
+    renderVCPLogNotification,
+    initializeFocusCleanup
 };

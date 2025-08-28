@@ -28,6 +28,7 @@
     "@3d-dice/dice-box": "^1.1.4",
     "animejs": "^4.0.2",
     "axios": "^1.10.0",
+    "chokidar": "^4.0.3",
     "clipboard-event": "^1.6.0",
     "codemirror": "^5.65.19",
     "exceljs": "^4.4.0",

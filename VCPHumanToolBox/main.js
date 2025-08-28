@@ -39,8 +39,36 @@ function createWindow() {
 }
 
 // Electron会在初始化完成并且准备好创建浏览器窗口时调用这个方法
+// Electron会在初始化完成并且准备好创建浏览器窗口时调用这个方法
 app.whenReady().then(async () => {
     createWindow();
+    
+    // 注册全局快捷键
+    const { globalShortcut } = require('electron');
+    
+    // 注册 F12 快捷键打开开发者工具
+    globalShortcut.register('F12', () => {
+        if (mainWindow && mainWindow.webContents) {
+            if (mainWindow.webContents.isDevToolsOpened()) {
+                mainWindow.webContents.closeDevTools();
+            } else {
+                mainWindow.webContents.openDevTools();
+            }
+        }
+    });
+
+    // 注册 Ctrl+Shift+I 快捷键打开开发者工具
+    globalShortcut.register('CommandOrControl+Shift+I', () => {
+        if (mainWindow && mainWindow.webContents) {
+            if (mainWindow.webContents.isDevToolsOpened()) {
+                mainWindow.webContents.closeDevTools();
+            } else {
+                mainWindow.webContents.openDevTools();
+            }
+        }
+    });
+    
+    console.log('[Main] Global shortcuts registered: F12, Ctrl+Shift+I');
     
     // 注册 ComfyUI IPC handlers
     try {
@@ -50,6 +78,10 @@ app.whenReady().then(async () => {
         console.error('[Main] Failed to register ComfyUI IPC handlers:', error);
     }
 
+    // 注册文件系统IPC处理器
+    registerFileSystemHandlers();
+    console.log('[Main] File system IPC handlers registered successfully');
+
     app.on('activate', function () {
         // 在macOS上，当单击dock图标并且没有其他窗口打开时，
         // 通常在应用程序中重新创建一个窗口。
@@ -58,7 +90,12 @@ app.whenReady().then(async () => {
 });
 
 // 当所有窗口都被关闭时退出
+// 当所有窗口都被关闭时退出
 app.on('window-all-closed', function () {
+    // 清理全局快捷键
+    const { globalShortcut } = require('electron');
+    globalShortcut.unregisterAll();
+    
     // 在macOS上，应用程序及其菜单栏通常会保持活动状态，
     // 直到用户使用 Cmd + Q 显式退出
     if (process.platform !== 'darwin') app.quit();
@@ -204,3 +241,78 @@ ipcMain.handle('vcp-ht-process-wallpaper', async (event, imagePath) => {
         return null;
     }
 });
+
+// --- File System IPC Handlers for Plugin Manager ---
+function registerFileSystemHandlers() {
+    // 读取目录
+    ipcMain.handle('fs-readdir', async (event, dirPath) => {
+        try {
+            const items = await fs.promises.readdir(dirPath, { withFileTypes: true });
+            return items
+                .filter(item => item.isDirectory())
+                .map(item => item.name);
+        } catch (error) {
+            console.error('fs-readdir error:', error);
+            throw error;
+        }
+    });
+
+    // 检查文件/目录是否存在
+    ipcMain.handle('fs-exists', async (event, filePath) => {
+        try {
+            await fs.promises.access(filePath);
+            return true;
+        } catch (error) {
+            return false;
+        }
+    });
+
+    // 读取文件内容
+    ipcMain.handle('fs-readfile', async (event, filePath, encoding = 'utf8') => {
+        try {
+            return await fs.promises.readFile(filePath, encoding);
+        } catch (error) {
+            console.error('fs-readfile error:', error);
+            throw error;
+        }
+    });
+
+    // 写入文件内容
+    ipcMain.handle('fs-writefile', async (event, filePath, data, encoding = 'utf8') => {
+        try {
+            await fs.promises.writeFile(filePath, data, encoding);
+            return true;
+        } catch (error) {
+            console.error('fs-writefile error:', error);
+            throw error;
+        }
+    });
+
+    // 创建目录
+    ipcMain.handle('fs-mkdir', async (event, dirPath, options = { recursive: true }) => {
+        try {
+            await fs.promises.mkdir(dirPath, options);
+            return true;
+        } catch (error) {
+            console.error('fs-mkdir error:', error);
+            throw error;
+        }
+    });
+
+    // 获取文件/目录状态
+    ipcMain.handle('fs-stat', async (event, filePath) => {
+        try {
+            const stats = await fs.promises.stat(filePath);
+            return {
+                isFile: stats.isFile(),
+                isDirectory: stats.isDirectory(),
+                size: stats.size,
+                mtime: stats.mtime,
+                ctime: stats.ctime
+            };
+        } catch (error) {
+            console.error('fs-stat error:', error);
+            throw error;
+        }
+    });
+}

@@ -34,6 +34,23 @@ async function isNetworkNote(filePath) {
     return false;
 }
 
+// 辅助函数：生成唯一路径，避免文件覆盖
+async function generateUniquePath(basePath) {
+    const dir = path.dirname(basePath);
+    const ext = path.extname(basePath);
+    const nameWithoutExt = path.basename(basePath, ext);
+    
+    let counter = 1;
+    let newPath = basePath;
+    
+    while (await fs.pathExists(newPath)) {
+        newPath = path.join(dir, `${nameWithoutExt} (${counter})${ext}`);
+        counter++;
+    }
+    
+    return newPath;
+}
+
 // Helper function to recursively read the directory structure
 async function readDirectoryStructure(dirPath) {
     const items = [];
@@ -135,67 +152,67 @@ async function readDirectoryStructure(dirPath) {
 
 // Centralized function to scan network notes, update cache, and notify renderer
 async function scanAndCacheNetworkNotes() {
-    try {
-        if (await fs.pathExists(SETTINGS_FILE)) {
-            const settings = await fs.readJson(SETTINGS_FILE);
-            // Support both new array and legacy string format
-            const networkPaths = Array.isArray(settings.networkNotesPaths)
-                ? settings.networkNotesPaths
-                : (settings.networkNotesPath ? [settings.networkNotesPath] : []);
+    return new Promise(async (resolve, reject) => {
+        try {
+            if (await fs.pathExists(SETTINGS_FILE)) {
+                const settings = await fs.readJson(SETTINGS_FILE);
+                const networkPaths = Array.isArray(settings.networkNotesPaths)
+                    ? settings.networkNotesPaths
+                    : (settings.networkNotesPath ? [settings.networkNotesPath] : []);
 
-            if (networkPaths.length === 0) {
-                // If no paths are configured, clear cache and notify renderer
-                networkNotesTreeCache = [];
-                await fs.remove(NETWORK_NOTES_CACHE_FILE);
-                if (notesWindow && !notesWindow.isDestroyed()) {
-                    notesWindow.webContents.send('network-notes-scanned', []);
+                if (networkPaths.length === 0) {
+                    networkNotesTreeCache = [];
+                    await fs.remove(NETWORK_NOTES_CACHE_FILE);
+                    if (notesWindow && !notesWindow.isDestroyed()) {
+                        notesWindow.webContents.send('network-notes-scanned', []);
+                    }
+                    resolve([]); // Resolve with empty array
+                    return;
                 }
-                return;
-            }
 
-            const allNetworkTrees = [];
-            for (const networkPath of networkPaths) {
-                if (networkPath && (await fs.pathExists(networkPath))) {
-                    console.log(`[scanAndCacheNetworkNotes] Starting async scan of: ${networkPath}`);
-                    const networkNotes = await readDirectoryStructure(networkPath);
+                const allNetworkTrees = [];
+                for (const networkPath of networkPaths) {
+                    if (networkPath && (await fs.pathExists(networkPath))) {
+                        console.log(`[scanAndCacheNetworkNotes] Starting async scan of: ${networkPath}`);
+                        const networkNotes = await readDirectoryStructure(networkPath);
+                        const rootName = path.basename(networkPath) || networkPath;
+                        const networkTree = {
+                            id: `folder-network-root-${Buffer.from(networkPath).toString('hex')}`,
+                            type: 'folder',
+                            name: `☁️ ${rootName}`,
+                            path: networkPath,
+                            children: networkNotes,
+                            isNetwork: true,
+                            isRoot: true
+                        };
+                        allNetworkTrees.push(networkTree);
+                    } else {
+                        console.warn(`[scanAndCacheNetworkNotes] Network path not found or is invalid: ${networkPath}`);
+                    }
+                }
 
-                    // Create a root node even if the folder is empty, so it appears in the UI
-                    const rootName = path.basename(networkPath) || networkPath;
-                    const networkTree = {
-                        id: `folder-network-root-${Buffer.from(networkPath).toString('hex')}`,
-                        type: 'folder',
-                        name: `☁️ ${rootName}`, // Use a cloud icon for clarity
-                        path: networkPath,
-                        children: networkNotes,
-                        isNetwork: true,
-                        isRoot: true // Custom flag for root network folders
-                    };
-                    allNetworkTrees.push(networkTree);
-
+                networkNotesTreeCache = allNetworkTrees;
+                if (allNetworkTrees.length > 0) {
+                    await fs.writeJson(NETWORK_NOTES_CACHE_FILE, allNetworkTrees);
                 } else {
-                    console.warn(`[scanAndCacheNetworkNotes] Network path not found or is invalid: ${networkPath}`);
+                    await fs.remove(NETWORK_NOTES_CACHE_FILE);
                 }
-            }
 
-            // Update cache (in-memory and on-disk)
-            networkNotesTreeCache = allNetworkTrees;
-            if (allNetworkTrees.length > 0) {
-                await fs.writeJson(NETWORK_NOTES_CACHE_FILE, allNetworkTrees);
+                if (notesWindow && !notesWindow.isDestroyed()) {
+                    notesWindow.webContents.send('network-notes-scanned', allNetworkTrees);
+                }
+                resolve(allNetworkTrees); // Resolve promise with the result
             } else {
-                await fs.remove(NETWORK_NOTES_CACHE_FILE);
+                resolve([]); // Resolve if no settings file exists
             }
-
-            // Push the result to the notes window when done
+        } catch (e) {
+            console.error('Error during async network notes scan:', e);
             if (notesWindow && !notesWindow.isDestroyed()) {
-                notesWindow.webContents.send('network-notes-scanned', allNetworkTrees);
+                notesWindow.webContents.send('network-notes-scan-error', { error: e.message });
             }
+            reject(e); // Reject promise on error
         }
-    } catch (e) {
-        console.error('Error during async network notes scan:', e);
-        if (notesWindow && !notesWindow.isDestroyed()) {
-            notesWindow.webContents.send('network-notes-scan-error', { error: e.message });
-        }
-    }
+    });
 }
 
 // --- Singleton Notes Window Creation Function ---
@@ -493,105 +510,128 @@ function initialize(options) {
 
     // IPC handler to move files/folders (Refactored for clarity and single source of truth)
     ipcMain.handle('notes:move-items', async (event, { sourcePaths, target }) => {
-        try {
-            const { destPath, targetId, position } = target;
-            const sourceDir = path.dirname(sourcePaths[0]);
+        const { destPath, targetId, position } = target;
 
-            // --- Step 1: Validate move ---
-            for (const sourcePath of sourcePaths) {
-                if (destPath.startsWith(sourcePath + path.sep)) {
-                    throw new Error('Invalid move: Cannot move a folder into itself.');
-                }
-                const itemName = path.basename(sourcePath);
-                const potentialNewPath = path.join(destPath, itemName);
-                // Allow reordering within the same directory, but prevent name collisions when moving to a new directory.
-                if (sourceDir !== destPath && await fs.pathExists(potentialNewPath)) {
-                    throw new Error(`An item named '${itemName}' already exists at the destination.`);
+        const moveTransaction = {
+            items: [],
+            renamedItems: [],
+            rollback: async () => {
+                console.log('Rolling back move transaction...');
+                for (const item of moveTransaction.items.reverse()) {
+                    if (item.moved && await fs.pathExists(item.newPath)) {
+                        try {
+                            await fs.move(item.newPath, item.oldPath, { overwrite: false }); // Rollback without overwriting
+                            console.log(`Rolled back: ${item.newPath} -> ${item.oldPath}`);
+                        } catch (rollbackError) {
+                            console.error(`Failed to rollback ${item.newPath} to ${item.oldPath}:`, rollbackError);
+                        }
+                    }
                 }
             }
+        };
 
-            // --- Step 2: Physically move files and collect new info ---
-            const movedItems = [];
+        try {
+            // --- Step 1: Validate and prepare all move operations ---
             for (const oldPath of sourcePaths) {
                 const itemName = path.basename(oldPath);
-                const newPath = path.join(destPath, itemName);
-                const stat = await fs.stat(oldPath);
-                const type = stat.isDirectory() ? 'folder' : 'note';
-                const oldId = `${type}-${Buffer.from(oldPath).toString('hex')}`;
+                let newPath = path.join(destPath, itemName);
 
-                if (oldPath !== newPath) {
-                    await fs.move(oldPath, newPath, { overwrite: true });
+                if (newPath.startsWith(oldPath + path.sep)) {
+                    throw new Error('Invalid move: Cannot move a folder into itself.');
                 }
                 
-                const newId = `${type}-${Buffer.from(newPath).toString('hex')}`;
-                movedItems.push({ oldId, newId, id: newId });
+                let wasRenamed = false;
+                if (oldPath.toLowerCase() !== newPath.toLowerCase() && await fs.pathExists(newPath)) {
+                    const uniquePath = await generateUniquePath(newPath);
+                    moveTransaction.renamedItems.push({ oldPath: oldPath, newPath: uniquePath });
+                    newPath = uniquePath;
+                    wasRenamed = true;
+                }
+                
+                moveTransaction.items.push({ oldPath, newPath, moved: false, wasRenamed });
+            }
+
+            // --- Step 2: Execute all move operations ---
+            for (const item of moveTransaction.items) {
+                if (item.oldPath.toLowerCase() !== item.newPath.toLowerCase()) {
+                    try {
+                        await fs.move(item.oldPath, item.newPath, { overwrite: false }); // Use overwrite: false
+                        item.moved = true;
+                    } catch (error) {
+                        await moveTransaction.rollback(); // Rollback on failure
+                        throw new Error(`Failed to move ${item.oldPath} to ${item.newPath}: ${error.message}`);
+                    }
+                }
             }
 
             // --- Step 3: Update order files ---
+            const sourceDir = path.dirname(sourcePaths[0]);
+            const itemStats = await Promise.all(moveTransaction.items.map(item => fs.stat(item.newPath)));
+            
+            const movedItems = moveTransaction.items.map((item, index) => {
+                const type = itemStats[index].isDirectory() ? 'folder' : 'note';
+                return {
+                    oldId: `${type}-${Buffer.from(item.oldPath).toString('hex')}`,
+                    newId: `${type}-${Buffer.from(item.newPath).toString('hex')}`,
+                    id: `${type}-${Buffer.from(item.newPath).toString('hex')}`
+                };
+            });
+
             const movedIdsSet = new Set(movedItems.map(i => i.id));
             const movedOldIdsSet = new Set(movedItems.map(i => i.oldId));
             const newIdsArray = movedItems.map(i => i.id);
 
-            // 3a: Update source directory's order file if it's a real move
             if (sourceDir !== destPath) {
                 const sourceOrderPath = path.join(sourceDir, '.folder-order.json');
                 if (await fs.pathExists(sourceOrderPath)) {
                     try {
                         const sourceOrder = await fs.readJson(sourceOrderPath);
                         sourceOrder.order = sourceOrder.order.filter(id => !movedOldIdsSet.has(id));
-                        if (sourceOrder.order.length > 0) {
-                            await fs.writeJson(sourceOrderPath, sourceOrder, { spaces: 2 });
-                        } else {
-                            await fs.remove(sourceOrderPath);
-                        }
-                    } catch (e) {
-                        console.error(`Could not process source order file ${sourceOrderPath}:`, e);
-                    }
+                        if(sourceOrder.order.length > 0) await fs.writeJson(sourceOrderPath, sourceOrder, { spaces: 2 });
+                        else await fs.remove(sourceOrderPath);
+                    } catch(e) { console.error(`Could not process source order file ${sourceOrderPath}:`, e); }
                 }
             }
-
-            // 3b: Update destination directory's order file
+            
             const destOrderPath = path.join(destPath, '.folder-order.json');
             let destOrderIds = [];
             if (await fs.pathExists(destOrderPath)) {
-                try {
-                    destOrderIds = (await fs.readJson(destOrderPath)).order || [];
-                } catch (e) {
-                    console.error(`Could not read destination order file ${destOrderPath}, will regenerate.`, e);
-                }
+                try { destOrderIds = (await fs.readJson(destOrderPath)).order || []; } catch(e) { console.error(`Could not read dest order file ${destOrderPath}:`, e); }
             }
 
-            // Filter out any items that are being moved from the destination's current order
             let finalOrder = destOrderIds.filter(id => !movedIdsSet.has(id));
-
-            // Insert moved items at the correct position
             if (targetId && position !== 'inside') {
                 const targetIndex = finalOrder.indexOf(targetId);
                 if (targetIndex !== -1) {
-                    const insertIndex = position === 'before' ? targetIndex : targetIndex + 1;
-                    finalOrder.splice(insertIndex, 0, ...newIdsArray);
+                    finalOrder.splice(position === 'before' ? targetIndex : targetIndex + 1, 0, ...newIdsArray);
                 } else {
-                    finalOrder.push(...newIdsArray); // Fallback: add to end if target not found
+                    finalOrder.push(...newIdsArray);
                 }
             } else {
-                // 'inside' or no specific target, add to the top
                 finalOrder.unshift(...newIdsArray);
             }
-            
-            // Write the final order to the destination
             await fs.writeJson(destOrderPath, { order: finalOrder }, { spaces: 2 });
 
-            // Trigger a rescan if the move involved a network directory
+
+            // --- Step 4: Sync network notes if necessary ---
             const isMovingToNetwork = await isNetworkNote(destPath);
-            const isMovingFromNetwork = await isNetworkNote(sourceDir);
+            const isMovingFromNetwork = await isNetworkNote(sourcePaths[0]);
             if (isMovingToNetwork || isMovingFromNetwork) {
-                console.log(`Network items moved. Triggering background rescan.`);
-                setImmediate(scanAndCacheNetworkNotes);
+                console.log(`Network items moved. Waiting for synchronous rescan.`);
+                await scanAndCacheNetworkNotes(); // Synchronously wait for the scan to complete
             }
 
-            return { success: true };
+// 在移动操作成功后
+            console.log(`Successfully moved ${moveTransaction.items.length} items`);
+            if (moveTransaction.renamedItems.length > 0) {
+            console.log(`Auto-renamed ${moveTransaction.renamedItems.length} items to avoid conflicts`);
+            }
+            
+            return { success: true, movedItems: moveTransaction.items, renamedItems: moveTransaction.renamedItems };
+
         } catch (error) {
-            console.error('Failed to move or reorder items:', error);
+            console.error('Move operation failed:', error);
+            // Rollback is already handled in the catch block inside the loop.
             return { success: false, error: error.message };
         }
     });

@@ -443,26 +443,87 @@ function toggleEditMode(messageItem, message) {
         const saveButton = document.createElement('button');
         saveButton.innerHTML = `<i class="fas fa-save"></i> 保存`;
         saveButton.onclick = async () => {
+            // 🔧 关键修复：添加防御性编程和错误处理
             const newContent = textarea.value;
             const messageIndex = currentChatHistoryArray.findIndex(msg => msg.id === message.id);
-            if (messageIndex > -1) {
-                currentChatHistoryArray[messageIndex].content = newContent;
-                mainRefs.currentChatHistoryRef.set([...currentChatHistoryArray]);
-                message.content = newContent;
+            
+            if (messageIndex === -1) {
+                uiHelper.showToastNotification("无法找到要编辑的消息，编辑失败。", "error");
+                return;
+            }
 
-                if (currentSelectedItemVal.id && currentTopicIdVal) {
-                     if (currentSelectedItemVal.type === 'agent') {
-                        await electronAPI.saveChatHistory(currentSelectedItemVal.id, currentTopicIdVal, currentChatHistoryArray);
-                     } else if (currentSelectedItemVal.type === 'group' && electronAPI.saveGroupChatHistory) {
-                        await electronAPI.saveGroupChatHistory(currentSelectedItemVal.id, currentTopicIdVal, currentChatHistoryArray);
-                     }
+            // 🔧 保存原始状态以便回滚
+            const originalContent = currentChatHistoryArray[messageIndex].content;
+            const originalMessageContent = message.content;
+            
+            try {
+                // 🔧 先临时禁用文件监控，避免竞态条件
+                if (electronAPI.watcherStop) {
+                    console.log('[EditMode] Temporarily stopping file watcher to prevent race condition');
+                    await electronAPI.watcherStop();
                 }
+
+                // 🔧 更新内存状态
+                currentChatHistoryArray[messageIndex].content = newContent;
+                message.content = newContent;
+                
+                // 🔧 尝试保存到文件
+                if (currentSelectedItemVal.id && currentTopicIdVal) {
+                    let saveResult;
+                    if (currentSelectedItemVal.type === 'agent') {
+                        saveResult = await electronAPI.saveChatHistory(currentSelectedItemVal.id, currentTopicIdVal, currentChatHistoryArray);
+                    } else if (currentSelectedItemVal.type === 'group' && electronAPI.saveGroupChatHistory) {
+                        saveResult = await electronAPI.saveGroupChatHistory(currentSelectedItemVal.id, currentTopicIdVal, currentChatHistoryArray);
+                    }
+                    
+                    // 🔧 检查保存结果
+                    if (saveResult && !saveResult.success) {
+                        throw new Error(saveResult.error || '保存失败');
+                    }
+                }
+                
+                // 🔧 保存成功后更新UI
+                mainRefs.currentChatHistoryRef.set([...currentChatHistoryArray]);
                 
                 const rawHtml = markedInstance.parse(contextMenuDependencies.preprocessFullContent(newContent));
                 contextMenuDependencies.setContentAndProcessImages(contentDiv, rawHtml, message.id);
                 contextMenuDependencies.processRenderedContent(contentDiv);
                 contextMenuDependencies.renderAttachments(message, contentDiv);
+                
+                // 🔧 重新启动文件监控
+                if (electronAPI.watcherStart && currentSelectedItemVal.config?.agentDataPath) {
+                    const historyFilePath = `${currentSelectedItemVal.config.agentDataPath}\\topics\\${currentTopicIdVal}\\history.json`;
+                    await electronAPI.watcherStart(historyFilePath, currentSelectedItemVal.id, currentTopicIdVal);
+                }
+                
+                if (uiHelper && typeof uiHelper.showToastNotification === 'function') {
+                    uiHelper.showToastNotification("消息编辑已保存。", "success");
+                }
+                
+            } catch (error) {
+                // 🔧 保存失败时回滚状态
+                console.error('[EditMode] Save failed, rolling back:', error);
+                currentChatHistoryArray[messageIndex].content = originalContent;
+                message.content = originalMessageContent;
+                mainRefs.currentChatHistoryRef.set([...currentChatHistoryArray]);
+                
+                // 🔧 重新启动文件监控（即使保存失败）
+                if (electronAPI.watcherStart && currentSelectedItemVal.config?.agentDataPath) {
+                    try {
+                        const historyFilePath = `${currentSelectedItemVal.config.agentDataPath}\\topics\\${currentTopicIdVal}\\history.json`;
+                        await electronAPI.watcherStart(historyFilePath, currentSelectedItemVal.id, currentTopicIdVal);
+                    } catch (watcherError) {
+                        console.error('[EditMode] Failed to restart watcher after save failure:', watcherError);
+                    }
+                }
+                
+                if (uiHelper && typeof uiHelper.showToastNotification === 'function') {
+                    uiHelper.showToastNotification(`编辑保存失败: ${error.message}`, "error");
+                }
+                return; // 不退出编辑模式，让用户重试
             }
+            
+            // 🔧 只有在保存成功后才退出编辑模式
             toggleEditMode(messageItem, message);
         };
 
@@ -694,7 +755,30 @@ async function handleRegenerateResponse(originalAssistantMessage) {
         }));
 
         if (agentConfig.systemPrompt) {
-            messagesForVCP.unshift({ role: 'system', content: agentConfig.systemPrompt.replace(/\{\{AgentName\}\}/g, agentConfig.name) });
+            let systemPromptContent = agentConfig.systemPrompt.replace(/\{\{AgentName\}\}/g, agentConfig.name);
+            const prependedContent = [];
+
+            // 注入聊天记录文件路径
+            if (agentConfig.agentDataPath && currentTopicIdVal) {
+                const historyPath = `${agentConfig.agentDataPath}\\topics\\${currentTopicIdVal}\\history.json`;
+                prependedContent.push(`当前聊天记录文件路径: ${historyPath}`);
+            }
+
+            // 注入话题创建时间
+            if (agentConfig.topics && currentTopicIdVal) {
+                const currentTopicObj = agentConfig.topics.find(t => t.id === currentTopicIdVal);
+                if (currentTopicObj && currentTopicObj.createdAt) {
+                    const date = new Date(currentTopicObj.createdAt);
+                    const formattedDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+                    prependedContent.push(`当前话题创建于: ${formattedDate}`);
+                }
+            }
+
+            if (prependedContent.length > 0) {
+                systemPromptContent = prependedContent.join('\n') + '\n\n' + systemPromptContent;
+            }
+
+            messagesForVCP.unshift({ role: 'system', content: systemPromptContent });
         }
 
         const modelConfigForVCP = {
@@ -740,10 +824,12 @@ async function handleRegenerateResponse(originalAssistantMessage) {
                 contextMenuDependencies.renderMessage({ role: 'system', content: `VCP错误 (重新生成): ${vcpResult.error}`, timestamp: Date.now() });
             } else if (vcpResult.choices && vcpResult.choices.length > 0) {
                 const assistantMessageContent = vcpResult.choices[0].message.content;
+                // renderMessage 函数会处理历史记录的更新和保存，因此此处无需再手动操作
                 contextMenuDependencies.renderMessage({ role: 'assistant', name: agentConfig.name, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor, content: assistantMessageContent, timestamp: Date.now() });
             }
-            mainRefs.currentChatHistoryRef.set([...currentChatHistoryArray]);
-            if (currentSelectedItemVal.id && currentTopicIdVal) await electronAPI.saveChatHistory(currentSelectedItemVal.id, currentTopicIdVal, currentChatHistoryArray);
+            // 移除冗余的保存和滚动操作，因为 renderMessage 已经处理
+            // mainRefs.currentChatHistoryRef.set([...currentChatHistoryArray]);
+            // if (currentSelectedItemVal.id && currentTopicIdVal) await electronAPI.saveChatHistory(currentSelectedItemVal.id, currentTopicIdVal, currentChatHistoryArray);
             uiHelper.scrollToBottom();
         }
 
