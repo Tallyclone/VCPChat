@@ -9,6 +9,7 @@ const fsSync = require('fs');
 const dotenv = require('dotenv');
 const os = require('os');
 const mime = require('mime-types');
+const { v4: uuidv4 } = require('uuid'); // 引入uuid
  // const { ipcMain } = require('electron'); // This was incorrect. ipcMain should be injected.
  const pluginManager = require('./Plugin.js');
 
@@ -228,12 +229,45 @@ class DistributedServer {
         let responsePayload;
         try {
             // --- 新增：处理内部文件请求 ---
-            if (toolName === 'internal_request_file') {
+            if (toolName === 'internal_request_file') { // 获取Base64的老方法
                 const filePath = toolArgs.filePath;
                 try {
                     const fileBuffer = await fs.readFile(filePath);
                     const mimeType = mime.lookup(filePath) || 'application/octet-stream';
+                    responsePayload = {
+                        type: 'tool_result',
+                        data: {
+                            requestId,
+                            status: 'success',
+                            result: { status: 'success', fileData: fileBuffer.toString('base64'), mimeType: mimeType }
+                        }
+                    };
+                } catch (e) {
+                    throw new Error(e.code === 'ENOENT' ? `File not found on distributed server: ${filePath}` : `Error reading file on distributed server: ${e.message}`);
+                }
+                this.sendMessage(responsePayload);
+                if (this.debugMode) console.log(`[${this.serverName}] Sent file content for request ID: ${requestId}`);
+                return;
+            }
+
+            // --- 新增：处理内部文件抓取并保存的请求 ---
+            if (toolName === 'internal_fetch_and_save_file') {
+                const sourceFilePath = toolArgs.filePath;
+                try {
+                    const fileBuffer = await fs.readFile(sourceFilePath);
+                    const mimeType = mime.lookup(sourceFilePath) || 'application/octet-stream';
+                    const extension = mime.extension(mimeType) || path.extname(sourceFilePath).substring(1) || 'bin';
                     
+                    // 定义一个安全的、主服务器可访问的共享目录
+                    // 注意：这里的路径是相对于主服务器的，我们需要主服务器在启动时定义这个路径
+                    const attachmentsDir = path.join(process.env.PROJECT_BASE_PATH, 'file', 'attachments');
+                    await fs.mkdir(attachmentsDir, { recursive: true });
+                    
+                    const newFileName = `${uuidv4()}.${extension}`;
+                    const newFilePath = path.join(attachmentsDir, newFileName);
+
+                    await fs.writeFile(newFilePath, fileBuffer);
+
                     responsePayload = {
                         type: 'tool_result',
                         data: {
@@ -241,23 +275,19 @@ class DistributedServer {
                             status: 'success',
                             result: {
                                 status: 'success',
-                                fileData: fileBuffer.toString('base64'),
+                                newPath: newFilePath, // 返回新文件的绝对路径
                                 mimeType: mimeType
                             }
                         }
                     };
                 } catch (e) {
-                    if (e.code === 'ENOENT') {
-                        throw new Error(`File not found on distributed server: ${filePath}`);
-                    } else {
-                        throw new Error(`Error reading file on distributed server: ${e.message}`);
-                    }
+                     throw new Error(e.code === 'ENOENT' ? `File not found on distributed server: ${sourceFilePath}` : `Error processing file on distributed server: ${e.message}`);
                 }
                 this.sendMessage(responsePayload);
-                if (this.debugMode) console.log(`[${this.serverName}] Sent file content for request ID: ${requestId}`);
-                return; // 处理完毕，直接返回
+                if (this.debugMode) console.log(`[${this.serverName}] Fetched, saved, and returned new path for request ID: ${requestId}`);
+                return;
             }
-            // --- 结束：处理内部文件请求 ---
+            // --- 结束：新功能 ---
 
             const result = await pluginManager.processToolCall(toolName, toolArgs);
             let finalResult;
