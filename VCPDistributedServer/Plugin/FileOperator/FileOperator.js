@@ -13,10 +13,16 @@ const axios = require('axios');
 require('dotenv').config();
 
 // Configuration
+const CANVAS_DIRECTORY = path.join(__dirname, '..', '..', '..', 'AppData', 'Canvas');
 const ALLOWED_DIRECTORIES = (process.env.ALLOWED_DIRECTORIES || '')
   .split(',')
   .map(dir => dir.trim())
   .filter(dir => dir);
+
+// Ensure the dedicated canvas directory is always allowed
+if (!ALLOWED_DIRECTORIES.includes(CANVAS_DIRECTORY)) {
+  ALLOWED_DIRECTORIES.push(CANVAS_DIRECTORY);
+}
 const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE) || 20971520; // 20MB default
 const MAX_DIRECTORY_ITEMS = parseInt(process.env.MAX_DIRECTORY_ITEMS) || 1000;
 const MAX_SEARCH_RESULTS = parseInt(process.env.MAX_SEARCH_RESULTS) || 100;
@@ -868,12 +874,10 @@ async function createCanvas(fileName, content, encoding = 'utf8') {
   try {
     debugLog('Creating canvas file', { fileName });
 
-    // The first allowed directory is assumed to be the canvas directory.
-    if (!ALLOWED_DIRECTORIES || ALLOWED_DIRECTORIES.length === 0) {
-        throw new Error('No ALLOWED_DIRECTORIES configured for Canvas.');
-    }
-    const canvasDir = ALLOWED_DIRECTORIES[0];
-    const filePath = path.join(canvasDir, fileName);
+    // Ensure the canvas directory exists before writing to it.
+    await fs.mkdir(CANVAS_DIRECTORY, { recursive: true });
+
+    const filePath = path.join(CANVAS_DIRECTORY, fileName);
 
     // Use the existing writeFile function which handles unique filenames and permissions
     const writeResult = await writeFile(filePath, content, encoding);
