@@ -267,11 +267,12 @@ document.addEventListener('DOMContentLoaded', () => {
         contextMenu.style.display = 'none';
     });
 
-    deleteBtn.addEventListener('click', () => {
+    deleteBtn.addEventListener('click', async () => {
         if (activeListItem && window.electronAPI) {
             const filePath = activeListItem.dataset.path;
+            const fileName = await window.electronPath.basename(filePath);
             // Add a confirmation dialog before deleting
-            if (confirm(`确定要删除文件 "${window.electronPath.basename(filePath)}"? 这个操作无法撤销。`)) {
+            if (confirm(`确定要删除文件 "${fileName}"? 这个操作无法撤销。`)) {
                 window.electronAPI.deleteCanvasFile(filePath);
             }
         }

@@ -4,7 +4,7 @@ const fs = require('fs-extra');
 
 let mainWindow;
 let openChildWindows;
-let CANVAS_CACHE_DIR;
+const CANVAS_CACHE_DIR = path.join(__dirname, '..', '..', 'AppData', 'Canvas');
 let canvasWindow = null;
 let fileWatcher = null;
 let initialFilePath = null;
@@ -13,7 +13,9 @@ const SUPPORTED_EXTENSIONS = ['.txt', '.js', '.py', '.css', '.html', '.json', '.
 function initialize(config) {
     mainWindow = config.mainWindow;
     openChildWindows = config.openChildWindows;
-    CANVAS_CACHE_DIR = config.CANVAS_CACHE_DIR;
+    
+    // Ensure the canvas directory exists
+    fs.ensureDirSync(CANVAS_CACHE_DIR);
 
     ipcMain.handle('open-canvas-window', createCanvasWindow);
     ipcMain.on('canvas-ready', handleCanvasReady);
