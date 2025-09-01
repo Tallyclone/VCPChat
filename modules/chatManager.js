@@ -373,11 +373,16 @@ window.chatManager = (() => {
         if (currentSelectedItem.type !== 'agent' || currentChatHistory.length < 4 || !currentTopicId) return;
 
         try {
-            const agentConfigForSummary = currentSelectedItem.config;
+            // 强制从文件系统重新加载最新的配置，确保标题检查的准确性
+            const agentConfigForSummary = await electronAPI.getAgentConfig(currentSelectedItem.id);
             if (!agentConfigForSummary || agentConfigForSummary.error) {
-                console.error('[TopicSummary] Failed to get agent config for summarization:', agentConfigForSummary?.error);
+                console.error('[TopicSummary] Failed to get fresh agent config for summarization:', agentConfigForSummary?.error);
                 return;
             }
+            // 使用最新的配置更新内存中的状态，以保持同步
+            currentSelectedItem.config = agentConfigForSummary;
+            currentSelectedItemRef.set(currentSelectedItem);
+
             const topics = agentConfigForSummary.topics || [];
             const currentTopicObject = topics.find(t => t.id === currentTopicId);
             const existingTopicTitle = currentTopicObject ? currentTopicObject.name : "主要对话";
@@ -389,7 +394,7 @@ window.chatManager = (() => {
                     if (summarizedTitle) {
                         const saveResult = await electronAPI.saveAgentTopicTitle(currentSelectedItem.id, currentTopicId, summarizedTitle);
                         if (saveResult.success) {
-                            // 话题标题更新成功后，直接更新 currentSelectedItem.config 中的话题名称
+                            // 标题已保存到文件，现在更新内存中的对象以立即反映更改
                             if (currentTopicObject) {
                                 currentTopicObject.name = summarizedTitle;
                             }
