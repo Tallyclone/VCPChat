@@ -1292,27 +1292,39 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 处理图片文件
     function handleImageFile(file, textInput, dropZone, previewArea, clearButton) {
-        // 检查文件是否存在
         if (!file) {
             console.error('没有提供文件对象。');
-            return; // 终止函数执行
+            return;
         }
 
-        // 创建图片预览和设置输入框值
-        const fileReader = new FileReader();
+        // 1. 显示加载状态
+        dropZone.style.display = 'none';
+        previewArea.style.display = 'block';
+        clearButton.style.display = 'none';
+        previewArea.innerHTML = `
+            <div class="loading-spinner-container" style="display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--secondary-text); padding: 20px;">
+                <div class="loading-spinner" style="border: 4px solid rgba(255, 255, 255, 0.3); border-radius: 50%; border-top-color: var(--primary-color); width: 30px; height: 30px; animation: spin 1s linear infinite; margin-bottom: 10px;"></div>
+                <span>正在读取文件...</span>
+            </div>
+        `;
         
-        fileReader.onload = (e) => {
+        const reader = new FileReader();
+        reader.onload = function(e) {
             const dataUrl = e.target.result;
-            
-            // 使用 Data URL 填充输入框
-            textInput.value = dataUrl;
 
-            // 隐藏拖拽区域，显示预览区域
-            dropZone.style.display = 'none';
-            previewArea.style.display = 'block';
-            clearButton.style.display = 'inline-block';
+            // 2. 存储完整 Data URL 到隐藏属性
+            textInput.dataset.fullValue = dataUrl;
+
+            // 3. 创建用于 UI 显示的截断值
+            const sizeInBytes = file.size;
+            const sizeInKB = (sizeInBytes / 1024).toFixed(1);
+            const sizeInMB = (sizeInBytes / 1024 / 1024).toFixed(2);
+            const displaySize = sizeInBytes > 1024 * 512 ? `${sizeInMB} MB` : `${sizeInKB} KB`;
+            const truncatedBase64 = dataUrl.substring(0, 40);
+            const displayValue = `${truncatedBase64}... [${displaySize}]`;
+            textInput.value = displayValue;
             
-            // 文件名处理：超过用户设置的长度才省略，否则正常换行
+            // 4. 更新预览
             let displayName = file.name;
             if (file.name.length > MAX_FILENAME_LENGTH) {
                 const extension = file.name.split('.').pop();
@@ -1320,39 +1332,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 const truncatedName = nameWithoutExt.substring(0, MAX_FILENAME_LENGTH - extension.length - 4) + '...';
                 displayName = truncatedName + '.' + extension;
             }
-            
-            // 更新预览区域内容
             previewArea.innerHTML = `
-                <img src="${dataUrl}" style="
-                    max-width: 100%;
-                    max-height: 150px;
-                    border-radius: 6px;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-                    margin-bottom: 8px;
-                    display: block;
-                    margin-left: auto;
-                    margin-right: auto;
-                " alt="Preview">
-                <div class="file-name" style="
-                    font-size: 12px;
-                    color: var(--secondary-text);
-                    word-wrap: break-word;
-                    word-break: break-all;
-                    line-height: 1.4;
-                    max-width: 100%;
-                    text-align: center;
-                    padding: 0 10px;
-                    font-family: monospace;
-                ">${displayName}</div>
+                <img src="${dataUrl}" style="max-width: 100%; max-height: 150px; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 8px; display: block; margin-left: auto; margin-right: auto;" alt="Preview">
+                <div class="file-name" style="font-size: 12px; color: var(--secondary-text); word-wrap: break-word; word-break: break-all; line-height: 1.4; max-width: 100%; text-align: center; padding: 0 10px; font-family: monospace;">${displayName}</div>
             `;
-        };
-        
-        fileReader.onerror = (error) => {
-            console.error("FileReader 读取文件失败:", error);
-            alert("错误：无法读取该文件。");
+            clearButton.style.display = 'inline-block';
         };
 
-        fileReader.readAsDataURL(file);
+        reader.onerror = function(error) {
+            console.error('FileReader 读取文件失败:', error);
+            previewArea.innerHTML = `<div class="error-message" style="color: var(--danger-color); padding: 20px;">错误: 无法读取文件。</div>`;
+            setTimeout(() => {
+                clearImageInput(textInput, dropZone, previewArea, clearButton);
+            }, 3000);
+        };
+
+        reader.readAsDataURL(file);
     }
 
     // 清空图片输入
@@ -1753,16 +1748,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const formData = new FormData(toolForm);
         const args = {};
 
-        // Collect all form data
+        // 收集表单数据, 特别处理图片输入
         for (let [key, value] of formData.entries()) {
             const inputElement = toolForm.querySelector(`[name="${key}"]`);
-            if (inputElement && inputElement.type === 'checkbox') {
-                args[key] = inputElement.checked;
-            } else if (value) { // Don't include empty optional fields
-                args[key] = value;
+            if (inputElement) {
+                if (inputElement.type === 'checkbox') {
+                    args[key] = inputElement.checked;
+                } else if (inputElement.dataset.fullValue) { // 检查是否存在完整的 Base64 值
+                    args[key] = inputElement.dataset.fullValue;
+                } else if (value) {
+                    args[key] = value;
+                }
             }
         }
-        // Handle radio groups correctly
+        
+        // 正确处理 radio group
         const radioGroups = toolForm.querySelectorAll('.radio-group');
         radioGroups.forEach(group => {
             const selected = group.querySelector('input:checked');
@@ -1770,59 +1770,37 @@ document.addEventListener('DOMContentLoaded', () => {
                 args[selected.name] = selected.value;
             }
         });
-        
-        // Handle translation for NanoBananaGenOR
+
+        // 处理翻译
         if (toolName === 'NanoBananaGenOR') {
-            const enableTranslation = toolForm.querySelector('input[name="enable_translation"]:checked');
-            if (enableTranslation) {
+            if (args['enable_translation']) {
                 const translatedPrompt = toolForm.querySelector('.translated-prompt');
                 if (translatedPrompt && translatedPrompt.value.trim()) {
-                    // 使用翻译后的提示词
                     args.prompt = translatedPrompt.value.trim();
                 }
             }
         }
-
-        // Build the plain text request body
-        let requestBody = `<<<[TOOL_REQUEST]>>>\n`;
-        requestBody += `maid:「始」${USER_NAME}「末」,\n`;
-        requestBody += `tool_name:「始」${toolName}「末」,\n`;
-        for (const key in args) {
-            if (args[key] !== undefined) {
-                const value = typeof args[key] === 'boolean' ? String(args[key]) : args[key];
-                requestBody += `${key}:「始」${value}「末」,\n`;
-            }
-        }
-        requestBody += `<<<[END_TOOL_REQUEST]>>>`;
-
-        resultContainer.innerHTML = '<div class="loading">正在执行...</div>';
+        
+        resultContainer.innerHTML = '<div class="loading">正在执行... (通过主进程代理)</div>';
 
         try {
-            const response = await fetch(VCP_SERVER_URL, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'text/plain;charset=UTF-8',
-                    'Authorization': `Bearer ${VCP_API_KEY}`
-                },
-                body: requestBody // Send the plain text body
+            // 通过 IPC 将整个请求交由主进程处理
+            const result = await ipcRenderer.invoke('vcp-ht-execute-tool-proxy', {
+                url: VCP_SERVER_URL,
+                apiKey: VCP_API_KEY,
+                toolName: toolName,
+                userName: USER_NAME,
+                args: args
             });
 
-            const responseText = await response.text();
-            if (!response.ok) {
-                // Try to parse error JSON if possible, otherwise use the raw text
-                try {
-                    const errorJson = JSON.parse(responseText);
-                    throw new Error(`HTTP ${response.status}: ${errorJson.error || responseText}`);
-                } catch (e) {
-                    throw new Error(`HTTP ${response.status}: ${responseText}`);
-                }
+            if (result.success) {
+                renderResult(result.data, toolName);
+            } else {
+                throw new Error(result.error);
             }
 
-            const data = JSON.parse(responseText); // The response is JSON
-            renderResult(data, toolName);
-
         } catch (error) {
-            console.error('Error executing tool:', error);
+            console.error('Error executing tool via proxy:', error);
             resultContainer.innerHTML = `<div class="error">执行出错: ${error.message}</div>`;
         }
     }
