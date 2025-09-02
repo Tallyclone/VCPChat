@@ -518,6 +518,8 @@ if (!gotTheLock) {
                     rendererProcess: mainWindow.webContents, // Pass the renderer process object
                     handleMusicControl: musicHandlers.handleMusicControl, // Inject the music control handler
                     handleDiceControl: diceHandlers.handleDiceControl, // Inject the dice control handler
+                    handleMusicControl: musicHandlers.handleMusicControl, // Inject the music control handler
+                    handleDiceControl: diceHandlers.handleDiceControl, // Inject the dice control handler
                     handleCanvasControl: handleCanvasControl // Inject the new canvas control handler
                 };
                 distributedServer = new DistributedServer(config);
@@ -822,7 +824,7 @@ ipcMain.handle('export-topic-as-markdown', async (event, exportData) => {
             { name: '所有文件', extensions: ['*'] }
         ]
     });
-
+    
     if (canceled || !filePath) {
         return { success: false, error: '用户取消了导出操作。' };
     }

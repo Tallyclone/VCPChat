@@ -13,11 +13,16 @@ const axios = require('axios');
 require('dotenv').config();
 
 // Configuration
+const CANVAS_DIRECTORY = path.join(__dirname, '..', '..', '..', 'AppData', 'Canvas');
 const ALLOWED_DIRECTORIES = (process.env.ALLOWED_DIRECTORIES || '')
   .split(',')
   .map(dir => dir.trim())
   .filter(dir => dir);
-const DEFAULT_DOWNLOAD_DIR = process.env.DEFAULT_DOWNLOAD_DIR || path.join(__dirname, '..', '..', '..', 'AppData', 'file');
+
+// Ensure the dedicated canvas directory is always allowed
+if (!ALLOWED_DIRECTORIES.includes(CANVAS_DIRECTORY)) {
+  ALLOWED_DIRECTORIES.push(CANVAS_DIRECTORY);
+}
 const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE) || 20971520; // 20MB default
 const MAX_DIRECTORY_ITEMS = parseInt(process.env.MAX_DIRECTORY_ITEMS) || 1000;
 const MAX_SEARCH_RESULTS = parseInt(process.env.MAX_SEARCH_RESULTS) || 100;
@@ -764,17 +769,17 @@ async function searchFiles(searchPath, pattern, options = {}) {
   }
 }
 
-async function downloadFile(url, downloadDir = null) {
+async function downloadFile(url) {
   try {
     // Automatically parse filename from URL
     const parsedUrl = new URL(url);
-    const fileName = path.basename(parsedUrl.pathname) || 'downloaded_file';
+    const fileName = path.basename(parsedUrl.pathname);
     
-    // Use specified directory or default download directory
-    const baseDir = downloadDir ? path.resolve(downloadDir) : path.resolve(DEFAULT_DOWNLOAD_DIR);
+    // Construct the full destination path in the designated AppData/file directory
+    const baseDir = path.join(__dirname, '..', '..', '..', 'AppData', 'file');
     const destinationPath = path.join(baseDir, fileName);
 
-    debugLog('Initiating asynchronous file download', { url, downloadDir, baseDir, destinationPath });
+    debugLog('Initiating asynchronous file download', { url, destinationPath });
 
     if (!isPathAllowed(destinationPath, 'WriteFile')) {
       throw new Error(`Access denied: Path '${destinationPath}' is not in allowed directories`);
@@ -809,8 +814,7 @@ async function downloadFile(url, downloadDir = null) {
     });
 
     // Immediately return a success message to the AI
-    const downloadDirInfo = downloadDir ? `指定目录: ${baseDir}` : `默认目录: ${baseDir}`;
-    const message = `文件下载任务已在后台启动。将从URL自动解析文件名并保存到${downloadDirInfo}。最终路径: ${newPath}`;
+    const message = `文件下载任务已在后台启动。将从URL自动解析文件名并保存到: ${newPath}`;
     return {
       success: true,
       data: {
@@ -819,13 +823,11 @@ async function downloadFile(url, downloadDir = null) {
         originalPath: destinationPath,
         renamed: renamed,
         sourceUrl: url,
-        downloadDirectory: baseDir,
-        isCustomDirectory: !!downloadDir,
       },
     };
 
   } catch (error) {
-    debugLog('Error initiating file download', { url, downloadDir, error: error.message });
+    debugLog('Error initiating file download', { url, error: error.message });
     return {
       success: false,
       error: `Failed to initiate download: ${error.message}`,
@@ -872,12 +874,10 @@ async function createCanvas(fileName, content, encoding = 'utf8') {
   try {
     debugLog('Creating canvas file', { fileName });
 
-    // The first allowed directory is assumed to be the canvas directory.
-    if (!ALLOWED_DIRECTORIES || ALLOWED_DIRECTORIES.length === 0) {
-        throw new Error('No ALLOWED_DIRECTORIES configured for Canvas.');
-    }
-    const canvasDir = ALLOWED_DIRECTORIES[0];
-    const filePath = path.join(canvasDir, fileName);
+    // Ensure the canvas directory exists before writing to it.
+    await fs.mkdir(CANVAS_DIRECTORY, { recursive: true });
+
+    const filePath = path.join(CANVAS_DIRECTORY, fileName);
 
     // Use the existing writeFile function which handles unique filenames and permissions
     const writeResult = await writeFile(filePath, content, encoding);
@@ -1107,7 +1107,7 @@ async function processRequest(request) {
     case 'SearchFiles':
       return await searchFiles(parameters.searchPath, parameters.pattern, parameters.options);
     case 'DownloadFile':
-      return await downloadFile(parameters.url, parameters.downloadDir);
+      return await downloadFile(parameters.url);
     case 'CreateCanvas':
         return await createCanvas(parameters.fileName, parameters.content, parameters.encoding);
     case 'UpdateHistory':
