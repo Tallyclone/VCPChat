@@ -93,12 +93,26 @@ document.addEventListener('DOMContentLoaded', () => {
             ]
         },
         'DoubaoGen': {
-            displayName: '豆包图片生成',
-            description: '国产文生图，支持中文和任意分辨率，适合平面设计。',
-            params: [
-                { name: 'prompt', type: 'textarea', required: true, placeholder: '详细的提示词，可包含中文' },
-                { name: 'resolution', type: 'text', required: true, placeholder: '例如: 800x600', default: '1024x1024' }
-            ]
+            displayName: '豆包 AI 图片',
+            description: '集成豆包模型的图片生成与编辑功能。',
+            commands: {
+                'DoubaoGenerateImage': {
+                    description: '豆包生图',
+                    params: [
+                        { name: 'prompt', type: 'textarea', required: true, placeholder: '(必需) 用于图片生成的详细提示词。' },
+                        { name: 'resolution', type: 'text', required: true, placeholder: '(必需) 图片分辨率，格式为“宽x高”。理论上支持2048以内内任意分辨率组合。', default: '1024x1024' }
+                    ]
+                },
+                'DoubaoEditImage': {
+                    description: '豆包修图',
+                    params: [
+                        { name: 'prompt', type: 'textarea', required: true, placeholder: '(必需) 用于指导图片修改的详细提示词。' },
+                        { name: 'image', type: 'dragdrop_image', required: true, placeholder: '(必需) 用于图生图的图片来源，可以是公网可访问的 https URL，或者是分布式服务器的本地文件路径 (格式为 file:///...)。也可以是直接的database64url' },
+                        { name: 'resolution', type: 'text', required: true, placeholder: '(必需) 图片分辨率，格式为“宽x高”，可设为“adaptive”以自适应原图尺寸。', default: 'adaptive' },
+                        { name: 'guidance_scale', type: 'number', required: false, placeholder: '范围0-10，控制与原图的相似度，值越小越相似。' }
+                    ]
+                }
+            }
         },
         'SunoGen': {
             displayName: 'Suno 音乐生成',
