@@ -52,7 +52,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
             'comfyui:delete-workflow',
             'comfyui:get-plugin-path',
             'import-and-convert-workflow',
-            'validate-workflow-template'
+            'validate-workflow-template',
+            'vcp-ht-execute-tool-proxy' // <-- 替换为新的网络请求代理通道
         ];
         
         if (allowedChannels.includes(channel)) {

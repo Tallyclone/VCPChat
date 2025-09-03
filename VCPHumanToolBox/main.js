@@ -1,7 +1,7 @@
 // VCPHumanToolBox/main.js
 // 这是一个独立的Electron入口，用于启动人类工具箱。
 
-const { app, BrowserWindow, ipcMain, Menu, dialog, clipboard, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, dialog, clipboard, nativeImage, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -44,8 +44,6 @@ app.whenReady().then(async () => {
     createWindow();
     
     // 注册全局快捷键
-    const { globalShortcut } = require('electron');
-    
     // 注册 F12 快捷键打开开发者工具
     globalShortcut.register('F12', () => {
         if (mainWindow && mainWindow.webContents) {
@@ -93,7 +91,6 @@ app.whenReady().then(async () => {
 // 当所有窗口都被关闭时退出
 app.on('window-all-closed', function () {
     // 清理全局快捷键
-    const { globalShortcut } = require('electron');
     globalShortcut.unregisterAll();
     
     // 在macOS上，应用程序及其菜单栏通常会保持活动状态，
@@ -241,6 +238,62 @@ ipcMain.handle('vcp-ht-process-wallpaper', async (event, imagePath) => {
         return null;
     }
 });
+
+// --- IPC Handler for proxying tool execution requests ---
+ipcMain.handle('vcp-ht-execute-tool-proxy', async (event, { url, apiKey, toolName, userName, args }) => {
+    // 动态导入 node-fetch
+    const { default: fetch } = await import('node-fetch');
+
+    // 1. 构造请求体
+    let requestBody = `<<<[TOOL_REQUEST]>>>\n`;
+    requestBody += `maid:「始」${userName}「末」,\n`;
+    requestBody += `tool_name:「始」${toolName}「末」,\n`;
+    for (const key in args) {
+        if (args[key] !== undefined) {
+            const value = typeof args[key] === 'boolean' ? String(args[key]) : args[key];
+            requestBody += `${key}:「始」${value}「末」,\n`;
+        }
+    }
+    requestBody += `<<<[END_TOOL_REQUEST]>>>`;
+
+    // 2. 发起网络请求
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'text/plain;charset=UTF-8',
+                'Authorization': `Bearer ${apiKey}`
+            },
+            body: requestBody
+        });
+
+        const responseText = await response.text();
+
+        if (!response.ok) {
+            try {
+                const errorJson = JSON.parse(responseText);
+                throw new Error(`HTTP ${response.status}: ${errorJson.error || responseText}`);
+            } catch (e) {
+                throw new Error(`HTTP ${response.status}: ${responseText}`);
+            }
+        }
+        
+        // 3. 返回成功结果
+        return {
+            success: true,
+            data: JSON.parse(responseText)
+        };
+
+    } catch (error) {
+        console.error(`[Main Process Proxy] Error executing tool '${toolName}':`, error);
+        // 4. 返回失败结果
+        return {
+            success: false,
+            error: error.message
+        };
+    }
+});
+
 
 // --- File System IPC Handlers for Plugin Manager ---
 function registerFileSystemHandlers() {
