@@ -487,8 +487,21 @@
                 // 更新计数器
                 this.updateCounters();
 
-                // 发出工作流加载事件
-                this.emit('workflowLoaded', data);
+                // 发出工作流加载事件，延迟确保所有节点都已渲染
+                setTimeout(() => {
+                    this.emit('workflowLoaded', data);
+                    
+                    // 恢复节点的动态输入参数
+                    Object.entries(data.nodes).forEach(([id, nodeData]) => {
+                        if (nodeData.dynamicInputs && Array.isArray(nodeData.dynamicInputs) && nodeData.dynamicInputs.length > 0) {
+                            console.log('[StateManager] Restoring dynamic inputs for node:', id, nodeData.dynamicInputs);
+                            // 通知画布管理器更新节点输入
+                            if (window.WorkflowEditor_CanvasManager && window.WorkflowEditor_CanvasManager.updateNodeInputs) {
+                                window.WorkflowEditor_CanvasManager.updateNodeInputs(id, nodeData.dynamicInputs);
+                            }
+                        }
+                    });
+                }, 100);
                 
                 console.log('[StateManager] Workflow deserialization completed successfully');
                 return true;

@@ -250,12 +250,31 @@
                         type: 'string', 
                         default: 'url', 
                         required: false,
-                        description: 'JSON中URL字段的路径，如: url 或 data.imageUrl 或 result.images[0]'
+                        description: 'JSON中URL字段的路径，如: url 或 data.imageUrl 或 result.images[0]，支持数组路径如: images'
                     },
                     renderType: {
                         type: 'enum',
                         options: ['auto', 'image', 'video', 'iframe', 'text'],
                         default: 'auto'
+                    },
+                    batchMode: {
+                        type: 'boolean',
+                        default: true,
+                        description: '启用批量渲染模式，自动检测单个URL或URL数组'
+                    },
+                    maxItems: {
+                        type: 'number',
+                        default: 10,
+                        min: 1,
+                        max: 50,
+                        description: '批量渲染时的最大项目数量'
+                    },
+                    gridColumns: {
+                        type: 'number',
+                        default: 3,
+                        min: 1,
+                        max: 6,
+                        description: '网格布局的列数'
                     },
                     width: { type: 'number', default: 300, min: 50, max: 800 },
                     height: { type: 'number', default: 200, min: 50, max: 600 },
@@ -294,6 +313,39 @@
                 },
                 properties: { content: '' } // 兼容旧版，保留properties
             });
+
+            // URL提取器节点
+            this.registerNodeType('urlExtractor', {
+                label: 'URL提取器',
+                category: 'auxiliary',
+                inputs: ['input'],
+                outputs: ['urls', 'result'],
+                configSchema: {
+                    urlTypes: {
+                        type: 'multiselect',
+                        options: ['image', 'video', 'audio', 'all'],
+                        default: ['image'],
+                        description: '要提取的URL类型'
+                    },
+                    deduplication: {
+                        type: 'boolean',
+                        default: true,
+                        description: '是否对提取的URL进行去重'
+                    },
+                    outputFormat: {
+                        type: 'enum',
+                        options: ['array', 'single', 'object'],
+                        default: 'array',
+                        description: '输出格式：array=URL数组，single=单个URL，object=详细信息对象'
+                    },
+                    outputParamName: {
+                        type: 'string',
+                        default: 'extractedUrls',
+                        placeholder: '例如: imageUrls',
+                        description: '输出参数名称'
+                    }
+                }
+            });
         }
 
         // 注册节点类型
@@ -325,6 +377,7 @@
             this.registerNodeExecutor('loop', this.executeLoopNode.bind(this));
             this.registerNodeExecutor('delay', this.executeDelayNode.bind(this));
             this.registerNodeExecutor('urlRenderer', this.executeUrlRendererNode.bind(this));
+            this.registerNodeExecutor('urlExtractor', this.executeUrlExtractorNode.bind(this));
         }
 
         // 注册节点执行器

@@ -16,7 +16,12 @@
                 'WorkflowEditormodules/WorkflowEditor_CanvasManager_JSPlumb.js',
                 'WorkflowEditormodules/WorkflowEditor_NodeManager.js',
                 'WorkflowEditormodules/WorkflowEditor_ExecutionEngine.js',
-                'WorkflowEditormodules/WorkflowEditor_Config.js'
+                'WorkflowEditormodules/WorkflowEditor_Config.js',
+                // URL相关功能模块
+                'WorkflowEditormodules/WorkflowEditor_NodeManager_URLRenderer_Patch.js',
+                'WorkflowEditormodules/WorkflowEditor_NodeManager_URLExtractor.js',
+                'WorkflowEditormodules/WorkflowEditor_NodeManager_URLExtractor_Integration.js',
+                'WorkflowEditormodules/URL_Extractor_Integration_Check.js'
             ];
             this.requiredStyles = [
                 'WorkflowEditormodules/workflow-editor.css'

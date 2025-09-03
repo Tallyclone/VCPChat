@@ -381,12 +381,18 @@
                     return this.executeRegexNode(node, inputData);
                 case 'dataTransform':
                     return this.executeDataTransformNode(node, inputData);
+                case 'codeEdit':
+                    return this.executeCodeEditNode(node, inputData);
                 case 'condition':
-                    return this.executeConditionNode(inputData);
+                    return this.executeConditionNode(node, inputData);
+                case 'loop':
+                    return this.executeLoopNode(node, inputData);
                 case 'delay':
-                    return this.executeDelayNode(inputData);
+                    return this.executeDelayNode(node, inputData);
                 case 'contentInput': // 新增内容输入器节点类型
                     return this.executeContentInputNode(node);
+                case 'urlExtractor': // URL提取器节点类型
+                    return this.executeUrlExtractorNode(node, inputData);
                 default:
                     throw new Error(`未知的辅助节点类型: ${node.pluginId}`);
             }
@@ -492,7 +498,7 @@
             requestParams.push(`maid:「始」${this.USER_NAME}「末」`);
             requestParams.push(`tool_name:「始」${node.pluginId}「末」`);
             
-            // 简化逻辑：从插件管理器获取插件信息，检查是否需要command参数
+            // 智能命令匹配：根据节点配置和插件信息选择正确的命令
             let needsCommand = false;
             let commandToUse = null;
             
@@ -501,17 +507,98 @@
                 const pluginInfo = this.pluginManager.getPluginInfo(pluginKey);
                 
                 if (pluginInfo && pluginInfo.commands && pluginInfo.commands.length > 0) {
-                    const commandInfo = pluginInfo.commands[0]; // 使用第一个命令
-                    needsCommand = commandInfo.needsCommand || false;
+                    console.log(`[ExecutionEngine] 插件 ${node.pluginId} 找到 ${pluginInfo.commands.length} 个命令`);
                     
-                    if (needsCommand) {
-                        // 优先使用节点配置的command，然后使用插件默认command
-                        commandToUse = node.commandId || node.selectedCommand || 
-                                     (node.config && node.config.command) || 
-                                     commandInfo.command;
+                    // 优先使用节点配置中的命令ID或名称
+                    const nodeCommandId = node.config && node.config.command;
+                    const nodeSelectedCommand = node.selectedCommand;
+                    const nodeCommandIdFromNode = node.commandId;
+                    
+                    console.log(`[ExecutionEngine] 节点命令配置: commandId=${nodeCommandId}, selectedCommand=${nodeSelectedCommand}, commandIdFromNode=${nodeCommandIdFromNode}`);
+                    
+                    // 智能匹配命令
+                    let matchedCommand = null;
+                    
+                    // 1. 首先尝试通过命令ID精确匹配
+                    if (nodeCommandId || nodeSelectedCommand || nodeCommandIdFromNode) {
+                        const targetCommandId = nodeCommandId || nodeSelectedCommand || nodeCommandIdFromNode;
+                        
+                        matchedCommand = pluginInfo.commands.find(cmd => 
+                            cmd.id === targetCommandId || 
+                            cmd.name === targetCommandId ||
+                            cmd.command === targetCommandId
+                        );
+                        
+                        if (matchedCommand) {
+                            console.log(`[ExecutionEngine] 通过命令ID匹配到命令: ${matchedCommand.name || matchedCommand.id}`);
+                        }
                     }
                     
-                    console.log(`[ExecutionEngine] 插件 ${node.pluginId} needsCommand: ${needsCommand}, command: ${commandToUse}`);
+                    // 2. 如果没有匹配到，尝试通过参数匹配
+                    if (!matchedCommand) {
+                        console.log(`[ExecutionEngine] 尝试通过参数匹配命令`);
+                        
+                        // 分析节点配置中的参数，找到最匹配的命令
+                        const nodeParams = node.config || {};
+                        const paramKeys = Object.keys(nodeParams);
+                        
+                        console.log(`[ExecutionEngine] 节点参数: ${paramKeys.join(', ')}`);
+                        
+                        // 为每个命令计算匹配度
+                        let bestMatch = null;
+                        let bestScore = 0;
+                        
+                        for (const cmd of pluginInfo.commands) {
+                            let score = 0;
+                            
+                            // 检查命令的参数是否与节点参数匹配
+                            if (cmd.parameters && Array.isArray(cmd.parameters)) {
+                                for (const param of cmd.parameters) {
+                                    if (paramKeys.includes(param.name)) {
+                                        score += 1;
+                                    }
+                                }
+                            }
+                            
+                            // 检查命令名称是否与插件ID相关
+                            if (cmd.name && cmd.name.toLowerCase().includes(node.pluginId.toLowerCase())) {
+                                score += 0.5;
+                            }
+                            
+                            console.log(`[ExecutionEngine] 命令 ${cmd.name || cmd.id} 匹配度: ${score}`);
+                            
+                            if (score > bestScore) {
+                                bestScore = score;
+                                bestMatch = cmd;
+                            }
+                        }
+                        
+                        if (bestMatch && bestScore > 0) {
+                            matchedCommand = bestMatch;
+                            console.log(`[ExecutionEngine] 通过参数匹配选择命令: ${bestMatch.name || bestMatch.id} (匹配度: ${bestScore})`);
+                        }
+                    }
+                    
+                    // 3. 如果还是没有匹配到，使用第一个命令作为默认
+                    if (!matchedCommand) {
+                        matchedCommand = pluginInfo.commands[0];
+                        console.log(`[ExecutionEngine] 使用默认命令: ${matchedCommand.name || matchedCommand.id}`);
+                    }
+                    
+                    // 设置命令信息
+                    needsCommand = matchedCommand.needsCommand || false;
+                    
+                    if (needsCommand) {
+                        // 优先使用匹配到的命令的command，然后使用节点配置
+                        commandToUse = matchedCommand.command || 
+                                     (node.config && node.config.command) || 
+                                     node.selectedCommand || 
+                                     node.commandId ||
+                                     matchedCommand.name ||
+                                     matchedCommand.id;
+                    }
+                    
+                    console.log(`[ExecutionEngine] 最终选择 - 插件 ${node.pluginId} needsCommand: ${needsCommand}, command: ${commandToUse}`);
                 } else {
                     console.log(`[ExecutionEngine] 未找到插件 ${pluginKey} 的信息，跳过command参数`);
                 }
@@ -596,8 +683,8 @@
                 return responseText;
             }
             
-            // 提取结果数据 - 优先返回完整的数据对象
-            let result = data;
+            // 提取结果数据 - 过滤输入参数，只返回生成的内容
+            let result = this.extractPluginOutput(data, allParams);
             console.log(`[ExecutionEngine] 初步提取的结果:`, result);
             
             // 如果数据有特定的结构，尝试提取有用的信息
@@ -606,18 +693,18 @@
                 try {
                     const parsedContent = JSON.parse(data.result.content);
                     console.log(`[ExecutionEngine] 解析后的 content:`, parsedContent);
-                    result = parsedContent.original_plugin_output || parsedContent;
+                    result = this.extractPluginOutput(parsedContent.original_plugin_output || parsedContent, allParams);
                     console.log(`[ExecutionEngine] 最终提取的结果:`, result);
                 } catch (e) {
                     console.log(`[ExecutionEngine] 解析 content 失败，使用原始数据:`, e);
-                    result = data;
+                    result = this.extractPluginOutput(data, allParams);
                 }
             }
             
             // 确保返回的是完整的数据对象，包含所有字段（如imageUrl等）
             if (typeof result === 'string' && data && typeof data === 'object') {
-                console.log(`[ExecutionEngine] 结果是字符串但原始数据是对象，返回原始数据以保留所有字段`);
-                result = data;
+                console.log(`[ExecutionEngine] 结果是字符串但原始数据是对象，重新提取数据以保留生成字段`);
+                result = this.extractPluginOutput(data, allParams);
             }
             
             // 检查结果中是否包含错误信息
@@ -773,53 +860,462 @@
             }
         }
 
-        // 执行条件节点
-        executeConditionNode(inputData) {
-            const { condition, trueValue, falseValue } = inputData;
-            return condition ? trueValue : falseValue;
+        // 执行代码编辑节点
+        async executeCodeEditNode(node, inputData) {
+            console.log('[ExecutionEngine] 执行代码编辑节点:', node.id);
+            console.log('[ExecutionEngine] 输入数据:', inputData);
+            console.log('[ExecutionEngine] 节点配置:', node.config);
+            
+            const config = node.config || {};
+            const { language = 'javascript', code = '', operation = 'format' } = config;
+            
+            // 获取输入内容
+            let inputContent = '';
+            if (inputData.input !== undefined) {
+                if (typeof inputData.input === 'object') {
+                    inputContent = JSON.stringify(inputData.input, null, 2);
+                } else {
+                    inputContent = String(inputData.input);
+                }
+            } else if (inputData.code) {
+                inputContent = inputData.code;
+            } else if (code) {
+                inputContent = code;
+            }
+            
+            console.log('[ExecutionEngine] 代码编辑 - 输入内容:', inputContent.substring(0, 200) + '...');
+            console.log('[ExecutionEngine] 代码编辑 - 语言:', language, '操作:', operation);
+            
+            try {
+                let result;
+                
+                switch (operation) {
+                    case 'format':
+                        result = this.formatCode(inputContent, language);
+                        break;
+                    
+                    case 'minify':
+                        result = this.minifyCode(inputContent, language);
+                        break;
+                    
+                    case 'validate':
+                        result = this.validateCode(inputContent, language);
+                        break;
+                    
+                    case 'execute':
+                        if (language === 'javascript') {
+                            try {
+                                // 创建安全的执行环境
+                                const func = new Function('input', 'inputData', `
+                                    ${inputContent}
+                                    // 如果代码没有返回值，返回输入数据
+                                    if (typeof result !== 'undefined') return result;
+                                    return input;
+                                `);
+                                result = func(inputData.input, inputData);
+                            } catch (error) {
+                                throw new Error(`JavaScript执行失败: ${error.message}`);
+                            }
+                        } else {
+                            throw new Error(`不支持执行 ${language} 代码`);
+                        }
+                        break;
+                    
+                    default:
+                        result = inputContent;
+                }
+                
+                console.log('[ExecutionEngine] 代码编辑结果:', result);
+                
+                // 使用自定义输出参数名
+                const outputParamName = config.outputParamName || 'output';
+                return { [outputParamName]: result };
+                
+            } catch (error) {
+                console.error('[ExecutionEngine] 代码编辑执行失败:', error);
+                throw new Error(`代码编辑失败: ${error.message}`);
+            }
         }
 
-        // 执行延时节点
-        async executeDelayNode(inputData) {
-            const { delay = 1000, data } = inputData;
-            await new Promise(resolve => setTimeout(resolve, delay));
-            return data;
+        // 执行条件判断节点
+        async executeConditionNode(node, inputData) {
+            console.log('[ExecutionEngine] 执行条件判断节点:', node.id);
+            console.log('[ExecutionEngine] 输入数据:', inputData);
+            console.log('[ExecutionEngine] 节点配置:', node.config);
+            
+            const config = node.config || {};
+            const { condition, operator = '==', value = '' } = config;
+            
+            // 获取输入值
+            let inputValue = inputData.input;
+            if (inputValue === undefined && Object.keys(inputData).length > 0) {
+                inputValue = Object.values(inputData)[0]; // 使用第一个输入值
+            }
+            
+            console.log('[ExecutionEngine] 条件判断 - 输入值:', inputValue, '操作符:', operator, '比较值:', value);
+            
+            try {
+                let result = false;
+                
+                switch (operator) {
+                    case '==':
+                        result = inputValue == value;
+                        break;
+                    case '!=':
+                        result = inputValue != value;
+                        break;
+                    case '>':
+                        result = Number(inputValue) > Number(value);
+                        break;
+                    case '<':
+                        result = Number(inputValue) < Number(value);
+                        break;
+                    case '>=':
+                        result = Number(inputValue) >= Number(value);
+                        break;
+                    case '<=':
+                        result = Number(inputValue) <= Number(value);
+                        break;
+                    case 'contains':
+                        result = String(inputValue).includes(String(value));
+                        break;
+                    case 'startsWith':
+                        result = String(inputValue).startsWith(String(value));
+                        break;
+                    case 'endsWith':
+                        result = String(inputValue).endsWith(String(value));
+                        break;
+                    default:
+                        // 自定义条件表达式
+                        if (condition) {
+                            const func = new Function('input', 'value', `return ${condition}`);
+                            result = func(inputValue, value);
+                        }
+                }
+                
+                console.log('[ExecutionEngine] 条件判断结果:', result);
+                
+                // 根据结果返回到不同的输出端口
+                if (result) {
+                    return { true: inputValue, result: true };
+                } else {
+                    return { false: inputValue, result: false };
+                }
+                
+            } catch (error) {
+                console.error('[ExecutionEngine] 条件判断执行失败:', error);
+                throw new Error(`条件判断失败: ${error.message}`);
+            }
         }
 
-        // 执行URL渲染器节点
+        // 执行循环控制节点
+        async executeLoopNode(node, inputData) {
+            console.log('[ExecutionEngine] 执行循环控制节点:', node.id);
+            console.log('[ExecutionEngine] 输入数据:', inputData);
+            console.log('[ExecutionEngine] 节点配置:', node.config);
+            
+            const config = node.config || {};
+            const { loopType = 'forEach', maxIterations = 100 } = config;
+            
+            let items = [];
+            let inputValue = inputData.input;
+            
+            // 获取循环项目
+            if (inputData.items && Array.isArray(inputData.items)) {
+                items = inputData.items;
+            } else if (Array.isArray(inputValue)) {
+                items = inputValue;
+            } else if (inputValue !== undefined) {
+                items = [inputValue]; // 单个值转为数组
+            }
+            
+            console.log('[ExecutionEngine] 循环控制 - 类型:', loopType, '项目数:', items.length, '最大迭代:', maxIterations);
+            
+            try {
+                const results = [];
+                let iterations = Math.min(items.length, maxIterations);
+                
+                switch (loopType) {
+                    case 'forEach':
+                        for (let i = 0; i < iterations; i++) {
+                            results.push({
+                                item: items[i],
+                                index: i,
+                                total: items.length
+                            });
+                        }
+                        break;
+                    
+                    case 'times':
+                        const times = Math.min(Number(inputValue) || 1, maxIterations);
+                        for (let i = 0; i < times; i++) {
+                            results.push({
+                                item: i + 1,
+                                index: i,
+                                total: times
+                            });
+                        }
+                        break;
+                    
+                    case 'while':
+                        // 简单的while循环实现
+                        let count = 0;
+                        while (count < maxIterations && inputValue) {
+                            results.push({
+                                item: count + 1,
+                                index: count,
+                                total: maxIterations
+                            });
+                            count++;
+                            // 简单条件：如果输入是数字，递减到0
+                            if (typeof inputValue === 'number') {
+                                inputValue--;
+                            } else {
+                                break; // 避免无限循环
+                            }
+                        }
+                        break;
+                }
+                
+                console.log('[ExecutionEngine] 循环控制结果:', results.length, '项');
+                
+                return {
+                    output: results,
+                    items: results.map(r => r.item),
+                    count: results.length
+                };
+                
+            } catch (error) {
+                console.error('[ExecutionEngine] 循环控制执行失败:', error);
+                throw new Error(`循环控制失败: ${error.message}`);
+            }
+        }
+
+        // 执行延时等待节点
+        async executeDelayNode(node, inputData) {
+            console.log('[ExecutionEngine] 执行延时等待节点:', node.id);
+            console.log('[ExecutionEngine] 输入数据:', inputData);
+            console.log('[ExecutionEngine] 节点配置:', node.config);
+            
+            const config = node.config || {};
+            const { delay = 1000, unit = 'milliseconds' } = config;
+            
+            let delayMs = delay;
+            switch (unit) {
+                case 'seconds':
+                    delayMs = delay * 1000;
+                    break;
+                case 'minutes':
+                    delayMs = delay * 60 * 1000;
+                    break;
+            }
+            
+            console.log('[ExecutionEngine] 延时等待:', delayMs, 'ms');
+            
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+            
+            // 返回输入数据
+            return { output: inputData.input || inputData };
+        }
+
+        // 执行URL提取器节点
+        async executeUrlExtractorNode(node, inputData) {
+            console.log('[ExecutionEngine] 执行URL提取器节点:', node.id);
+            console.log('[ExecutionEngine] 输入数据:', inputData);
+            console.log('[ExecutionEngine] 节点配置:', node.config);
+            
+            // 调用NodeManager中的URL提取器实现
+            if (window.WorkflowEditor_NodeManager && window.WorkflowEditor_NodeManager.executeUrlExtractorNode) {
+                try {
+                    const result = await window.WorkflowEditor_NodeManager.executeUrlExtractorNode(node, inputData);
+                    console.log('[ExecutionEngine] URL提取器执行结果:', result);
+                    return result;
+                } catch (error) {
+                    console.error('[ExecutionEngine] URL提取器执行失败:', error);
+                    throw error;
+                }
+            } else {
+                throw new Error('URL提取器功能未加载，请确保相关模块已正确加载');
+            }
+        }
+
+        // 代码格式化方法
+        formatCode(code, language) {
+            try {
+                switch (language) {
+                    case 'json':
+                        const parsed = JSON.parse(code);
+                        return JSON.stringify(parsed, null, 2);
+                    
+                    case 'javascript':
+                        // 简单的JavaScript格式化
+                        return code
+                            .replace(/;/g, ';\n')
+                            .replace(/{/g, '{\n')
+                            .replace(/}/g, '\n}')
+                            .replace(/,/g, ',\n')
+                            .split('\n')
+                            .map(line => line.trim())
+                            .filter(line => line.length > 0)
+                            .join('\n');
+                    
+                    case 'html':
+                        // 简单的HTML格式化
+                        return code
+                            .replace(/></g, '>\n<')
+                            .replace(/^\s+|\s+$/g, '');
+                    
+                    case 'css':
+                        // 简单的CSS格式化
+                        return code
+                            .replace(/{/g, ' {\n')
+                            .replace(/}/g, '\n}\n')
+                            .replace(/;/g, ';\n')
+                            .replace(/,/g, ',\n');
+                    
+                    default:
+                        return code;
+                }
+            } catch (error) {
+                console.warn('[ExecutionEngine] 代码格式化失败:', error);
+                return code;
+            }
+        }
+
+        // 代码压缩方法
+        minifyCode(code, language) {
+            try {
+                switch (language) {
+                    case 'json':
+                        const parsed = JSON.parse(code);
+                        return JSON.stringify(parsed);
+                    
+                    case 'javascript':
+                        // 简单的JavaScript压缩
+                        return code
+                            .replace(/\s+/g, ' ')
+                            .replace(/;\s/g, ';')
+                            .replace(/{\s/g, '{')
+                            .replace(/\s}/g, '}')
+                            .trim();
+                    
+                    case 'css':
+                        // 简单的CSS压缩
+                        return code
+                            .replace(/\s+/g, ' ')
+                            .replace(/;\s/g, ';')
+                            .replace(/{\s/g, '{')
+                            .replace(/\s}/g, '}')
+                            .trim();
+                    
+                    default:
+                        return code.replace(/\s+/g, ' ').trim();
+                }
+            } catch (error) {
+                console.warn('[ExecutionEngine] 代码压缩失败:', error);
+                return code;
+            }
+        }
+
+        // 代码验证方法
+        validateCode(code, language) {
+            try {
+                switch (language) {
+                    case 'json':
+                        JSON.parse(code);
+                        return { valid: true, message: 'JSON格式正确' };
+                    
+                    case 'javascript':
+                        new Function(code);
+                        return { valid: true, message: 'JavaScript语法正确' };
+                    
+                    case 'html':
+                        // 简单的HTML验证
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(code, 'text/html');
+                        const errors = doc.querySelectorAll('parsererror');
+                        if (errors.length > 0) {
+                            return { valid: false, message: 'HTML格式错误' };
+                        }
+                        return { valid: true, message: 'HTML格式正确' };
+                    
+                    default:
+                        return { valid: true, message: '语法检查不可用' };
+                }
+            } catch (error) {
+                return { valid: false, message: error.message };
+            }
+        }
+
+        // 执行URL渲染器节点 - 使用批量渲染补丁
         executeUrlRendererNode(node, inputData) {
             console.log(`[ExecutionEngine] 执行URL渲染器节点:`, node.id);
             console.log(`[ExecutionEngine] 节点配置:`, node.config);
             console.log(`[ExecutionEngine] 输入数据:`, inputData);
             
+            // 检查是否有批量渲染补丁可用
+            if (window.WorkflowEditor_NodeManager && 
+                window.WorkflowEditor_NodeManager.executeUrlRendererNode && 
+                typeof window.WorkflowEditor_NodeManager.executeUrlRendererNode === 'function') {
+                
+                console.log(`[ExecutionEngine] 使用批量渲染补丁处理URL渲染`);
+                
+                try {
+                    // 调用补丁中的批量渲染方法
+                    return window.WorkflowEditor_NodeManager.executeUrlRendererNode.call(
+                        window.WorkflowEditor_NodeManager, 
+                        node, 
+                        inputData
+                    );
+                } catch (error) {
+                    console.error(`[ExecutionEngine] 批量渲染补丁执行失败，回退到原始方法:`, error);
+                    // 如果补丁失败，继续使用原始方法
+                }
+            }
+            
+            // 原始单个URL渲染逻辑（作为后备方案）
             const config = node.config || {};
             let { urlPath = 'imageUrl', renderType = 'image', width = 300, height = 200 } = node.config || {};
             
             // 对 urlPath 进行变量解析
             console.log(`[ExecutionEngine] URL渲染器 - 原始urlPath: ${urlPath}`);
-            urlPath = this._resolveValue(urlPath, inputData);
-            console.log(`[ExecutionEngine] URL渲染器 - 解析后urlPath: "${urlPath}", 类型: ${typeof urlPath}`); // 加上双引号方便观察空格
+            const resolvedUrlPath = this._resolveValue(urlPath, inputData);
+            console.log(`[ExecutionEngine] URL渲染器 - 解析后urlPath:`, resolvedUrlPath, `类型: ${typeof resolvedUrlPath}`);
 
             // 从输入数据或配置中获取URL
             let url = null;
             
-            // Debugging: Check the conditions
-            console.log(`[ExecutionEngine] URL渲染器 - Debugging URL check:`);
-            console.log(`[ExecutionEngine]   urlPath 是否为真: ${!!urlPath}`);
-            console.log(`[ExecutionEngine]   urlPath 是否为字符串: ${typeof urlPath === 'string'}`);
-            console.log(`[ExecutionEngine]   urlPath 是否以 'http://' 开头: ${typeof urlPath === 'string' && urlPath.startsWith('http://')}`);
-            console.log(`[ExecutionEngine]   urlPath 是否以 'https://' 开头: ${typeof urlPath === 'string' && urlPath.startsWith('https://')}`);
-            
-            // 首先检查解析后的 urlPath 是否直接是一个URL
-            if (urlPath && (typeof urlPath === 'string') && (urlPath.startsWith('http://') || urlPath.startsWith('https://'))) {
-                url = urlPath;
+            // 检查解析后的结果类型
+            if (Array.isArray(resolvedUrlPath)) {
+                // 如果解析结果是数组，说明 {{input.images}} 被解析成了数组
+                console.log(`[ExecutionEngine] 检测到数组数据，尝试提取第一个URL`);
+                
+                // 尝试从数组中提取URL
+                for (const item of resolvedUrlPath) {
+                    if (typeof item === 'string' && (item.startsWith('http://') || item.startsWith('https://'))) {
+                        url = item;
+                        break;
+                    } else if (typeof item === 'object' && item !== null) {
+                        url = item.url || item.imageUrl || item.src;
+                        if (url) break;
+                    }
+                }
+                
+                console.log(`[ExecutionEngine] 从数组中提取的URL: ${url}`);
+            } 
+            // 检查解析后的 urlPath 是否直接是一个URL字符串
+            else if (resolvedUrlPath && (typeof resolvedUrlPath === 'string') && (resolvedUrlPath.startsWith('http://') || resolvedUrlPath.startsWith('https://'))) {
+                url = resolvedUrlPath;
                 console.log(`[ExecutionEngine] 从解析后的 urlPath 中获取URL: ${url}`);
             } 
             // 否则，尝试从 inputData 中提取
             else if (inputData.input && typeof inputData.input === 'object') {
-                // 根据 urlPath 配置从输入对象中提取URL
-                // Here, urlPath is NOT a URL, but a path like 'imageUrl' or 'url'
-                url = this._getNestedProperty(inputData.input, urlPath) || inputData.input.imageUrl || inputData.input.url;
+                // 如果 urlPath 仍然是字符串路径，使用它来提取数据
+                if (typeof urlPath === 'string') {
+                    url = this._getNestedProperty(inputData.input, urlPath) || inputData.input.imageUrl || inputData.input.url;
+                } else {
+                    url = inputData.input.imageUrl || inputData.input.url;
+                }
                 console.log(`[ExecutionEngine] 从输入数据中提取URL: ${url}`);
             } else if (inputData.url) {
                 url = inputData.url;
@@ -827,12 +1323,12 @@
             } else if (inputData.imageUrl) {
                 url = inputData.imageUrl;
                 console.log(`[ExecutionEngine] 从输入数据imageUrl字段获取: ${url}`);
-            } else if (node.config.url) { // Changed from config.url to node.config.url
-                url = this._resolveValue(node.config.url, inputData); // Ensure node.config.url is also resolved
+            } else if (node.config.url) {
+                url = this._resolveValue(node.config.url, inputData);
                 console.log(`[ExecutionEngine] 从配置url字段获取: ${url}`);
             }
             
-            console.log(`[ExecutionEngine] 提取的URL:`, url);
+            console.log(`[ExecutionEngine] 最终提取的URL:`, url);
             
             if (!url) {
                 console.warn(`[ExecutionEngine] URL渲染器未找到有效的URL`);
@@ -1040,7 +1536,7 @@
                     console.log(`[ExecutionEngine] 使用自定义输出参数名: ${targetParam}`);
                 }
                 
-                // 增强数据传递：支持字段映射和直接访问
+                // 直接传播输出数据（输入参数已在插件执行时过滤）
                 let dataToPass = result;
                 
                 // 特殊处理：对于正则节点使用自定义输出名时，应该只传递 output 字段
@@ -1123,6 +1619,116 @@
             this.nodeInputData.clear();
         }
 
+        // 提取插件输出，过滤输入参数
+        extractPluginOutput(data, inputParams = {}) {
+            console.log(`[ExecutionEngine] 提取插件输出，过滤输入参数`);
+            console.log(`[ExecutionEngine] 原始数据:`, data);
+            console.log(`[ExecutionEngine] 输入参数:`, inputParams);
+            
+            if (!data || typeof data !== 'object') {
+                return data;
+            }
+            
+            // 创建输出对象
+            const output = {};
+            
+            // 保留插件生成的核心字段
+            const allowedFields = [
+                'content',      // 插件生成的内容
+                'details',      // 插件的详细信息
+                'MaidName',     // 助手名称
+                'timestamp',    // 时间戳
+                'status',       // 状态信息
+                'result',       // 结果字段
+                'data',         // 数据字段
+                'response',     // 响应字段
+                'output'        // 输出字段
+            ];
+            
+            // 只复制允许的字段
+            for (const field of allowedFields) {
+                if (data.hasOwnProperty(field)) {
+                    output[field] = data[field];
+                }
+            }
+            
+            // 特殊处理：如果details中包含输入参数，需要过滤
+            if (output.details && typeof output.details === 'object') {
+                const cleanDetails = {};
+                
+                // 获取输入参数的键名列表（转为小写进行比较）
+                const inputParamKeys = Object.keys(inputParams).map(key => key.toLowerCase());
+                console.log(`[ExecutionEngine] 输入参数键名:`, inputParamKeys);
+                
+                for (const [key, value] of Object.entries(output.details)) {
+                    // 跳过输入参数字段
+                    if (!inputParamKeys.includes(key.toLowerCase())) {
+                        cleanDetails[key] = value;
+                        console.log(`[ExecutionEngine] 保留生成字段 ${key}:`, value);
+                    } else {
+                        console.log(`[ExecutionEngine] 过滤输入参数字段 ${key}:`, value);
+                    }
+                }
+                
+                output.details = cleanDetails;
+            }
+            
+            console.log(`[ExecutionEngine] 提取后的输出:`, output);
+            return output;
+        }
+
+        // 清洗插件输出数据，确保数据纯净性（保留用于向后兼容）
+        cleanPluginOutput(result, sourceNode) {
+            console.log(`[ExecutionEngine] 清洗插件输出数据:`, sourceNode.id);
+            
+            if (!result || typeof result !== 'object') {
+                return result;
+            }
+            
+            // 创建清洁的输出对象
+            const cleanResult = {};
+            
+            // 保留插件生成的核心字段
+            const allowedFields = [
+                'content',      // 插件生成的内容
+                'details',      // 插件的详细信息
+                'MaidName',     // 助手名称
+                'timestamp',    // 时间戳
+                'status',       // 状态信息
+                'result',       // 结果字段
+                'data',         // 数据字段
+                'response',     // 响应字段
+                'output'        // 输出字段
+            ];
+            
+            // 只复制允许的字段
+            for (const field of allowedFields) {
+                if (result.hasOwnProperty(field)) {
+                    cleanResult[field] = result[field];
+                }
+            }
+            
+            // 特殊处理：如果details中包含输入参数，需要过滤
+            if (cleanResult.details && typeof cleanResult.details === 'object') {
+                const cleanDetails = {};
+                
+                // 过滤掉可能的输入参数
+                const inputParams = ['image_url', 'prompt', 'command', 'maid'];
+                
+                for (const [key, value] of Object.entries(cleanResult.details)) {
+                    // 跳过输入参数字段
+                    if (!inputParams.includes(key.toLowerCase())) {
+                        cleanDetails[key] = value;
+                    }
+                }
+                
+                cleanResult.details = cleanDetails;
+            }
+            
+            console.log(`[ExecutionEngine] 清洗后的数据:`, cleanResult);
+            return cleanResult;
+        }
+
         // 处理输入数据，支持JSON解析
         processInputData(data) {
             console.log(`[ExecutionEngine] 处理输入数据:`, data);
@@ -1182,49 +1788,64 @@
             const regex = /\{\{(.*?)\}\}/g;
             let resolved = value;
             let match;
-            let hasMatch = false;
 
             // First pass: check if the entire string is a single {{...}} expression
             const fullMatchRegex = /^\{\{(.*?)\}\}$/;
             const fullMatch = value.match(fullMatchRegex);
             if (fullMatch) {
-                const path = fullMatch[1].trim(); // path is 'input.output'
-                if (path.startsWith('input.')) {
-                    let resolvedData = this._getNestedProperty(inputData, path);
-                    // 特殊处理：如果解析结果是对象且包含 'output' 属性，则提取其值
-                    if (typeof resolvedData === 'object' && resolvedData !== null && resolvedData.output !== undefined) {
-                        return String(resolvedData.output); // 返回 'output' 属性的值并转为字符串
-                    }
-                    return resolvedData; // 返回原始解析值，可以是任何类型
-                } else {
-                    console.warn(`[ExecutionEngine] 无法解析的变量路径 (整串匹配): ${path}`);
-                    return value; // Return original value if path is not 'input.xxx'
+                const path = fullMatch[1].trim(); // 例如: 'extractedUrls' 或 'input.extractedUrls'
+                const resolvedData = this._resolveVariablePath(path, inputData);
+                
+                // 特殊处理：如果解析结果是对象且包含 'output' 属性，则提取其值
+                if (typeof resolvedData === 'object' && resolvedData !== null && resolvedData.output !== undefined) {
+                    return String(resolvedData.output); // 返回 'output' 属性的值并转为字符串
                 }
+                return resolvedData; // 返回原始解析值，可以是任何类型
             }
 
             // Second pass: replace multiple {{...}} expressions within a string
             while ((match = regex.exec(value)) !== null) {
-                hasMatch = true;
-                const fullPlaceholder = match[0]; // e.g., {{input.output}}
-                const path = match[1].trim(); // e.g., input.output
+                const fullPlaceholder = match[0]; // 例如: {{extractedUrls}}
+                const path = match[1].trim(); // 例如: extractedUrls
 
-                if (path.startsWith('input.')) {
-                    let resolvedData = this._getNestedProperty(inputData, path);
-                    // 特殊处理：如果解析结果是对象且包含 'output' 属性，则提取其值
-                    if (typeof resolvedData === 'object' && resolvedData !== null && resolvedData.output !== undefined) {
-                        resolvedData = String(resolvedData.output); // 使用 'output' 属性的值并转为字符串
-                    } else if (typeof resolvedData === 'object' && resolvedData !== null) {
-                        resolvedData = JSON.stringify(resolvedData); // 对于其他对象，将其 JSON 字符串化
-                    }
-                    // Replace the placeholder with the string representation of the resolved data
-                    resolved = resolved.replace(fullPlaceholder, resolvedData !== undefined ? String(resolvedData) : '');
-                } else {
-                    console.warn(`[ExecutionEngine] 无法解析的变量路径 (部分匹配): ${path}`);
-                    // If not resolvable, keep the placeholder or replace with empty string
-                    resolved = resolved.replace(fullPlaceholder, ''); // Or keep fullPlaceholder if you want to show it's unresolved
+                let resolvedData = this._resolveVariablePath(path, inputData);
+                
+                // 特殊处理：如果解析结果是对象且包含 'output' 属性，则提取其值
+                if (typeof resolvedData === 'object' && resolvedData !== null && resolvedData.output !== undefined) {
+                    resolvedData = String(resolvedData.output); // 使用 'output' 属性的值并转为字符串
+                } else if (typeof resolvedData === 'object' && resolvedData !== null) {
+                    resolvedData = JSON.stringify(resolvedData); // 对于其他对象，将其 JSON 字符串化
                 }
+                
+                // Replace the placeholder with the string representation of the resolved data
+                resolved = resolved.replace(fullPlaceholder, resolvedData !== undefined ? String(resolvedData) : '');
             }
             return resolved;
+        }
+
+        // 解析变量路径 - 支持直接引用和兼容旧格式
+        _resolveVariablePath(path, inputData) {
+            console.log(`[ExecutionEngine] 解析变量路径: ${path}`);
+            console.log(`[ExecutionEngine] 可用输入数据:`, Object.keys(inputData));
+            
+            // 兼容模式：支持 input.xxx 格式（向后兼容）
+            if (path.startsWith('input.')) {
+                const actualPath = path.substring(6); // 移除 "input." 前缀
+                console.log(`[ExecutionEngine] 兼容模式 - 实际路径: ${actualPath}`);
+                return this._getNestedProperty(inputData, actualPath);
+            }
+            
+            // 直接引用模式：支持直接使用自定义输出名
+            // 例如: extractedUrls, extractedUrls[0], extractedUrls.url
+            const resolvedData = this._getNestedProperty(inputData, path);
+            
+            if (resolvedData !== undefined) {
+                console.log(`[ExecutionEngine] 直接引用成功: ${path} ->`, resolvedData);
+                return resolvedData;
+            }
+            
+            console.warn(`[ExecutionEngine] 无法解析变量路径: ${path}`);
+            return undefined;
         }
     }
 

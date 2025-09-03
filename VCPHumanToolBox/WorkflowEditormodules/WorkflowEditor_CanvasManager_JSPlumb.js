@@ -247,7 +247,6 @@
                     <span class="canvas-node-icon">${this.getNodeIcon(node)}</span>
                     <span class="canvas-node-title">${node.name}</span>
                     <div class="canvas-node-status ${node.status || 'idle'}"></div>
-                    <button class="canvas-node-remove-btn">×</button>
                 </div>
                 <div class="canvas-node-body">
                     <div class="canvas-node-desc">${this.getNodeDescription(node)}</div>
@@ -423,22 +422,10 @@
 
         // 绑定节点事件
         bindNodeEvents(nodeElement, node) {
-            // 移除按钮事件
-            const removeBtn = nodeElement.querySelector('.canvas-node-remove-btn');
-            if (removeBtn) {
-                removeBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    this.stateManager.removeNode(node.id);
-                });
-            }
-
             // 单击选择
             nodeElement.addEventListener('click', (e) => {
                 e.stopPropagation();
-                // 避免在点击移除按钮时触发选择
-                if (e.target !== removeBtn) {
-                    this.stateManager.selectNode(node.id, e.ctrlKey || e.metaKey);
-                }
+                this.stateManager.selectNode(node.id, e.ctrlKey || e.metaKey);
             });
 
             // 双击编辑
@@ -1109,10 +1096,31 @@
                     }
 
                     try {
+                        // 查找正确的目标端点
+                        let targetElement = targetNode;
+                        let sourceElement = sourceNode;
+                        
+                        // 如果连接有特定的目标参数，查找对应的参数输入框
+                        if (connectionData.targetParam && connectionData.targetParam !== 'input') {
+                            const paramInput = targetNode.querySelector(`[data-param="${connectionData.targetParam}"]`);
+                            if (paramInput) {
+                                targetElement = paramInput;
+                                console.log(`[CanvasManager] Found specific param input for ${connectionData.targetParam}`);
+                            }
+                        }
+                        
+                        // 查找源端点（通常是输出端点）
+                        if (connectionData.sourceParam && connectionData.sourceParam !== 'output') {
+                            const sourceParam = sourceNode.querySelector(`[data-param="${connectionData.sourceParam}"]`);
+                            if (sourceParam) {
+                                sourceElement = sourceParam;
+                            }
+                        }
+
                         // 直接创建JSPlumb连接，不触发事件处理
                         const connection = this.jsPlumbInstance.connect({
-                            source: sourceNode,
-                            target: targetNode,
+                            source: sourceElement,
+                            target: targetElement,
                             anchor: ['Right', 'Left'],
                             connector: ['Bezier', { curviness: 50 }],
                             paintStyle: { stroke: '#3b82f6', strokeWidth: 2 },
@@ -1129,7 +1137,8 @@
                             parameters: {
                                 connectionId: connectionData.id,
                                 sourceNodeId: connectionData.sourceNodeId,
-                                targetNodeId: connectionData.targetNodeId
+                                targetNodeId: connectionData.targetNodeId,
+                                targetParam: connectionData.targetParam
                             },
                             // 关键：不触发连接事件，避免重复检测
                             doNotFireConnectionEvent: true
@@ -1141,7 +1150,7 @@
                             connection._programmaticConnection = true;
                             connection.connectionId = connectionData.id;
                             this.connections.set(connectionData.id, connection);
-                            console.log(`[CanvasManager] Connection restored successfully: ${connectionData.sourceNodeId} -> ${connectionData.targetNodeId}`);
+                            console.log(`[CanvasManager] Connection restored successfully: ${connectionData.sourceNodeId} -> ${connectionData.targetNodeId} (${connectionData.targetParam})`);
                         } else {
                             console.error('[CanvasManager] Failed to restore connection:', connectionData.id);
                         }
