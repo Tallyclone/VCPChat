@@ -493,9 +493,31 @@ header p {
     color: var(--secondary-text);
 }
 
+.header-buttons {
+    display: flex;
+    gap: 10px;
+}
+
 .add-image-btn:hover {
     background: #2563eb !important;
     transform: translateY(-1px);
+}
+
+.clear-all-images-btn {
+    background: var(--danger-color);
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+.clear-all-images-btn:hover {
+    background: #dc2626 !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
 }
 
 .dynamic-image-item {
@@ -743,4 +765,206 @@ header p {
 /* --- Drag Indicator Enhanced Animation --- */
 .drag-indicator {
     animation: dragPulse 1.5s ease-in-out infinite;
+}
+
+/* --- 成功/信息通知样式 --- */
+.success-notification,
+.info-notification {
+    animation: slideInNotification 0.3s ease-out;
+}
+
+.success-notification.removing,
+.info-notification.removing {
+    animation: slideOutNotification 0.3s ease-in;
+}
+
+@keyframes slideInNotification {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes slideOutNotification {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+}
+
+/* --- 画板编辑器样式 --- */
+.canvas-editor-modal {
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+}
+
+.canvas-editor-modal.show {
+    opacity: 1 !important;
+}
+
+.canvas-editor-container {
+    animation: modalSlideIn 0.3s ease-out;
+    max-width: 95vw;
+    max-height: 95vh;
+}
+
+@keyframes modalSlideIn {
+    from {
+        transform: translateY(-50px) scale(0.95);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0) scale(1);
+        opacity: 1;
+    }
+}
+
+.canvas-toolbar {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.canvas-toolbar select,
+.canvas-toolbar input[type="range"] {
+    transition: all 0.2s ease;
+}
+
+.canvas-toolbar select:hover,
+.canvas-toolbar select:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.canvas-toolbar input[type="color"] {
+    transition: all 0.2s ease;
+}
+
+.canvas-toolbar input[type="color"]:hover {
+    transform: scale(1.1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.canvas-toolbar input[type="range"]:hover {
+    cursor: pointer;
+}
+
+.canvas-toolbar input[type="range"]::-webkit-slider-thumb {
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--primary-color);
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
+    transition: all 0.2s ease;
+}
+
+.canvas-toolbar input[type="range"]::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.5);
+}
+
+.canvas-toolbar input[type="range"]::-webkit-slider-track {
+    appearance: none;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border-color);
+}
+
+.save-btn:hover,
+.copy-btn:hover,
+.undo-btn:hover,
+.clear-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+}
+
+.save-btn:active,
+.copy-btn:active,
+.undo-btn:active,
+.clear-btn:active {
+    transform: translateY(0);
+}
+
+/* --- 文字输入框样式 --- */
+.canvas-text-input {
+    font-family: Arial, sans-serif;
+    line-height: 1.2;
+}
+
+.canvas-text-input:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+}
+
+/* --- 清空选项菜单样式 --- */
+.clear-options-menu {
+    animation: menuFadeIn 0.2s ease-out;
+}
+
+@keyframes menuFadeIn {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+}
+
+/* --- 画板按钮样式 --- */
+.blank-canvas-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(102, 126, 234, 0.4) !important;
+}
+
+.edit-canvas-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(240, 147, 251, 0.4) !important;
+}
+
+.paste-clipboard-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(74, 222, 128, 0.4) !important;
+}
+
+.blank-canvas-btn:active,
+.edit-canvas-btn:active,
+.paste-clipboard-btn:active {
+    transform: translateY(0);
+}
+
+.canvas-buttons-container {
+    transition: all 0.3s ease;
+}
+
+/* --- 画板通知动画 --- */
+@keyframes canvasNotificationShow {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.8);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+}
+
+@keyframes canvasNotificationHide {
+    from {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.8);
+    }
 }
