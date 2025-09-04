@@ -393,6 +393,8 @@
                     return this.executeContentInputNode(node);
                 case 'urlExtractor': // URL提取器节点类型
                     return this.executeUrlExtractorNode(node, inputData);
+                case 'imageUpload': // 图片上传节点类型
+                    return this.executeImageUploadNode(node, inputData);
                 default:
                     throw new Error(`未知的辅助节点类型: ${node.pluginId}`);
             }
@@ -1136,6 +1138,27 @@
                 }
             } else {
                 throw new Error('URL提取器功能未加载，请确保相关模块已正确加载');
+            }
+        }
+
+        // 执行图片上传节点
+        async executeImageUploadNode(node, inputData) {
+            console.log('[ExecutionEngine] 执行图片上传节点:', node.id);
+            console.log('[ExecutionEngine] 输入数据:', inputData);
+            console.log('[ExecutionEngine] 节点配置:', node.config);
+            
+            // 调用NodeManager中的图片上传节点实现
+            if (window.WorkflowEditor_NodeManager && window.WorkflowEditor_NodeManager.executeImageUploadNode) {
+                try {
+                    const result = await window.WorkflowEditor_NodeManager.executeImageUploadNode(node, inputData);
+                    console.log('[ExecutionEngine] 图片上传节点执行结果:', result);
+                    return result;
+                } catch (error) {
+                    console.error('[ExecutionEngine] 图片上传节点执行失败:', error);
+                    throw error;
+                }
+            } else {
+                throw new Error('图片上传功能未加载，请确保相关模块已正确加载');
             }
         }
 

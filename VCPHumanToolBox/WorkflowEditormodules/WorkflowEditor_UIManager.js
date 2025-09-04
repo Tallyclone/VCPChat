@@ -1,4 +1,3 @@
-
 // WorkflowEditor UI Manager Module
 (function() {
     'use strict';
@@ -589,7 +588,9 @@
 				loop: { name: '循环控制', desc: '循环执行控制', icon: '🔁' },
 				delay: { name: '延时等待', desc: '延时执行控制', icon: '⏱️' },
 				urlRenderer: { name: 'URL渲染器', desc: '实时渲染URL内容', icon: '🖼️' },
-				contentInput: { name: '内容输入器', desc: '提供文本内容作为工作流输入', icon: '📝' } // 新增内容输入器节点
+				contentInput: { name: '内容输入器', desc: '提供文本内容作为工作流输入', icon: '📝' },
+				urlExtractor: { name: 'URL提取器', desc: '从数据中提取URL链接', icon: '🔗' },
+				imageUpload: { name: '图片上传器', desc: '上传图片并转换为base64格式', icon: '📷' }
 			};
 			return map[type] || { name: type, desc: '辅助处理节点', icon: '⚙️' };
 		}
@@ -747,7 +748,10 @@
 		getDefaultConfigForNode(data) {
 			if (data.category === 'auxiliary' && this.nodeManager && this.nodeManager.getNodeConfigTemplate) {
 				try {
-					return this.nodeManager.getNodeConfigTemplate(data.plugin.id);
+					console.log('[UIManager] Getting default config for:', data.plugin.id);
+					const config = this.nodeManager.getNodeConfigTemplate(data.plugin.id);
+					console.log('[UIManager] Default config result:', config);
+					return config;
 				} catch (e) {
 					console.warn('[UIManager] getDefaultConfigForNode fallback:', e.message);
 				}
@@ -1864,28 +1868,36 @@
                         }
                     });
 
-                        // 延迟恢复连接，确保节点都已渲染完成
+                        // 先恢复插件节点的动态输入端点与样式，再恢复连接，避免首个节点目标端点缺失
                         setTimeout(() => {
-                            console.log('[UIManager] Restoring connections after node rendering...');
-                            
-                            // 使用专门的 restoreConnections 方法，避免重复检测
-                            if (canvasManager && canvasManager.restoreConnections) {
-                                const connections = this.stateManager.getAllConnections();
-                                console.log('[UIManager] Calling restoreConnections with', connections.length, 'connections');
-                                canvasManager.restoreConnections(connections);
-                            } else {
-                                console.warn('[UIManager] restoreConnections method not available');
-                            }
+                            console.log('[UIManager] Step 1: Preparing dynamic inputs before restoring connections at', Date.now());
+                            const startTime = Date.now();
 
-                            // 恢复节点的多参数端点和样式
+                            // 恢复节点的多参数端点和样式（为插件节点生成动态输入端点）
+                            this.restoreNodeInputsAndStyles();
+
+                            console.log(`[UIManager] Dynamic inputs preparation completed in ${Date.now() - startTime}ms`);
+
+                            // 稍等端点渲染完成后再恢复连接
                             setTimeout(() => {
-                                this.restoreNodeInputsAndStyles();
-                            }, 200);
+                                console.log('[UIManager] Step 2: Starting connection restoration at', Date.now());
+                                const restoreStartTime = Date.now();
 
-                            // 更新画布变换
-                            if (canvasManager) {
-                                canvasManager.updateCanvasTransform();
-                            }
+                                // 使用专门的 restoreConnections 方法，避免重复检测
+                                if (canvasManager && canvasManager.restoreConnections) {
+                                    const connections = this.stateManager.getAllConnections();
+                                    console.log(`[UIManager] Calling restoreConnections with ${connections.length} connections at`, Date.now());
+                                    canvasManager.restoreConnections(connections);
+                                } else {
+                                    console.warn('[UIManager] restoreConnections method not available');
+                                }
+
+                                // 更新画布变换
+                                if (canvasManager) {
+                                    canvasManager.updateCanvasTransform();
+                                    console.log(`[UIManager] Canvas transform updated. Total restore time: ${Date.now() - restoreStartTime}ms`);
+                                }
+                            }, 220);
                         }, 500);
 
                     this.showToast(`工作流 "${workflowData.name}" 加载成功！`, 'success');
@@ -1947,34 +1959,36 @@
                             }
                         });
 
-                        // 延迟恢复连接，确保节点都已渲染完成
+                        // 先恢复插件节点的动态输入端点与样式，再恢复连接，避免首个节点目标端点缺失
                         setTimeout(() => {
-                            console.log('[UIManager] Restoring connections after node rendering...');
-                            
-                            // 使用 restoreConnections 方法而不是直接创建连接
-                            if (canvasManager && canvasManager.restoreConnections) {
-                                const connections = this.stateManager.getAllConnections();
-                                console.log('[UIManager] Calling restoreConnections with', connections.length, 'connections');
-                                canvasManager.restoreConnections(connections);
-                            } else {
-                                console.warn('[UIManager] restoreConnections method not available, falling back to createConnection');
-                                // 备用方案：直接创建连接
-                                this.stateManager.getAllConnections().forEach(connection => {
-                                    if (canvasManager) {
-                                        canvasManager.createConnection(connection);
-                                    }
-                                });
-                            }
+                            console.log('[UIManager] Preparing dynamic inputs before restoring connections...');
+                            // 恢复节点的多参数端点和样式（为插件节点生成动态输入端点）
+                            this.restoreNodeInputsAndStyles();
 
-                            // 恢复节点的多参数端点和样式
+                            // 稍等端点渲染完成后再恢复连接
                             setTimeout(() => {
-                                this.restoreNodeInputsAndStyles();
-                            }, 200);
+                                console.log('[UIManager] Restoring connections after dynamic inputs prepared...');
+                                
+                                // 使用 restoreConnections 方法而不是直接创建连接
+                                if (canvasManager && canvasManager.restoreConnections) {
+                                    const connections = this.stateManager.getAllConnections();
+                                    console.log('[UIManager] Calling restoreConnections with', connections.length, 'connections');
+                                    canvasManager.restoreConnections(connections);
+                                } else {
+                                    console.warn('[UIManager] restoreConnections method not available, falling back to createConnection');
+                                    // 备用方案：直接创建连接（此时目标端点已存在）
+                                    this.stateManager.getAllConnections().forEach(connection => {
+                                        if (canvasManager) {
+                                            canvasManager.createConnection(connection);
+                                        }
+                                    });
+                                }
 
-                            // 更新画布变换
-                            if (canvasManager) {
-                                canvasManager.updateCanvasTransform();
-                            }
+                                // 更新画布变换
+                                if (canvasManager) {
+                                    canvasManager.updateCanvasTransform();
+                                }
+                            }, 220);
                         }, 300);
 
                         this.showToast(`工作流 "${workflowData.name}" 导入成功！`, 'success');
@@ -2103,44 +2117,52 @@
 
         // 恢复节点的输入端点和样式
         restoreNodeInputsAndStyles() {
-            console.log('[UIManager] Restoring node inputs and styles...');
-            
+            console.log('[UIManager] Starting node inputs and styles restoration...');
             const nodes = this.stateManager.getAllNodes();
-            nodes.forEach(node => {
+            console.log(`[UIManager] Processing ${nodes.length} nodes for input restoration:`);
+
+            nodes.forEach((node, index) => {
                 try {
+                    console.log(`[UIManager] Processing node ${index + 1}/${nodes.length}: ${node.id} (${node.category}) type: ${node.type} pluginId: ${node.pluginId}`);
+
                     // 恢复插件节点的多参数端点
                     if ((node.type === 'VCPToolBox' || node.type === 'vcpChat') && node.commandId) {
-                        console.log('[UIManager] Restoring inputs for plugin node:', node.id, node.commandId);
-                        
+                        console.log(`[UIManager] 🔧 Restoring inputs for plugin node: ${node.id} with command: ${node.commandId}`);
+
                         const pluginInfo = this.getFullPluginInfo(node.category, node.pluginId);
                         if (pluginInfo && pluginInfo.commands) {
                             const command = pluginInfo.commands.find(c => c.id === node.commandId);
                             if (command && this.nodeManager && this.nodeManager.updateNodeInputsForCommand) {
                                 const pluginKey = `${node.category}_${node.pluginId}`;
-                                console.log('[UIManager] Calling updateNodeInputsForCommand for restored node:', {
-                                    nodeId: node.id,
-                                    commandId: command.id,
-                                    pluginKey
-                                });
+                                console.log(`[UIManager] 📝 Calling updateNodeInputsForCommand: node=${node.id}, command=${command.id}, pluginKey=${pluginKey}`);
+                                const startTime = Date.now();
                                 this.nodeManager.updateNodeInputsForCommand(node.id, command.id, pluginKey);
+                                console.log(`[UIManager] ✅ updateNodeInputsForCommand completed in ${Date.now() - startTime}ms for node ${node.id}`);
+                            } else {
+                                console.warn(`[UIManager] ❌ Cannot update inputs for node ${node.id}:`, {
+                                    hasNodeManager: !!this.nodeManager,
+                                    hasCommand: !!command,
+                                    hasMethod: !!(this.nodeManager && this.nodeManager.updateNodeInputsForCommand)
+                                });
                             }
+                        } else {
+                            console.warn(`[UIManager] ❌ Plugin info not available for ${node.category}_${node.pluginId}`);
                         }
                     }
-                    
+
                     // 恢复辅助节点的样式和端点
                     if (node.category === 'auxiliary' && this.nodeManager) {
-                        console.log('[UIManager] Restoring auxiliary node:', node.id, node.pluginId);
-                        
+                        console.log(`[UIManager] 🔧 Processing auxiliary node: ${node.id} pluginId: ${node.pluginId}`);
                         // 辅助节点不需要动态输入端点，跳过处理
-                        console.log('[UIManager] Auxiliary nodes do not need dynamic input endpoints');
+                        console.log(`[UIManager] ℹ️ Auxiliary nodes do not need dynamic input endpoints: ${node.id}`);
                     }
-                    
+
                 } catch (error) {
-                    console.error('[UIManager] Error restoring node:', node.id, error);
+                    console.error(`[UIManager] ❌ Error restoring node ${node.id}:`, error);
                 }
             });
-            
-            console.log('[UIManager] Node inputs and styles restoration completed');
+
+            console.log('[UIManager] ✅ Node inputs and styles restoration completed for all nodes');
         }
 
         // 获取已保存的工作流

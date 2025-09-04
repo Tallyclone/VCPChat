@@ -346,6 +346,57 @@
                     }
                 }
             });
+
+            // 图片上传节点
+            this.registerNodeType('imageUpload', {
+                label: '图片上传器',
+                category: 'auxiliary',
+                inputs: [], // 作为起始节点，没有输入
+                outputs: ['imageData'],
+                configSchema: {
+                    outputParamName: {
+                        type: 'string',
+                        default: 'imageBase64',
+                        placeholder: '例如: uploadedImage',
+                        description: '输出参数名称'
+                    },
+                    maxFileSize: {
+                        type: 'number',
+                        default: 10,
+                        min: 1,
+                        max: 50,
+                        description: '最大文件大小限制（MB）'
+                    },
+                    acceptedFormats: {
+                        type: 'multiselect',
+                        options: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'],
+                        default: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
+                        description: '支持的图片格式'
+                    },
+                    compressionQuality: {
+                        type: 'number',
+                        default: 0.8,
+                        min: 0.1,
+                        max: 1.0,
+                        step: 0.1,
+                        description: '图片压缩质量（0.1-1.0）'
+                    },
+                    maxWidth: {
+                        type: 'number',
+                        default: 1920,
+                        min: 100,
+                        max: 4096,
+                        description: '最大宽度（像素）'
+                    },
+                    maxHeight: {
+                        type: 'number',
+                        default: 1080,
+                        min: 100,
+                        max: 4096,
+                        description: '最大高度（像素）'
+                    }
+                }
+            });
         }
 
         // 注册节点类型
@@ -378,6 +429,7 @@
             this.registerNodeExecutor('delay', this.executeDelayNode.bind(this));
             this.registerNodeExecutor('urlRenderer', this.executeUrlRendererNode.bind(this));
             this.registerNodeExecutor('urlExtractor', this.executeUrlExtractorNode.bind(this));
+            this.registerNodeExecutor('imageUpload', this.executeImageUploadNode.bind(this));
         }
 
         // 注册节点执行器
@@ -1274,6 +1326,186 @@
         getDynamicInputsForAuxiliary(nodeTypeDef) {
             // 辅助节点不需要动态输入端点功能，直接返回空数组
             return [];
+        }
+
+        // 执行图片上传节点
+        async executeImageUploadNode(node, inputData = {}) {
+            console.log('[NodeManager] 执行图片上传节点:', node.id);
+            
+            const config = node.config || {};
+            const {
+                outputParamName = 'imageBase64',
+                maxFileSize = 10,
+                acceptedFormats = ['jpg', 'jpeg', 'png', 'gif', 'webp'],
+                compressionQuality = 0.8,
+                maxWidth = 1920,
+                maxHeight = 1080
+            } = config;
+
+            // 检查节点是否已经有上传的图片数据
+            if (node.uploadedImageData) {
+                console.log('[NodeManager] 使用已上传的图片数据');
+                
+                const result = {
+                    [outputParamName]: node.uploadedImageData,
+                    fileName: node.uploadedFileName || 'uploaded_image',
+                    fileSize: node.uploadedFileSize || 0,
+                    timestamp: new Date().toISOString(),
+                    success: true
+                };
+
+                console.log('[NodeManager] 图片上传节点执行完成:', result);
+                return result;
+            } else {
+                // 如果没有上传的图片，返回等待上传的状态
+                console.log('[NodeManager] 等待用户上传图片');
+                
+                const result = {
+                    [outputParamName]: null,
+                    message: '请上传图片文件',
+                    success: false,
+                    waiting: true,
+                    timestamp: new Date().toISOString()
+                };
+
+                return result;
+            }
+        }
+
+        // 处理图片上传（由UI调用）
+        async handleImageUpload(nodeId, file) {
+            console.log('[NodeManager] 处理图片上传:', { nodeId, fileName: file.name, fileSize: file.size });
+            
+            const node = this.stateManager.getNode(nodeId);
+            if (!node) {
+                throw new Error(`节点 ${nodeId} 不存在`);
+            }
+
+            const config = node.config || {};
+            const {
+                maxFileSize = 10,
+                acceptedFormats = ['jpg', 'jpeg', 'png', 'gif', 'webp'],
+                compressionQuality = 0.8,
+                maxWidth = 1920,
+                maxHeight = 1080
+            } = config;
+
+            // 验证文件类型
+            const fileExtension = file.name.split('.').pop().toLowerCase();
+            if (!acceptedFormats.includes(fileExtension)) {
+                throw new Error(`不支持的文件格式: ${fileExtension}。支持的格式: ${acceptedFormats.join(', ')}`);
+            }
+
+            // 验证文件大小
+            const fileSizeMB = file.size / (1024 * 1024);
+            if (fileSizeMB > maxFileSize) {
+                throw new Error(`文件大小超过限制: ${fileSizeMB.toFixed(2)}MB > ${maxFileSize}MB`);
+            }
+
+            try {
+                // 读取文件并转换为base64
+                const imageData = await this.processImageFile(file, {
+                    compressionQuality,
+                    maxWidth,
+                    maxHeight
+                });
+
+                // 保存到节点数据中
+                this.stateManager.updateNode(nodeId, {
+                    uploadedImageData: imageData,
+                    uploadedFileName: file.name,
+                    uploadedFileSize: file.size,
+                    uploadedTimestamp: new Date().toISOString()
+                });
+
+                console.log('[NodeManager] 图片上传处理完成');
+                return {
+                    success: true,
+                    fileName: file.name,
+                    fileSize: file.size,
+                    dataUrl: imageData
+                };
+
+            } catch (error) {
+                console.error('[NodeManager] 图片处理失败:', error);
+                throw new Error(`图片处理失败: ${error.message}`);
+            }
+        }
+
+        // 处理图片文件（压缩和转换）
+        async processImageFile(file, options = {}) {
+            const {
+                compressionQuality = 0.8,
+                maxWidth = 1920,
+                maxHeight = 1080
+            } = options;
+
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                
+                reader.onload = (e) => {
+                    const img = new Image();
+                    
+                    img.onload = () => {
+                        try {
+                            // 创建canvas进行图片处理
+                            const canvas = document.createElement('canvas');
+                            const ctx = canvas.getContext('2d');
+
+                            // 计算新的尺寸（保持宽高比）
+                            let { width, height } = this.calculateNewDimensions(
+                                img.width, 
+                                img.height, 
+                                maxWidth, 
+                                maxHeight
+                            );
+
+                            canvas.width = width;
+                            canvas.height = height;
+
+                            // 绘制图片
+                            ctx.drawImage(img, 0, 0, width, height);
+
+                            // 转换为base64
+                            const dataUrl = canvas.toDataURL('image/jpeg', compressionQuality);
+                            resolve(dataUrl);
+
+                        } catch (error) {
+                            reject(error);
+                        }
+                    };
+
+                    img.onerror = () => {
+                        reject(new Error('图片加载失败'));
+                    };
+
+                    img.src = e.target.result;
+                };
+
+                reader.onerror = () => {
+                    reject(new Error('文件读取失败'));
+                };
+
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // 计算新的图片尺寸（保持宽高比）
+        calculateNewDimensions(originalWidth, originalHeight, maxWidth, maxHeight) {
+            let width = originalWidth;
+            let height = originalHeight;
+
+            // 如果图片尺寸超过限制，按比例缩放
+            if (width > maxWidth || height > maxHeight) {
+                const widthRatio = maxWidth / width;
+                const heightRatio = maxHeight / height;
+                const ratio = Math.min(widthRatio, heightRatio);
+
+                width = Math.round(width * ratio);
+                height = Math.round(height * ratio);
+            }
+
+            return { width, height };
         }
     }
 
