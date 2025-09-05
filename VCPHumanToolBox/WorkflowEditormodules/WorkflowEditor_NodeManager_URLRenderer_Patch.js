@@ -11,24 +11,87 @@
         // 执行URL渲染节点 - 简化版本
         nodeManager.executeUrlRendererNode = async function(node, inputData) {
             const { urlPath, renderType, width, height } = node.config;
-            const input = inputData.input || inputData;
+            
+            console.log(`[URLRenderer] 开始处理输入数据:`, inputData);
+            console.log(`[URLRenderer] 配置参数:`, { urlPath, renderType, width, height });
+            console.log(`[URLRenderer] 输入数据键值:`, Object.keys(inputData || {}));
 
-            if (!input) {
+            // 智能输入数据处理
+            let input = null;
+            
+            // 1. 如果有 input 字段，优先使用
+            if (inputData.input !== undefined && inputData.input !== null) {
+                input = inputData.input;
+                console.log(`[URLRenderer] 使用 inputData.input:`, input);
+            }
+            // 2. 否则使用整个 inputData
+            else {
+                input = inputData;
+                console.log(`[URLRenderer] 使用整个 inputData:`, input);
+            }
+
+            if (!input || (typeof input === 'object' && Object.keys(input).length === 0)) {
                 throw new Error('Input data is required for URL rendering');
             }
 
             try {
-                console.log(`[URLRenderer] 开始处理输入数据:`, input);
-                console.log(`[URLRenderer] 配置参数:`, { urlPath, renderType, width, height });
-
                 // 提取URL数据
                 const urlData = this.extractUrlData(input, urlPath || 'url');
                 console.log(`[URLRenderer] 提取的URL数据:`, urlData);
 
                 if (!urlData) {
-                    throw new Error(`URL not found in input data using path: ${urlPath || 'url'}`);
+                    // 如果没有找到URL，尝试从输入数据的其他字段中查找
+                    console.log(`[URLRenderer] 未找到URL，尝试从其他字段查找...`);
+                    
+                    // 尝试常见的URL字段名
+                    const possibleUrlFields = ['url', 'extractedUrls', 'urls', 'imageUrl', 'src'];
+                    let foundUrl = null;
+                    
+                    for (const field of possibleUrlFields) {
+                        const fieldValue = this.getNestedProperty(input, field);
+                        if (fieldValue) {
+                            console.log(`[URLRenderer] 在字段 ${field} 中找到数据:`, fieldValue);
+                            foundUrl = this.processUrlData(fieldValue);
+                            if (foundUrl) {
+                                console.log(`[URLRenderer] 成功提取URL:`, foundUrl);
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (!foundUrl) {
+                        throw new Error(`URL not found in input data using path: ${urlPath || 'url'}. Available fields: ${Object.keys(input).join(', ')}`);
+                    }
+                    
+                    // 使用找到的URL
+                    const urlDataFromField = foundUrl;
+                    
+                    // 判断是单个URL还是URL数组
+                    const isArray = Array.isArray(urlDataFromField);
+                    console.log(`[URLRenderer] 数据类型: ${isArray ? '数组' : '单个URL'}`);
+
+                    let renderResult;
+
+                    if (isArray) {
+                        // 多条URL渲染
+                        renderResult = await this.renderMultipleUrls(node, urlDataFromField, {
+                            renderType, width, height
+                        });
+                    } else {
+                        // 单条URL渲染
+                        renderResult = await this.renderSingleUrl(node, urlDataFromField, {
+                            renderType, width, height
+                        });
+                    }
+
+                    return {
+                        ...renderResult,
+                        originalData: input,
+                        timestamp: new Date().toISOString()
+                    };
                 }
 
+                // 正常路径：找到了URL数据
                 // 判断是单个URL还是URL数组
                 const isArray = Array.isArray(urlData);
                 console.log(`[URLRenderer] 数据类型: ${isArray ? '数组' : '单个URL'}`);
@@ -54,6 +117,7 @@
                 };
 
             } catch (error) {
+                console.error(`[URLRenderer] 渲染失败:`, error);
                 throw new Error(`URL rendering failed: ${error.message}`);
             }
         };

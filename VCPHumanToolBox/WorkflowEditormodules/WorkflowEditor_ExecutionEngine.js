@@ -10,6 +10,7 @@
             
             this.stateManager = null;
             this.pluginManager = null;
+            this.connectionManager = null; // 连接管理器
             this.isExecuting = false;
             this.executionQueue = [];
             this.nodeResults = new Map(); // 存储节点执行结果
@@ -79,7 +80,16 @@
                 
                 // 获取所有节点和连接
                 const nodes = this.stateManager.getAllNodes();
-                const connections = this.stateManager.getAllConnections();
+                
+                // 优先使用 ConnectionManager 获取连接
+                let connections;
+                if (this.connectionManager) {
+                    connections = this.connectionManager.getAllConnections();
+                    console.log('[ExecutionEngine] 使用 ConnectionManager 获取连接:', connections.length);
+                } else {
+                    connections = this.stateManager.getAllConnections();
+                    console.log('[ExecutionEngine] 回退到 StateManager 获取连接:', connections.length);
+                }
                 
                 // 构建执行图
                 const executionGraph = this.buildExecutionGraph(nodes, connections);
@@ -111,6 +121,14 @@
 
         // 构建执行图
         buildExecutionGraph(nodes, connections) {
+            console.log(`[ExecutionEngine] 构建执行图 - 节点数: ${nodes.length}, 连接数: ${connections.length}`);
+            
+            // 打印所有连接信息
+            connections.forEach((connection, index) => {
+                console.log(`[ExecutionEngine] 连接 ${index + 1}: ${connection.sourceNodeId} -> ${connection.targetNodeId}`);
+                console.log(`[ExecutionEngine] 连接详情:`, connection);
+            });
+            
             const graph = new Map();
             
             // 初始化图节点
@@ -127,6 +145,9 @@
                 const sourceGraphNode = graph.get(connection.sourceNodeId);
                 const targetGraphNode = graph.get(connection.targetNodeId);
                 
+                console.log(`[ExecutionEngine] 处理连接: ${connection.sourceNodeId} -> ${connection.targetNodeId}`);
+                console.log(`[ExecutionEngine] 源节点存在: ${!!sourceGraphNode}, 目标节点存在: ${!!targetGraphNode}`);
+                
                 if (sourceGraphNode && targetGraphNode) {
                     sourceGraphNode.outputs.push({
                         targetNodeId: connection.targetNodeId,
@@ -140,7 +161,16 @@
                         targetPort: connection.targetPort,
                         connection: connection
                     });
+                    
+                    console.log(`[ExecutionEngine] ✓ 连接已添加到执行图`);
+                } else {
+                    console.warn(`[ExecutionEngine] ✗ 连接无效，跳过: ${connection.sourceNodeId} -> ${connection.targetNodeId}`);
                 }
+            });
+            
+            // 打印最终的执行图结构
+            graph.forEach((graphNode, nodeId) => {
+                console.log(`[ExecutionEngine] 节点 ${nodeId}: ${graphNode.inputs.length} 个输入, ${graphNode.outputs.length} 个输出`);
             });
             
             return graph;
@@ -175,17 +205,35 @@
         // 执行节点链 - 使用拓扑排序避免循环依赖问题
         async executeNodeChain(startNode, executionGraph) {
             console.log(`[ExecutionEngine] 开始执行节点链，起始节点: ${startNode.id}`);
+            console.log(`[ExecutionEngine] 执行图包含 ${executionGraph.size} 个节点`);
+            
+            // 打印执行图的连接信息
+            executionGraph.forEach((graphNode, nodeId) => {
+                console.log(`[ExecutionEngine] 节点 ${nodeId}: ${graphNode.inputs.length} 个输入, ${graphNode.outputs.length} 个输出`);
+                graphNode.inputs.forEach((input, i) => {
+                    console.log(`[ExecutionEngine]   输入 ${i + 1}: 来自节点 ${input.sourceNodeId}`);
+                });
+                graphNode.outputs.forEach((output, i) => {
+                    console.log(`[ExecutionEngine]   输出 ${i + 1}: 到节点 ${output.targetNodeId}`);
+                });
+            });
             
             // 使用队列进行广度优先执行
             const executionQueue = [startNode.id];
             const executed = new Set();
             const executing = new Set();
+            let maxIterations = executionGraph.size * 3; // 防止无限循环
+            let iterations = 0;
             
-            while (executionQueue.length > 0) {
+            while (executionQueue.length > 0 && iterations < maxIterations) {
+                iterations++;
                 const nodeId = executionQueue.shift();
+                
+                console.log(`[ExecutionEngine] 处理队列中的节点: ${nodeId} (迭代 ${iterations})`);
                 
                 // 跳过已执行的节点
                 if (executed.has(nodeId)) {
+                    console.log(`[ExecutionEngine] 节点 ${nodeId} 已执行，跳过`);
                     continue;
                 }
                 
@@ -197,15 +245,23 @@
                 
                 const graphNode = executionGraph.get(nodeId);
                 if (!graphNode) {
-                    console.error(`[ExecutionEngine] 节点 ${nodeId} 不存在`);
+                    console.error(`[ExecutionEngine] 节点 ${nodeId} 不存在于执行图中`);
                     continue;
                 }
                 
                 // 检查所有输入节点是否已执行
-                const allInputsReady = graphNode.inputs.every(input => executed.has(input.sourceNodeId));
+                const allInputsReady = graphNode.inputs.length === 0 || 
+                    graphNode.inputs.every(input => {
+                        const ready = executed.has(input.sourceNodeId);
+                        console.log(`[ExecutionEngine] 检查输入节点 ${input.sourceNodeId}: ${ready ? '已执行' : '未执行'}`);
+                        return ready;
+                    });
+                
+                console.log(`[ExecutionEngine] 节点 ${nodeId} 所有输入是否就绪: ${allInputsReady}`);
                 
                 if (!allInputsReady) {
                     // 将节点重新加入队列末尾，等待输入节点执行完成
+                    console.log(`[ExecutionEngine] 节点 ${nodeId} 输入未就绪，重新加入队列`);
                     executionQueue.push(nodeId);
                     continue;
                 }
@@ -218,8 +274,12 @@
                     executing.add(nodeId);
                     
                     try {
+                        console.log(`[ExecutionEngine] 开始执行节点: ${nodeId}`);
+                        
                         // 执行节点
                         await this.executeNode(graphNode.node);
+                        
+                        console.log(`[ExecutionEngine] 节点 ${nodeId} 执行成功，开始传播数据`);
                         
                         // 传播输出数据到下游节点
                         this.propagateOutputData(nodeId, graphNode);
@@ -229,6 +289,8 @@
                             if (!executed.has(output.targetNodeId) && !executionQueue.includes(output.targetNodeId)) {
                                 console.log(`[ExecutionEngine] 将下游节点加入队列: ${output.targetNodeId}`);
                                 executionQueue.push(output.targetNodeId);
+                            } else {
+                                console.log(`[ExecutionEngine] 下游节点 ${output.targetNodeId} 已在队列中或已执行`);
                             }
                         });
                         
@@ -242,21 +304,29 @@
                         executing.delete(nodeId);
                     }
                 } else {
-                    console.log(`[ExecutionEngine] 节点 ${nodeId} 输入未准备好，跳过执行`);
+                    console.log(`[ExecutionEngine] 节点 ${nodeId} 必需输入未准备好，标记为已处理`);
                     executed.add(nodeId); // 标记为已处理，避免无限循环
                 }
+            }
+            
+            if (iterations >= maxIterations) {
+                console.warn(`[ExecutionEngine] 达到最大迭代次数 ${maxIterations}，可能存在循环依赖`);
             }
             
             console.log(`[ExecutionEngine] 节点链执行完成，已执行节点:`, Array.from(executed));
         }
 
         // 收集输入数据
-        // 收集输入数据
         collectInputData(nodeId, graphNode) {
             const inputData = this.nodeInputData.get(nodeId) || {};
             
+            console.log(`[ExecutionEngine] 开始收集节点 ${nodeId} 的输入数据`);
+            console.log(`[ExecutionEngine] 节点有 ${graphNode.inputs.length} 个输入连接`);
+            
             graphNode.inputs.forEach(input => {
                 const sourceResult = this.nodeResults.get(input.sourceNodeId);
+                console.log(`[ExecutionEngine] 检查源节点 ${input.sourceNodeId} 的结果:`, sourceResult);
+                
                 if (sourceResult) {
                     // 解析JSON数据并支持字段访问
                     const processedData = this.processInputData(sourceResult);
@@ -265,16 +335,21 @@
                     const targetParam = input.targetPort || input.connection?.targetParam || 'input';
                     
                     console.log(`[ExecutionEngine] 收集输入数据: ${input.sourceNodeId} -> ${nodeId}, 参数: ${targetParam}`);
+                    console.log(`[ExecutionEngine] 处理后的数据:`, processedData);
                     
                     // 只有当目标参数名有效时才设置数据
                     if (targetParam && targetParam !== 'undefined') {
                         inputData[targetParam] = processedData;
+                        console.log(`[ExecutionEngine] 成功设置输入参数 ${targetParam}`);
                     } else {
                         console.warn(`[ExecutionEngine] 跳过无效的目标参数名: ${targetParam}`);
                     }
+                } else {
+                    console.warn(`[ExecutionEngine] 源节点 ${input.sourceNodeId} 没有结果数据`);
                 }
             });
             
+            console.log(`[ExecutionEngine] 收集完成，节点 ${nodeId} 的最终输入数据:`, inputData);
             this.nodeInputData.set(nodeId, inputData);
         }
 
@@ -1542,24 +1617,32 @@
         }
 
         // 传播输出数据
-        // 传播输出数据
         propagateOutputData(nodeId, graphNode) {
             const result = this.nodeResults.get(nodeId);
             const sourceNode = graphNode.node;
             console.log(`[ExecutionEngine] 传播节点 ${nodeId} 的输出数据:`, result);
+            console.log(`[ExecutionEngine] 节点有 ${graphNode.outputs.length} 个输出连接`);
             
-            graphNode.outputs.forEach(output => {
-                const targetInputData = this.nodeInputData.get(output.targetNodeId) || {};
+            if (graphNode.outputs.length === 0) {
+                console.log(`[ExecutionEngine] 节点 ${nodeId} 没有输出连接，跳过数据传播`);
+                return;
+            }
+            
+            graphNode.outputs.forEach((output, index) => {
+                console.log(`[ExecutionEngine] 处理输出连接 ${index + 1}:`, output);
                 
-                // 优先使用节点配置的自定义输出参数名
-                let targetParam = output.connection.targetParam || output.targetPort || 'input';
+                const targetInputData = this.nodeInputData.get(output.targetNodeId) || {};
+                console.log(`[ExecutionEngine] 目标节点 ${output.targetNodeId} 当前输入数据:`, targetInputData);
+                
+                // 优先使用连接配置的目标参数名，然后是默认的 'input'
+                let targetParam = output.connection?.targetParam || output.targetPort || 'input';
                 let useCustomOutputName = false;
                 
-                // 如果源节点是辅助节点且配置了自定义输出参数名，使用它
+                // 如果源节点是辅助节点且配置了自定义输出参数名，使用它作为键名
                 if (sourceNode.category === 'auxiliary' && sourceNode.config && sourceNode.config.outputParamName) {
-                    targetParam = sourceNode.config.outputParamName;
+                    // 注意：这里不应该改变 targetParam，而是在数据中使用自定义键名
                     useCustomOutputName = true;
-                    console.log(`[ExecutionEngine] 使用自定义输出参数名: ${targetParam}`);
+                    console.log(`[ExecutionEngine] 源节点使用自定义输出参数名: ${sourceNode.config.outputParamName}`);
                 }
                 
                 // 直接传播完整的输出数据 - 保持数据流透明

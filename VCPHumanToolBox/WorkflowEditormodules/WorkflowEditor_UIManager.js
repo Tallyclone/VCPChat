@@ -12,6 +12,7 @@
             this.isVisible = false;
             this.stateManager = null;
 			this.nodeManager = null;
+            this.connectionManager = null; // 连接管理器
             this.searchTimeout = null; // 添加搜索防抖定时器
             
             WorkflowEditor_UIManager.instance = this;
@@ -28,6 +29,15 @@
         init(stateManager) {
             this.stateManager = stateManager;
 			this.nodeManager = window.WorkflowEditor_NodeManager || null;
+            
+            // 初始化连接管理器
+            if (window.WorkflowEditor_ConnectionManager) {
+                this.connectionManager = new window.WorkflowEditor_ConnectionManager();
+                console.log('[WorkflowEditor_UIManager] ConnectionManager initialized');
+            } else {
+                console.warn('[WorkflowEditor_UIManager] ConnectionManager not available');
+            }
+            
             this.createContainer();
             this.bindEvents();
             this.setExecutionState(false); // 确保初始状态下“停止执行”按钮是隐藏的
@@ -345,6 +355,19 @@
                 this.container.classList.add('active');
                 this.isVisible = true;
                 this.stateManager.set('isVisible', true);
+                
+                // 初始化 ConnectionManager 与其他组件的连接
+                if (this.connectionManager && !this.connectionManager.isInitialized) {
+                    const canvasManager = window.WorkflowEditor_CanvasManager;
+                    this.connectionManager.initialize(this.stateManager, canvasManager);
+                    
+                    // 同步现有的连接状态
+                    setTimeout(() => {
+                        this.connectionManager.syncConnectionStates();
+                        console.log('[UIManager] ConnectionManager 初始化并同步完成');
+                    }, 100);
+                }
+                
                 this.initializePluginPanel();
                 this.updateStats();
             }
@@ -1888,8 +1911,10 @@
 
                                 // 使用专门的 restoreConnections 方法，避免重复检测
                                 if (canvasManager && canvasManager.restoreConnections) {
+                                    // 直接从 StateManager 获取连接数据，因为工作流加载时连接存储在那里
                                     const connections = this.stateManager.getAllConnections();
                                     console.log(`[UIManager] Calling restoreConnections with ${connections.length} connections at`, Date.now());
+                                    console.log('[UIManager] Connection data:', connections);
                                     canvasManager.restoreConnections(connections);
                                 } else {
                                     console.warn('[UIManager] restoreConnections method not available');
@@ -1899,6 +1924,16 @@
                                 if (canvasManager) {
                                     canvasManager.updateCanvasTransform();
                                     console.log(`[UIManager] Canvas transform updated. Total restore time: ${Date.now() - restoreStartTime}ms`);
+                                }
+                                
+                                // 确保 ConnectionManager 同步连接状态
+                                if (this.connectionManager && this.connectionManager.isInitialized) {
+                                    console.log('[UIManager] Syncing ConnectionManager after workflow load');
+                                    this.connectionManager.syncConnectionStates();
+                                } else if (this.connectionManager && !this.connectionManager.isInitialized) {
+                                    console.log('[UIManager] Initializing ConnectionManager after workflow load');
+                                    this.connectionManager.initialize(this.stateManager, canvasManager);
+                                    this.connectionManager.syncConnectionStates();
                                 }
                             }, 220);
                         }, 500);
@@ -1917,88 +1952,38 @@
         // 同步连接状态，确保所有连接都被保存到状态管理器中
         syncConnectionsBeforeSave() {
             console.log('[UIManager] Syncing connections before save...');
+            console.log('[UIManager] ConnectionManager 状态:', {
+                exists: !!this.connectionManager,
+                isInitialized: this.connectionManager?.isInitialized,
+                globalExists: !!window.WorkflowEditor_ConnectionManager,
+                canvasManagerExists: !!window.WorkflowEditor_CanvasManager
+            });
             
-            const canvasManager = window.WorkflowEditor_CanvasManager;
-            if (!canvasManager || !canvasManager.jsPlumbInstance) {
-                console.warn('[UIManager] CanvasManager or jsPlumb not available for connection sync');
-                return;
+            // 尝试创建 ConnectionManager 如果不存在
+            if (!this.connectionManager && window.WorkflowEditor_ConnectionManager) {
+                console.log('[UIManager] Creating ConnectionManager...');
+                this.connectionManager = new window.WorkflowEditor_ConnectionManager();
             }
             
-            const stateConnections = this.stateManager.getAllConnections();
-            let syncedCount = 0;
-            
-            // 优先使用 canvasManager 内部映射（如果存在）
-            const canvasMapExists = !!(canvasManager.connections && typeof canvasManager.connections.entries === 'function' && canvasManager.connections.size > 0);
-            if (canvasMapExists) {
-                const canvasConnections = Array.from(canvasManager.connections.entries());
-                console.log(`[UIManager] Canvas connections (map): ${canvasConnections.length}, State connections: ${stateConnections.length}`);
-                canvasConnections.forEach(([connectionId, jsPlumbConnection]) => {
-                    const existsInState = stateConnections.some(conn => conn.id === connectionId);
-                    if (!existsInState) {
-                        const sourceNodeId = jsPlumbConnection.source?.id || jsPlumbConnection.parameters?.sourceNodeId;
-                        const targetNodeId = jsPlumbConnection.target?.id || jsPlumbConnection.parameters?.targetNodeId;
-                        if (sourceNodeId && targetNodeId) {
-                            const connectionData = {
-                                id: connectionId,
-                                sourceNodeId,
-                                targetNodeId,
-                                sourceParam: jsPlumbConnection.parameters?.sourceParam || 'output',
-                                targetParam: jsPlumbConnection.parameters?.targetParam || 'input'
-                            };
-                            if (this.stateManager.state && this.stateManager.state.connections) {
-                                this.stateManager.state.connections.set(connectionId, connectionData);
-                                syncedCount++;
-                                console.log(`[UIManager] 🔧 Synced missing connection from canvas map: ${sourceNodeId} -> ${targetNodeId}`);
-                            }
-                        }
-                    }
-                });
+            if (this.connectionManager && this.connectionManager.isInitialized) {
+                // 使用 ConnectionManager 进行同步
+                this.connectionManager.syncConnectionStates();
+                console.log('[UIManager] ✅ Connections synced via ConnectionManager');
+            } else if (this.connectionManager && !this.connectionManager.isInitialized) {
+                console.warn('[UIManager] ConnectionManager exists but not initialized, trying to initialize...');
+                const canvasManager = window.WorkflowEditor_CanvasManager;
+                if (canvasManager) {
+                    this.connectionManager.initialize(this.stateManager, canvasManager);
+                    this.connectionManager.syncConnectionStates();
+                    console.log('[UIManager] ✅ ConnectionManager initialized and synced');
+                } else {
+                    console.warn('[UIManager] CanvasManager not available, initializing ConnectionManager without canvas');
+                    // 即使没有 CanvasManager，也可以初始化 ConnectionManager 来同步 StateManager 中的连接
+                    this.connectionManager.initialize(this.stateManager, null);
+                    console.log('[UIManager] ✅ ConnectionManager initialized without canvas');
+                }
             } else {
-                // 回退：直接从 jsPlumb 实例读取真实存在的连接（视觉层），以防内部映射丢失
-                const jsConns = canvasManager.jsPlumbInstance.getAllConnections();
-                console.log(`[UIManager] Canvas map empty, falling back to jsPlumb.getAllConnections(): ${jsConns.length} connections found`);
-                jsConns.forEach(conn => {
-                    const sourceId = conn.source?.id || conn.parameters?.sourceNodeId;
-                    const targetId = conn.target?.id || conn.parameters?.targetNodeId;
-                    if (!sourceId || !targetId) return;
-                    const connId = conn.connectionId || `${sourceId}_${targetId}_${Date.now()}`;
-                    const exists = stateConnections.some(c => c.id === connId || (c.sourceNodeId === sourceId && c.targetNodeId === targetId && c.targetParam === (conn.parameters?.targetParam || 'input')));
-                    if (exists) return;
-                    const connectionData = {
-                        id: connId,
-                        sourceNodeId: sourceId,
-                        targetNodeId: targetId,
-                        sourceParam: conn.parameters?.sourceParam || 'output',
-                        targetParam: conn.parameters?.targetParam || 'input'
-                    };
-                    try {
-                        // 通过 stateManager.addConnection 优先添加
-                        if (this.stateManager && this.stateManager.addConnection) {
-                            this.stateManager.addConnection(connectionData, true, false);
-                        } else if (this.stateManager.state && this.stateManager.state.connections) {
-                            this.stateManager.state.connections.set(connId, connectionData);
-                        }
-                        // 标记到 canvasManager.connections 映射，方便后续使用
-                        try {
-                            if (canvasManager.connections && typeof canvasManager.connections.set === 'function') {
-                                canvasManager.connections.set(connId, conn);
-                            }
-                            conn.connectionId = connId;
-                        } catch (e) {
-                            console.warn('[UIManager] Failed to set connection into canvasManager.connections:', e);
-                        }
-                        syncedCount++;
-                        console.log(`[UIManager] 🔧 Synced missing connection from jsPlumb: ${sourceId} -> ${targetId}`);
-                    } catch (e) {
-                        console.error('[UIManager] Error syncing connection from jsPlumb:', e);
-                    }
-                });
-            }
-            
-            if (syncedCount > 0) {
-                console.log(`[UIManager] ✅ Synced ${syncedCount} missing connections`);
-            } else {
-                console.log('[UIManager] ✅ All connections are already in sync');
+                console.warn('[UIManager] ConnectionManager not available, connections will be saved from StateManager directly');
             }
         }
 
@@ -2071,7 +2056,10 @@
                                 } else {
                                     console.warn('[UIManager] restoreConnections method not available, falling back to createConnection');
                                     // 备用方案：直接创建连接（此时目标端点已存在）
-                                    this.stateManager.getAllConnections().forEach(connection => {
+                                    const fallbackConnections = this.connectionManager ? 
+                                        this.connectionManager.getAllConnections() : 
+                                        this.stateManager.getAllConnections();
+                                    fallbackConnections.forEach(connection => {
                                         if (canvasManager) {
                                             canvasManager.createConnection(connection);
                                         }
@@ -2140,7 +2128,9 @@
         // 在节点准备就绪后创建连接
         createConnectionsAfterNodesReady() {
             const canvasManager = window.WorkflowEditor_CanvasManager;
-            const connections = this.stateManager.getAllConnections();
+            const connections = this.connectionManager ? 
+                this.connectionManager.getAllConnections() : 
+                this.stateManager.getAllConnections();
             
             console.log('[UIManager] Creating connections after nodes are ready...');
             
@@ -2322,6 +2312,12 @@
                 // 初始化执行引擎
                 if (!executionEngine.stateManager) {
                     executionEngine.init(this.stateManager, this.nodeManager);
+                }
+                
+                // 设置 ConnectionManager
+                if (this.connectionManager) {
+                    executionEngine.connectionManager = this.connectionManager;
+                    console.log('[UIManager] ConnectionManager 已传递给 ExecutionEngine');
                 }
 
                 // 开始执行

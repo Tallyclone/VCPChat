@@ -1100,12 +1100,15 @@
 
                 // 标记连接ID到JSPlumb连接对象
                 info.connection.connectionId = connectionData.id;
+                info.connection.setParameter('connectionId', connectionData.id);
                 this.connections.set(connectionData.id, info.connection);
 
-                // 通过状态管理器添加连接（但不触发视觉创建, 但记录历史）
+                // 通过状态管理器添加连接（触发事件以便 ConnectionManager 同步）
                 if (this.stateManager && this.stateManager.addConnection) {
-                    // 调用 addConnection，它会记录历史，但通过 skipRender=true 避免重复渲染
-                    this.stateManager.addConnection(connectionData, true, true);
+                    console.log('[CanvasManager] 调用 StateManager.addConnection:', connectionData);
+                    // 调用 addConnection，记录历史并触发事件，但不重复渲染（因为连接已经在画布上了）
+                    const result = this.stateManager.addConnection(connectionData, false, true);
+                    console.log('[CanvasManager] StateManager.addConnection 结果:', result);
                 } else {
                     console.error('[CanvasManager] StateManager or addConnection method not available');
                 }

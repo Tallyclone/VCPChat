@@ -10,6 +10,7 @@
    
             this.requiredScripts = [
                 'WorkflowEditormodules/WorkflowEditor_StateManager.js',
+                'WorkflowEditormodules/WorkflowEditor_ConnectionManager.js',
                 'WorkflowEditormodules/WorkflowEditor_PluginManager.js',
                 'WorkflowEditormodules/WorkflowEditor_PluginDialog.js',
                 'WorkflowEditormodules/WorkflowEditor_UIManager.js',
@@ -132,6 +133,7 @@
 
                 const moduleStatus = {
                     stateManager: !!window.WorkflowEditor_StateManager,
+                    connectionManager: !!window.WorkflowEditor_ConnectionManager,
                     pluginManager: !!window.WorkflowEditor_PluginManager,
                     pluginDialog: !!window.WorkflowEditor_PluginDialog,
                     uiManager: !!window.WorkflowEditor_UIManager,
@@ -144,6 +146,7 @@
                 console.log(`[WorkflowEditorLoader] Module status (${iteration}/${maxAttempts}):`, moduleStatus);
 
                 if (window.WorkflowEditor_StateManager &&
+                      window.WorkflowEditor_ConnectionManager &&
                       window.WorkflowEditor_PluginManager &&
                       window.WorkflowEditor_PluginDialog &&
                       window.WorkflowEditor_UIManager &&
@@ -186,6 +189,7 @@
             // 如果最后一次循环也没有成功，记录失败状态
             console.error('[WorkflowEditorLoader] Final module status:', {
                 stateManager: !!window.WorkflowEditor_StateManager,
+                connectionManager: !!window.WorkflowEditor_ConnectionManager,
                 pluginManager: !!window.WorkflowEditor_PluginManager,
                 pluginDialog: !!window.WorkflowEditor_PluginDialog,
                 uiManager: !!window.WorkflowEditor_UIManager,
