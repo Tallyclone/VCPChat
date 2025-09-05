@@ -685,9 +685,9 @@
                 return responseText;
             }
             
-            // 提取结果数据 - 过滤输入参数，只返回生成的内容
-            let result = this.extractPluginOutput(data, allParams);
-            console.log(`[ExecutionEngine] 初步提取的结果:`, result);
+            // 直接使用插件输出，不进行过滤 - 保持数据流透明
+            let result = data;
+            console.log(`[ExecutionEngine] 插件原始输出:`, result);
             
             // 如果数据有特定的结构，尝试提取有用的信息
             if (data.result && typeof data.result.content === 'string') {
@@ -695,18 +695,21 @@
                 try {
                     const parsedContent = JSON.parse(data.result.content);
                     console.log(`[ExecutionEngine] 解析后的 content:`, parsedContent);
-                    result = this.extractPluginOutput(parsedContent.original_plugin_output || parsedContent, allParams);
+                    result = parsedContent.original_plugin_output || parsedContent;
                     console.log(`[ExecutionEngine] 最终提取的结果:`, result);
                 } catch (e) {
                     console.log(`[ExecutionEngine] 解析 content 失败，使用原始数据:`, e);
-                    result = this.extractPluginOutput(data, allParams);
+                    result = data;
                 }
             }
             
-            // 确保返回的是完整的数据对象，包含所有字段（如imageUrl等）
-            if (typeof result === 'string' && data && typeof data === 'object') {
-                console.log(`[ExecutionEngine] 结果是字符串但原始数据是对象，重新提取数据以保留生成字段`);
-                result = this.extractPluginOutput(data, allParams);
+            // 添加执行元数据，但不影响原始数据
+            if (result && typeof result === 'object') {
+                result._metadata = {
+                    executedBy: node.id,
+                    timestamp: new Date().toISOString(),
+                    executionId: this.executionId || 'unknown'
+                };
             }
             
             // 检查结果中是否包含错误信息
@@ -1559,40 +1562,17 @@
                     console.log(`[ExecutionEngine] 使用自定义输出参数名: ${targetParam}`);
                 }
                 
-                // 直接传播输出数据（输入参数已在插件执行时过滤）
+                // 直接传播完整的输出数据 - 保持数据流透明
                 let dataToPass = result;
                 
-                // 特殊处理：对于正则节点使用自定义输出名时，应该只传递 output 字段
+                // 保留正则节点的特殊处理（向后兼容）
                 if (useCustomOutputName && sourceNode.pluginId === 'regex' && result && typeof result === 'object' && result.output !== undefined) {
                     dataToPass = result.output;
                     console.log(`[ExecutionEngine] 正则节点使用自定义输出名，传递 output 字段:`, dataToPass);
-                }
-                // 如果目标参数有特定的字段映射需求，进行智能提取
-                else if (typeof result === 'object' && result !== null) {
-                    // 根据目标参数名进行智能字段映射
-                    switch (targetParam) {
-                        case 'url':
-                        case 'imageUrl':
-                            dataToPass = result.imageUrl || result.url || result.downloadUrl || result;
-                            console.log(`[ExecutionEngine] 智能提取URL字段: ${dataToPass}`);
-                            break;
-                        case 'filePath':
-                            dataToPass = result.filePath || result.path || result.file || result;
-                            break;
-                        case 'text':
-                        case 'content':
-                            dataToPass = result.text || result.content || result.message || result;
-                            break;
-                        default:
-                            // 对于其他参数，如果结果对象中有同名字段，优先使用
-                            if (result.hasOwnProperty(targetParam)) {
-                                dataToPass = result[targetParam];
-                                console.log(`[ExecutionEngine] 使用同名字段 ${targetParam}: ${dataToPass}`);
-                            } else {
-                                dataToPass = result;
-                            }
-                            break;
-                    }
+                } else {
+                    // 对于所有其他情况，直接传递完整数据
+                    // 让下游节点通过模板语法自己选择需要的字段
+                    console.log(`[ExecutionEngine] 传递完整输出数据到参数 ${targetParam}`);
                 }
                 
                 targetInputData[targetParam] = dataToPass;
@@ -1642,115 +1622,11 @@
             this.nodeInputData.clear();
         }
 
-        // 提取插件输出，过滤输入参数
-        extractPluginOutput(data, inputParams = {}) {
-            console.log(`[ExecutionEngine] 提取插件输出，过滤输入参数`);
-            console.log(`[ExecutionEngine] 原始数据:`, data);
-            console.log(`[ExecutionEngine] 输入参数:`, inputParams);
-            
-            if (!data || typeof data !== 'object') {
-                return data;
-            }
-            
-            // 创建输出对象
-            const output = {};
-            
-            // 保留插件生成的核心字段
-            const allowedFields = [
-                'content',      // 插件生成的内容
-                'details',      // 插件的详细信息
-                'MaidName',     // 助手名称
-                'timestamp',    // 时间戳
-                'status',       // 状态信息
-                'result',       // 结果字段
-                'data',         // 数据字段
-                'response',     // 响应字段
-                'output'        // 输出字段
-            ];
-            
-            // 只复制允许的字段
-            for (const field of allowedFields) {
-                if (data.hasOwnProperty(field)) {
-                    output[field] = data[field];
-                }
-            }
-            
-            // 特殊处理：如果details中包含输入参数，需要过滤
-            if (output.details && typeof output.details === 'object') {
-                const cleanDetails = {};
-                
-                // 获取输入参数的键名列表（转为小写进行比较）
-                const inputParamKeys = Object.keys(inputParams).map(key => key.toLowerCase());
-                console.log(`[ExecutionEngine] 输入参数键名:`, inputParamKeys);
-                
-                for (const [key, value] of Object.entries(output.details)) {
-                    // 跳过输入参数字段
-                    if (!inputParamKeys.includes(key.toLowerCase())) {
-                        cleanDetails[key] = value;
-                        console.log(`[ExecutionEngine] 保留生成字段 ${key}:`, value);
-                    } else {
-                        console.log(`[ExecutionEngine] 过滤输入参数字段 ${key}:`, value);
-                    }
-                }
-                
-                output.details = cleanDetails;
-            }
-            
-            console.log(`[ExecutionEngine] 提取后的输出:`, output);
-            return output;
-        }
+        // 已移除 extractPluginOutput 方法 - 数据流现在完全透明
+        // 插件输出直接传递给下游节点，不进行任何过滤
 
-        // 清洗插件输出数据，确保数据纯净性（保留用于向后兼容）
-        cleanPluginOutput(result, sourceNode) {
-            console.log(`[ExecutionEngine] 清洗插件输出数据:`, sourceNode.id);
-            
-            if (!result || typeof result !== 'object') {
-                return result;
-            }
-            
-            // 创建清洁的输出对象
-            const cleanResult = {};
-            
-            // 保留插件生成的核心字段
-            const allowedFields = [
-                'content',      // 插件生成的内容
-                'details',      // 插件的详细信息
-                'MaidName',     // 助手名称
-                'timestamp',    // 时间戳
-                'status',       // 状态信息
-                'result',       // 结果字段
-                'data',         // 数据字段
-                'response',     // 响应字段
-                'output'        // 输出字段
-            ];
-            
-            // 只复制允许的字段
-            for (const field of allowedFields) {
-                if (result.hasOwnProperty(field)) {
-                    cleanResult[field] = result[field];
-                }
-            }
-            
-            // 特殊处理：如果details中包含输入参数，需要过滤
-            if (cleanResult.details && typeof cleanResult.details === 'object') {
-                const cleanDetails = {};
-                
-                // 过滤掉可能的输入参数
-                const inputParams = ['image_url', 'prompt', 'command', 'maid'];
-                
-                for (const [key, value] of Object.entries(cleanResult.details)) {
-                    // 跳过输入参数字段
-                    if (!inputParams.includes(key.toLowerCase())) {
-                        cleanDetails[key] = value;
-                    }
-                }
-                
-                cleanResult.details = cleanDetails;
-            }
-            
-            console.log(`[ExecutionEngine] 清洗后的数据:`, cleanResult);
-            return cleanResult;
-        }
+        // 已移除 cleanPluginOutput 方法 - 不再进行数据清洗
+        // 保持插件输出的完整性和透明性
 
         // 处理输入数据，支持JSON解析
         processInputData(data) {

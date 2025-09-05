@@ -460,6 +460,12 @@
                     connectorHoverStyle: { stroke: '#1d4ed8', strokeWidth: 3 },
                     dragOptions: { cursor: 'pointer', zIndex: 2000 }
                 });
+                
+                // 设置端点的节点ID，用于连接创建时的识别
+                if (outputEndpoint) {
+                    outputEndpoint.nodeId = node.id;
+                    outputEndpoint.paramName = 'output';
+                }
             } else {
                 // 其他节点添加输入和输出端点
                 console.log('[CanvasManager] Adding input and output endpoints for node:', node.id);
@@ -488,6 +494,16 @@
                     connectorHoverStyle: { stroke: '#1d4ed8', strokeWidth: 3 },
                     dragOptions: { cursor: 'pointer', zIndex: 2000 }
                 });
+                
+                // 设置端点的节点ID和参数名，用于连接创建时的识别
+                if (inputEndpoint) {
+                    inputEndpoint.nodeId = node.id;
+                    inputEndpoint.paramName = 'input';
+                }
+                if (outputEndpoint) {
+                    outputEndpoint.nodeId = node.id;
+                    outputEndpoint.paramName = 'output';
+                }
             }
 
             // 存储端点引用
@@ -510,6 +526,14 @@
             }
 
             console.log('[CanvasManager] Endpoints added successfully for node:', node.id);
+            try {
+                // 在 DOM 上写入 data-node-id，方便事件 fallback 解析
+                if (nodeElement && nodeElement.setAttribute) {
+                    nodeElement.setAttribute('data-node-id', node.id);
+                }
+            } catch (e) {
+                console.warn('[CanvasManager] Failed to set data-node-id on node element:', e);
+            }
         }
 
         // 绑定节点事件
@@ -958,11 +982,24 @@
         // 处理连接创建
         handleConnectionCreated(info) {
             console.log('[CanvasManager] Connection created event:', info);
+            console.log('[CanvasManager] Source element:', info.source);
+            console.log('[CanvasManager] Target element:', info.target);
+            console.log('[CanvasManager] Source endpoint:', info.sourceEndpoint);
+            console.log('[CanvasManager] Target endpoint:', info.targetEndpoint);
             
             // 检查是否是程序化创建的连接（避免重复处理）
             if (info.connection._programmaticConnection) {
-                console.log('[CanvasManager] Skipping programmatic connection event');
-                return;
+                // 如果连接已经存在于我们自己的映射中，则安全跳过
+                try {
+                    if (info.connection.connectionId && this.connections && this.connections.has(info.connection.connectionId)) {
+                        console.log('[CanvasManager] Skipping programmatic connection event (already tracked):', info.connection.connectionId);
+                        return;
+                    }
+                } catch (e) {
+                    console.warn('[CanvasManager] Error checking existing programmatic connection mapping:', e);
+                }
+                // 如果连接被标记为程序化但尚未记录到 canvas/state，则继续处理，防止误判导致丢失
+                console.log('[CanvasManager] Programmatic flag present but connection not tracked — proceeding to handle it to avoid loss');
             }
             
             try {
@@ -1551,6 +1588,30 @@
                             connection._programmaticConnection = true;
                             connection.connectionId = connectionData.id;
                             this.connections.set(connectionData.id, connection);
+                            
+                            // 重要：将恢复的连接添加到状态管理器中，确保保存时不会丢失
+                            if (this.stateManager && this.stateManager.addConnection) {
+                                // 使用 skipRender=true 避免重复渲染，recordHistory=false 避免记录历史
+                                const addResult = this.stateManager.addConnection(connectionData, true, false);
+                                if (addResult) {
+                                    console.log(`[CanvasManager] ✅ Connection added to StateManager: ${connectionData.id}`);
+                                } else {
+                                    console.warn(`[CanvasManager] ⚠️ Failed to add connection to StateManager: ${connectionData.id}`);
+                                    // 强制添加到状态管理器的连接映射中
+                                    if (this.stateManager.state && this.stateManager.state.connections) {
+                                        this.stateManager.state.connections.set(connectionData.id, connectionData);
+                                        console.log(`[CanvasManager] 🔧 Force added connection to StateManager: ${connectionData.id}`);
+                                    }
+                                }
+                            } else {
+                                console.error('[CanvasManager] StateManager or addConnection method not available');
+                                // 如果状态管理器不可用，尝试直接访问状态
+                                if (window.WorkflowEditor_StateManager && window.WorkflowEditor_StateManager.state) {
+                                    window.WorkflowEditor_StateManager.state.connections.set(connectionData.id, connectionData);
+                                    console.log(`[CanvasManager] 🔧 Force added connection via global StateManager: ${connectionData.id}`);
+                                }
+                            }
+                            
                             console.log(`[CanvasManager] ✅ Connection restored successfully: ${connectionData.sourceNodeId} -> ${connectionData.targetNodeId} (${connectionData.targetParam}) at ${Date.now()}`);
                         } else {
                             console.error('[CanvasManager] ❌ Failed to restore connection:', connectionData.id, '- jsPlumb.connect returned null');

@@ -1455,6 +1455,9 @@
         // 保存工作流到本地存储
         saveWorkflowToStorage() {
             try {
+                // 在序列化之前同步连接状态，确保所有连接都被保存
+                this.syncConnectionsBeforeSave();
+                
                 const workflowData = this.stateManager.serialize();
                 const workflowId = workflowData.id || `workflow_${Date.now()}`;
                 workflowData.id = workflowId;
@@ -1911,9 +1914,100 @@
             }
         }
 
+        // 同步连接状态，确保所有连接都被保存到状态管理器中
+        syncConnectionsBeforeSave() {
+            console.log('[UIManager] Syncing connections before save...');
+            
+            const canvasManager = window.WorkflowEditor_CanvasManager;
+            if (!canvasManager || !canvasManager.jsPlumbInstance) {
+                console.warn('[UIManager] CanvasManager or jsPlumb not available for connection sync');
+                return;
+            }
+            
+            const stateConnections = this.stateManager.getAllConnections();
+            let syncedCount = 0;
+            
+            // 优先使用 canvasManager 内部映射（如果存在）
+            const canvasMapExists = !!(canvasManager.connections && typeof canvasManager.connections.entries === 'function' && canvasManager.connections.size > 0);
+            if (canvasMapExists) {
+                const canvasConnections = Array.from(canvasManager.connections.entries());
+                console.log(`[UIManager] Canvas connections (map): ${canvasConnections.length}, State connections: ${stateConnections.length}`);
+                canvasConnections.forEach(([connectionId, jsPlumbConnection]) => {
+                    const existsInState = stateConnections.some(conn => conn.id === connectionId);
+                    if (!existsInState) {
+                        const sourceNodeId = jsPlumbConnection.source?.id || jsPlumbConnection.parameters?.sourceNodeId;
+                        const targetNodeId = jsPlumbConnection.target?.id || jsPlumbConnection.parameters?.targetNodeId;
+                        if (sourceNodeId && targetNodeId) {
+                            const connectionData = {
+                                id: connectionId,
+                                sourceNodeId,
+                                targetNodeId,
+                                sourceParam: jsPlumbConnection.parameters?.sourceParam || 'output',
+                                targetParam: jsPlumbConnection.parameters?.targetParam || 'input'
+                            };
+                            if (this.stateManager.state && this.stateManager.state.connections) {
+                                this.stateManager.state.connections.set(connectionId, connectionData);
+                                syncedCount++;
+                                console.log(`[UIManager] 🔧 Synced missing connection from canvas map: ${sourceNodeId} -> ${targetNodeId}`);
+                            }
+                        }
+                    }
+                });
+            } else {
+                // 回退：直接从 jsPlumb 实例读取真实存在的连接（视觉层），以防内部映射丢失
+                const jsConns = canvasManager.jsPlumbInstance.getAllConnections();
+                console.log(`[UIManager] Canvas map empty, falling back to jsPlumb.getAllConnections(): ${jsConns.length} connections found`);
+                jsConns.forEach(conn => {
+                    const sourceId = conn.source?.id || conn.parameters?.sourceNodeId;
+                    const targetId = conn.target?.id || conn.parameters?.targetNodeId;
+                    if (!sourceId || !targetId) return;
+                    const connId = conn.connectionId || `${sourceId}_${targetId}_${Date.now()}`;
+                    const exists = stateConnections.some(c => c.id === connId || (c.sourceNodeId === sourceId && c.targetNodeId === targetId && c.targetParam === (conn.parameters?.targetParam || 'input')));
+                    if (exists) return;
+                    const connectionData = {
+                        id: connId,
+                        sourceNodeId: sourceId,
+                        targetNodeId: targetId,
+                        sourceParam: conn.parameters?.sourceParam || 'output',
+                        targetParam: conn.parameters?.targetParam || 'input'
+                    };
+                    try {
+                        // 通过 stateManager.addConnection 优先添加
+                        if (this.stateManager && this.stateManager.addConnection) {
+                            this.stateManager.addConnection(connectionData, true, false);
+                        } else if (this.stateManager.state && this.stateManager.state.connections) {
+                            this.stateManager.state.connections.set(connId, connectionData);
+                        }
+                        // 标记到 canvasManager.connections 映射，方便后续使用
+                        try {
+                            if (canvasManager.connections && typeof canvasManager.connections.set === 'function') {
+                                canvasManager.connections.set(connId, conn);
+                            }
+                            conn.connectionId = connId;
+                        } catch (e) {
+                            console.warn('[UIManager] Failed to set connection into canvasManager.connections:', e);
+                        }
+                        syncedCount++;
+                        console.log(`[UIManager] 🔧 Synced missing connection from jsPlumb: ${sourceId} -> ${targetId}`);
+                    } catch (e) {
+                        console.error('[UIManager] Error syncing connection from jsPlumb:', e);
+                    }
+                });
+            }
+            
+            if (syncedCount > 0) {
+                console.log(`[UIManager] ✅ Synced ${syncedCount} missing connections`);
+            } else {
+                console.log('[UIManager] ✅ All connections are already in sync');
+            }
+        }
+
         // 导出工作流为JSON文件
         exportWorkflowAsJSON() {
             try {
+                // 在序列化之前同步连接状态，确保所有连接都被保存
+                this.syncConnectionsBeforeSave();
+                
                 const workflowData = this.stateManager.serialize();
                 const jsonString = JSON.stringify(workflowData, null, 2);
                 
