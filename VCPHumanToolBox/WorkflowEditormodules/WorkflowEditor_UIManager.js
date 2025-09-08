@@ -1202,6 +1202,20 @@
                 // 重置状态管理器
                 this.stateManager.reset();
                 
+                // 清理执行引擎状态
+                const executionEngine = window.WorkflowEditor_ExecutionEngine;
+                if (executionEngine && executionEngine.clearResults) {
+                    console.log('[UIManager] Clearing execution engine results...');
+                    executionEngine.clearResults();
+                }
+                
+                // 清理连接管理器状态
+                const connectionManager = window.WorkflowEditor_ConnectionManager;
+                if (connectionManager && connectionManager.clearAllConnections) {
+                    console.log('[UIManager] Clearing connection manager...');
+                    connectionManager.clearAllConnections();
+                }
+                
                 // 重置UI状态
                 const titleInput = document.getElementById('workflowTitleInput');
                 if (titleInput) {

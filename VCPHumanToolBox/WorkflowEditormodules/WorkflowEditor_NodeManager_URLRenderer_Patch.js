@@ -31,7 +31,23 @@
             }
 
             if (!input || (typeof input === 'object' && Object.keys(input).length === 0)) {
-                throw new Error('Input data is required for URL rendering');
+                console.log(`[URLRenderer] 输入数据为空，显示等待状态`);
+                
+                // 在节点UI中显示等待状态
+                const nodeElement = document.querySelector(`[data-node-id="${node.id}"]`);
+                if (nodeElement) {
+                    this.renderWaitingState(nodeElement);
+                }
+                
+                return {
+                    result: null,
+                    rendered: false,
+                    type: 'waiting',
+                    count: 0,
+                    message: '等待输入数据...',
+                    originalData: input,
+                    timestamp: new Date().toISOString()
+                };
             }
 
             try {
@@ -213,7 +229,7 @@
 
         // 渲染单条URL
         nodeManager.renderSingleUrl = async function(node, url, config) {
-            const { renderType, width = 300, height = 200 } = config;
+            const { renderType, width = 400, height = 300 } = config;
             
             console.log(`[URLRenderer] 渲染单个URL: ${url}`);
             
@@ -274,12 +290,14 @@
                 renderArea = document.createElement('div');
                 renderArea.className = 'url-render-area';
                 renderArea.style.cssText = `
-                    margin: 8px 0;
-                    padding: 8px;
-                    background: #2a2a2a;
-                    border: 1px solid #444;
+                    margin: 4px 0;
+                    padding: 0;
+                    background: transparent;
+                    border: none;
                     border-radius: 4px;
-                    max-width: ${width + 20}px;
+                    width: 100%;
+                    display: flex;
+                    flex-direction: column;
                 `;
                 
                 const nodeContent = nodeElement.querySelector('.node-content') || nodeElement;
@@ -290,14 +308,36 @@
             
             switch (type) {
                 case 'image':
+                    const imageId = `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
                     contentHtml = `
-                        <div class="single-image-container">
-                            <img src="${url}" alt="图片" 
-                                 style="max-width: ${width}px; max-height: ${height}px; border-radius: 4px; cursor: pointer;"
-                                 onclick="window.open('${url}', '_blank')"
-                                 onerror="this.parentElement.innerHTML='<div style=\\'color: #ff6b6b; text-align: center; padding: 20px;\\'>图片加载失败</div>'" />
-                            <div style="margin-top: 4px; font-size: 11px; color: #888; word-break: break-all;">
-                                ${this.truncateUrl(url, 50)}
+                        <div class="single-image-container" style="width: 100%; display: flex; flex-direction: column;">
+                            <!-- 控制面板 -->
+                            <div class="image-controls" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; padding: 4px 8px; background: #2a2a2a; border-radius: 4px; font-size: 10px;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <select id="fitMode_${imageId}" onchange="this.parentElement.parentElement.parentElement.querySelector('img').style.objectFit = this.value" style="background: #1a1a1a; color: #ccc; border: 1px solid #444; border-radius: 3px; padding: 2px 4px; font-size: 9px;">
+                                        <option value="contain">适应</option>
+                                        <option value="cover" selected>填充</option>
+                                        <option value="none">原始</option>
+                                        <option value="scale-down">缩小</option>
+                                    </select>
+                                    <input type="range" id="sizeSlider_${imageId}" min="100" max="500" value="300" 
+                                           onchange="const container = this.parentElement.parentElement.parentElement.querySelector('.image-display-area'); container.style.height = this.value + 'px'; this.nextElementSibling.textContent = this.value + 'px';"
+                                           style="width: 60px; height: 12px;">
+                                    <span id="sizeLabel_${imageId}" style="color: #888; font-size: 9px; min-width: 35px;">300px</span>
+                                </div>
+                                <button onclick="window.open('${url}', '_blank')" style="background: #1a73e8; color: white; border: none; border-radius: 3px; padding: 2px 6px; font-size: 9px; cursor: pointer;">🔍</button>
+                            </div>
+                            <!-- 图片显示区域 -->
+                            <div class="image-display-area" style="width: 100%; height: 300px; overflow: hidden; border-radius: 6px; background: #1a1a1a; display: flex; align-items: center; justify-content: center; position: relative;">
+                                <img src="${url}" alt="图片" id="${imageId}"
+                                     style="max-width: 100%; max-height: 100%; object-fit: cover; cursor: pointer; transition: transform 0.2s ease;"
+                                     onclick="window.open('${url}', '_blank')"
+                                     onmouseover="this.style.transform='scale(1.02)'"
+                                     onmouseout="this.style.transform='scale(1)'"
+                                     onerror="this.parentElement.innerHTML='<div style=\\'color: #ff6b6b; text-align: center; padding: 20px; font-size: 12px;\\'>图片加载失败</div>'" />
+                            </div>
+                            <div style="margin-top: 6px; font-size: 10px; color: #666; word-break: break-all; text-align: center; line-height: 1.2;">
+                                ${this.truncateUrl(url, 40)}
                             </div>
                         </div>
                     `;
@@ -305,13 +345,15 @@
 
                 case 'video':
                     contentHtml = `
-                        <div class="single-video-container">
-                            <video style="max-width: ${width}px; max-height: ${height}px; border-radius: 4px;" controls>
-                                <source src="${url}" type="video/mp4">
-                                您的浏览器不支持视频播放
-                            </video>
-                            <div style="margin-top: 4px; font-size: 11px; color: #888; word-break: break-all;">
-                                ${this.truncateUrl(url, 50)}
+                        <div class="single-video-container" style="width: 100%; display: flex; flex-direction: column;">
+                            <div style="width: 100%; aspect-ratio: 16/9; overflow: hidden; border-radius: 6px; background: #1a1a1a;">
+                                <video style="width: 100%; height: 100%; object-fit: cover; border-radius: 6px;" controls>
+                                    <source src="${url}" type="video/mp4">
+                                    您的浏览器不支持视频播放
+                                </video>
+                            </div>
+                            <div style="margin-top: 6px; font-size: 10px; color: #666; word-break: break-all; text-align: center; line-height: 1.2;">
+                                ${this.truncateUrl(url, 40)}
                             </div>
                         </div>
                     `;
@@ -319,12 +361,14 @@
 
                 case 'iframe':
                     contentHtml = `
-                        <div class="single-iframe-container">
-                            <iframe src="${url}" 
-                                    style="width: ${width}px; height: ${height}px; border: none; border-radius: 4px;">
-                            </iframe>
-                            <div style="margin-top: 4px; font-size: 11px; color: #888; word-break: break-all;">
-                                ${this.truncateUrl(url, 50)}
+                        <div class="single-iframe-container" style="width: 100%; display: flex; flex-direction: column;">
+                            <div style="width: 100%; aspect-ratio: 16/9; overflow: hidden; border-radius: 6px; background: #1a1a1a;">
+                                <iframe src="${url}" 
+                                        style="width: 100%; height: 100%; border: none; border-radius: 6px;">
+                                </iframe>
+                            </div>
+                            <div style="margin-top: 6px; font-size: 10px; color: #666; word-break: break-all; text-align: center; line-height: 1.2;">
+                                ${this.truncateUrl(url, 40)}
                             </div>
                         </div>
                     `;
@@ -332,14 +376,14 @@
 
                 default:
                     contentHtml = `
-                        <div class="single-link-container">
-                            <div style="padding: 20px; text-align: center; background: #333; border-radius: 4px;">
-                                <a href="${url}" target="_blank" style="color: #1a73e8; text-decoration: none; font-weight: 500;">
-                                    打开链接
+                        <div class="single-link-container" style="width: 100%; display: flex; flex-direction: column;">
+                            <div style="width: 100%; aspect-ratio: 2; display: flex; align-items: center; justify-content: center; background: #2a2a2a; border-radius: 6px; border: 1px solid #444;">
+                                <a href="${url}" target="_blank" style="color: #1a73e8; text-decoration: none; font-weight: 500; font-size: 14px;">
+                                    🔗 打开链接
                                 </a>
                             </div>
-                            <div style="margin-top: 4px; font-size: 11px; color: #888; word-break: break-all;">
-                                ${this.truncateUrl(url, 50)}
+                            <div style="margin-top: 6px; font-size: 10px; color: #666; word-break: break-all; text-align: center; line-height: 1.2;">
+                                ${this.truncateUrl(url, 40)}
                             </div>
                         </div>
                     `;
@@ -358,24 +402,45 @@
                 renderArea = document.createElement('div');
                 renderArea.className = 'url-render-area';
                 renderArea.style.cssText = `
-                    margin: 8px 0;
-                    padding: 8px;
-                    background: #2a2a2a;
-                    border: 1px solid #444;
+                    margin: 4px 0;
+                    padding: 0;
+                    background: transparent;
+                    border: none;
                     border-radius: 4px;
-                    max-height: 400px;
+                    width: 100%;
+                    max-height: 500px;
                     overflow-y: auto;
+                    display: flex;
+                    flex-direction: column;
                 `;
                 
                 const nodeContent = nodeElement.querySelector('.node-content') || nodeElement;
                 nodeContent.appendChild(renderArea);
             }
 
+            const containerId = `multi_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             let contentHtml = `
-                <div style="margin-bottom: 8px; font-size: 12px; color: #ccc;">
-                    共 ${urlArray.length} 个URL
+                <!-- 全局控制面板 -->
+                <div class="multi-image-controls" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding: 6px 8px; background: #2a2a2a; border-radius: 4px; font-size: 10px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="color: #ccc;">共 ${urlArray.length} 个URL</span>
+                        <select id="multiFitMode_${containerId}" onchange="document.querySelectorAll('#${containerId} img').forEach(img => img.style.objectFit = this.value)" style="background: #1a1a1a; color: #ccc; border: 1px solid #444; border-radius: 3px; padding: 2px 4px; font-size: 9px;">
+                            <option value="contain">适应</option>
+                            <option value="cover" selected>填充</option>
+                            <option value="none">原始</option>
+                        </select>
+                        <input type="range" id="multiSizeSlider_${containerId}" min="80" max="300" value="120" 
+                               onchange="document.getElementById('${containerId}').style.gridTemplateColumns = 'repeat(auto-fit, minmax(' + this.value + 'px, 1fr))'; this.nextElementSibling.textContent = this.value + 'px';"
+                               style="width: 60px; height: 12px;">
+                        <span id="multiSizeLabel_${containerId}" style="color: #888; font-size: 9px; min-width: 35px;">120px</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 4px;">
+                        <button onclick="document.getElementById('${containerId}').style.gridTemplateColumns = 'repeat(1, 1fr)'" style="background: #333; color: #ccc; border: 1px solid #444; border-radius: 3px; padding: 2px 6px; font-size: 9px; cursor: pointer;" title="单列">1</button>
+                        <button onclick="document.getElementById('${containerId}').style.gridTemplateColumns = 'repeat(2, 1fr)'" style="background: #333; color: #ccc; border: 1px solid #444; border-radius: 3px; padding: 2px 6px; font-size: 9px; cursor: pointer;" title="双列">2</button>
+                        <button onclick="document.getElementById('${containerId}').style.gridTemplateColumns = 'repeat(auto-fit, minmax(120px, 1fr))'" style="background: #1a73e8; color: white; border: none; border-radius: 3px; padding: 2px 6px; font-size: 9px; cursor: pointer;" title="自动">Auto</button>
+                    </div>
                 </div>
-                <div class="multiple-urls-container" style="display: flex; flex-direction: column; gap: 8px;">
+                <div id="${containerId}" class="multiple-urls-container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 6px; padding: 4px;">
             `;
 
             urlArray.forEach((url, index) => {
@@ -385,14 +450,23 @@
                 
                 switch (detectedType) {
                     case 'image':
+                        const itemImageId = `multiImg_${index}_${Date.now()}`;
                         itemHtml = `
-                            <div class="url-item" style="display: flex; align-items: center; gap: 8px; padding: 4px; background: #333; border-radius: 4px;">
-                                <img src="${url}" alt="图片 ${index + 1}" 
-                                     style="width: 60px; height: 60px; object-fit: cover; border-radius: 4px; cursor: pointer;"
-                                     onclick="window.open('${url}', '_blank')"
-                                     onerror="this.style.display='none'" />
-                                <div style="flex: 1; font-size: 11px; color: #888; word-break: break-all;">
-                                    ${index + 1}. ${this.truncateUrl(url, 40)}
+                            <div class="url-item image-item" style="display: flex; flex-direction: column; background: #1a1a1a; border-radius: 6px; overflow: hidden; border: 1px solid #333;">
+                                <div style="width: 100%; min-height: 120px; max-height: 300px; overflow: hidden; background: #2a2a2a; display: flex; align-items: center; justify-content: center; position: relative;">
+                                    <img src="${url}" alt="图片 ${index + 1}" id="${itemImageId}"
+                                         style="max-width: 100%; max-height: 100%; object-fit: cover; cursor: pointer; transition: transform 0.2s ease;"
+                                         onclick="window.open('${url}', '_blank')"
+                                         onmouseover="this.style.transform='scale(1.05)'"
+                                         onmouseout="this.style.transform='scale(1)'"
+                                         onload="this.parentElement.style.height = 'auto'; this.style.width = '100%'; this.style.height = 'auto';"
+                                         onerror="this.parentElement.innerHTML='<div style=\\'color: #ff6b6b; font-size: 10px; text-align: center; padding: 20px;\\'>加载失败</div>'" />
+                                    <div style="position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,0.7); border-radius: 3px; padding: 2px 4px;">
+                                        <button onclick="window.open('${url}', '_blank')" style="background: none; border: none; color: white; font-size: 10px; cursor: pointer; padding: 0;" title="查看原图">🔍</button>
+                                    </div>
+                                </div>
+                                <div style="padding: 4px; font-size: 9px; color: #666; word-break: break-all; text-align: center; line-height: 1.2; background: #1a1a1a;">
+                                    ${index + 1}. ${this.truncateUrl(url, 25)}
                                 </div>
                             </div>
                         `;
@@ -400,9 +474,14 @@
 
                     default:
                         itemHtml = `
-                            <div class="url-item" style="padding: 8px; background: #333; border-radius: 4px;">
-                                <div style="font-size: 11px; color: #888; word-break: break-all;">
-                                    ${index + 1}. <a href="${url}" target="_blank" style="color: #1a73e8; text-decoration: none;">${this.truncateUrl(url, 40)}</a>
+                            <div class="url-item link-item" style="display: flex; flex-direction: column; background: #1a1a1a; border-radius: 6px; overflow: hidden; border: 1px solid #333;">
+                                <div style="width: 100%; aspect-ratio: 2; display: flex; align-items: center; justify-content: center; background: #2a2a2a;">
+                                    <a href="${url}" target="_blank" style="color: #1a73e8; text-decoration: none; font-size: 12px; font-weight: 500;">
+                                        🔗
+                                    </a>
+                                </div>
+                                <div style="padding: 4px; font-size: 9px; color: #666; word-break: break-all; text-align: center; line-height: 1.2; background: #1a1a1a;">
+                                    ${index + 1}. ${this.truncateUrl(url, 25)}
                                 </div>
                             </div>
                         `;
@@ -449,6 +528,41 @@
                 return url;
             }
             return url.substring(0, maxLength - 3) + '...';
+        };
+
+        // 渲染等待状态
+        nodeManager.renderWaitingState = function(nodeElement) {
+            let renderArea = nodeElement.querySelector('.url-render-area');
+            
+            if (!renderArea) {
+                renderArea = document.createElement('div');
+                renderArea.className = 'url-render-area';
+                renderArea.style.cssText = `
+                    margin: 4px 0;
+                    padding: 0;
+                    background: transparent;
+                    border: none;
+                    border-radius: 4px;
+                    width: 100%;
+                    display: flex;
+                    flex-direction: column;
+                `;
+                
+                const nodeContent = nodeElement.querySelector('.node-content') || nodeElement;
+                nodeContent.appendChild(renderArea);
+            }
+
+            renderArea.innerHTML = `
+                <div class="waiting-state-container" style="width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; background: #1a1a1a; border-radius: 6px; border: 2px dashed #444;">
+                    <div style="font-size: 24px; margin-bottom: 12px; opacity: 0.6;">⏳</div>
+                    <div style="font-size: 12px; color: #888; text-align: center; line-height: 1.4;">
+                        等待输入数据...
+                    </div>
+                    <div style="font-size: 10px; color: #666; text-align: center; margin-top: 8px; line-height: 1.3;">
+                        请连接上游节点提供URL数据
+                    </div>
+                </div>
+            `;
         };
 
         console.log('[URLRenderer] 简化版本已加载');
