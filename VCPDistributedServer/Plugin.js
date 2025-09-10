@@ -12,6 +12,8 @@ class PluginManager {
     constructor() {
         this.plugins = new Map();
         this.serviceModules = new Map(); // 新增：用于存储服务类插件
+        this.staticPlaceholderValues = new Map(); // 新增：用于存储静态插件占位符值
+        this.scheduledJobs = new Map(); // 新增：用于存储定时任务
         this.projectBasePath = null;
         this.debugMode = (process.env.DebugMode || "False").toLowerCase() === "true";
     }
@@ -48,6 +50,15 @@ class PluginManager {
                 }
                 config[key] = value;
             }
+        }
+        
+        // 添加调试模式配置
+        if (pluginSpecificEnv.hasOwnProperty('DebugMode')) {
+            config.DebugMode = String(pluginSpecificEnv.DebugMode).toLowerCase() === 'true';
+        } else if (globalEnv.hasOwnProperty('DebugMode')) {
+            config.DebugMode = String(globalEnv.DebugMode).toLowerCase() === 'true';
+        } else if (!config.hasOwnProperty('DebugMode')) {
+            config.DebugMode = false;
         }
         return config;
     }
@@ -106,6 +117,9 @@ class PluginManager {
                 }
             }
             console.log(`[DistPluginManager] Plugin discovery finished. Loaded ${this.plugins.size} plugins.`);
+            
+            // 初始化静态插件
+            await this.initializeStaticPlugins();
         } catch (error) {
             console.error(`[DistPluginManager] Plugin directory ${PLUGIN_DIR} not found or could not be read.`);
         }
@@ -216,6 +230,193 @@ class PluginManager {
             }
         }
         console.log('[DistPluginManager] Service plugins initialized.');
+    }
+
+    // 新增：执行静态插件命令
+    async _executeStaticPluginCommand(plugin) {
+        if (!plugin || plugin.pluginType !== 'static' || !plugin.entryPoint || !plugin.entryPoint.command) {
+            console.error(`[DistPluginManager] Invalid static plugin or command for execution: ${plugin ? plugin.name : 'Unknown'}`);
+            return Promise.reject(new Error(`Invalid static plugin or command for ${plugin ? plugin.name : 'Unknown'}`));
+        }
+
+        return new Promise((resolve, reject) => {
+            const pluginConfig = this._getPluginConfig(plugin);
+            const envForProcess = { ...process.env };
+            for (const key in pluginConfig) {
+                if (pluginConfig.hasOwnProperty(key) && pluginConfig[key] !== undefined) {
+                    envForProcess[key] = String(pluginConfig[key]);
+                }
+            }
+            if (this.projectBasePath) {
+                envForProcess.PROJECT_BASE_PATH = this.projectBasePath;
+            }
+
+            const [command, ...args] = plugin.entryPoint.command.split(' ');
+            const pluginProcess = spawn(command, args, { cwd: plugin.basePath, shell: true, env: envForProcess, windowsHide: true });
+            let output = '';
+            let errorOutput = '';
+            let processExited = false;
+            const timeoutDuration = plugin.communication?.timeout || 30000;
+
+            const timeoutId = setTimeout(() => {
+                if (!processExited) {
+                    console.error(`[DistPluginManager] Static plugin "${plugin.name}" execution timed out after ${timeoutDuration}ms.`);
+                    pluginProcess.kill('SIGKILL');
+                    reject(new Error(`Static plugin "${plugin.name}" execution timed out.`));
+                }
+            }, timeoutDuration);
+
+            pluginProcess.stdout.on('data', (data) => { output += data.toString(); });
+            pluginProcess.stderr.on('data', (data) => { errorOutput += data.toString(); });
+
+            pluginProcess.on('error', (err) => {
+                processExited = true;
+                clearTimeout(timeoutId);
+                console.error(`[DistPluginManager] Failed to start static plugin ${plugin.name}: ${err.message}`);
+                reject(err);
+            });
+            
+            pluginProcess.on('exit', (code, signal) => {
+                processExited = true;
+                clearTimeout(timeoutId);
+                if (signal === 'SIGKILL') {
+                    return;
+                }
+                if (code !== 0) {
+                    const errMsg = `Static plugin ${plugin.name} exited with code ${code}. Stderr: ${errorOutput.trim()}`;
+                    console.error(`[DistPluginManager] ${errMsg}`);
+                    reject(new Error(errMsg));
+                } else {
+                    if (errorOutput.trim() && this.debugMode) {
+                        console.warn(`[DistPluginManager] Static plugin ${plugin.name} produced stderr output: ${errorOutput.trim()}`);
+                    }
+                    resolve(output.trim());
+                }
+            });
+        });
+    }
+
+    // 新增：更新静态插件值
+    async _updateStaticPluginValue(plugin) {
+        let newValue = null;
+        let executionError = null;
+        try {
+            if (this.debugMode) console.log(`[DistPluginManager] Updating static plugin: ${plugin.name}`);
+            newValue = await this._executeStaticPluginCommand(plugin);
+        } catch (error) {
+            console.error(`[DistPluginManager] Error executing static plugin ${plugin.name} script:`, error.message);
+            executionError = error;
+        }
+
+        if (plugin.capabilities && plugin.capabilities.systemPromptPlaceholders) {
+            plugin.capabilities.systemPromptPlaceholders.forEach(ph => {
+                const placeholderKey = ph.placeholder;
+                const currentValue = this.staticPlaceholderValues.get(placeholderKey);
+
+                if (newValue !== null && newValue.trim() !== "") {
+                    // 尝试解析JSON输出
+                    let parsedOutput = null;
+                    try {
+                        parsedOutput = JSON.parse(newValue.trim());
+                    } catch (parseError) {
+                        if (this.debugMode) console.warn(`[DistPluginManager] Static plugin ${plugin.name} output is not valid JSON, using as string.`);
+                    }
+                    
+                    let valueForPlaceholder;
+                    if (parsedOutput && typeof parsedOutput === 'object' && parsedOutput[placeholderKey]) {
+                        // 如果插件输出包含占位符键，使用对应的值
+                        valueForPlaceholder = parsedOutput[placeholderKey];
+                        if (typeof valueForPlaceholder === 'string') {
+                            this.staticPlaceholderValues.set(placeholderKey, valueForPlaceholder);
+                        } else {
+                            this.staticPlaceholderValues.set(placeholderKey, JSON.stringify(valueForPlaceholder));
+                        }
+                    } else {
+                        // 否则使用整个输出
+                        this.staticPlaceholderValues.set(placeholderKey, newValue.trim());
+                    }
+                    
+                    if (this.debugMode) {
+                        const displayValue = this.staticPlaceholderValues.get(placeholderKey);
+                        console.log(`[DistPluginManager] Placeholder ${placeholderKey} for ${plugin.name} updated with value: "${(displayValue || "").substring(0,70)}..."`);
+                    }
+                } else if (executionError) {
+                    const errorMessage = `[Error updating ${plugin.name}: ${executionError.message.substring(0,100)}...]`;
+                    if (!currentValue || (currentValue && currentValue.startsWith("[Error"))) {
+                        this.staticPlaceholderValues.set(placeholderKey, errorMessage);
+                        if (this.debugMode) console.warn(`[DistPluginManager] Placeholder ${placeholderKey} for ${plugin.name} set to error state: ${errorMessage}`);
+                    } else {
+                        if (this.debugMode) console.warn(`[DistPluginManager] Placeholder ${placeholderKey} for ${plugin.name} failed to update. Keeping stale value: "${(currentValue || "").substring(0,70)}..."`);
+                    }
+                } else {
+                    if (this.debugMode) console.warn(`[DistPluginManager] Static plugin ${plugin.name} produced no new output for ${placeholderKey}. Keeping stale value (if any).`);
+                    if (!this.staticPlaceholderValues.has(placeholderKey)) {
+                        this.staticPlaceholderValues.set(placeholderKey, `[${plugin.name} data currently unavailable]`);
+                        if (this.debugMode) console.log(`[DistPluginManager] Placeholder ${placeholderKey} for ${plugin.name} set to 'unavailable'.`);
+                    }
+                }
+            });
+        }
+    }
+
+    // 新增：初始化静态插件
+    async initializeStaticPlugins() {
+        console.log('[DistPluginManager] Initializing static plugins...');
+        for (const plugin of this.plugins.values()) {
+            if (plugin.pluginType === 'static') {
+                // 立即设置占位符为加载状态
+                if (plugin.capabilities && plugin.capabilities.systemPromptPlaceholders) {
+                    plugin.capabilities.systemPromptPlaceholders.forEach(ph => {
+                        this.staticPlaceholderValues.set(ph.placeholder, `[${plugin.displayName} 正在加载中...]`);
+                    });
+                }
+
+                // 在后台触发第一次更新
+                this._updateStaticPluginValue(plugin).catch(err => {
+                    console.error(`[DistPluginManager] Initial background update for ${plugin.name} failed: ${err.message}`);
+                });
+
+                // 设置定时更新任务
+                if (plugin.refreshIntervalCron) {
+                    if (this.scheduledJobs.has(plugin.name)) {
+                        this.scheduledJobs.get(plugin.name).cancel();
+                    }
+                    try {
+                        const job = schedule.scheduleJob(plugin.refreshIntervalCron, () => {
+                            if (this.debugMode) console.log(`[DistPluginManager] Scheduled update for static plugin: ${plugin.name}`);
+                            this._updateStaticPluginValue(plugin).catch(err => {
+                                console.error(`[DistPluginManager] Scheduled background update for ${plugin.name} failed: ${err.message}`);
+                            });
+                        });
+                        this.scheduledJobs.set(plugin.name, job);
+                        if (this.debugMode) console.log(`[DistPluginManager] Scheduled ${plugin.name} with cron: ${plugin.refreshIntervalCron}`);
+                    } catch (e) {
+                        console.error(`[DistPluginManager] Invalid cron string for ${plugin.name}: ${plugin.refreshIntervalCron}. Error: ${e.message}`);
+                    }
+                }
+            }
+        }
+        console.log('[DistPluginManager] Static plugins initialization process has been started (updates will run in the background).');
+    }
+
+    // 新增：获取占位符值
+    getPlaceholderValue(placeholder) {
+        return this.staticPlaceholderValues.get(placeholder) || `[Placeholder ${placeholder} not found]`;
+    }
+
+    // 新增：获取所有静态占位符值
+    getAllPlaceholderValues() {
+        return new Map(this.staticPlaceholderValues);
+    }
+
+    // 新增：关闭所有插件
+    async shutdownAllPlugins() {
+        console.log('[DistPluginManager] Shutting down all plugins...');
+        for (const job of this.scheduledJobs.values()) {
+            job.cancel();
+        }
+        this.scheduledJobs.clear();
+        console.log('[DistPluginManager] All scheduled jobs cancelled.');
     }
 }
 
