@@ -54,7 +54,17 @@ function initialize(paths) {
     ipcMain.handle('save-avatar-color', async (event, { type, id, color }) => {
         try {
             if (type === 'user') {
-                const settings = await fs.pathExists(SETTINGS_FILE) ? await fs.readJson(SETTINGS_FILE) : {};
+                // 安全地读取和更新settings.json
+                let settings = {};
+                if (await fs.pathExists(SETTINGS_FILE)) {
+                    try {
+                        settings = await fs.readJson(SETTINGS_FILE);
+                    } catch (parseError) {
+                        console.error('[Main] Error parsing settings.json in save-avatar-color, using empty object:', parseError.message);
+                        settings = {};
+                    }
+                }
+                
                 settings.userAvatarCalculatedColor = color;
                 await fs.writeJson(SETTINGS_FILE, settings, { spaces: 2 });
                 console.log(`[Main] User avatar color saved: ${color}`);
@@ -79,10 +89,46 @@ function initialize(paths) {
     });
 
     // Theme control
-    ipcMain.on('set-theme', (event, theme) => {
+    ipcMain.on('set-theme', async (event, theme) => {
         if (theme === 'light' || theme === 'dark') {
             nativeTheme.themeSource = theme;
             console.log(`[Main] Theme source explicitly set to: ${theme}`);
+            
+            // 安全地更新settings.json文件中的主题相关字段
+            try {
+                let settings = {};
+                
+                // 尝试读取现有设置文件
+                if (await fs.pathExists(SETTINGS_FILE)) {
+                    try {
+                        settings = await fs.readJson(SETTINGS_FILE);
+                        console.log('[Main] Successfully loaded existing settings for theme update');
+                    } catch (parseError) {
+                        console.error('[Main] Error parsing existing settings.json, preserving file and only updating theme:', parseError.message);
+                        // 如果解析失败，读取原始文件内容作为备份
+                        const originalContent = await fs.readFile(SETTINGS_FILE, 'utf8');
+                        console.error('[Main] Original settings.json content (first 200 chars):', originalContent.substring(0, 200));
+                        
+                        // 尝试部分恢复或使用空对象
+                        settings = {};
+                    }
+                } else {
+                    console.log('[Main] Settings file does not exist, creating new one with theme info');
+                }
+                
+                // 只更新主题相关字段，保留所有其他设置
+                settings.currentThemeMode = theme;
+                settings.themeLastUpdated = Date.now();
+                
+                // 安全地写入文件
+                await fs.writeJson(SETTINGS_FILE, settings, { spaces: 2 });
+                console.log(`[Main] Settings.json safely updated: currentThemeMode=${theme}, themeLastUpdated=${settings.themeLastUpdated}`);
+                
+            } catch (error) {
+                console.error('[Main] Error updating settings.json for theme change:', error);
+                // 主题更改失败不应该影响系统的其他功能
+                console.error('[Main] Theme change in nativeTheme was successful, but settings.json update failed');
+            }
         }
     });
 }

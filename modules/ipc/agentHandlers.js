@@ -154,7 +154,12 @@ function initialize(context) {
             let settings = {};
             try {
                 if (await fs.pathExists(SETTINGS_FILE)) {
-                    settings = await fs.readJson(SETTINGS_FILE);
+                    try {
+                        settings = await fs.readJson(SETTINGS_FILE);
+                    } catch (parseError) {
+                        console.error('[AgentHandlers] Error parsing settings.json in save-combined-item-order:', parseError.message);
+                        settings = {}; // 使用空对象而不是返回错误
+                    }
                 }
             } catch (readError) {
                 if (readError.code !== 'ENOENT') {
@@ -176,7 +181,12 @@ function initialize(context) {
             let settings = {};
             try {
                 if (await fs.pathExists(SETTINGS_FILE)) {
-                    settings = await fs.readJson(SETTINGS_FILE);
+                    try {
+                        settings = await fs.readJson(SETTINGS_FILE);
+                    } catch (parseError) {
+                        console.error('[AgentHandlers] Error parsing settings.json in save-agent-order:', parseError.message);
+                        settings = {}; // 使用空对象而不是返回错误
+                    }
                 }
             } catch (readError) {
                 if (readError.code !== 'ENOENT') {
