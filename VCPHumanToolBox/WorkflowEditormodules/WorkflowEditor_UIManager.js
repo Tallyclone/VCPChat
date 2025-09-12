@@ -904,12 +904,24 @@
 			const wrapper = document.createElement('div');
 			wrapper.className = 'property-field';
 			const label = document.createElement('label');
-			label.textContent = key;
+			// 使用 field.label 如果存在，否则使用 key
+			label.textContent = field.label || key;
 			label.style.display = 'block';
 			label.style.margin = '8px 0 4px 0';
 			label.style.color = '#94a3b8';
 			label.style.fontSize = '12px';
 			label.style.fontWeight = '500';
+			
+			// 添加描述信息
+			let descriptionEl = null;
+			if (field.description) {
+				descriptionEl = document.createElement('div');
+				descriptionEl.textContent = field.description;
+				descriptionEl.style.fontSize = '10px';
+				descriptionEl.style.color = '#64748b';
+				descriptionEl.style.marginBottom = '4px';
+				descriptionEl.style.lineHeight = '1.3';
+			}
 			
 			let input;
 			const current = node.config && node.config[key] !== undefined ? node.config[key] : (field.default !== undefined ? field.default : '');
@@ -1093,6 +1105,10 @@
 			input.addEventListener('keydown', (e) => e.stopPropagation());
 			
 			wrapper.appendChild(label);
+			// 添加描述信息（如果存在）
+			if (descriptionEl) {
+				wrapper.appendChild(descriptionEl);
+			}
 			wrapper.appendChild(input);
 			return wrapper;
 		}

@@ -314,26 +314,30 @@
                             <!-- 控制面板 -->
                             <div class="image-controls" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; padding: 4px 8px; background: #2a2a2a; border-radius: 4px; font-size: 10px;">
                                 <div style="display: flex; align-items: center; gap: 8px;">
-                                    <select id="fitMode_${imageId}" onchange="this.parentElement.parentElement.parentElement.querySelector('img').style.objectFit = this.value" style="background: #1a1a1a; color: #ccc; border: 1px solid #444; border-radius: 3px; padding: 2px 4px; font-size: 9px;">
-                                        <option value="contain">适应</option>
-                                        <option value="cover" selected>填充</option>
+                                    <select id="fitMode_${imageId}" onchange="this.parentElement.parentElement.parentElement.querySelector('img').style.objectFit = this.value"
+                                            onwheel="event.preventDefault(); const options = this.options; const currentIndex = this.selectedIndex; const newIndex = event.deltaY > 0 ? Math.min(currentIndex + 1, options.length - 1) : Math.max(currentIndex - 1, 0); this.selectedIndex = newIndex; this.onchange();"
+                                            style="background: #1a1a1a; color: #ccc; border: 1px solid #444; border-radius: 3px; padding: 2px 4px; font-size: 9px; cursor: pointer;">
+                                        <option value="contain" selected>适应</option>
+                                        <option value="cover">填充</option>
                                         <option value="none">原始</option>
                                         <option value="scale-down">缩小</option>
                                     </select>
+                                    <button onclick="const container = this.parentElement.parentElement.parentElement.querySelector('.image-display-area'); const img = container.querySelector('img'); if(img && img.naturalHeight > 0) { container.style.height = 'auto'; container.style.minHeight = Math.min(img.naturalHeight, 500) + 'px'; container.style.maxHeight = '500px'; } this.nextElementSibling.nextElementSibling.textContent = '自适应';" style="background: #1a73e8; color: white; border: none; border-radius: 3px; padding: 2px 6px; font-size: 9px; cursor: pointer;" title="自适应大小">📐</button>
                                     <input type="range" id="sizeSlider_${imageId}" min="100" max="500" value="300" 
-                                           onchange="const container = this.parentElement.parentElement.parentElement.querySelector('.image-display-area'); container.style.height = this.value + 'px'; this.nextElementSibling.textContent = this.value + 'px';"
+                                           onchange="const container = this.parentElement.parentElement.parentElement.querySelector('.image-display-area'); const img = container.querySelector('img'); if(img) { const newHeight = parseInt(this.value); container.style.height = newHeight + 'px'; container.style.minHeight = newHeight + 'px'; container.style.maxHeight = newHeight + 'px'; } this.nextElementSibling.textContent = this.value + 'px';"
                                            style="width: 60px; height: 12px;">
-                                    <span id="sizeLabel_${imageId}" style="color: #888; font-size: 9px; min-width: 35px;">300px</span>
+                                    <span id="sizeLabel_${imageId}" style="color: #888; font-size: 9px; min-width: 35px;">自适应</span>
                                 </div>
                                 <button onclick="window.open('${url}', '_blank')" style="background: #1a73e8; color: white; border: none; border-radius: 3px; padding: 2px 6px; font-size: 9px; cursor: pointer;">🔍</button>
                             </div>
                             <!-- 图片显示区域 -->
-                            <div class="image-display-area" style="width: 100%; height: 300px; overflow: hidden; border-radius: 6px; background: #1a1a1a; display: flex; align-items: center; justify-content: center; position: relative;">
+                            <div class="image-display-area" style="width: 100%; height: auto; min-height: 150px; max-height: 500px; overflow: hidden; border-radius: 6px; background: #1a1a1a; display: flex; align-items: center; justify-content: center; position: relative;">
                                 <img src="${url}" alt="图片" id="${imageId}"
-                                     style="max-width: 100%; max-height: 100%; object-fit: cover; cursor: pointer; transition: transform 0.2s ease;"
+                                     style="max-width: 100%; height: auto; object-fit: contain; cursor: pointer; transition: transform 0.2s ease;"
                                      onclick="window.open('${url}', '_blank')"
                                      onmouseover="this.style.transform='scale(1.02)'"
                                      onmouseout="this.style.transform='scale(1)'"
+                                     onload="this.parentElement.style.height = 'auto'; this.parentElement.style.minHeight = Math.min(this.naturalHeight, 500) + 'px';"
                                      onerror="this.parentElement.innerHTML='<div style=\\'color: #ff6b6b; text-align: center; padding: 20px; font-size: 12px;\\'>图片加载失败</div>'" />
                             </div>
                             <div style="margin-top: 6px; font-size: 10px; color: #666; word-break: break-all; text-align: center; line-height: 1.2;">
@@ -420,27 +424,46 @@
 
             const containerId = `multi_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             let contentHtml = `
-                <!-- 全局控制面板 -->
+                <!-- ComfyUI风格控制面板 -->
                 <div class="multi-image-controls" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding: 6px 8px; background: #2a2a2a; border-radius: 4px; font-size: 10px;">
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="color: #ccc;">共 ${urlArray.length} 个URL</span>
-                        <select id="multiFitMode_${containerId}" onchange="document.querySelectorAll('#${containerId} img').forEach(img => img.style.objectFit = this.value)" style="background: #1a1a1a; color: #ccc; border: 1px solid #444; border-radius: 3px; padding: 2px 4px; font-size: 9px;">
-                            <option value="contain">适应</option>
-                            <option value="cover" selected>填充</option>
+                        <span style="color: #ccc;">共 ${urlArray.length} 张</span>
+                        <select id="multiFitMode_${containerId}" onchange="document.querySelectorAll('#${containerId} img').forEach(img => img.style.objectFit = this.value)" 
+                                onwheel="event.preventDefault(); const options = this.options; const currentIndex = this.selectedIndex; const newIndex = event.deltaY > 0 ? Math.min(currentIndex + 1, options.length - 1) : Math.max(currentIndex - 1, 0); this.selectedIndex = newIndex; this.onchange();"
+                                style="background: #1a1a1a; color: #ccc; border: 1px solid #444; border-radius: 3px; padding: 2px 4px; font-size: 9px; cursor: pointer;">
+                            <option value="contain" selected>适应</option>
+                            <option value="cover">填充</option>
                             <option value="none">原始</option>
+                            <option value="scale-down">缩小</option>
                         </select>
+                        
+                        <label style="color: #888; font-size: 9px;">列数:</label>
+                        <select id="gridColumns_${containerId}" onchange="const cols = this.value; const container = document.getElementById('${containerId}'); if(cols === 'auto') { container.style.gridTemplateColumns = 'repeat(auto-fit, minmax(120px, 1fr))'; } else { container.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)'; }"
+                                onwheel="event.preventDefault(); const options = this.options; const currentIndex = this.selectedIndex; const newIndex = event.deltaY > 0 ? Math.min(currentIndex + 1, options.length - 1) : Math.max(currentIndex - 1, 0); this.selectedIndex = newIndex; this.onchange();"
+                                style="background: #1a1a1a; color: #ccc; border: 1px solid #444; border-radius: 3px; padding: 2px 4px; font-size: 9px; cursor: pointer;">
+                            <option value="1">1</option>
+                            <option value="2" selected>2</option>
+                            <option value="3">3</option>
+                            <option value="4">4</option>
+                            <option value="5">5</option>
+                            <option value="6">6</option>
+                            <option value="auto">自动</option>
+                        </select>
+                        
+                        <label style="color: #888; font-size: 9px;">尺寸:</label>
                         <input type="range" id="multiSizeSlider_${containerId}" min="80" max="300" value="120" 
-                               onchange="document.getElementById('${containerId}').style.gridTemplateColumns = 'repeat(auto-fit, minmax(' + this.value + 'px, 1fr))'; this.nextElementSibling.textContent = this.value + 'px';"
+                               onchange="const size = this.value; const container = document.getElementById('${containerId}'); const cols = document.getElementById('gridColumns_${containerId}').value; if(cols === 'auto') { container.style.gridTemplateColumns = 'repeat(auto-fit, minmax(' + size + 'px, 1fr))'; } this.nextElementSibling.textContent = size + 'px';"
                                style="width: 60px; height: 12px;">
                         <span id="multiSizeLabel_${containerId}" style="color: #888; font-size: 9px; min-width: 35px;">120px</span>
                     </div>
+                    
                     <div style="display: flex; align-items: center; gap: 4px;">
-                        <button onclick="document.getElementById('${containerId}').style.gridTemplateColumns = 'repeat(1, 1fr)'" style="background: #333; color: #ccc; border: 1px solid #444; border-radius: 3px; padding: 2px 6px; font-size: 9px; cursor: pointer;" title="单列">1</button>
-                        <button onclick="document.getElementById('${containerId}').style.gridTemplateColumns = 'repeat(2, 1fr)'" style="background: #333; color: #ccc; border: 1px solid #444; border-radius: 3px; padding: 2px 6px; font-size: 9px; cursor: pointer;" title="双列">2</button>
-                        <button onclick="document.getElementById('${containerId}').style.gridTemplateColumns = 'repeat(auto-fit, minmax(120px, 1fr))'" style="background: #1a73e8; color: white; border: none; border-radius: 3px; padding: 2px 6px; font-size: 9px; cursor: pointer;" title="自动">Auto</button>
+                        <button onclick="const container = document.getElementById('${containerId}'); container.style.gap = '2px';" style="background: #333; color: #ccc; border: 1px solid #444; border-radius: 3px; padding: 2px 6px; font-size: 9px; cursor: pointer;" title="紧密排列">紧密</button>
+                        <button onclick="const container = document.getElementById('${containerId}'); container.style.gap = '6px';" style="background: #1a73e8; color: white; border: none; border-radius: 3px; padding: 2px 6px; font-size: 9px; cursor: pointer;" title="标准间距">标准</button>
+                        <button onclick="const container = document.getElementById('${containerId}'); container.style.gap = '12px';" style="background: #333; color: #ccc; border: 1px solid #444; border-radius: 3px; padding: 2px 6px; font-size: 9px; cursor: pointer;" title="宽松排列">宽松</button>
                     </div>
                 </div>
-                <div id="${containerId}" class="multiple-urls-container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 6px; padding: 4px;">
+                <div id="${containerId}" class="multiple-urls-container" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; padding: 4px;">
             `;
 
             urlArray.forEach((url, index) => {
@@ -453,13 +476,13 @@
                         const itemImageId = `multiImg_${index}_${Date.now()}`;
                         itemHtml = `
                             <div class="url-item image-item" style="display: flex; flex-direction: column; background: #1a1a1a; border-radius: 6px; overflow: hidden; border: 1px solid #333;">
-                                <div style="width: 100%; min-height: 120px; max-height: 300px; overflow: hidden; background: #2a2a2a; display: flex; align-items: center; justify-content: center; position: relative;">
+                                <div style="width: 100%; height: auto; min-height: 120px; max-height: 300px; overflow: hidden; background: #2a2a2a; display: flex; align-items: center; justify-content: center; position: relative;">
                                     <img src="${url}" alt="图片 ${index + 1}" id="${itemImageId}"
-                                         style="max-width: 100%; max-height: 100%; object-fit: cover; cursor: pointer; transition: transform 0.2s ease;"
+                                         style="width: 100%; height: auto; object-fit: contain; cursor: pointer; transition: transform 0.2s ease;"
                                          onclick="window.open('${url}', '_blank')"
                                          onmouseover="this.style.transform='scale(1.05)'"
                                          onmouseout="this.style.transform='scale(1)'"
-                                         onload="this.parentElement.style.height = 'auto'; this.style.width = '100%'; this.style.height = 'auto';"
+                                         onload="const container = this.parentElement; const aspectRatio = this.naturalWidth / this.naturalHeight; const containerWidth = container.offsetWidth; const autoHeight = Math.min(containerWidth / aspectRatio, 300); container.style.height = autoHeight + 'px';"
                                          onerror="this.parentElement.innerHTML='<div style=\\'color: #ff6b6b; font-size: 10px; text-align: center; padding: 20px;\\'>加载失败</div>'" />
                                     <div style="position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,0.7); border-radius: 3px; padding: 2px 4px;">
                                         <button onclick="window.open('${url}', '_blank')" style="background: none; border: none; color: white; font-size: 10px; cursor: pointer; padding: 0;" title="查看原图">🔍</button>
