@@ -33,6 +33,7 @@ class DistributedServer {
         this.reconnectTimeoutId = null; // To keep track of the reconnect timeout
         this.stopped = false; // Flag to prevent reconnection when stopped manually
         this.initialConnection = true; // Flag to handle one-time actions on first connect
+        this.staticPlaceholderUpdateInterval = null; // 新增：静态占位符更新定时器
     }
 
     async initialize() {
@@ -92,6 +93,9 @@ class DistributedServer {
             this.reconnectInterval = 5000;
             this.registerTools();
             await this.reportIPAddress();
+            
+            // 新增：设置静态占位符定期推送
+            this.setupStaticPlaceholderUpdates();
         });
 
         this.ws.on('message', (message) => {
@@ -100,6 +104,8 @@ class DistributedServer {
         
         this.ws.on('close', () => {
             console.log(`[${this.serverName}] Disconnected from main server.`);
+            // 新增：清理静态占位符更新定时器
+            this.clearStaticPlaceholderUpdates();
             this.scheduleReconnect();
         });
 
@@ -115,6 +121,8 @@ class DistributedServer {
             return;
         }
         console.log(`[${this.serverName}] Attempting to reconnect in ${this.reconnectInterval / 1000}s...`);
+        // 新增：清理静态占位符更新定时器
+        this.clearStaticPlaceholderUpdates();
         // Clear any existing timeout to avoid multiple reconnect loops
         if (this.reconnectTimeoutId) {
             clearTimeout(this.reconnectTimeoutId);
@@ -200,6 +208,55 @@ class DistributedServer {
         };
         this.sendMessage(payload);
         console.log(`[${this.serverName}] Reported IP addresses to main server: Local: ${ipv4Addresses.join(', ')}, Public: ${publicIp || 'N/A'}`);
+    }
+
+    // 新增：设置静态占位符定期更新
+    setupStaticPlaceholderUpdates() {
+        // 每30秒推送一次静态占位符值
+        this.staticPlaceholderUpdateInterval = setInterval(() => {
+            this.pushStaticPlaceholderValues();
+        }, 30000); // 30秒
+        
+        // 立即推送一次
+        setTimeout(() => {
+            this.pushStaticPlaceholderValues();
+        }, 2000); // 2秒后第一次推送
+        
+        if (this.debugMode) console.log(`[${this.serverName}] Static placeholder updates scheduled every 30 seconds.`);
+    }
+
+    // 新增：清理静态占位符更新定时器
+    clearStaticPlaceholderUpdates() {
+        if (this.staticPlaceholderUpdateInterval) {
+            clearInterval(this.staticPlaceholderUpdateInterval);
+            this.staticPlaceholderUpdateInterval = null;
+            if (this.debugMode) console.log(`[${this.serverName}] Static placeholder update interval cleared.`);
+        }
+    }
+
+    // 新增：推送静态占位符值到主服务器
+    pushStaticPlaceholderValues() {
+        const placeholderValues = pluginManager.getAllPlaceholderValues();
+        if (placeholderValues.size === 0) {
+            if (this.debugMode) console.log(`[${this.serverName}] No static placeholder values to push.`);
+            return;
+        }
+
+        const payload = {
+            type: 'update_static_placeholders',
+            data: {
+                serverName: this.serverName,
+                placeholders: Object.fromEntries(placeholderValues)
+            }
+        };
+        
+        this.sendMessage(payload);
+        if (this.debugMode) {
+            console.log(`[${this.serverName}] Pushed ${placeholderValues.size} static placeholder values to main server.`);
+            for (const [key, value] of placeholderValues) {
+                console.log(`  - ${key}: ${value.substring(0, 100)}${value.length > 100 ? '...' : ''}`);
+            }
+        }
     }
 
     async handleMainServerMessage(message) {
@@ -376,13 +433,23 @@ class DistributedServer {
         }
     }
 
-    stop() {
+    async stop() {
         console.log(`[${this.serverName}] Stopping server...`);
         this.stopped = true;
+        
+        // 新增：清理静态占位符更新定时器
+        this.clearStaticPlaceholderUpdates();
+        
         if (this.reconnectTimeoutId) {
             clearTimeout(this.reconnectTimeoutId);
             this.reconnectTimeoutId = null;
         }
+        
+        // 新增：关闭插件管理器 - 使用异步方式，但不等待结果
+        pluginManager.shutdownAllPlugins().catch(err => {
+            console.error(`[${this.serverName}] Error during plugin shutdown:`, err);
+        });
+        
         if (this.ws) {
             // Remove listeners to prevent reconnection logic from firing on manual close
             this.ws.removeAllListeners('close');
