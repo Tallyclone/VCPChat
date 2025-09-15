@@ -12,11 +12,6 @@ const GROUP_SESSION_WATCHER_PLACEHOLDER = '{{VCPChatGroupSessionWatcher}}';
 // 新增：话题总结相关常量
 const MIN_MESSAGES_FOR_SUMMARY = 4;
 const DEFAULT_TOPIC_NAMES = ["主要群聊"]; // 也可以包含 "新话题" 的模式匹配
-const SUMMARY_MODEL_CONFIG = { // 可以根据需要调整
-    model: 'gemini-2.5-flash-preview-05-20', // 或者其他合适的模型
-    temperature: 0.3,
-    max_tokens: 4000 // 标题通常较短
-};
 
 
 let mainAppPaths = {}; // 将由 main.js 初始化时传入
@@ -108,13 +103,14 @@ async function getVcpGlobalSettings() {
                 vcpUrl: settings.vcpServerUrl, // 注意settings中的字段名
                 vcpApiKey: settings.vcpApiKey,
                 userName: settings.userName || '用户',
+                topicSummaryModel: settings.topicSummaryModel,
                 enableAgentBubbleTheme: settings.enableAgentBubbleTheme === true
             };
         } catch (e) {
             console.error("[GroupChat] Error reading VCP settings from settings.json", e);
         }
     }
-    return { vcpUrl: null, vcpApiKey: null, userName: '用户', enableAgentBubbleTheme: false };
+    return { vcpUrl: null, vcpApiKey: null, userName: '用户', topicSummaryModel: null, enableAgentBubbleTheme: false };
 }
 
 
@@ -1240,9 +1236,9 @@ ${att._fileManagerData.extractedText}
                 },
                 body: JSON.stringify({
                     messages: messagesForAISummary,
-                    model: SUMMARY_MODEL_CONFIG.model,
-                    temperature: SUMMARY_MODEL_CONFIG.temperature,
-                    max_tokens: SUMMARY_MODEL_CONFIG.max_tokens,
+                    model: globalVcpSettings.topicSummaryModel || 'gemini-2.5-flash-preview-05-20',
+                    temperature: 0.3,
+                    max_tokens: 4000,
                     stream: false // 总结通常不需要流式
                 })
             });

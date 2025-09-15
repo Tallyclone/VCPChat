@@ -50,6 +50,7 @@ const settingsManager = (() => {
     let agentSystemPromptTextarea, agentModelInput, agentTemperatureInput;
     let agentContextTokenLimitInput, agentMaxOutputTokensInput, agentTopPInput, agentTopKInput;
     let openModelSelectBtn, modelSelectModal, modelList, modelSearchInput, refreshModelsBtn;
+    let topicSummaryModelInput, openTopicSummaryModelSelectBtn; // New elements for topic summary model
     let agentTtsVoicePrimarySelect, agentTtsRegexPrimaryInput, agentTtsVoiceSecondarySelect, agentTtsRegexSecondaryInput, refreshTtsModelsBtn, agentTtsSpeedSlider, ttsSpeedValueSpan;
 
     /**
@@ -385,6 +386,8 @@ const settingsManager = (() => {
             modelList = options.elements.modelList;
             modelSearchInput = options.elements.modelSearchInput;
             refreshModelsBtn = options.elements.refreshModelsBtn;
+            topicSummaryModelInput = options.elements.topicSummaryModelInput; // Get new element
+            openTopicSummaryModelSelectBtn = options.elements.openTopicSummaryModelSelectBtn; // Get new element
             
             // TTS Elements
             agentTtsVoicePrimarySelect = document.getElementById('agentTtsVoicePrimary');
@@ -421,7 +424,10 @@ const settingsManager = (() => {
             }
 
             if (openModelSelectBtn) {
-                openModelSelectBtn.addEventListener('click', handleOpenModelSelect);
+                openModelSelectBtn.addEventListener('click', () => handleOpenModelSelect(agentModelInput));
+            }
+            if (openTopicSummaryModelSelectBtn) {
+                openTopicSummaryModelSelectBtn.addEventListener('click', () => handleOpenModelSelect(topicSummaryModelInput));
             }
             if (modelSearchInput) {
                 modelSearchInput.addEventListener('input', filterModels);
@@ -476,10 +482,15 @@ const settingsManager = (() => {
     /**
      * Opens the model selection modal and populates it with cached models.
      */
-    async function handleOpenModelSelect() {
+    async function handleOpenModelSelect(targetInputElement) {
         try {
             const models = await electronAPI.getCachedModels();
-            populateModelList(models);
+            populateModelList(models, (modelId) => {
+                if (targetInputElement) {
+                    targetInputElement.value = modelId;
+                }
+                uiHelper.closeModal('modelSelectModal');
+            });
             uiHelper.openModal('modelSelectModal');
         } catch (error) {
             console.error('Failed to get cached models:', error);
@@ -491,7 +502,7 @@ const settingsManager = (() => {
      * Populates the model list in the modal.
      * @param {Array} models - An array of model objects.
      */
-    function populateModelList(models) {
+    function populateModelList(models, onModelSelect) {
         if (!modelList) return;
         modelList.innerHTML = ''; // Clear existing list
 
@@ -505,10 +516,9 @@ const settingsManager = (() => {
             li.textContent = model.id;
             li.dataset.modelId = model.id;
             li.addEventListener('click', () => {
-                if (agentModelInput) {
-                    agentModelInput.value = model.id;
+                if (typeof onModelSelect === 'function') {
+                    onModelSelect(model.id);
                 }
-                uiHelper.closeModal('modelSelectModal');
             });
             modelList.appendChild(li);
         });

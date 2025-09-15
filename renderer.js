@@ -634,6 +634,8 @@ import * as interruptHandler from './modules/interruptHandler.js';
                 modelList: modelList,
                 modelSearchInput: modelSearchInput,
                 refreshModelsBtn: refreshModelsBtn,
+                topicSummaryModelInput: document.getElementById('topicSummaryModel'),
+                openTopicSummaryModelSelectBtn: document.getElementById('openTopicSummaryModelSelectBtn'),
                 // TTS Elements
                 agentTtsVoiceSelect: document.getElementById('agentTtsVoice'),
                 refreshTtsModelsBtn: document.getElementById('refreshTtsModelsBtn'),
@@ -903,6 +905,7 @@ async function loadAndApplyGlobalSettings() {
         document.getElementById('vcpApiKey').value = globalSettings.vcpApiKey || '';
         document.getElementById('vcpLogUrl').value = globalSettings.vcpLogUrl || '';
         document.getElementById('vcpLogKey').value = globalSettings.vcpLogKey || '';
+        document.getElementById('topicSummaryModel').value = globalSettings.topicSummaryModel || '';
         
         // --- Load Network Notes Paths ---
         const networkNotesPathsContainer = document.getElementById('networkNotesPathsContainer');
@@ -1115,6 +1118,7 @@ function setupEventListeners() {
             vcpApiKey: document.getElementById('vcpApiKey').value,
             vcpLogUrl: document.getElementById('vcpLogUrl').value.trim(),
             vcpLogKey: document.getElementById('vcpLogKey').value.trim(),
+            topicSummaryModel: document.getElementById('topicSummaryModel').value.trim(),
             networkNotesPaths: networkNotesPaths, // Use the new array
             sidebarWidth: globalSettings.sidebarWidth, // Keep existing value if not changed by resizer
             notificationsSidebarWidth: globalSettings.notificationsSidebarWidth, // Keep existing
