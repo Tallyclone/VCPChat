@@ -152,24 +152,78 @@ function initialize(context) {
     ipcMain.handle('save-combined-item-order', async (event, orderedItemsWithTypes) => {
         try {
             let settings = {};
+            let originalContent = null;
+            
             try {
                 if (await fs.pathExists(SETTINGS_FILE)) {
                     try {
-                        settings = await fs.readJson(SETTINGS_FILE);
+                        const fileContent = await fs.readFile(SETTINGS_FILE, 'utf8');
+                        originalContent = fileContent; // 保存原始内容作为备份
+                        settings = JSON.parse(fileContent);
                     } catch (parseError) {
                         console.error('[AgentHandlers] Error parsing settings.json in save-combined-item-order:', parseError.message);
-                        settings = {}; // 使用空对象而不是返回错误
+                        // 尝试从损坏文件中恢复数据
+                        settings = await recoverSettingsFromCorruptedFile(originalContent);
                     }
+                } else {
+                    // 使用与 settingsHandlers.js 相同的默认设置
+                    settings = {
+                        sidebarWidth: 260,
+                        notificationsSidebarWidth: 300,
+                        userName: '用户',
+                        vcpServerUrl: '',
+                        vcpApiKey: '',
+                        vcpLogUrl: '',
+                        vcpLogKey: '',
+                        networkNotesPaths: [],
+                        enableAgentBubbleTheme: false,
+                        enableSmoothStreaming: false,
+                        minChunkBufferSize: 1,
+                        smoothStreamIntervalMs: 25,
+                        assistantAgent: '',
+                        enableDistributedServer: true,
+                        agentMusicControl: false,
+                        enableDistributedServerLogs: false,
+                        enableVcpToolInjection: false
+                    };
                 }
             } catch (readError) {
                 if (readError.code !== 'ENOENT') {
                     console.error('Failed to read settings file for saving combined item order:', readError);
                     return { success: false, error: '读取设置文件失败' };
                 }
+                // 文件不存在时使用默认设置
+                settings = {
+                    sidebarWidth: 260,
+                    notificationsSidebarWidth: 300,
+                    userName: '用户',
+                    enableDistributedServerLogs: false
+                };
             }
+            
             settings.combinedItemOrder = orderedItemsWithTypes;
-            await fs.writeJson(SETTINGS_FILE, settings, { spaces: 2 });
-            return { success: true };
+            
+            // 使用安全的文件写入方式
+            const tempFile = SETTINGS_FILE + '.tmp';
+            try {
+                await fs.writeJson(tempFile, settings, { spaces: 2 });
+                
+                // 验证写入的文件是否正确
+                const verifyContent = await fs.readFile(tempFile, 'utf8');
+                JSON.parse(verifyContent); // 检查JSON格式是否正确
+                
+                // 如果验证成功，再重命名为正式文件
+                await fs.move(tempFile, SETTINGS_FILE, { overwrite: true });
+                
+                return { success: true };
+            } catch (tempWriteError) {
+                console.error('[AgentHandlers] Error writing temporary settings file for combined item order:', tempWriteError.message);
+                // 清理临时文件
+                if (await fs.pathExists(tempFile)) {
+                    await fs.remove(tempFile).catch(() => {});
+                }
+                throw tempWriteError;
+            }
         } catch (error) {
             console.error('Error saving combined item order:', error);
             return { success: false, error: error.message || '保存项目顺序时发生未知错误' };
@@ -179,23 +233,77 @@ function initialize(context) {
     ipcMain.handle('save-agent-order', async (event, orderedAgentIds) => {
         try {
             let settings = {};
+            let originalContent = null;
+            
             try {
                 if (await fs.pathExists(SETTINGS_FILE)) {
                     try {
-                        settings = await fs.readJson(SETTINGS_FILE);
+                        const fileContent = await fs.readFile(SETTINGS_FILE, 'utf8');
+                        originalContent = fileContent; // 保存原始内容作为备份
+                        settings = JSON.parse(fileContent);
                     } catch (parseError) {
                         console.error('[AgentHandlers] Error parsing settings.json in save-agent-order:', parseError.message);
-                        settings = {}; // 使用空对象而不是返回错误
+                        // 尝试从损坏文件中恢复数据
+                        settings = await recoverSettingsFromCorruptedFile(originalContent);
                     }
+                } else {
+                    // 使用默认设置
+                    settings = {
+                        sidebarWidth: 260,
+                        notificationsSidebarWidth: 300,
+                        userName: '用户',
+                        vcpServerUrl: '',
+                        vcpApiKey: '',
+                        vcpLogUrl: '',
+                        vcpLogKey: '',
+                        networkNotesPaths: [],
+                        enableAgentBubbleTheme: false,
+                        enableSmoothStreaming: false,
+                        minChunkBufferSize: 1,
+                        smoothStreamIntervalMs: 25,
+                        assistantAgent: '',
+                        enableDistributedServer: true,
+                        agentMusicControl: false,
+                        enableDistributedServerLogs: false,
+                        enableVcpToolInjection: false
+                    };
                 }
             } catch (readError) {
                 if (readError.code !== 'ENOENT') {
                     return { success: false, error: '读取设置文件失败' };
                 }
+                // 文件不存在时使用默认设置
+                settings = {
+                    sidebarWidth: 260,
+                    notificationsSidebarWidth: 300,
+                    userName: '用户',
+                    enableDistributedServerLogs: false
+                };
             }
-            settings.agentOrder = orderedAgentIds; 
-            await fs.writeJson(SETTINGS_FILE, settings, { spaces: 2 });
-            return { success: true };
+            
+            settings.agentOrder = orderedAgentIds;
+            
+            // 使用安全的文件写入方式
+            const tempFile = SETTINGS_FILE + '.tmp';
+            try {
+                await fs.writeJson(tempFile, settings, { spaces: 2 });
+                
+                // 验证写入的文件是否正确
+                const verifyContent = await fs.readFile(tempFile, 'utf8');
+                JSON.parse(verifyContent); // 检查JSON格式是否正确
+                
+                // 如果验证成功，再重命名为正式文件
+                await fs.move(tempFile, SETTINGS_FILE, { overwrite: true });
+                
+                return { success: true };
+            } catch (tempWriteError) {
+                console.error('[AgentHandlers] Error writing temporary settings file for agent order:', tempWriteError.message);
+                // 清理临时文件
+                if (await fs.pathExists(tempFile)) {
+                    await fs.remove(tempFile).catch(() => {});
+                }
+                throw tempWriteError;
+            }
         } catch (error) {
             console.error('Error saving agent order:', error);
             return { success: false, error: error.message || '保存Agent顺序时发生未知错误' };
@@ -442,3 +550,120 @@ module.exports = {
     initialize,
     getAgentConfigById
 };
+
+// 帮助函数：从损坏的设置文件中恢复数据
+async function recoverSettingsFromCorruptedFile(originalContent) {
+    const recovered = {
+        sidebarWidth: 260,
+        notificationsSidebarWidth: 300,
+        userName: '用户',
+        vcpServerUrl: '',
+        vcpApiKey: '',
+        vcpLogUrl: '',
+        vcpLogKey: '',
+        networkNotesPaths: [],
+        enableAgentBubbleTheme: false,
+        enableSmoothStreaming: false,
+        minChunkBufferSize: 1,
+        smoothStreamIntervalMs: 25,
+        assistantAgent: '',
+        enableDistributedServer: true,
+        agentMusicControl: false,
+        enableDistributedServerLogs: false,
+        enableVcpToolInjection: false
+    };
+    
+    if (!originalContent) {
+        return recovered;
+    }
+    
+    try {
+        // 尝试使用正则表达式提取可能的字段值
+        const patterns = {
+            userName: /"userName"\s*:\s*"([^"]*)"/,
+            vcpServerUrl: /"vcpServerUrl"\s*:\s*"([^"]*)"/,
+            vcpApiKey: /"vcpApiKey"\s*:\s*"([^"]*)"/,
+            vcpLogUrl: /"vcpLogUrl"\s*:\s*"([^"]*)"/,
+            vcpLogKey: /"vcpLogKey"\s*:\s*"([^"]*)"/,
+            sidebarWidth: /"sidebarWidth"\s*:\s*(\d+)/,
+            notificationsSidebarWidth: /"notificationsSidebarWidth"\s*:\s*(\d+)/,
+            enableDistributedServer: /"enableDistributedServer"\s*:\s*(true|false)/,
+            agentMusicControl: /"agentMusicControl"\s*:\s*(true|false)/,
+            enableDistributedServerLogs: /"enableDistributedServerLogs"\s*:\s*(true|false)/,
+            enableVcpToolInjection: /"enableVcpToolInjection"\s*:\s*(true|false)/,
+            enableAgentBubbleTheme: /"enableAgentBubbleTheme"\s*:\s*(true|false)/,
+            enableSmoothStreaming: /"enableSmoothStreaming"\s*:\s*(true|false)/,
+            minChunkBufferSize: /"minChunkBufferSize"\s*:\s*(\d+)/,
+            smoothStreamIntervalMs: /"smoothStreamIntervalMs"\s*:\s*(\d+)/,
+            assistantAgent: /"assistantAgent"\s*:\s*"([^"]*)"/
+        };
+        
+        for (const [key, pattern] of Object.entries(patterns)) {
+            const match = originalContent.match(pattern);
+            if (match) {
+                const value = match[1];
+                if (key === 'sidebarWidth' || key === 'notificationsSidebarWidth' || 
+                    key === 'minChunkBufferSize' || key === 'smoothStreamIntervalMs') {
+                    recovered[key] = parseInt(value, 10);
+                } else if (key === 'enableDistributedServer' || key === 'agentMusicControl' || 
+                          key === 'enableDistributedServerLogs' || key === 'enableVcpToolInjection' ||
+                          key === 'enableAgentBubbleTheme' || key === 'enableSmoothStreaming') {
+                    recovered[key] = value === 'true';
+                } else {
+                    recovered[key] = value;
+                }
+                console.log(`[AgentHandlers] Recovered ${key}: ${recovered[key]}`);
+            }
+        }
+        
+        // 尝试恢复 networkNotesPaths 数组
+        const networkPathsMatch = originalContent.match(/"networkNotesPaths"\s*:\s*\[([^\]]*)/s);
+        if (networkPathsMatch) {
+            try {
+                const arrayContent = '[' + networkPathsMatch[1] + ']';
+                const parsedArray = JSON.parse(arrayContent.replace(/,$/, ''));
+                if (Array.isArray(parsedArray)) {
+                    recovered.networkNotesPaths = parsedArray;
+                    console.log(`[AgentHandlers] Recovered networkNotesPaths:`, recovered.networkNotesPaths);
+                }
+            } catch (arrayParseError) {
+                console.warn('[AgentHandlers] Could not recover networkNotesPaths array, using default');
+            }
+        }
+        
+        // 尝试恢复 combinedItemOrder 数组
+        const combinedOrderMatch = originalContent.match(/"combinedItemOrder"\s*:\s*\[([^\]]*)/s);
+        if (combinedOrderMatch) {
+            try {
+                const arrayContent = '[' + combinedOrderMatch[1] + ']';
+                const parsedArray = JSON.parse(arrayContent.replace(/,$/, ''));
+                if (Array.isArray(parsedArray)) {
+                    recovered.combinedItemOrder = parsedArray;
+                    console.log(`[AgentHandlers] Recovered combinedItemOrder:`, recovered.combinedItemOrder);
+                }
+            } catch (arrayParseError) {
+                console.warn('[AgentHandlers] Could not recover combinedItemOrder array, using default');
+            }
+        }
+        
+        // 尝试恢复 agentOrder 数组
+        const agentOrderMatch = originalContent.match(/"agentOrder"\s*:\s*\[([^\]]*)/s);
+        if (agentOrderMatch) {
+            try {
+                const arrayContent = '[' + agentOrderMatch[1] + ']';
+                const parsedArray = JSON.parse(arrayContent.replace(/,$/, ''));
+                if (Array.isArray(parsedArray)) {
+                    recovered.agentOrder = parsedArray;
+                    console.log(`[AgentHandlers] Recovered agentOrder:`, recovered.agentOrder);
+                }
+            } catch (arrayParseError) {
+                console.warn('[AgentHandlers] Could not recover agentOrder array, using default');
+            }
+        }
+        
+    } catch (recoverError) {
+        console.error('[AgentHandlers] Error during settings recovery:', recoverError.message);
+    }
+    
+    return recovered;
+}

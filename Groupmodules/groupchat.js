@@ -7,6 +7,7 @@ const fileManager = require('../modules/fileManager'); // Import fileManager
 // const { v4: uuidv4 } = require('uuid'); // 如果需要唯一ID生成
 
 const CANVAS_PLACEHOLDER = '{{VCPChatCanvas}}';
+const GROUP_SESSION_WATCHER_PLACEHOLDER = '{{VCPChatGroupSessionWatcher}}';
 
 // 新增：话题总结相关常量
 const MIN_MESSAGES_FOR_SUMMARY = 4;
@@ -32,6 +33,68 @@ function initializePaths(paths) {
     fs.ensureDirSync(mainAppPaths.AGENT_GROUPS_DIR);
     console.log('[GroupChat] Paths initialized. AgentGroups directory ensured:', mainAppPaths.AGENT_GROUPS_DIR);
 }
+
+/**
+ * 获取群聊会话监控信息
+ * @param {string} groupId - 群组ID
+ * @param {string} topicId - 话题ID
+ * @returns {Promise<object>} - 群聊会话监控信息
+ */
+async function getGroupSessionWatcher(groupId, topicId) {
+    try {
+        if (!mainAppPaths.USER_DATA_DIR) {
+            return {
+                status: "error",
+                error: "用户数据目录未初始化",
+                timestamp: new Date().toISOString(),
+                displayTime: new Date().toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai' })
+            };
+        }
+
+        const groupHistoryPath = path.join(mainAppPaths.USER_DATA_DIR, groupId, 'topics', topicId, 'history.json');
+        
+        if (await fs.pathExists(groupHistoryPath)) {
+            const stats = await fs.stat(groupHistoryPath);
+            const historyContent = await fs.readJson(groupHistoryPath);
+            
+            return {
+                status: "active",
+                currentSession: {
+                    groupId: groupId,
+                    topicId: topicId,
+                    filePath: groupHistoryPath,
+                    lastModified: stats.mtime.toISOString(),
+                    lastModifiedDisplay: stats.mtime.toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai' }),
+                    modifiedTimestamp: stats.mtime.getTime(),
+                    size: stats.size,
+                    messageCount: historyContent.length
+                },
+                timestamp: new Date().toISOString(),
+                displayTime: new Date().toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai' })
+            };
+        } else {
+            return {
+                status: "no_session",
+                message: `未找到群聊会话文件: ${groupHistoryPath}`,
+                groupId: groupId,
+                topicId: topicId,
+                timestamp: new Date().toISOString(),
+                displayTime: new Date().toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai' })
+            };
+        }
+    } catch (error) {
+        console.error(`[GroupChat] Error in getGroupSessionWatcher for group ${groupId}, topic ${topicId}:`, error.message);
+        return {
+            status: "error",
+            error: error.message,
+            groupId: groupId,
+            topicId: topicId,
+            timestamp: new Date().toISOString(),
+            displayTime: new Date().toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai' })
+        };
+    }
+}
+
 
 /**
  * 获取全局VCP设置（如URL, API Key, 用户名）
@@ -369,7 +432,13 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
         // 1. 构建 SystemPrompt (基于当前 agentConfig 和 groupConfig)
         let combinedSystemPrompt = agentConfig.systemPrompt || `你是${agentName}。`;
         if (groupConfig.groupPrompt) {
-            combinedSystemPrompt += `\n\n[群聊设定]:\n${groupConfig.groupPrompt}`;
+            let groupPrompt = groupConfig.groupPrompt;
+            // 处理 VCPChatGroupSessionWatcher 占位符
+            if (groupPrompt.includes(GROUP_SESSION_WATCHER_PLACEHOLDER)) {
+                const sessionWatcherInfo = await getGroupSessionWatcher(groupId, topicId);
+                groupPrompt = groupPrompt.replace(new RegExp(GROUP_SESSION_WATCHER_PLACEHOLDER, 'g'), JSON.stringify(sessionWatcherInfo));
+            }
+            combinedSystemPrompt += `\n\n[群聊设定]:\n${groupPrompt}`;
         }
 
         // 2. 构建上下文结构 (每次循环都基于最新的 groupHistory)
@@ -388,7 +457,14 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
                     try {
                         const canvasData = await ipcMain.invoke('get-latest-canvas-content');
                         if (canvasData && !canvasData.error) {
-                            const formattedCanvasContent = `\n[Canvas Content]\n${canvasData.content || ''}\n[Canvas Path]\n${canvasData.path || 'No file path'}\n[Canvas Errors]\n${canvasData.errors || 'No errors'}\n`;
+                            const formattedCanvasContent = `
+[Canvas Content]
+${canvasData.content || ''}
+[Canvas Path]
+${canvasData.path || 'No file path'}
+[Canvas Errors]
+${canvasData.errors || 'No errors'}
+`;
                             textForAIContext = textForAIContext.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), formattedCanvasContent);
                         } else {
                             console.error("[GroupChat] Failed to get latest canvas content:", canvasData?.error);
@@ -406,7 +482,11 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
                 if (msg.attachments && msg.attachments.length > 0) {
                     for (const att of msg.attachments) {
                         if (att._fileManagerData && typeof att._fileManagerData.extractedText === 'string' && att._fileManagerData.extractedText.trim() !== '') {
-                            textForAIContext += `\n\n[附加文件: ${att.name || '未知文件'}]\n${att._fileManagerData.extractedText}\n[/附加文件结束: ${att.name || '未知文件'}]`;
+                            textForAIContext += `
+
+[附加文件: ${att.name || '未知文件'}]
+${att._fileManagerData.extractedText}
+[/附加文件结束: ${att.name || '未知文件'}]`;
                         } else if (att._fileManagerData && att.type && !att.type.startsWith('image/')) {
                             textForAIContext += `\n\n[附加文件: ${att.name || '未知文件'} (无法预览文本内容)]`;
                         } else if (!att._fileManagerData) {
@@ -756,7 +836,13 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
     // 1. 构建 SystemPrompt
     let combinedSystemPrompt = agentConfig.systemPrompt || `你是${agentName}。`;
     if (groupConfig.groupPrompt) {
-        combinedSystemPrompt += `\n\n[群聊设定]:\n${groupConfig.groupPrompt}`;
+        let groupPrompt = groupConfig.groupPrompt;
+        // 处理 VCPChatGroupSessionWatcher 占位符
+        if (groupPrompt.includes(GROUP_SESSION_WATCHER_PLACEHOLDER)) {
+            const sessionWatcherInfo = await getGroupSessionWatcher(groupId, topicId);
+            groupPrompt = groupPrompt.replace(new RegExp(GROUP_SESSION_WATCHER_PLACEHOLDER, 'g'), JSON.stringify(sessionWatcherInfo));
+        }
+        combinedSystemPrompt += `\n\n[群聊设定]:\n${groupPrompt}`;
     }
 
     // 2. 构建上下文结构 (基于最新的 groupHistory)
@@ -775,7 +861,14 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
             try {
                 const canvasData = await ipcMain.invoke('get-latest-canvas-content');
                 if (canvasData && !canvasData.error) {
-                    const formattedCanvasContent = `\n[Canvas Content]\n${canvasData.content || ''}\n[Canvas Path]\n${canvasData.path || 'No file path'}\n[Canvas Errors]\n${canvasData.errors || 'No errors'}\n`;
+                    const formattedCanvasContent = `
+[Canvas Content]
+${canvasData.content || ''}
+[Canvas Path]
+${canvasData.path || 'No file path'}
+[Canvas Errors]
+${canvasData.errors || 'No errors'}
+`;
                     textForAIContext = textForAIContext.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), formattedCanvasContent);
                 } else {
                     console.error("[GroupChat Invite] Failed to get latest canvas content:", canvasData?.error);
@@ -790,7 +883,11 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
         if (msg.attachments && msg.attachments.length > 0) {
             for (const att of msg.attachments) {
                 if (att._fileManagerData && typeof att._fileManagerData.extractedText === 'string' && att._fileManagerData.extractedText.trim() !== '') {
-                    textForAIContext += `\n\n[附加文件: ${att.name || '未知文件'}]\n${att._fileManagerData.extractedText}\n[/附加文件结束: ${att.name || '未知文件'}]`;
+                    textForAIContext += `
+
+[附加文件: ${att.name || '未知文件'}]
+${att._fileManagerData.extractedText}
+[/附加文件结束: ${att.name || '未知文件'}]`;
                 } else if (att._fileManagerData && att.type && !att.type.startsWith('image/')) {
                     textForAIContext += `\n\n[附加文件: ${att.name || '未知文件'} (无法预览文本内容)]`;
                 } else if (!att._fileManagerData) {
@@ -1112,7 +1209,11 @@ async function triggerTopicSummarizationIfNeeded(groupId, topicId, groupHistory,
             if (msg.attachments && msg.attachments.length > 0) {
                 for (const att of msg.attachments) {
                     if (att._fileManagerData && typeof att._fileManagerData.extractedText === 'string' && att._fileManagerData.extractedText.trim() !== '') {
-                        contentText += `\n\n[附加文件: ${att.name || '未知文件'}]\n${att._fileManagerData.extractedText}\n[/附加文件结束: ${att.name || '未知文件'}]`;
+                        contentText += `
+
+[附加文件: ${att.name || '未知文件'}]
+${att._fileManagerData.extractedText}
+[/附加文件结束: ${att.name || '未知文件'}]`;
                     } else if (att._fileManagerData && att.type && !att.type.startsWith('image/')) {
                         contentText += `\n\n[附加文件: ${att.name || '未知文件'} (无法预览文本内容)]`;
                     }

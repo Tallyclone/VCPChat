@@ -30,6 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- 从主程序 settings.json 读取配置 ---
     const fs = require('fs');
+    const fsPromises = require('fs').promises;
     const path = require('path');
 
     let VCP_SERVER_URL = '';
@@ -49,11 +50,46 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function saveSettings() {
+    // 修复：使用安全的异步文件写入方式
+    async function saveSettings() {
+        try {
+            // 使用安全的原子性写入
+            const tempFile = settingsPath + '.tmp';
+            const settingsJson = JSON.stringify(settings, null, 4);
+            
+            // 写入临时文件
+            await fsPromises.writeFile(tempFile, settingsJson, 'utf8');
+            
+            // 验证写入的文件是否正确
+            const verifyContent = await fsPromises.readFile(tempFile, 'utf8');
+            JSON.parse(verifyContent); // 检查JSON格式是否正确
+            
+            // 如果验证成功，再重命名为正式文件
+            await fsPromises.rename(tempFile, settingsPath);
+            
+            console.log('[VCPHumanToolBox] Settings saved successfully');
+        } catch (error) {
+            console.error('[VCPHumanToolBox] Failed to save settings.json:', error);
+            
+            // 清理可能存在的临时文件
+            try {
+                await fsPromises.unlink(settingsPath + '.tmp');
+            } catch (cleanupError) {
+                // 忽略清理错误
+            }
+            
+            throw error; // 重新抛出错误以便调用者处理
+        }
+    }
+
+    // 修复：确保只读取时使用同步操作，写入时使用异步操作
+    function saveSettingsSync() {
+        console.warn('[VCPHumanToolBox] saveSettingsSync is deprecated, use saveSettings() instead');
+        // 如果必须同步保存，至少使用try-catch保护
         try {
             fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 4), 'utf8');
         } catch (error) {
-            console.error('Failed to save settings.json:', error);
+            console.error('[VCPHumanToolBox] Failed to save settings.json synchronously:', error);
         }
     }
 
@@ -989,38 +1025,44 @@ document.addEventListener('DOMContentLoaded', () => {
             document.body.removeChild(overlay);
         });
         
-        saveBtn.addEventListener('click', () => {
+        saveBtn.addEventListener('click', async () => {
             const newLength = parseInt(input.value, 10);
             if (newLength >= 50 && newLength <= 1000) {
                 MAX_FILENAME_LENGTH = newLength;
                 settings.maxFilenameLength = newLength;
-                saveSettings();
                 
-                // 显示成功提示
-                const successMsg = document.createElement('div');
-                successMsg.className = 'success-notification';
-                successMsg.style.cssText = `
-                    position: fixed;
-                    top: 20px;
-                    right: 20px;
-                    background: var(--success-color);
-                    color: white;
-                    padding: 12px 20px;
-                    border-radius: 6px;
-                    z-index: 10001;
-                    font-size: 14px;
-                    font-weight: 500;
-                `;
-                successMsg.textContent = '✓ 设置已保存';
-                document.body.appendChild(successMsg);
-                
-                setTimeout(() => {
-                    if (successMsg.parentNode) {
-                        successMsg.parentNode.removeChild(successMsg);
-                    }
-                }, 2000);
-                
-                document.body.removeChild(overlay);
+                try {
+                    await saveSettings();
+                    
+                    // 显示成功提示
+                    const successMsg = document.createElement('div');
+                    successMsg.className = 'success-notification';
+                    successMsg.style.cssText = `
+                        position: fixed;
+                        top: 20px;
+                        right: 20px;
+                        background: var(--success-color);
+                        color: white;
+                        padding: 12px 20px;
+                        border-radius: 6px;
+                        z-index: 10001;
+                        font-size: 14px;
+                        font-weight: 500;
+                    `;
+                    successMsg.textContent = '✓ 设置已保存';
+                    document.body.appendChild(successMsg);
+                    
+                    setTimeout(() => {
+                        if (successMsg.parentNode) {
+                            successMsg.parentNode.removeChild(successMsg);
+                        }
+                    }, 2000);
+                    
+                    document.body.removeChild(overlay);
+                } catch (saveError) {
+                    console.error('[VCPHumanToolBox] Failed to save settings:', saveError);
+                    alert('保存设置失败：' + saveError.message);
+                }
             } else {
                 alert('请输入 50-1000 之间的数值');
             }
@@ -4115,12 +4157,18 @@ document.addEventListener('DOMContentLoaded', () => {
         // Apply initial theme from settings
         applyTheme(settings.vcpht_theme);
 
-        themeToggleBtn.addEventListener('click', () => {
+        themeToggleBtn.addEventListener('click', async () => {
             const isLight = document.body.classList.toggle('light-theme');
             const newTheme = isLight ? 'light' : 'dark';
             applyTheme(newTheme);
             settings.vcpht_theme = newTheme;
-            saveSettings();
+            
+            try {
+                await saveSettings();
+            } catch (saveError) {
+                console.error('[VCPHumanToolBox] Failed to save theme setting:', saveError);
+                // 不阻断用户体验，只记录错误
+            }
         });
 
         // App controls
