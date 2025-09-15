@@ -763,7 +763,8 @@ textarea::placeholder {
     flex-grow: 1; /* Allow select to take up available space */
 }
 
-#agentSettingsForm .model-input-container button {
+#agentSettingsForm .model-input-container button,
+#globalSettingsForm .model-input-container button {
     flex-shrink: 0; /* Prevent button from shrinking */
     margin-left: 0; /* Gap property handles spacing */
     /* Let's borrow styles from #refreshModelsBtn for consistency */
@@ -782,20 +783,27 @@ textarea::placeholder {
     width: 38px;
 }
 
-#agentSettingsForm .model-input-container button:hover {
+#agentSettingsForm .model-input-container button:hover,
+#globalSettingsForm .model-input-container button:hover {
     background-color: var(--button-hover-bg);
     border-color: var(--button-hover-bg);
 }
 
-#agentSettingsForm .model-input-container button svg {
+#agentSettingsForm .model-input-container button svg,
+#globalSettingsForm .model-input-container button svg {
     stroke: var(--primary-text);
     transition: transform 0.5s ease;
 }
 
-#agentSettingsForm .model-input-container button:active svg {
+#agentSettingsForm .model-input-container button:active svg,
+#globalSettingsForm .model-input-container button:active svg {
     transform: rotate(360deg);
 }
 
+#globalSettingsForm .model-input-container button {
+    position: relative;
+    top: -8px;
+}
 
 #agentModel {
     padding-right: 35px; /* Make space for the button */
