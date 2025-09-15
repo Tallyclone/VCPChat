@@ -236,28 +236,36 @@ function highlightQuotesInMessage(messageElement) {
     let node;
     const nodesToProcess = [];
 
-    while (node = walker.nextNode()) {
-        const parentEl = node.parentElement;
-        // 跳过：父元素内含有子元素（复杂富文本），避免跨标签切割
-        if (!parentEl || parentEl.children.length > 0) continue;
+    try {
+        while ((node = walker.nextNode())) {
+            const parentEl = node.parentElement;
+            // 跳过：父元素内含有子元素（复杂富文本），避免跨标签切割
+            if (!parentEl || parentEl.children.length > 0) continue;
 
-        const text = node.nodeValue || '';
-        let match;
-        const matches = [];
-        quoteRegex.lastIndex = 0;
-        while ((match = quoteRegex.exec(text)) !== null) {
-            const contentGroup1 = match[1];
-            const contentGroup2 = match[2];
-            if ((contentGroup1 && contentGroup1.length > 0) || (contentGroup2 && contentGroup2.length > 0)) {
-                matches.push({
-                    index: match.index,
-                    fullMatch: match[0],
-                });
+            const text = node.nodeValue || '';
+            let match;
+            const matches = [];
+            quoteRegex.lastIndex = 0;
+            while ((match = quoteRegex.exec(text)) !== null) {
+                const contentGroup1 = match[1];
+                const contentGroup2 = match[2];
+                if ((contentGroup1 && contentGroup1.length > 0) || (contentGroup2 && contentGroup2.length > 0)) {
+                    matches.push({
+                        index: match.index,
+                        fullMatch: match[0],
+                    });
+                }
+            }
+
+            if (matches.length > 0) {
+                nodesToProcess.push({ node, matches });
             }
         }
-
-        if (matches.length > 0) {
-            nodesToProcess.push({ node, matches });
+    } catch (error) {
+        if (error.message.includes("The provided callback is no longer runnable")) {
+            console.warn("highlightQuotesInMessage: TreeWalker failed, likely due to concurrent DOM modification. Processing collected nodes and stopping traversal.");
+        } else {
+            console.error("highlightQuotesInMessage: Error during TreeWalker traversal.", error);
         }
     }
 
