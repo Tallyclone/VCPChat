@@ -785,11 +785,24 @@ window.chatManager = (() => {
                     if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `VCP错误: ${vcpResponse.error}`, timestamp: Date.now() });
                 } else if (vcpResponse.choices && vcpResponse.choices.length > 0) {
                     const assistantMessageContent = vcpResponse.choices[0].message.content;
-                    if (messageRenderer) messageRenderer.renderMessage({ role: 'assistant', name: currentSelectedItem.name, avatarUrl: currentSelectedItem.avatarUrl, avatarColor: currentSelectedItem.config?.avatarCalculatedColor, content: assistantMessageContent, timestamp: Date.now() });
+                    const assistantMessage = {
+                        role: 'assistant',
+                        name: currentSelectedItem.name,
+                        avatarUrl: currentSelectedItem.avatarUrl,
+                        avatarColor: currentSelectedItem.config?.avatarCalculatedColor,
+                        content: assistantMessageContent,
+                        timestamp: Date.now(),
+                        id: `msg_${Date.now()}_assistant_${Math.random().toString(36).substring(2, 9)}`
+                    };
+                    if (messageRenderer) messageRenderer.renderMessage(assistantMessage);
+                    // Manually add the assistant's message to history
+                    const finalHistory = currentChatHistoryRef.get().filter(msg => !msg.isThinking);
+                    finalHistory.push(assistantMessage);
+                    currentChatHistoryRef.set(finalHistory);
                 } else {
                     if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: 'VCP返回了未知格式的响应。', timestamp: Date.now() });
                 }
-                // Save history now includes the user message
+                // Save the final, complete history
                 await electronAPI.saveChatHistory(currentSelectedItem.id, currentTopicId, currentChatHistoryRef.get().filter(msg => !msg.isThinking));
                 await attemptTopicSummarizationIfNeeded();
             } else {
