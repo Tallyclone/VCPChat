@@ -784,7 +784,9 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
             } else { // Non-streaming
                 console.log('VCP响应: 非流式处理');
                 const vcpResponse = await response.json();
-                return vcpResponse; // Return full response for non-streaming
+                // For non-streaming, wrap the response with the original context
+                // so the renderer knows where to save the history.
+                return { response: vcpResponse, context };
             }
     
         } catch (error) {

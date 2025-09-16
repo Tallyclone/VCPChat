@@ -524,6 +524,9 @@ window.chatManager = (() => {
         currentChatHistory.push(userMessage);
         currentChatHistoryRef.set(currentChatHistory);
 
+        // Save history with the user message before adding the thinking message or making API calls
+        await electronAPI.saveChatHistory(currentSelectedItem.id, currentTopicId, currentChatHistory);
+
         messageInput.value = '';
         attachedFilesRef.set([]);
         if(mainRendererFunctions.updateAttachmentPreview) mainRendererFunctions.updateAttachmentPreview();
@@ -758,7 +761,7 @@ window.chatManager = (() => {
                 if (messageRenderer) {
                     await new Promise(resolve => setTimeout(resolve, 500));
                     // Pass the created DOM element directly to avoid race conditions with querySelector
-                    messageRenderer.startStreamingMessage({ ...thinkingMessage, content: "" }, thinkingMessageItem);
+                    await messageRenderer.startStreamingMessage({ ...thinkingMessage, content: "" }, thinkingMessageItem);
                 }
             }
 
@@ -779,32 +782,61 @@ window.chatManager = (() => {
             );
 
             if (!useStreaming) {
-                if (messageRenderer) messageRenderer.removeMessageById(thinkingMessage.id);
+                const { response, context } = vcpResponse;
+                const currentSelectedItem = currentSelectedItemRef.get();
+                const currentTopicId = currentTopicIdRef.get();
 
-                if (vcpResponse.error) {
-                    if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `VCP错误: ${vcpResponse.error}`, timestamp: Date.now() });
-                } else if (vcpResponse.choices && vcpResponse.choices.length > 0) {
-                    const assistantMessageContent = vcpResponse.choices[0].message.content;
+                // Determine if the response is for the currently active chat
+                const isForActiveChat = context && context.agentId === currentSelectedItem.id && context.topicId === currentTopicId;
+
+                if (isForActiveChat) {
+                    // If it's for the active chat, update the UI as usual
+                    if (messageRenderer) messageRenderer.removeMessageById(thinkingMessage.id);
+                }
+
+                if (response.error) {
+                    if (isForActiveChat && messageRenderer) {
+                        messageRenderer.renderMessage({ role: 'system', content: `VCP错误: ${response.error}`, timestamp: Date.now() });
+                    }
+                    console.error(`[ChatManager] VCP Error for background message:`, response.error);
+                } else if (response.choices && response.choices.length > 0) {
+                    const assistantMessageContent = response.choices[0].message.content;
                     const assistantMessage = {
                         role: 'assistant',
-                        name: currentSelectedItem.name,
-                        avatarUrl: currentSelectedItem.avatarUrl,
+                        name: context.agentName || 'AI', // Use context name
+                        avatarUrl: currentSelectedItem.avatarUrl, // This might be incorrect if user switched, but it's a minor UI detail for background saves.
                         avatarColor: currentSelectedItem.config?.avatarCalculatedColor,
                         content: assistantMessageContent,
                         timestamp: Date.now(),
                         id: `msg_${Date.now()}_assistant_${Math.random().toString(36).substring(2, 9)}`
                     };
-                    if (messageRenderer) messageRenderer.renderMessage(assistantMessage);
-                    // Manually add the assistant's message to history
-                    const finalHistory = currentChatHistoryRef.get().filter(msg => !msg.isThinking);
-                    finalHistory.push(assistantMessage);
-                    currentChatHistoryRef.set(finalHistory);
+
+                    // Fetch the correct history from the file, update it, and save it back.
+                    const historyForSave = await electronAPI.getChatHistory(context.agentId, context.topicId);
+                    if (historyForSave && !historyForSave.error) {
+                        // Remove any lingering 'thinking' message and add the new one
+                        const finalHistory = historyForSave.filter(msg => msg.id !== thinkingMessage.id && !msg.isThinking);
+                        finalHistory.push(assistantMessage);
+                        
+                        // Save the final, complete history to the correct file
+                        await electronAPI.saveChatHistory(context.agentId, context.topicId, finalHistory);
+
+                        if (isForActiveChat) {
+                            // If it's the active chat, also update the UI and in-memory state
+                            currentChatHistoryRef.set(finalHistory);
+                            if (messageRenderer) messageRenderer.renderMessage(assistantMessage);
+                            await attemptTopicSummarizationIfNeeded();
+                        } else {
+                            console.log(`[ChatManager] Saved non-streaming response for background chat: Agent ${context.agentId}, Topic ${context.topicId}`);
+                        }
+                    } else {
+                         console.error(`[ChatManager] Failed to get history for background save:`, historyForSave.error);
+                    }
                 } else {
-                    if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: 'VCP返回了未知格式的响应。', timestamp: Date.now() });
+                    if (isForActiveChat && messageRenderer) {
+                        messageRenderer.renderMessage({ role: 'system', content: 'VCP返回了未知格式的响应。', timestamp: Date.now() });
+                    }
                 }
-                // Save the final, complete history
-                await electronAPI.saveChatHistory(currentSelectedItem.id, currentTopicId, currentChatHistoryRef.get().filter(msg => !msg.isThinking));
-                await attemptTopicSummarizationIfNeeded();
             } else {
                 // Save history right after sending the user message, before streaming starts
                 await electronAPI.saveChatHistory(currentSelectedItem.id, currentTopicId, currentChatHistoryRef.get().filter(msg => !msg.isThinking && msg.id !== thinkingMessage.id));
