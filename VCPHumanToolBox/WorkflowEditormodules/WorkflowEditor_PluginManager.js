@@ -549,7 +549,20 @@
             if (!this.pluginCategories.has(category)) {
                 this.pluginCategories.set(category, []);
             }
-            this.pluginCategories.get(category).push(pluginInfo);
+            
+            const categoryPlugins = this.pluginCategories.get(category);
+            
+            // 检查是否已存在相同ID的插件，避免重复
+            const existingIndex = categoryPlugins.findIndex(p => p.id === pluginInfo.id);
+            if (existingIndex !== -1) {
+                // 如果已存在，替换为新的插件信息
+                categoryPlugins[existingIndex] = pluginInfo;
+                console.log(`[PluginManager] 替换重复插件: ${pluginInfo.id} (${pluginInfo.name})`);
+            } else {
+                // 如果不存在，添加新插件
+                categoryPlugins.push(pluginInfo);
+                console.log(`[PluginManager] 添加新插件: ${pluginInfo.id} (${pluginInfo.name})`);
+            }
         }
 
         // 更新状态管理器中的可用插件

@@ -107,11 +107,8 @@
 
                 console.log(`[URLExtractor] URL提取完成，最终结果:`, result);
 
-                return {
-                    ...result,
-                    originalData: input,
-                    timestamp: new Date().toISOString()
-                };
+                // 直接返回格式化的结果，不添加额外元数据
+                return result;
 
             } catch (error) {
                 console.error(`[URLExtractor] URL提取失败:`, error);
@@ -333,31 +330,30 @@
             return false;
         };
 
-        // 格式化输出结果
+        // 格式化输出结果 - 简化版，只输出核心URL数据
         nodeManager.formatUrlOutput = function(urls, outputFormat, outputParamName) {
             const urlFieldName = outputParamName || 'url'; // 使用自定义参数名或默认 'url'
             
             switch (outputFormat) {
                 case 'single':
+                    // 单个URL: {url: "http://xxx"} 或 {url: null}
                     return {
-                        [urlFieldName]: urls.length > 0 ? urls[0] : null,
-                        count: urls.length
+                        [urlFieldName]: urls.length > 0 ? urls[0] : null
                     };
                 
                 case 'object':
-                    return {
-                        [urlFieldName]: urls,
-                        count: urls.length,
-                        types: this.analyzeUrlTypes(urls),
-                        extractedAt: new Date().toISOString()
-                    };
-                
                 case 'array':
                 default:
-                    return {
-                        [urlFieldName]: urls,
-                        count: urls.length
-                    };
+                    // 多个URL: {url: ["http://xxx1", "http://xxx2"]} 或单个URL: {url: "http://xxx"}
+                    if (urls.length === 1) {
+                        return {
+                            [urlFieldName]: urls[0]
+                        };
+                    } else {
+                        return {
+                            [urlFieldName]: urls
+                        };
+                    }
             }
         };
 
@@ -403,28 +399,47 @@
                 nodeContent.appendChild(displayArea);
             }
 
+            // 从简化的结果格式中获取URL数据
+            let urls = [];
+            let urlCount = 0;
+            
+            // 查找URL数据（可能在任何字段名下）
+            for (const key in result) {
+                const value = result[key];
+                if (Array.isArray(value)) {
+                    urls = value;
+                    urlCount = value.length;
+                    break;
+                } else if (typeof value === 'string' && value.startsWith('http')) {
+                    urls = [value];
+                    urlCount = 1;
+                    break;
+                }
+            }
+
             // 构建显示内容
             let displayHtml = `
                 <div style="margin-bottom: 6px; font-weight: bold; color: #4CAF50;">
-                    ✓ 提取完成: ${result.count} 个URL
+                    ✓ 提取完成: ${urlCount} 个URL
                 </div>
             `;
 
-            if (result.types) {
+            // 分析URL类型（如果有URL数据的话）
+            if (urls.length > 0) {
+                const types = this.analyzeUrlTypes(urls);
                 const typeInfo = [];
-                if (result.types.image > 0) typeInfo.push(`图片: ${result.types.image}`);
-                if (result.types.video > 0) typeInfo.push(`视频: ${result.types.video}`);
-                if (result.types.audio > 0) typeInfo.push(`音频: ${result.types.audio}`);
-                if (result.types.other > 0) typeInfo.push(`其他: ${result.types.other}`);
+                if (types.image > 0) typeInfo.push(`图片: ${types.image}`);
+                if (types.video > 0) typeInfo.push(`视频: ${types.video}`);
+                if (types.audio > 0) typeInfo.push(`音频: ${types.audio}`);
+                if (types.other > 0) typeInfo.push(`其他: ${types.other}`);
                 
                 if (typeInfo.length > 0) {
                     displayHtml += `<div style="margin-bottom: 6px; color: #888;">${typeInfo.join(', ')}</div>`;
                 }
-            }
 
-            if (result.urls && result.urls.length > 0) {
+                // 显示URL列表
                 displayHtml += '<div style="margin-top: 6px;">';
-                result.urls.slice(0, 5).forEach((url, index) => {
+                urls.slice(0, 5).forEach((url, index) => {
                     const shortUrl = url.length > 50 ? url.substring(0, 47) + '...' : url;
                     displayHtml += `
                         <div style="margin: 2px 0; padding: 2px 4px; background: #333; border-radius: 2px; font-family: monospace;">
@@ -433,8 +448,8 @@
                     `;
                 });
                 
-                if (result.urls.length > 5) {
-                    displayHtml += `<div style="margin: 4px 0; color: #888; font-style: italic;">... 还有 ${result.urls.length - 5} 个URL</div>`;
+                if (urls.length > 5) {
+                    displayHtml += `<div style="margin: 4px 0; color: #888; font-style: italic;">... 还有 ${urls.length - 5} 个URL</div>`;
                 }
                 displayHtml += '</div>';
             }

@@ -423,8 +423,18 @@
 
         // 工作流序列化
         serialize() {
+            console.log('[StateManager] Starting serialization...');
+            console.log('[StateManager] Current nodes in state:', this.state.nodes.size);
+            console.log('[StateManager] Current connections in state:', this.state.connections.size);
+            
             const nodes = {};
             this.state.nodes.forEach((node, id) => {
+                console.log(`[StateManager] Serializing node ${id}:`, {
+                    type: node.type,
+                    pluginId: node.pluginId,
+                    name: node.name || 'unnamed'
+                });
+                
                 // 复制节点数据，但排除图片上传器的base64数据
                 const nodeData = { ...node };
                 
@@ -453,10 +463,15 @@
 
             const connections = {};
             this.state.connections.forEach((connection, id) => {
+                console.log(`[StateManager] Serializing connection ${id}:`, {
+                    source: connection.sourceNodeId,
+                    target: connection.targetNodeId,
+                    param: connection.targetParam
+                });
                 connections[id] = { ...connection };
             });
 
-            return {
+            const serializedData = {
                 version: '1.0',
                 name: this.state.workflowName,
                 id: this.state.workflowId,
@@ -469,6 +484,15 @@
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString()
             };
+            
+            console.log('[StateManager] Serialization completed:', {
+                nodeCount: Object.keys(nodes).length,
+                connectionCount: Object.keys(connections).length,
+                workflowName: serializedData.name,
+                workflowId: serializedData.id
+            });
+            
+            return serializedData;
         }
 
         // 工作流反序列化
