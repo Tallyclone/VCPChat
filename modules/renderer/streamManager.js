@@ -73,21 +73,20 @@ async function getHistoryForContext(context) {
 
 async function saveHistoryForContext(context, history) {
     const { electronAPI } = refs;
-    if (!context) return;
+    if (!context || context.isGroupMessage) {
+        // For group messages, the main process (groupchat.js) is the single source of truth for history.
+        // The renderer avoids saving to prevent race conditions and overwriting the correct history.
+        return;
+    }
     
-    const { agentId, groupId, topicId, isGroupMessage } = context;
-    const itemId = groupId || agentId;
+    const { agentId, topicId } = context;
     
-    if (!itemId || !topicId) return;
+    if (!agentId || !topicId) return;
     
     const historyToSave = history.filter(msg => !msg.isThinking);
     
     try {
-        if (isGroupMessage) {
-            await electronAPI.saveGroupChatHistory(itemId, topicId, historyToSave);
-        } else {
-            await electronAPI.saveChatHistory(itemId, topicId, historyToSave);
-        }
+        await electronAPI.saveChatHistory(agentId, topicId, historyToSave);
     } catch (e) {
         console.error(`[StreamManager] Failed to save history for context`, context, e);
     }
@@ -447,9 +446,9 @@ export async function finalizeStreamedMessage(messageId, finishReason, context) 
     // For assistant chat, always use the in-memory history from the ref
     if (storedContext.topicId === 'assistant_chat') {
         historyForThisMessage = refs.currentChatHistoryRef.get();
-    } else if (isForCurrentView) {
-        historyForThisMessage = refs.currentChatHistoryRef.get();
     } else {
+        // For all other chats, always fetch the latest history from the source of truth
+        // to avoid race conditions with the UI state (currentChatHistoryRef).
         historyForThisMessage = await getHistoryForContext(storedContext);
         if (!historyForThisMessage) {
             console.error(`[StreamManager] Could not load history for finalization`, storedContext);

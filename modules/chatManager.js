@@ -878,9 +878,6 @@ window.chatManager = (() => {
                     }
                 }
             } else {
-                // Save history right after sending the user message, before streaming starts
-                await electronAPI.saveChatHistory(currentSelectedItem.id, currentTopicId, currentChatHistoryRef.get().filter(msg => !msg.isThinking && msg.id !== thinkingMessage.id));
-
                 if (vcpResponse && vcpResponse.streamError) {
                     console.error("Streaming setup failed in main process:", vcpResponse.errorDetail || vcpResponse.error);
                 } else if (vcpResponse && !vcpResponse.streamingStarted && !vcpResponse.streamError) {
