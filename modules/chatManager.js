@@ -31,6 +31,34 @@ window.chatManager = (() => {
 
 
     /**
+     * Parses and applies a regex to strip content from text.
+     * @param {string} text The input text.
+     * @param {string} regexString The regex pattern string.
+     * @returns {string} The processed text.
+     */
+    function stripHiddenTags(text, regexString) {
+        if (!regexString || typeof regexString !== 'string') {
+            return text;
+        }
+
+        try {
+            const regexMatch = regexString.match(/^\/(.+?)\/([gimuy]*)$/);
+            let regex;
+            
+            if (regexMatch) {
+                regex = new RegExp(regexMatch[1], regexMatch[2]);
+            } else {
+                regex = new RegExp(regexString, 'g');
+            }
+            
+            return text.replace(regex, '');
+        } catch (error) {
+            console.error('Invalid regex pattern:', regexString, error);
+            return text; // Return original text on invalid regex
+        }
+    }
+
+    /**
      * Initializes the ChatManager module.
      * @param {object} config - The configuration object.
      */
@@ -569,6 +597,18 @@ window.chatManager = (() => {
                 let vcpAudioAttachmentsPayload = [];
                 let vcpVideoAttachmentsPayload = [];
                 let currentMessageTextContent = msg.content;
+
+                // --- VCP Regex Stripping (Backend/Context) ---
+                if (msg.role === 'assistant' && agentConfig?.stripRegexes && Array.isArray(agentConfig.stripRegexes)) {
+                    if (typeof currentMessageTextContent === 'string') {
+                        agentConfig.stripRegexes.forEach(regex => {
+                            if (regex.pattern && regex.applyToBackend) {
+                                currentMessageTextContent = stripHiddenTags(currentMessageTextContent, regex.pattern);
+                            }
+                        });
+                    }
+                }
+                // --- End of VCP Regex Stripping ---
 
                 if (msg.role === 'user' && msg.id === userMessage.id) {
                     // This is the current user message being sent. Resolve the placeholder now.

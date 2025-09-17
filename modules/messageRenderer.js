@@ -63,6 +63,35 @@ function escapeHtml(text) {
 }
 
 /**
+ * Parses and applies a regex to strip content from text.
+ * Handles /pattern/flags format and provides error catching.
+ * @param {string} text The input text.
+ * @param {string} regexString The regex pattern string.
+ * @returns {string} The processed text.
+ */
+function stripHiddenTags(text, regexString) {
+    if (!regexString || typeof regexString !== 'string') {
+        return text;
+    }
+
+    try {
+        const regexMatch = regexString.match(/^\/(.+?)\/([gimuy]*)$/);
+        let regex;
+        
+        if (regexMatch) {
+            regex = new RegExp(regexMatch[1], regexMatch[2]);
+        } else {
+            regex = new RegExp(regexString, 'g');
+        }
+        
+        return text.replace(regex, '');
+    } catch (error) {
+        console.error('Invalid regex pattern:', regexString, error);
+        return text; // Return original text on invalid regex
+    }
+}
+
+/**
  * Finds special VCP blocks (Tool Requests, Daily Notes) and transforms them
  * directly into styled HTML divs, bypassing the need for markdown code fences.
  * @param {string} text The text content.
@@ -340,6 +369,19 @@ function deIndentHtml(text) {
  * @returns {string} The processed text.
  */
 function preprocessFullContent(text, settings = {}) {
+    // --- VCP Regex Stripping (Frontend) ---
+    const currentSelectedItem = mainRendererReferences.currentSelectedItemRef.get();
+    const agentConfig = currentSelectedItem?.config;
+
+    if (agentConfig?.stripRegexes && Array.isArray(agentConfig.stripRegexes)) {
+        agentConfig.stripRegexes.forEach(regex => {
+            if (regex.pattern && regex.applyToFrontend) {
+                text = stripHiddenTags(text, regex.pattern);
+            }
+        });
+    }
+    // --- End of VCP Regex Stripping ---
+
     const codeBlockMap = new Map();
     let placeholderId = 0;
 
