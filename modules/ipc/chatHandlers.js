@@ -488,7 +488,11 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
                         // 如果有text字段，使用它
                         return { ...msg, content: String(msg.content.text) };
                     } else if (Array.isArray(msg.content)) {
-                        // 如果是数组（多模态消息），保持原样
+                        // 如果是仅包含一个文本部分的多模态消息，则将其简化为纯字符串，以兼容旧的注入逻辑
+                        if (msg.content.length === 1 && msg.content[0].type === 'text' && typeof msg.content[0].text === 'string') {
+                            return { ...msg, content: msg.content[0].text };
+                        }
+                        // 对于真正的多模态消息（例如，包含图片）或空数组，保持原样
                         return msg;
                     } else {
                         // 否则转为JSON字符串

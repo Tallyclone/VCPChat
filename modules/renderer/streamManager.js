@@ -211,7 +211,10 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
     
     // Get the correct history for this message's context
     let historyForThisMessage;
-    if (isForCurrentView) {
+    // For assistant chat, always use a temporary in-memory history
+    if (context.topicId === 'assistant_chat') {
+        historyForThisMessage = currentChatHistoryRef.get();
+    } else if (isForCurrentView) {
         // For current view, use in-memory history
         historyForThisMessage = currentChatHistoryRef.get();
     } else {
@@ -278,8 +281,10 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
         currentChatHistoryRef.set([...historyForThisMessage]);
     }
     
-    // Always save to disk
-    await saveHistoryForContext(context, historyForThisMessage);
+    // Only save to disk if it's not a temporary assistant chat
+    if (context.topicId !== 'assistant_chat') {
+        await saveHistoryForContext(context, historyForThisMessage);
+    }
     
     // Process pre-buffered chunks
     const bufferedChunks = preBufferedChunks.get(messageId);
@@ -420,7 +425,10 @@ export async function finalizeStreamedMessage(messageId, finishReason, context) 
     
     // Get the correct history
     let historyForThisMessage;
-    if (isForCurrentView) {
+    // For assistant chat, always use the in-memory history from the ref
+    if (storedContext.topicId === 'assistant_chat') {
+        historyForThisMessage = refs.currentChatHistoryRef.get();
+    } else if (isForCurrentView) {
         historyForThisMessage = refs.currentChatHistoryRef.get();
     } else {
         historyForThisMessage = await getHistoryForContext(storedContext);
@@ -435,6 +443,15 @@ export async function finalizeStreamedMessage(messageId, finishReason, context) 
     const messageIndex = historyForThisMessage.findIndex(msg => msg.id === messageId);
     
     if (messageIndex === -1) {
+        // If it's an assistant chat and the message is not found,
+        // it's likely the window was reset. Ignore gracefully.
+        if (storedContext && storedContext.topicId === 'assistant_chat') {
+            console.warn(`[StreamManager] Message ${messageId} not found in assistant history, likely due to reset. Ignoring.`);
+            // Clean up just in case
+            streamingChunkQueues.delete(messageId);
+            accumulatedStreamText.delete(messageId);
+            return;
+        }
         console.error(`[StreamManager] Message ${messageId} not found in history`, storedContext);
         return;
     }
@@ -485,8 +502,10 @@ export async function finalizeStreamedMessage(messageId, finishReason, context) 
         }
     }
     
-    // Always save the updated history
-    await saveHistoryForContext(storedContext, historyForThisMessage);
+    // Only save history if it's not a temporary assistant chat
+    if (storedContext.topicId !== 'assistant_chat') {
+        await saveHistoryForContext(storedContext, historyForThisMessage);
+    }
     
     // Cleanup
     streamingChunkQueues.delete(messageId);
