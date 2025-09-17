@@ -187,13 +187,15 @@ function renderChunkDirectlyToDOM(messageId, textToAppend) {
 export async function startStreamingMessage(message, passedMessageItem = null) {
     const messageId = message.id;
     
-    // Store the context for this message
+    // Store the context for this message - ensure proper context structure
     const context = {
-        agentId: message.context?.agentId || refs.currentSelectedItemRef.get()?.id,
-        groupId: message.context?.groupId,
-        topicId: message.context?.topicId || refs.currentTopicIdRef.get(),
-        isGroupMessage: message.isGroupMessage || false,
-        agentName: message.context?.agentName,
+        agentId: message.agentId || message.context?.agentId || (message.isGroupMessage ? undefined : refs.currentSelectedItemRef.get()?.id),
+        groupId: message.groupId || message.context?.groupId || (message.isGroupMessage ? refs.currentSelectedItemRef.get()?.id : undefined),
+        topicId: message.topicId || message.context?.topicId || refs.currentTopicIdRef.get(),
+        isGroupMessage: message.isGroupMessage || message.context?.isGroupMessage || false,
+        agentName: message.name || message.context?.agentName,
+        avatarUrl: message.avatarUrl || message.context?.avatarUrl,
+        avatarColor: message.avatarColor || message.context?.avatarColor,
     };
     
     // Validate context
@@ -234,8 +236,8 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
         if (!messageItem) {
             const placeholderMessage = { 
                 ...message, 
-                content: '', 
-                isThinking: false, 
+                content: message.content || '思考中...', // Show thinking text initially
+                isThinking: true, // Mark as thinking
                 timestamp: message.timestamp || Date.now(), 
                 isGroupMessage: message.isGroupMessage || false 
             };
@@ -246,8 +248,11 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
                 return null;
             }
         }
-        messageItem.classList.add('streaming');
-        messageItem.classList.remove('thinking');
+        // Add streaming class and remove thinking class when we have a valid messageItem
+        if (messageItem && messageItem.classList) {
+            messageItem.classList.add('streaming');
+            messageItem.classList.remove('thinking');
+        }
     }
     
     // Initialize streaming state
@@ -311,9 +316,23 @@ export function appendStreamChunk(messageId, chunkData, context) {
     if (!initStatus || initStatus === 'pending') {
         if (!preBufferedChunks.has(messageId)) {
             preBufferedChunks.set(messageId, []);
+            // 只在第一次创建缓冲区时打印日志
+            console.log(`[StreamManager] Started pre-buffering for message ${messageId}`);
         }
-        preBufferedChunks.get(messageId).push({ chunk: chunkData, context });
-        console.log(`[StreamManager] Pre-buffering chunk for uninitialized message ${messageId}`);
+        const buffer = preBufferedChunks.get(messageId);
+        buffer.push({ chunk: chunkData, context });
+        
+        // 防止缓冲区无限增长 - 如果超过1000个chunks，可能有问题
+        if (buffer.length > 1000) {
+            console.error(`[StreamManager] Pre-buffer overflow for message ${messageId}! Forcing initialization...`);
+            // 强制设置为ready状态以开始处理
+            messageInitializationStatus.set(messageId, 'ready');
+            // 处理缓冲的chunks
+            for (const bufferedData of buffer) {
+                appendStreamChunk(messageId, bufferedData.chunk, bufferedData.context);
+            }
+            preBufferedChunks.delete(messageId);
+        }
         return;
     }
     
@@ -526,4 +545,8 @@ window.streamManager = {
     appendStreamChunk,
     finalizeStreamedMessage,
     getActiveStreamingMessageId: () => activeStreamingMessageId,
+    isMessageInitialized: (messageId) => {
+        // Check if message is being tracked by streamManager
+        return messageInitializationStatus.has(messageId);
+    }
 };

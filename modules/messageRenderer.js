@@ -1219,6 +1219,18 @@ window.messageRenderer = {
     clearChat,
     removeMessageById,
     updateMessageContent, // Expose the new function
+    isMessageInitialized: (messageId) => {
+        // Check if message exists in DOM or is being tracked by streamManager
+        const messageInDom = mainRendererReferences.chatMessagesDiv?.querySelector(`.message-item[data-message-id="${messageId}"]`);
+        if (messageInDom) return true;
+        
+        // Also check if streamManager is tracking this message
+        if (streamManager && typeof streamManager.isMessageInitialized === 'function') {
+            return streamManager.isMessageInitialized(messageId);
+        }
+        
+        return false;
+    },
     summarizeTopicFromMessages: async (history, agentName) => { // Example: Keep this if it's generic enough
         // This function was passed in, so it's likely defined in renderer.js or another module.
         // If it's meant to be internal to messageRenderer, its logic would go here.
@@ -1228,11 +1240,11 @@ window.messageRenderer = {
         }
         return null;
     },
-setContextMenuDependencies: (deps) => {
-    if (contextMenu && typeof contextMenu.setContextMenuDependencies === 'function') {
-        contextMenu.setContextMenuDependencies(deps);
-    } else {
-        console.error("contextMenu or setContextMenuDependencies not available.");
+    setContextMenuDependencies: (deps) => {
+        if (contextMenu && typeof contextMenu.setContextMenuDependencies === 'function') {
+            contextMenu.setContextMenuDependencies(deps);
+        } else {
+            console.error("contextMenu or setContextMenuDependencies not available.");
+        }
     }
-}
 };
