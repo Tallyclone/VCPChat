@@ -134,6 +134,13 @@
     position: relative;
     z-index: 10001 !important; /* 设置更高的 z-index */
     pointer-events: auto !important;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none; /* keep, Safari handled above */
     
     /* 使用固定高度和居中对齐 */
     display: inline-flex;
@@ -256,6 +263,9 @@
     margin-bottom: 8px;
     cursor: grab;
     transition: all 0.2s;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
     user-select: none;
 }
 
@@ -343,6 +353,9 @@
     border-radius: 8px;
     min-width: 160px;
     cursor: move;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
     user-select: none;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
@@ -412,18 +425,35 @@
 /* 连接点 */
 .node-connector {
     position: absolute;
-    width: 12px;
-    height: 12px;
+    width: 16px;
+    height: 16px;
     background: #64748b;
-    border: 2px solid #1e293b;
+    border: 3px solid #1e293b;
     border-radius: 50%;
     cursor: crosshair;
-    transition: all 0.2s;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    z-index: 10;
 }
 
 .node-connector:hover {
     background: #3b82f6;
-    transform: scale(1.2);
+    border-color: #1d4ed8;
+    transform: scale(1.3);
+    box-shadow: 0 4px 16px rgba(59, 130, 246, 0.4);
+}
+
+.node-connector:active {
+    transform: scale(1.1);
+    background: #1d4ed8;
+}
+
+/* 连接点简约悬停效果 */
+.node-connector:hover {
+    background: #3b82f6;
+    border-color: #1d4ed8;
+    transform: scale(1.15);
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
 }
 
 .node-connector.input {
@@ -489,28 +519,93 @@
     padding-bottom: 40px;
 }
 
-/* 连接线 */
-.canvas-connections {
+/* JSPlumb 端点简约样式 */
+.jtk-endpoint {
+    cursor: pointer !important;
+    transition: box-shadow 0.2s ease !important;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2) !important;
+}
+
+.jtk-endpoint:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35) !important;
+}
+
+/* 连接线悬停效果 */
+.jtk-connector:hover {
+    stroke-width: 4 !important;
+    filter: drop-shadow(0 2px 4px rgba(59, 130, 246, 0.3)) !important;
+}
+
+/* 连接创建时的临时连接线样式 */
+.jtk-connector-temp {
+    stroke: #fbbf24 !important;
+    stroke-width: 3 !important;
+    stroke-dasharray: 8, 4 !important;
+    animation: dash-flow 1s linear infinite !important;
+}
+
+/* 连接重连时的样式 */
+.jtk-connector-reconnecting {
+    stroke: #10b981 !important;
+    stroke-width: 3 !important;
+    stroke-dasharray: 6, 3 !important;
+    animation: dash-flow 0.8s linear infinite !important;
+}
+
+/* 连接端点拖拽时的样式 */
+.jtk-endpoint-dragging,
+.jtk-endpoint-dragging:hover {
+    box-shadow: 0 0 12px rgba(59, 130, 246, 0.8) !important;
+}
+
+@keyframes dash-flow {
+    to {
+        stroke-dashoffset: -12;
+    }
+}
+
+/* 连接点标签提示 */
+.endpoint-tooltip {
     position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
     pointer-events: none;
-    z-index: 1;
+    z-index: 1000;
+    opacity: 0;
+    transition: opacity 0.2s ease;
 }
 
-.connection-line {
-    stroke: #3b82f6;
-    stroke-width: 2;
-    fill: none;
-    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+.endpoint-tooltip.show {
+    opacity: 1;
 }
 
-.connection-line.temporary {
-    stroke: #fbbf24;
-    stroke-dasharray: 5, 5;
-    animation: dash 1s linear infinite;
+/* 节点悬停时简约高亮连接点 */
+.canvas-node:hover .jtk-endpoint {
+    opacity: 1 !important;
+}
+
+.canvas-node .jtk-endpoint {
+    opacity: 0.85;
+    transition: box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+/* 连接选中状态 */
+.connection-selected {
+    stroke: #fbbf24 !important;
+    stroke-width: 4 !important;
+    filter: drop-shadow(0 0 8px rgba(251, 191, 36, 0.6)) !important;
+}
+
+/* 连接右键菜单样式 */
+.connection-context-menu {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.connection-context-menu .menu-item:hover {
+    background-color: #334155 !important;
 }
 
 /* 右侧属性面板 */
@@ -564,10 +659,10 @@
     transition: all 0.2s ease;
     /* 确保输入框可以正常输入 */
     pointer-events: auto;
-    user-select: text;
     -webkit-user-select: text;
     -moz-user-select: text;
     -ms-user-select: text;
+    user-select: text;
 }
 
 .property-input:focus {
@@ -739,11 +834,10 @@
     border-radius: 6px;
     margin: 8px 0;
     padding: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: block;
     position: relative;
     overflow: hidden;
+    width: 520px; /* 固定容器宽度，避免被图片撑开 */
 }
 
 .url-render-area img,
@@ -1476,3 +1570,4 @@
     border-color: #3b82f6 !important;
     background: rgba(59, 130, 246, 0.2) !important;
 }
+

@@ -30,17 +30,19 @@
             this.stateManager = stateManager;
 			this.nodeManager = window.WorkflowEditor_NodeManager || null;
             
-            // 初始化连接管理器
-            if (window.WorkflowEditor_ConnectionManager) {
-                this.connectionManager = new window.WorkflowEditor_ConnectionManager();
-                console.log('[WorkflowEditor_UIManager] ConnectionManager initialized');
+            // 初始化简化版连接管理器
+            if (window.WorkflowEditor_ConnectionManager_Simplified) {
+                this.connectionManager = new window.WorkflowEditor_ConnectionManager_Simplified();
+                console.log('[WorkflowEditor_UIManager] Simplified ConnectionManager initialized');
             } else {
-                console.warn('[WorkflowEditor_UIManager] ConnectionManager not available');
+                console.warn('[WorkflowEditor_UIManager] Simplified ConnectionManager not available');
             }
             
             this.createContainer();
             this.bindEvents();
             this.setExecutionState(false); // 确保初始状态下“停止执行”按钮是隐藏的
+
+            
             console.log('[WorkflowEditor_UIManager] Initialized');
         }
 
@@ -361,11 +363,7 @@
                     const canvasManager = window.WorkflowEditor_CanvasManager;
                     this.connectionManager.initialize(this.stateManager, canvasManager);
                     
-                    // 同步现有的连接状态
-                    setTimeout(() => {
-                        this.connectionManager.syncConnectionStates();
-                        console.log('[UIManager] ConnectionManager 初始化并同步完成');
-                    }, 100);
+                    console.log('[UIManager] ConnectionManager 初始化完成');
                 }
                 
                 this.initializePluginPanel();
@@ -897,6 +895,48 @@
 				const fieldEl = this.createFieldElement(node, key, field);
 				form.appendChild(fieldEl);
 			});
+
+			// 对 aiCompose 的 model 字段进行下拉增强与模型懒加载
+			try {
+				if (node && (node.type === 'aiCompose' || node.pluginId === 'aiCompose')) {
+					const modelInput = form.querySelector('input[name="model"], select[name="model"]');
+					if (modelInput) {
+						const applyOptions = (modelsArr) => {
+							if (!Array.isArray(modelsArr) || modelsArr.length === 0) return;
+							// 如果是 input，替换为 select
+							let selectEl = modelInput;
+							if (modelInput.tagName.toLowerCase() === 'input') {
+								selectEl = document.createElement('select');
+								selectEl.name = 'model';
+								selectEl.className = modelInput.className;
+								selectEl.style.cssText = modelInput.style.cssText;
+								modelInput.parentNode.replaceChild(selectEl, modelInput);
+							}
+							selectEl.innerHTML = '';
+							modelsArr.forEach(m => {
+								const id = (m && (m.id || m.name || m.toString()))
+								if (!id) return;
+								const opt = document.createElement('option');
+								opt.value = id;
+								opt.textContent = id;
+								if (node.config && node.config.model === id) opt.selected = true;
+								selectEl.appendChild(opt);
+							});
+						};
+
+						// 先用缓存
+						if (Array.isArray(window.__WE_AI_MODELS__) && window.__WE_AI_MODELS__.length > 0) {
+							applyOptions(window.__WE_AI_MODELS__);
+						} else if (window.AiClientFactory) {
+							// 懒加载
+							window.AiClientFactory.getClient().listModels().then(models => {
+								window.__WE_AI_MODELS__ = models;
+								applyOptions(models);
+							}).catch(err => console.warn('[UIManager] 加载AI模型失败:', err?.message || err));
+						}
+					}
+				}
+			} catch (e) { console.warn('[UIManager] aiCompose model 下拉增强失败:', e?.message || e); }
 		}
 
 		// 创建单个表单字段
@@ -1208,41 +1248,14 @@
             if (confirm('确定要创建新工作流吗？当前工作流将被清空。')) {
                 console.log('[UIManager] Creating new workflow...');
                 
-                // 清空画布
-                const canvasManager = window.WorkflowEditor_CanvasManager;
-                if (canvasManager && canvasManager.clear) {
-                    console.log('[UIManager] Clearing canvas...');
-                    canvasManager.clear();
-                }
-                
-                // 重置状态管理器
-                this.stateManager.reset();
-                
-                // 清理执行引擎状态
-                const executionEngine = window.WorkflowEditor_ExecutionEngine;
-                if (executionEngine && executionEngine.clearResults) {
-                    console.log('[UIManager] Clearing execution engine results...');
-                    executionEngine.clearResults();
-                }
-                
-                // 清理连接管理器状态
-                const connectionManager = window.WorkflowEditor_ConnectionManager;
-                if (connectionManager && connectionManager.clearAllConnections) {
-                    console.log('[UIManager] Clearing connection manager...');
-                    connectionManager.clearAllConnections();
-                }
+                // 使用统一的清空逻辑
+                this.clearAllWorkflowStates();
                 
                 // 重置UI状态
                 const titleInput = document.getElementById('workflowTitleInput');
                 if (titleInput) {
                     titleInput.value = '未命名工作流';
                 }
-                
-                // 清空属性面板
-                this.clearPropertiesPanel();
-                
-                // 重置工作流状态
-                this.updateWorkflowStatus('ready', '就绪');
                 
                 // 更新统计信息
                 this.updateStats();
@@ -1252,12 +1265,47 @@
                 this.stateManager.setCanvasOffset({ x: 0, y: 0 });
                 this.updateZoomDisplay(1);
                 
-                // 确保执行状态被重置
-                this.setExecutionState(false);
-                
                 console.log('[UIManager] New workflow created successfully');
                 this.showToast('新工作流创建成功！', 'success');
             }
+        }
+
+        // 统一的清空所有工作流状态的方法
+        clearAllWorkflowStates() {
+            console.log('[UIManager] Clearing all workflow states...');
+
+            // 1. 首先重置状态管理器，清空所有节点和连接数据
+            this.stateManager.reset();
+            console.log('[UIManager] StateManager reset completed');
+
+            // 2. 清空连接管理器状态
+            if (this.connectionManager && this.connectionManager.clearAllConnections) {
+                console.log('[UIManager] Clearing connection manager...');
+                this.connectionManager.clearAllConnections();
+            }
+
+            // 3. 清空画布
+            const canvasManager = window.WorkflowEditor_CanvasManager;
+            if (canvasManager && canvasManager.clear) {
+                console.log('[UIManager] Clearing canvas...');
+                canvasManager.clear();
+            }
+
+            // 4. 清理执行引擎状态
+            const executionEngine = window.WorkflowEditor_ExecutionEngine;
+            if (executionEngine && executionEngine.clearResults) {
+                console.log('[UIManager] Clearing execution engine results...');
+                executionEngine.clearResults();
+            }
+
+            // 5. 清空属性面板
+            this.clearPropertiesPanel();
+
+            // 6. 重置UI状态
+            this.updateWorkflowStatus('ready', '就绪');
+            this.setExecutionState(false);
+
+            console.log('[UIManager] All workflow states cleared successfully');
         }
 
         loadWorkflow() {
@@ -1380,22 +1428,27 @@
                                 border: 1px solid rgba(59, 130, 246, 0.2);
                                 border-radius: 8px;
                                 padding: 12px;
-                                display: flex;
-                                align-items: center;
-                                gap: 8px;
+                                margin-bottom: 16px;
                             ">
-                                <svg width="16" height="16" fill="#3b82f6" viewBox="0 0 20 20">
-                                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
-                                </svg>
-                                <span style="color: #93c5fd; font-size: 13px;">工作流将保存到本地存储，可在加载页面中找到</span>
+                                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                                    <svg width="16" height="16" fill="#3b82f6" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+                                    </svg>
+                                    <span style="color: #93c5fd; font-size: 13px; font-weight: 500;">保存选项说明</span>
+                                </div>
+                                <div style="color: #93c5fd; font-size: 12px; line-height: 1.4; margin-left: 24px;">
+                                    <div style="margin-bottom: 4px;">• <strong>保存</strong>：覆盖当前工作流（Enter键）</div>
+                                    <div style="margin-bottom: 4px;">• <strong>另存为</strong>：创建新的工作流副本（Ctrl+Enter键）</div>
+                                    <div style="color: #6b7280;">如果名称重复，另存为会自动添加数字后缀</div>
+                                </div>
                             </div>
                         </div>
                         <div class="dialog-footer" style="
                             padding: 20px 24px; 
                             border-top: 1px solid #374151; 
                             display: flex; 
-                            justify-content: flex-end; 
-                            gap: 12px;
+                            justify-content: space-between; 
+                            align-items: center;
                             background: rgba(31, 41, 55, 0.5);
                         ">
                             <button class="btn btn-secondary" id="cancel-save-btn" style="
@@ -1411,28 +1464,53 @@
                                 box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
                                 min-width: 80px;
                             " onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(0, 0, 0, 0.2)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(0, 0, 0, 0.1)'">取消</button>
-                            <button class="btn btn-primary" id="confirm-save-btn" style="
-                                background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-                                color: white; 
-                                border: none; 
-                                padding: 12px 20px; 
-                                border-radius: 8px; 
-                                cursor: pointer;
-                                font-size: 14px;
-                                font-weight: 500;
-                                transition: all 0.2s ease;
-                                box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
-                                min-width: 80px;
-                                display: flex;
-                                align-items: center;
-                                justify-content: center;
-                                gap: 6px;
-                            " onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(16, 185, 129, 0.3)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(16, 185, 129, 0.2)'">
-                                <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20">
-                                    <path d="M7.707 10.293a1 1 0 10-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 11.586V6h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V8a2 2 0 012-2h5v5.586l-1.293-1.293zM9 4a1 1 0 012 0v2H9V4z"/>
-                                </svg>
-                                保存
-                            </button>
+                            <div style="display: flex; gap: 12px;">
+                                <button class="btn btn-info" id="save-as-btn" style="
+                                    background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+                                    color: white; 
+                                    border: none; 
+                                    padding: 12px 20px; 
+                                    border-radius: 8px; 
+                                    cursor: pointer;
+                                    font-size: 14px;
+                                    font-weight: 500;
+                                    transition: all 0.2s ease;
+                                    box-shadow: 0 2px 4px rgba(139, 92, 246, 0.2);
+                                    min-width: 100px;
+                                    display: flex;
+                                    align-items: center;
+                                    justify-content: center;
+                                    gap: 6px;
+                                " onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(139, 92, 246, 0.3)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(139, 92, 246, 0.2)'">
+                                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M8 2a1 1 0 000 2h2a1 1 0 100-2H8z"/>
+                                        <path d="M3 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v6h-4.586l1.293-1.293a1 1 0 10-1.414-1.414l-3 3a1 1 0 000 1.414l3 3a1 1 0 001.414-1.414L10.414 13H15v3a2 2 0 01-2 2H5a2 2 0 01-2-2V5zM15 11h2V5h-2v6z"/>
+                                    </svg>
+                                    另存为
+                                </button>
+                                <button class="btn btn-primary" id="confirm-save-btn" style="
+                                    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                                    color: white; 
+                                    border: none; 
+                                    padding: 12px 20px; 
+                                    border-radius: 8px; 
+                                    cursor: pointer;
+                                    font-size: 14px;
+                                    font-weight: 500;
+                                    transition: all 0.2s ease;
+                                    box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
+                                    min-width: 80px;
+                                    display: flex;
+                                    align-items: center;
+                                    justify-content: center;
+                                    gap: 6px;
+                                " onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(16, 185, 129, 0.3)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(16, 185, 129, 0.2)'">
+                                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M7.707 10.293a1 1 0 10-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 11.586V6h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V8a2 2 0 012-2h5v5.586l-1.293-1.293zM9 4a1 1 0 012 0v2H9V4z"/>
+                                    </svg>
+                                    保存
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1458,6 +1536,7 @@
 
             const nameInput = dialog.querySelector('#workflow-name-input');
             const confirmBtn = dialog.querySelector('#confirm-save-btn');
+            const saveAsBtn = dialog.querySelector('#save-as-btn');
             const cancelBtn = dialog.querySelector('#cancel-save-btn');
             const closeBtn = dialog.querySelector('.dialog-close');
 
@@ -1465,13 +1544,77 @@
             nameInput.focus();
             nameInput.select();
 
-            // 确认保存
+            // 确认保存（覆盖原工作流）
             const handleSave = () => {
                 const workflowName = nameInput.value.trim();
                 if (workflowName) {
                     this.stateManager.setWorkflowName(workflowName);
                     this.saveWorkflowToStorage();
                     document.body.removeChild(dialog);
+                } else {
+                    nameInput.style.borderColor = '#ef4444';
+                    nameInput.focus();
+                }
+            };
+
+            // 另存为（创建新工作流）
+            const handleSaveAs = () => {
+                const workflowName = nameInput.value.trim();
+                if (workflowName) {
+                    // 检查名称是否已存在
+                    const savedWorkflows = this.getSavedWorkflows();
+                    const existingNames = Object.values(savedWorkflows).map(w => w.name);
+                    
+                    let finalName = workflowName;
+                    let counter = 1;
+                    
+                    // 如果名称已存在，自动添加数字后缀
+                    while (existingNames.includes(finalName)) {
+                        finalName = `${workflowName} (${counter})`;
+                        counter++;
+                    }
+                    
+                    // 保存原始工作流信息
+                    const originalWorkflowId = this.stateManager.get('workflowId');
+                    const originalWorkflowName = this.stateManager.getWorkflowName();
+                    
+                    try {
+                        // 创建新的工作流ID
+                        const newWorkflowId = `workflow_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                        
+                        // 临时设置新的工作流信息进行另存为
+                        this.stateManager.setWorkflowName(finalName);
+                        this.stateManager.set('workflowId', newWorkflowId);
+                        
+                        // 简化：直接使用 StateManager 数据（单一数据源）
+                        console.log('[UIManager] 另存为工作流，直接从 StateManager 序列化');
+                        
+                        // 获取序列化数据
+                        const workflowData = this.stateManager.serialize();
+                        
+                        // 确保使用新的ID和名称
+                        workflowData.id = newWorkflowId;
+                        workflowData.name = finalName;
+                        
+                        // 保存到localStorage
+                        savedWorkflows[newWorkflowId] = workflowData;
+                        localStorage.setItem('workflowEditor_savedWorkflows', JSON.stringify(savedWorkflows));
+                        
+                        // 显示成功提示
+                        this.showToast(`工作流已另存为 "${finalName}"`, 'success');
+                        console.log('[UIManager] Workflow saved as new:', workflowData);
+                        
+                        document.body.removeChild(dialog);
+                        
+                    } catch (error) {
+                        console.error('[UIManager] Failed to save workflow as new:', error);
+                        
+                        // 恢复原始工作流信息
+                        this.stateManager.setWorkflowName(originalWorkflowName);
+                        this.stateManager.set('workflowId', originalWorkflowId);
+                        
+                        this.showToast('另存为工作流失败: ' + error.message, 'error');
+                    }
                 } else {
                     nameInput.style.borderColor = '#ef4444';
                     nameInput.focus();
@@ -1485,13 +1628,20 @@
 
             // 绑定事件
             confirmBtn.addEventListener('click', handleSave);
+            saveAsBtn.addEventListener('click', handleSaveAs);
             cancelBtn.addEventListener('click', handleCancel);
             closeBtn.addEventListener('click', handleCancel);
 
-            // 回车键保存
+            // 回车键保存，Ctrl+Enter另存为
             nameInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
-                    handleSave();
+                    if (e.ctrlKey || e.metaKey) {
+                        // Ctrl+Enter 或 Cmd+Enter 触发另存为
+                        handleSaveAs();
+                    } else {
+                        // 普通Enter触发保存
+                        handleSave();
+                    }
                 } else if (e.key === 'Escape') {
                     handleCancel();
                 }
@@ -1508,12 +1658,22 @@
         // 保存工作流到本地存储
         saveWorkflowToStorage() {
             try {
-                // 在序列化之前同步连接状态，确保所有连接都被保存
-                this.syncConnectionsBeforeSave();
+                // 简化：直接序列化 StateManager 数据（单一数据源）
+                console.log('[UIManager] 开始保存工作流，直接从 StateManager 序列化');
                 
+                // 调试：输出当前状态
+                const currentNodes = this.stateManager.getAllNodes();
+                const currentConnections = this.stateManager.getAllConnections();
+                console.log(`[UIManager] 当前状态 - 节点: ${currentNodes.length}, 连接: ${currentConnections.length}`);
+                
+                // 获取序列化数据
                 const workflowData = this.stateManager.serialize();
                 const workflowId = workflowData.id || `workflow_${Date.now()}`;
                 workflowData.id = workflowId;
+                
+                // 调试信息：检查节点数据
+                console.log('[UIManager] Saving workflow with nodes:', Object.keys(workflowData.nodes || {}));
+                console.log('[UIManager] Saving workflow with connections:', Object.keys(workflowData.connections || {}));
                 
                 // 保存到localStorage
                 const savedWorkflows = this.getSavedWorkflows();
@@ -1524,7 +1684,12 @@
                 this.stateManager.set('workflowId', workflowId);
                 
                 this.showToast(`工作流 "${workflowData.name}" 保存成功！`, 'success');
-                console.log('[UIManager] Workflow saved:', workflowData);
+                console.log('[UIManager] Workflow saved successfully:', {
+                    name: workflowData.name,
+                    id: workflowId,
+                    nodeCount: Object.keys(workflowData.nodes || {}).length,
+                    connectionCount: Object.keys(workflowData.connections || {}).length
+                });
             } catch (error) {
                 console.error('[UIManager] Failed to save workflow:', error);
                 this.showToast('保存工作流失败: ' + error.message, 'error');
@@ -1902,22 +2067,26 @@
             try {
                 const savedWorkflows = this.getSavedWorkflows();
                 const workflowData = savedWorkflows[workflowId];
+                // 标记进入连接恢复期，避免 ConnectionManager 误删
+                window.__WE_isRestoringConnections = true;
                 
                 if (!workflowData) {
                     throw new Error('工作流不存在');
                 }
 
-                // 清空当前工作流
-                const canvasManager = window.WorkflowEditor_CanvasManager;
-                if (canvasManager) {
-                    canvasManager.clear();
-                }
+                console.log('[UIManager] Starting workflow load, clearing all states...');
+
+                // 使用统一的清空方法
+                this.clearAllWorkflowStates();
+
+                console.log('[UIManager] All states cleared, loading workflow data...');
 
                 // 加载工作流数据
                 const success = this.stateManager.deserialize(workflowData);
                 
                 if (success) {
                     // 重新渲染所有节点
+                    const canvasManager = window.WorkflowEditor_CanvasManager;
                     this.stateManager.getAllNodes().forEach(node => {
                         if (canvasManager) {
                             canvasManager.renderNode(node);
@@ -1938,6 +2107,7 @@
                             setTimeout(() => {
                                 console.log('[UIManager] Step 2: Starting connection restoration at', Date.now());
                                 const restoreStartTime = Date.now();
+                                const canvasManager = window.WorkflowEditor_CanvasManager;
 
                                 // 使用专门的 restoreConnections 方法，避免重复检测
                                 if (canvasManager && canvasManager.restoreConnections) {
@@ -1956,15 +2126,11 @@
                                     console.log(`[UIManager] Canvas transform updated. Total restore time: ${Date.now() - restoreStartTime}ms`);
                                 }
                                 
-                                // 确保 ConnectionManager 同步连接状态
-                                if (this.connectionManager && this.connectionManager.isInitialized) {
-                                    console.log('[UIManager] Syncing ConnectionManager after workflow load');
-                                    this.connectionManager.syncConnectionStates();
-                                } else if (this.connectionManager && !this.connectionManager.isInitialized) {
-                                    console.log('[UIManager] Initializing ConnectionManager after workflow load');
-                                    this.connectionManager.initialize(this.stateManager, canvasManager);
-                                    this.connectionManager.syncConnectionStates();
-                                }
+                                // 简化：结束连接恢复期
+                                setTimeout(() => {
+                                    window.__WE_isRestoringConnections = false;
+                                    console.log('[UIManager] Connection restoring period ended');
+                                }, 500);
                             }, 220);
                         }, 500);
 
@@ -1979,49 +2145,13 @@
             }
         }
 
-        // 同步连接状态，确保所有连接都被保存到状态管理器中
-        syncConnectionsBeforeSave() {
-            console.log('[UIManager] Syncing connections before save...');
-            console.log('[UIManager] ConnectionManager 状态:', {
-                exists: !!this.connectionManager,
-                isInitialized: this.connectionManager?.isInitialized,
-                globalExists: !!window.WorkflowEditor_ConnectionManager,
-                canvasManagerExists: !!window.WorkflowEditor_CanvasManager
-            });
-            
-            // 尝试创建 ConnectionManager 如果不存在
-            if (!this.connectionManager && window.WorkflowEditor_ConnectionManager) {
-                console.log('[UIManager] Creating ConnectionManager...');
-                this.connectionManager = new window.WorkflowEditor_ConnectionManager();
-            }
-            
-            if (this.connectionManager && this.connectionManager.isInitialized) {
-                // 使用 ConnectionManager 进行同步
-                this.connectionManager.syncConnectionStates();
-                console.log('[UIManager] ✅ Connections synced via ConnectionManager');
-            } else if (this.connectionManager && !this.connectionManager.isInitialized) {
-                console.warn('[UIManager] ConnectionManager exists but not initialized, trying to initialize...');
-                const canvasManager = window.WorkflowEditor_CanvasManager;
-                if (canvasManager) {
-                    this.connectionManager.initialize(this.stateManager, canvasManager);
-                    this.connectionManager.syncConnectionStates();
-                    console.log('[UIManager] ✅ ConnectionManager initialized and synced');
-                } else {
-                    console.warn('[UIManager] CanvasManager not available, initializing ConnectionManager without canvas');
-                    // 即使没有 CanvasManager，也可以初始化 ConnectionManager 来同步 StateManager 中的连接
-                    this.connectionManager.initialize(this.stateManager, null);
-                    console.log('[UIManager] ✅ ConnectionManager initialized without canvas');
-                }
-            } else {
-                console.warn('[UIManager] ConnectionManager not available, connections will be saved from StateManager directly');
-            }
-        }
+
 
         // 导出工作流为JSON文件
         exportWorkflowAsJSON() {
             try {
-                // 在序列化之前同步连接状态，确保所有连接都被保存
-                this.syncConnectionsBeforeSave();
+                // 简化：直接使用 StateManager 数据（单一数据源）
+                console.log('[UIManager] 导出工作流，直接从 StateManager 序列化');
                 
                 const workflowData = this.stateManager.serialize();
                 const jsonString = JSON.stringify(workflowData, null, 2);
@@ -2051,17 +2181,22 @@
                 try {
                     const workflowData = JSON.parse(e.target.result);
                     
-                    // 清空当前工作流
-                    const canvasManager = window.WorkflowEditor_CanvasManager;
-                    if (canvasManager) {
-                        canvasManager.clear();
-                    }
+                    console.log('[UIManager] Starting workflow import, clearing all states...');
+                    
+                    // 标记进入连接恢复期，避免 ConnectionManager 误删
+                    window.__WE_isRestoringConnections = true;
+                    
+                    // 使用统一的清空方法
+                    this.clearAllWorkflowStates();
+                    
+                    console.log('[UIManager] All states cleared, loading imported workflow data...');
 
                     // 加载工作流数据
                     const success = this.stateManager.deserialize(workflowData);
                     
                     if (success) {
                         // 重新渲染所有节点
+                        const canvasManager = window.WorkflowEditor_CanvasManager;
                         this.stateManager.getAllNodes().forEach(node => {
                             if (canvasManager) {
                                 canvasManager.renderNode(node);
@@ -2077,6 +2212,7 @@
                             // 稍等端点渲染完成后再恢复连接
                             setTimeout(() => {
                                 console.log('[UIManager] Restoring connections after dynamic inputs prepared...');
+                                const canvasManager = window.WorkflowEditor_CanvasManager;
                                 
                                 // 使用 restoreConnections 方法而不是直接创建连接
                                 if (canvasManager && canvasManager.restoreConnections) {
@@ -2100,6 +2236,12 @@
                                 if (canvasManager) {
                                     canvasManager.updateCanvasTransform();
                                 }
+                                
+                                // 简化：结束连接恢复期
+                                setTimeout(() => {
+                                    window.__WE_isRestoringConnections = false;
+                                    console.log('[UIManager] Connection restoring period ended for import');
+                                }, 500);
                             }, 220);
                         }, 300);
 
@@ -2339,15 +2481,10 @@
                     throw new Error('执行引擎未初始化');
                 }
 
-                // 初始化执行引擎
+                // 简化：初始化执行引擎（移除 ConnectionManager 依赖）
                 if (!executionEngine.stateManager) {
                     executionEngine.init(this.stateManager, this.nodeManager);
-                }
-                
-                // 设置 ConnectionManager
-                if (this.connectionManager) {
-                    executionEngine.connectionManager = this.connectionManager;
-                    console.log('[UIManager] ConnectionManager 已传递给 ExecutionEngine');
+                    console.log('[UIManager] ExecutionEngine 已初始化，使用 StateManager 作为单一数据源');
                 }
 
                 // 开始执行

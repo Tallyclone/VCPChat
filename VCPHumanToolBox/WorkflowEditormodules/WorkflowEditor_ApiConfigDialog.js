@@ -52,6 +52,12 @@
                                     <input type="password" id="api-password" name="password" placeholder="可选">
                                     <small class="form-help">如果服务器需要认证，请输入密码</small>
                                 </div>
+                        
+                        <div class="form-group">
+                            <label for="ai-api-key">AI API Key:</label>
+                            <input type="password" id="ai-api-key" name="aiApiKey" placeholder="用于AI服务的Bearer Key（可选）">
+                            <small class="form-help">仅用于 /v1/models 与 /v1/chat/completions 请求的 Authorization: Bearer 头</small>
+                        </div>
                                 
                                 <div class="form-group">
                                     <div class="connection-status" id="connection-status">
@@ -63,6 +69,7 @@
                         </div>
                         <div class="dialog-footer">
                             <button type="button" class="btn btn-secondary" id="test-connection-btn">测试连接</button>
+                            <button type="button" class="btn btn-secondary" id="test-ai-btn">测试AI服务</button>
                             <button type="button" class="btn btn-secondary" id="cancel-config-btn">取消</button>
                             <button type="button" class="btn btn-primary" id="save-config-btn">保存配置</button>
                         </div>
@@ -81,6 +88,7 @@
             const cancelBtn = document.getElementById('cancel-config-btn');
             const saveBtn = document.getElementById('save-config-btn');
             const testBtn = document.getElementById('test-connection-btn');
+            const testAiBtn = document.getElementById('test-ai-btn');
             const overlay = this.dialog.querySelector('.dialog-overlay');
 
             // 关闭对话框事件
@@ -93,6 +101,11 @@
 
             // 测试连接
             testBtn.addEventListener('click', () => this.testConnection());
+
+            // 测试AI服务
+            if (testAiBtn) {
+                testAiBtn.addEventListener('click', () => this.testAiService());
+            }
 
             // ESC键关闭
             document.addEventListener('keydown', (e) => {
@@ -160,6 +173,8 @@
             document.getElementById('api-port').value = config.port || '';
             document.getElementById('api-username').value = config.username || '';
             document.getElementById('api-password').value = config.password || '';
+            const aiKeyInput = document.getElementById('ai-api-key');
+            if (aiKeyInput) aiKeyInput.value = config.aiApiKey || '';
 
             // 如果有配置，显示连接状态
             if (config.host && config.port) {
@@ -178,7 +193,8 @@
                 host: formData.get('host').trim(),
                 port: formData.get('port').trim(),
                 username: formData.get('username').trim(),
-                password: formData.get('password').trim()
+                password: formData.get('password').trim(),
+                aiApiKey: (formData.get('aiApiKey') || '').trim()
             };
 
             // 验证必填字段
@@ -222,7 +238,8 @@
                 host: formData.get('host').trim(),
                 port: formData.get('port').trim(),
                 username: formData.get('username').trim(),
-                password: formData.get('password').trim()
+                password: formData.get('password').trim(),
+                aiApiKey: (formData.get('aiApiKey') || '').trim()
             };
 
             // 验证必填字段
@@ -278,6 +295,57 @@
             } finally {
                 testBtn.disabled = false;
                 testBtn.textContent = '测试连接';
+            }
+        }
+
+        // 测试AI服务（GET /v1/models）
+        async testAiService() {
+            const form = document.getElementById('api-config-form');
+            const formData = new FormData(form);
+            const host = (formData.get('host') || '').trim();
+            const port = (formData.get('port') || '').trim();
+            const aiApiKey = (formData.get('aiApiKey') || '').trim();
+
+            if (!host || !port) {
+                this.updateConnectionStatus('error', '请填写服务器地址和端口');
+                return;
+            }
+            const testBtn = document.getElementById('test-ai-btn');
+            this.updateConnectionStatus('testing', '正在测试AI服务...');
+            if (testBtn) { testBtn.disabled = true; testBtn.textContent = '测试中...'; }
+
+            try {
+                const baseUrl = `http://${host}:${port}`;
+                const url = `${baseUrl}/v1/models`;
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000);
+                const headers = { 'Content-Type': 'application/json' };
+                if (aiApiKey) headers['Authorization'] = `Bearer ${aiApiKey}`;
+
+                const res = await fetch(url, { method: 'GET', headers, signal: controller.signal });
+                clearTimeout(timeoutId);
+
+                if (!res.ok) {
+                    if (res.status === 401 || res.status === 403) {
+                        this.updateConnectionStatus('error', `AI服务鉴权失败 (HTTP ${res.status})，请检查AI API Key`);
+                    } else {
+                        this.updateConnectionStatus('error', `AI服务连接失败: HTTP ${res.status}`);
+                    }
+                    return;
+                }
+
+                const data = await res.json();
+                const models = Array.isArray(data?.data) ? data.data : (Array.isArray(data?.models) ? data.models : []);
+                this.updateConnectionStatus('connected', `AI服务正常！模型数：${models.length}`);
+
+            } catch (error) {
+                let msg = 'AI服务连接失败';
+                if (error.name === 'AbortError') msg = 'AI服务连接超时';
+                else if (error.message.includes('Failed to fetch')) msg = '无法连接到AI服务，请检查网络与IP/端口';
+                else msg = `AI服务错误: ${error.message}`;
+                this.updateConnectionStatus('error', msg);
+            } finally {
+                if (testBtn) { testBtn.disabled = false; testBtn.textContent = '测试AI服务'; }
             }
         }
 

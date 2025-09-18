@@ -6,6 +6,7 @@
     <title>VCP 人类工具箱</title>
     <link rel="stylesheet" href="../styles/themes.css">
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="WorkflowEditormodules/workflow-editor.css">
     <link rel="stylesheet" href="WorkflowEditormodules/WorkflowEditor_ApiConfigDialog.css">
 </head>
 <body>
@@ -52,14 +53,19 @@
     
     <!-- 引入工作流编辑器模块 -->
     <script src="WorkflowEditormodules/WorkflowEditor_ApiConfigDialog.js"></script>
+    <!-- AI 客户端（HTTP 实现 + 工厂），必须在 NodeManager 之前加载 -->
+    <script src="WorkflowEditormodules/ai/HttpAiClient.js"></script>
+    <script src="WorkflowEditormodules/ai/AiClientFactory.js"></script>
     <script src="WorkflowEditormodules/WorkflowEditor_PluginManager.js"></script>
     <script src="WorkflowEditormodules/WorkflowEditor_StateManager.js"></script>
     <script src="WorkflowEditormodules/WorkflowEditor_CanvasManager_JSPlumb.js"></script>
     <script src="WorkflowEditormodules/WorkflowEditor_NodeManager.js"></script>
+    <script src="WorkflowEditormodules/WorkflowEditor_NodeManager_URLExtractor.js"></script>
+    <script src="WorkflowEditormodules/WorkflowEditor_ExecutionEngine.js"></script>
     <script src="WorkflowEditormodules/WorkflowEditor_UIManager.js"></script>
+    <script src="WorkflowEditormodules/WorkflowEditor_ConnectionManager_Simplified.js"></script>
     <script src="WorkflowEditormodules/WorkflowEditor_Config.js"></script>
     <script src="WorkflowEditormodules/WorkflowEditor_PluginDialog.js"></script>
-    <script src="WorkflowEditormodules/WorkflowEditorLoader.js"></script>
     
     <script src="renderer.js"></script>
 </body>
