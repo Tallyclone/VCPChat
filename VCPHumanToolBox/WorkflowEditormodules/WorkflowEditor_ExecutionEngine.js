@@ -479,8 +479,25 @@
                     return this.executeUrlExtractorNode(node, inputData);
                 case 'imageUpload': // 图片上传节点类型
                     return this.executeImageUploadNode(node, inputData);
+                case 'aiCompose': // AI拼接器节点类型
+                    return this.executeAiComposeNode(node, inputData);
                 default:
                     throw new Error(`未知的辅助节点类型: ${node.pluginId}`);
+            }
+        }
+
+        // 执行AI拼接器节点（转调 NodeManager 的实现）
+        async executeAiComposeNode(node, inputData) {
+            if (window.WorkflowEditor_NodeManager && window.WorkflowEditor_NodeManager.executeAiComposeNode) {
+                try {
+                    const result = await window.WorkflowEditor_NodeManager.executeAiComposeNode(node, inputData);
+                    return result;
+                } catch (error) {
+                    console.error('[ExecutionEngine] AI拼接器执行失败:', error);
+                    throw error;
+                }
+            } else {
+                throw new Error('AI拼接器功能未加载，请确保相关模块已正确加载');
             }
         }
 

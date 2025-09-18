@@ -895,6 +895,48 @@
 				const fieldEl = this.createFieldElement(node, key, field);
 				form.appendChild(fieldEl);
 			});
+
+			// 对 aiCompose 的 model 字段进行下拉增强与模型懒加载
+			try {
+				if (node && (node.type === 'aiCompose' || node.pluginId === 'aiCompose')) {
+					const modelInput = form.querySelector('input[name="model"], select[name="model"]');
+					if (modelInput) {
+						const applyOptions = (modelsArr) => {
+							if (!Array.isArray(modelsArr) || modelsArr.length === 0) return;
+							// 如果是 input，替换为 select
+							let selectEl = modelInput;
+							if (modelInput.tagName.toLowerCase() === 'input') {
+								selectEl = document.createElement('select');
+								selectEl.name = 'model';
+								selectEl.className = modelInput.className;
+								selectEl.style.cssText = modelInput.style.cssText;
+								modelInput.parentNode.replaceChild(selectEl, modelInput);
+							}
+							selectEl.innerHTML = '';
+							modelsArr.forEach(m => {
+								const id = (m && (m.id || m.name || m.toString()))
+								if (!id) return;
+								const opt = document.createElement('option');
+								opt.value = id;
+								opt.textContent = id;
+								if (node.config && node.config.model === id) opt.selected = true;
+								selectEl.appendChild(opt);
+							});
+						};
+
+						// 先用缓存
+						if (Array.isArray(window.__WE_AI_MODELS__) && window.__WE_AI_MODELS__.length > 0) {
+							applyOptions(window.__WE_AI_MODELS__);
+						} else if (window.AiClientFactory) {
+							// 懒加载
+							window.AiClientFactory.getClient().listModels().then(models => {
+								window.__WE_AI_MODELS__ = models;
+								applyOptions(models);
+							}).catch(err => console.warn('[UIManager] 加载AI模型失败:', err?.message || err));
+						}
+					}
+				}
+			} catch (e) { console.warn('[UIManager] aiCompose model 下拉增强失败:', e?.message || e); }
 		}
 
 		// 创建单个表单字段

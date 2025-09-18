@@ -156,6 +156,17 @@
             this.registerNodeTypes();
             this.registerNodeExecutors();
             console.log('[WorkflowEditor_NodeManager] Initialized');
+
+            // 预加载AI模型（可失败不阻断）
+            try {
+                if (window.AiClientFactory) {
+                    const client = window.AiClientFactory.getClient();
+                    client.listModels().then(models => {
+                        window.__WE_AI_MODELS__ = models;
+                        console.log('[NodeManager] AI models cached:', models?.length || 0);
+                    }).catch(() => {});
+                }
+            } catch (_) {}
         }
 
         // 注册节点类型
@@ -558,6 +569,42 @@
                 }
             });
 
+            // AI 拼接器节点
+            this.registerNodeType('aiCompose', {
+                label: 'AI拼接器',
+                category: 'auxiliary',
+                inputs: ['input'],
+                outputs: ['output'],
+                configSchema: {
+                    input: {
+                        type: 'string',
+                        default: '',
+                        label: '输入内容 (Input)',
+                        description: '可选占位预览；实际建议通过左侧输入端点连线传入',
+                        ui: { component: 'textarea', rows: 3 }
+                    },
+                    prompt: {
+                        type: 'string',
+                        default: '',
+                        label: '提示词 (Prompt)',
+                        description: '可使用 {{input}} 作为占位；未使用则会在末尾拼接输入内容',
+                        ui: { component: 'textarea', rows: 6 }
+                    },
+                    model: {
+                        type: 'string',
+                        default: '',
+                        label: '模型 (Model)',
+                        description: '从AI服务的 /v1/models 加载，或直接填写'
+                    },
+                    outputParamName: {
+                        type: 'string',
+                        default: 'aiResult',
+                        label: '输出参数名',
+                        description: '将AI返回文本放入此字段输出'
+                    }
+                }
+            });
+
             // 图片上传节点
             this.registerNodeType('imageUpload', {
                 label: '图片上传器',
@@ -644,6 +691,7 @@
             this.registerNodeExecutor('delay', this.executeDelayNode.bind(this));
             this.registerNodeExecutor('urlRenderer', this.executeUrlRendererNode.bind(this));
             this.registerNodeExecutor('imageUpload', this.executeImageUploadNode.bind(this));
+            this.registerNodeExecutor('aiCompose', this.executeAiComposeNode.bind(this));
         }
 
         // 注册节点执行器
@@ -1708,6 +1756,67 @@
                 };
 
                 return result;
+            }
+        }
+
+        // 执行 AI 拼接器节点
+        async executeAiComposeNode(node, inputData) {
+            const cfg = node.config || {};
+            const outputKey = (cfg.outputParamName || 'aiResult');
+            let prompt = (cfg.prompt || '').trim();
+            const model = (cfg.model || '').trim();
+
+            if (!prompt) throw new Error('AI拼接器: prompt 不能为空');
+            if (!model) throw new Error('AI拼接器: model 不能为空');
+
+            // 统一复用执行引擎的模板解析逻辑
+            const engine = window.WorkflowEditor_ExecutionEngine;
+            const resolveByEngine = (val, data) => {
+                if (engine && typeof engine._resolveValue === 'function') {
+                    return engine._resolveValue(val, data || {});
+                }
+                // 引擎不可用时的安全回退：原样返回
+                return val;
+            };
+
+            // 先解析 prompt 中除 {{input}} 以外的占位符：保护 {{input}} 占位符不被引擎清空
+            const INPUT_TOKEN = '__WF_INPUT__TOKEN__';
+            const protectedPrompt = typeof prompt === 'string' ? prompt.replaceAll('{{input}}', INPUT_TOKEN) : prompt;
+            let resolvedPrompt = resolveByEngine(protectedPrompt, inputData || {});
+            if (typeof resolvedPrompt === 'string') {
+                resolvedPrompt = resolvedPrompt.replaceAll(INPUT_TOKEN, '{{input}}');
+            }
+            prompt = resolvedPrompt;
+
+            // 优先使用上游传入的 input；无连线时回退到配置中的 input 文本框（并解析其中占位符）
+            let rawInput;
+            if (inputData && inputData.input !== undefined) {
+                rawInput = inputData.input;
+            } else if (cfg.input !== undefined && cfg.input !== null && cfg.input !== '') {
+                if (typeof cfg.input === 'string' && cfg.input.includes('{{input}}')) {
+                    // 明确要求使用上游整体输入
+                    rawInput = inputData; // 可能是对象，后续会统一 stringify
+                } else {
+                    rawInput = resolveByEngine(cfg.input, inputData || {});
+                }
+            } else {
+                rawInput = '';
+            }
+
+            const inputStr = (typeof rawInput === 'object') ? JSON.stringify(rawInput) : String(rawInput ?? '');
+            const finalPrompt = prompt.includes('{{input}}') ?
+                prompt.replaceAll('{{input}}', inputStr) :
+                `${prompt}\n\n${inputStr}`;
+
+            // 通过工厂获取 HTTP 客户端
+            if (!window.AiClientFactory) throw new Error('AI服务未初始化：缺少 AiClientFactory');
+            const client = window.AiClientFactory.getClient();
+
+            try {
+                const text = await client.sendCompletion({ model, prompt: finalPrompt });
+                return { [outputKey]: text };
+            } catch (e) {
+                throw new Error(`AI服务请求失败: ${e.message}`);
             }
         }
 
