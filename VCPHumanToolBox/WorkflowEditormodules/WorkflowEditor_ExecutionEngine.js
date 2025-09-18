@@ -1823,7 +1823,7 @@
             
             if (resolvedData !== undefined) {
                 console.log(`[ExecutionEngine] 直接引用成功: ${path} ->`, resolvedData);
-                return resolvedData;
+                    return resolvedData;
             }
             
             console.warn(`[ExecutionEngine] 无法解析变量路径: ${path}`);
