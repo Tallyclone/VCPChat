@@ -63,6 +63,35 @@ function escapeHtml(text) {
 }
 
 /**
+ * Parses and applies a regex to strip content from text.
+ * Handles /pattern/flags format and provides error catching.
+ * @param {string} text The input text.
+ * @param {string} regexString The regex pattern string.
+ * @returns {string} The processed text.
+ */
+function stripHiddenTags(text, regexString) {
+    if (!regexString || typeof regexString !== 'string') {
+        return text;
+    }
+
+    try {
+        const regexMatch = regexString.match(/^\/(.+?)\/([gimuy]*)$/);
+        let regex;
+        
+        if (regexMatch) {
+            regex = new RegExp(regexMatch[1], regexMatch[2]);
+        } else {
+            regex = new RegExp(regexString, 'g');
+        }
+        
+        return text.replace(regex, '');
+    } catch (error) {
+        console.error('Invalid regex pattern:', regexString, error);
+        return text; // Return original text on invalid regex
+    }
+}
+
+/**
  * Finds special VCP blocks (Tool Requests, Daily Notes) and transforms them
  * directly into styled HTML divs, bypassing the need for markdown code fences.
  * @param {string} text The text content.
@@ -340,6 +369,19 @@ function deIndentHtml(text) {
  * @returns {string} The processed text.
  */
 function preprocessFullContent(text, settings = {}) {
+    // --- VCP Regex Stripping (Frontend) ---
+    const currentSelectedItem = mainRendererReferences.currentSelectedItemRef.get();
+    const agentConfig = currentSelectedItem?.config;
+
+    if (agentConfig?.stripRegexes && Array.isArray(agentConfig.stripRegexes)) {
+        agentConfig.stripRegexes.forEach(regex => {
+            if (regex.pattern && regex.applyToFrontend) {
+                text = stripHiddenTags(text, regex.pattern);
+            }
+        });
+    }
+    // --- End of VCP Regex Stripping ---
+
     const codeBlockMap = new Map();
     let placeholderId = 0;
 
@@ -607,7 +649,7 @@ async function renderAttachments(message, contentDiv) {
                 attachmentElement.onclick = (e) => {
                     e.stopPropagation();
                     const currentTheme = document.body.classList.contains('light-theme') ? 'light' : 'dark';
-                    electronAPI.openImageInNewWindow(att.src, att.name, currentTheme);
+                    electronAPI.openImageViewer({ src: att.src, title: att.name, theme: currentTheme });
                 };
                  attachmentElement.addEventListener('contextmenu', (e) => { // Use attachmentElement here
                     e.preventDefault(); e.stopPropagation();
@@ -811,6 +853,9 @@ async function renderMessage(message, isInitialLoad = false) {
        contentProcessor.processRenderedContent(contentDiv);
    }
    
+   // The responsibility of updating the history array is now moved to the caller (e.g., chatManager.handleSendMessage)
+   // to ensure a single source of truth and prevent race conditions.
+   /*
    if (!isInitialLoad && !message.isThinking) {
         const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
         currentChatHistoryArray.push(message);
@@ -821,11 +866,11 @@ async function renderMessage(message, isInitialLoad = false) {
                 electronAPI.saveChatHistory(currentSelectedItem.id, mainRendererReferences.currentTopicIdRef.get(), currentChatHistoryArray);
              } else if (currentSelectedItem.type === 'group') {
                 // Group history is usually saved by groupchat.js in main process after AI response
-                // If we need to save user's message immediately for groups too, add IPC for it.
-                // For now, this saveChatHistory call is agent-specific.
              }
         }
-    } else if (isInitialLoad && message.isThinking) {
+    }
+    */
+    if (isInitialLoad && message.isThinking) {
         // This case should ideally not happen if thinking messages aren't persisted.
         // If it does, remove the transient thinking message.
         const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
@@ -857,6 +902,166 @@ async function finalizeStreamedMessage(messageId, finishReason, context) {
     // 责任完全在 streamManager 内部，它应该使用自己拼接好的文本。
     // 我们现在只传递必要的元数据。
     await streamManager.finalizeStreamedMessage(messageId, finishReason, context);
+}
+
+async function prependMessages(messages) {
+    const { chatMessagesDiv } = mainRendererReferences;
+    if (!messages || messages.length === 0) return;
+
+    // Temporarily disconnect the observer to prevent re-triggering
+    if (window.historyObserver && window.historySentinel) {
+        window.historyObserver.unobserve(window.historySentinel);
+    }
+
+    const oldScrollHeight = chatMessagesDiv.scrollHeight;
+    const oldScrollTop = chatMessagesDiv.scrollTop;
+
+    const fragment = document.createDocumentFragment();
+
+    // Create all message elements in memory first, without appending to the main chat div.
+    // This is a significant performance optimization.
+    for (const message of messages) {
+        // We pass `true` for isInitialLoad to prevent `renderMessage` from modifying the history array,
+        // as chatManager is already handling that. We also need to manually create the element
+        // without appending it to the main chatMessagesDiv immediately.
+        const messageItem = await createMessageItemWithoutAppending(message);
+        if (messageItem) {
+            fragment.appendChild(messageItem);
+        }
+    }
+
+    // Prepend the entire fragment to the top of the chat in one go.
+    chatMessagesDiv.prepend(fragment);
+
+    // Adjust scroll position to keep the user's view stable.
+    const newScrollHeight = chatMessagesDiv.scrollHeight;
+    chatMessagesDiv.scrollTop = oldScrollTop + (newScrollHeight - oldScrollHeight);
+
+    // Re-connect the observer after a short delay to let the layout settle.
+    setTimeout(() => {
+        if (window.historyObserver && window.historySentinel) {
+            // Correctly check if there are more messages to load.
+            if (window.chatManager && typeof window.chatManager.hasMoreHistoryToLoad === 'function' && window.chatManager.hasMoreHistoryToLoad()) {
+                window.historyObserver.observe(window.historySentinel);
+            } else {
+                window.historySentinel.style.display = 'none';
+            }
+        }
+    }, 100);
+}
+
+/**
+ * A helper function for prependMessages. It performs all the logic of renderMessage
+ * to create a message DOM element, but crucially, it does not append it to the chatMessagesDiv.
+ * @param {Message} message - The message object to render.
+ * @returns {Promise<HTMLElement|null>} The created message item element, or null on failure.
+ */
+async function createMessageItemWithoutAppending(message) {
+    // This function mirrors `renderMessage` but returns the element instead of appending it.
+    const { electronAPI, markedInstance, globalSettingsRef, currentSelectedItemRef } = mainRendererReferences;
+    const globalSettings = globalSettingsRef.get();
+    const currentSelectedItem = currentSelectedItemRef.get();
+
+    if (!electronAPI || !markedInstance) {
+        console.error("MessageRenderer: Missing critical references for creating message item.");
+        return null;
+    }
+
+    if (!message.id) {
+        message.id = `msg_${message.timestamp}_${Math.random().toString(36).substring(2, 9)}`;
+    }
+
+    const { messageItem, contentDiv, avatarImg, senderNameDiv } = createMessageSkeleton(message, globalSettings, currentSelectedItem);
+
+    if (message.role === 'assistant' || message.role === 'user') {
+        messageItem.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            contextMenu.showContextMenu(e, messageItem, message);
+        });
+    }
+    
+    if (avatarImg && message.role === 'assistant') {
+        avatarImg.addEventListener('click', () => {
+            mainRendererReferences.electronAPI.sovitsStop();
+        });
+    }
+
+    let textToRender = "";
+    if (typeof message.content === 'string') {
+        textToRender = message.content;
+    } else if (message.content && typeof message.content.text === 'string') {
+        textToRender = message.content.text;
+    } else if (message.content !== null && message.content !== undefined) {
+        console.warn('[MessageRenderer] Unexpected message.content type. ID:', message.id, 'Content:', JSON.stringify(message.content));
+        textToRender = "[消息内容格式异常]";
+    }
+
+    if (message.role === 'user') {
+        textToRender = transformUserButtonClick(textToRender);
+        textToRender = transformVCPChatCanvas(textToRender);
+    }
+
+    const processedContent = preprocessFullContent(textToRender, globalSettings);
+    let rawHtml = markedInstance.parse(processedContent);
+
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = rawHtml;
+    const images = tempDiv.querySelectorAll('img');
+    images.forEach(img => {
+        const originalSrc = img.getAttribute('src');
+        if (originalSrc) {
+            const fixedSrc = emoticonUrlFixer.fixEmoticonUrl(originalSrc);
+            if (originalSrc !== fixedSrc) {
+                img.src = fixedSrc;
+            }
+        }
+    });
+
+    setContentAndProcessImages(contentDiv, tempDiv.innerHTML, message.id);
+    contentProcessor.processRenderedContent(contentDiv);
+
+    if (globalSettings.enableAgentBubbleTheme) {
+        processAnimationsInContent(contentDiv);
+    }
+
+    // Avatar Color Application logic (copied and adapted from renderMessage)
+    let avatarColorToUse, avatarUrlToUse;
+    if (message.role === 'user') {
+        avatarColorToUse = globalSettings.userAvatarCalculatedColor;
+        avatarUrlToUse = globalSettings.userAvatarUrl;
+    } else if (message.role === 'assistant') {
+        if (message.isGroupMessage) {
+            avatarColorToUse = message.avatarColor;
+            avatarUrlToUse = message.avatarUrl;
+        } else if (currentSelectedItem) {
+            avatarColorToUse = currentSelectedItem.config?.avatarCalculatedColor;
+            avatarUrlToUse = currentSelectedItem.avatarUrl;
+        }
+    }
+
+    const applyColorToElements = (colorStr) => {
+        if (colorStr) {
+            senderNameDiv.style.color = colorStr;
+            avatarImg.style.borderColor = colorStr;
+        }
+    };
+
+    if (avatarColorToUse) {
+        applyColorToElements(avatarColorToUse);
+    } else if (avatarUrlToUse && !avatarUrlToUse.includes('default_')) {
+        getDominantAvatarColor(avatarUrlToUse).then(dominantColor => {
+            applyColorToElements(dominantColor);
+            // Note: We don't persist the color here as this is for historical messages.
+        });
+    } else {
+        senderNameDiv.style.color = message.role === 'user' ? 'var(--secondary-text)' : 'var(--highlight-text)';
+        avatarImg.style.borderColor = 'transparent';
+    }
+
+    await renderAttachments(message, contentDiv);
+    contentProcessor.processRenderedContent(contentDiv);
+
+    return messageItem;
 }
 
 /**
@@ -1006,6 +1211,7 @@ window.messageRenderer = {
     setCurrentItemAvatarColor, // Renamed
     setUserAvatarColor,
     renderMessage,
+    prependMessages,
     startStreamingMessage,
     appendStreamChunk,
     finalizeStreamedMessage,
@@ -1013,6 +1219,18 @@ window.messageRenderer = {
     clearChat,
     removeMessageById,
     updateMessageContent, // Expose the new function
+    isMessageInitialized: (messageId) => {
+        // Check if message exists in DOM or is being tracked by streamManager
+        const messageInDom = mainRendererReferences.chatMessagesDiv?.querySelector(`.message-item[data-message-id="${messageId}"]`);
+        if (messageInDom) return true;
+        
+        // Also check if streamManager is tracking this message
+        if (streamManager && typeof streamManager.isMessageInitialized === 'function') {
+            return streamManager.isMessageInitialized(messageId);
+        }
+        
+        return false;
+    },
     summarizeTopicFromMessages: async (history, agentName) => { // Example: Keep this if it's generic enough
         // This function was passed in, so it's likely defined in renderer.js or another module.
         // If it's meant to be internal to messageRenderer, its logic would go here.
@@ -1022,11 +1240,11 @@ window.messageRenderer = {
         }
         return null;
     },
-setContextMenuDependencies: (deps) => {
-    if (contextMenu && typeof contextMenu.setContextMenuDependencies === 'function') {
-        contextMenu.setContextMenuDependencies(deps);
-    } else {
-        console.error("contextMenu or setContextMenuDependencies not available.");
+    setContextMenuDependencies: (deps) => {
+        if (contextMenu && typeof contextMenu.setContextMenuDependencies === 'function') {
+            contextMenu.setContextMenuDependencies(deps);
+        } else {
+            console.error("contextMenu or setContextMenuDependencies not available.");
+        }
     }
-}
 };

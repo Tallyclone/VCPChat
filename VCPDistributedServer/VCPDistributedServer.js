@@ -235,12 +235,15 @@ class DistributedServer {
     }
 
     // 新增：推送静态占位符值到主服务器
-    pushStaticPlaceholderValues() {
+    async pushStaticPlaceholderValues() {
         const placeholderValues = pluginManager.getAllPlaceholderValues();
         if (placeholderValues.size === 0) {
             if (this.debugMode) console.log(`[${this.serverName}] No static placeholder values to push.`);
             return;
         }
+
+        // 检查是否在settings.json中禁用了静态插件日志
+        const logStaticPlugins = await this.shouldLogStaticPlugins();
 
         const payload = {
             type: 'update_static_placeholders',
@@ -251,11 +254,26 @@ class DistributedServer {
         };
         
         this.sendMessage(payload);
-        if (this.debugMode) {
+        if (this.debugMode && logStaticPlugins) {
             console.log(`[${this.serverName}] Pushed ${placeholderValues.size} static placeholder values to main server.`);
             for (const [key, value] of placeholderValues) {
                 console.log(`  - ${key}: ${value.substring(0, 100)}${value.length > 100 ? '...' : ''}`);
             }
+        }
+    }
+
+    // 新增：检查是否应该记录静态插件日志
+    async shouldLogStaticPlugins() {
+        try {
+            const settingsPath = path.join(__dirname, '..', 'AppData', 'settings.json');
+            if (!fsSync.existsSync(settingsPath)) {
+                return true; // 默认启用日志
+            }
+            const settings = JSON.parse(fsSync.readFileSync(settingsPath, 'utf8'));
+            return settings.enableDistributedServerLogs !== false; // 默认启用，除非明确设置为false
+        } catch (error) {
+            if (this.debugMode) console.warn(`[${this.serverName}] Error reading settings for log control:`, error.message);
+            return true; // 错误时默认启用日志
         }
     }
 

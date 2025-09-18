@@ -93,6 +93,20 @@ window.electronAPI.onAssistantData(async (data) => {
                 get: () => 'assistant_chat', // Assistant has a single, non-persistent topic
                 set: () => {}
             };
+            const interruptHandler = {
+                interrupt: async (messageId) => {
+                    console.log(`[Assistant] Interrupting via handler for message: ${messageId}`);
+                    if (activeStreamingMessageId === messageId) {
+                        // Notify the main process to stop the VCP request.
+                        // The main process should then send an 'end' or 'error' stream event,
+                        // which will trigger finalizeStreamedMessage correctly.
+                        await window.electronAPI.cancelVCPRequest(messageId);
+                        return { success: true };
+                    }
+                    return { success: false, error: "Message not actively streaming." };
+                }
+            };
+
             window.messageRenderer.initializeMessageRenderer({
                 currentChatHistoryRef: chatHistoryRef,
                 currentSelectedItemRef: selectedItemRef,
@@ -103,7 +117,8 @@ window.electronAPI.onAssistantData(async (data) => {
                 markedInstance: markedInstance,
                 uiHelper: window.uiHelperFunctions,
                 summarizeTopicFromMessages: async () => "", // Stub
-                handleCreateBranch: () => {} // Stub
+                handleCreateBranch: () => {}, // Stub
+                interruptHandler: interruptHandler // Provide the interrupt handler
             });
             console.log('[Assistant] Shared messageRenderer initialized.');
         } else {
@@ -141,6 +156,7 @@ window.electronAPI.onAssistantData(async (data) => {
 
         const userMessage = { role: 'user', content: messageContent, timestamp: Date.now(), id: `user_msg_${Date.now()}` };
         await window.messageRenderer.renderMessage(userMessage, false);
+        currentChatHistory.push(userMessage); // 核心修复：将用户消息手动添加到历史记录中
 
         messageInput.value = '';
         messageInput.disabled = true;
@@ -173,16 +189,30 @@ window.electronAPI.onAssistantData(async (data) => {
 
             const systemPrompt = (agentConfig.systemPrompt || '').replace(/\{\{AgentName\}\}/g, agentConfig.name);
             const messagesForVCP = [];
-            if (systemPrompt) messagesForVCP.push({ role: 'system', content: systemPrompt });
-            
-            const historyForVCP = currentChatHistory.map(msg => ({ role: msg.role, content: msg.content }));
+            if (systemPrompt) {
+                messagesForVCP.push({ role: 'system', content: [{ type: 'text', text: systemPrompt }] });
+            }
+
+            const historyForVCP = currentChatHistory.filter(msg => !msg.isThinking).map(msg => {
+                // The new VCP API expects content to be an array of parts (e.g., text, image)
+                const contentPayload = (typeof msg.content === 'string')
+                    ? [{ type: 'text', text: msg.content }]
+                    : msg.content; // Assume it's already in the correct format if not a string
+
+                return {
+                    role: msg.role,
+                    content: contentPayload
+                };
+            });
             messagesForVCP.push(...historyForVCP);
 
             const modelConfig = {
                 model: agentConfig.model,
                 temperature: agentConfig.temperature,
                 stream: true,
-                max_tokens: agentConfig.maxOutputTokens
+                ...(agentConfig.maxOutputTokens && { max_tokens: parseInt(agentConfig.maxOutputTokens, 10) }),
+                ...(agentConfig.top_p && { top_p: parseFloat(agentConfig.top_p) }),
+                ...(agentConfig.top_k && { top_k: parseInt(agentConfig.top_k, 10) })
             };
 
             // Call with new signature, including context. isGroupCall is false.
@@ -210,7 +240,7 @@ window.electronAPI.onAssistantData(async (data) => {
     window.electronAPI.onVCPStreamEvent((eventData) => {
         if (!window.messageRenderer || eventData.messageId !== activeStreamingMessageId) return;
 
-        const { messageId, type, chunk, error } = eventData;
+        const { messageId, type, chunk, error, context } = eventData;
 
         // The 'start' event is implicit. The first 'data' chunk will trigger startStreamingMessage.
         if (!activeStreams.has(messageId) && type === 'data') {
@@ -219,24 +249,22 @@ window.electronAPI.onAssistantData(async (data) => {
                 role: 'assistant',
                 name: agentConfig.name,
                 avatarUrl: agentConfig.avatarUrl,
+                context: context, // Pass context
             });
             activeStreams.add(messageId);
         }
 
         if (type === 'data') {
-            // No context needed for assistant window
-            window.messageRenderer.appendStreamChunk(messageId, chunk);
+            window.messageRenderer.appendStreamChunk(messageId, chunk, context);
         } else if (type === 'end') {
-            // No context needed, and no fullText. This prevents history saving.
-            window.messageRenderer.finalizeStreamedMessage(messageId, 'completed');
+            window.messageRenderer.finalizeStreamedMessage(messageId, 'completed', context);
             activeStreams.delete(messageId);
             activeStreamingMessageId = null;
             messageInput.disabled = false;
             sendMessageBtn.disabled = false;
             messageInput.focus();
         } else if (type === 'error') {
-            // No context needed.
-            window.messageRenderer.finalizeStreamedMessage(messageId, 'error');
+            window.messageRenderer.finalizeStreamedMessage(messageId, 'error', context);
             const messageItemContent = document.querySelector(`.message-item[data-message-id="${messageId}"] .md-content`);
             if (messageItemContent) {
                 messageItemContent.innerHTML = `<p style="color: var(--danger-color);">${error || '未知流错误'}</p>`;

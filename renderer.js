@@ -126,6 +126,34 @@ import * as interruptHandler from './modules/interruptHandler.js';
  
  // --- Initialization ---
  document.addEventListener('DOMContentLoaded', async () => {
+    // --- Virtual Scroll Initialization ---
+    const historySentinel = document.createElement('div');
+    historySentinel.id = 'historySentinel';
+    historySentinel.style.height = '10px'; // Small, non-intrusive height
+    historySentinel.style.display = 'none'; // Initially hidden
+    chatMessagesDiv.prepend(historySentinel);
+    window.historySentinel = historySentinel; // Expose for chatManager
+
+    const observerOptions = {
+        root: chatMessagesDiv,
+        rootMargin: '0px',
+        threshold: 1.0
+    };
+
+    const observerCallback = (entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                console.log('[Observer] Sentinel is visible, loading more history...');
+                if (window.chatManager && typeof window.chatManager.loadMoreChatHistory === 'function') {
+                    window.chatManager.loadMoreChatHistory();
+                }
+            }
+        });
+    };
+
+    window.historyObserver = new IntersectionObserver(observerCallback, observerOptions);
+    // --- End Virtual Scroll Initialization ---
+
     // 确保在GroupRenderer初始化之前，其容器已准备好
     prepareGroupSettingsDOM();
     inviteAgentButtonsContainerElement = document.getElementById('inviteAgentButtonsContainer'); // 新增：获取容器引用
@@ -357,9 +385,11 @@ import * as interruptHandler from './modules/interruptHandler.js';
             
             // These events create new message bubbles, so they should only execute if the view is relevant.
             case 'agent_thinking':
-                if (isRelevantToCurrentView) {
-                    console.log(`[Renderer onVCPStreamEvent AGENT_THINKING] Rendering for ${context.agentName} (msgId: ${messageId})`);
-                    window.messageRenderer.renderMessage({
+                // Use startStreamingMessage for both visible and non-visible chats to ensure proper initialization
+                console.log(`[Renderer onVCPStreamEvent AGENT_THINKING] Initializing streaming for ${context.agentName} (msgId: ${messageId})`);
+                // 直接调用 streamManager 的 startStreamingMessage，它会处理所有初始化
+                if (window.streamManager && typeof window.streamManager.startStreamingMessage === 'function') {
+                    window.streamManager.startStreamingMessage({
                         id: messageId,
                         role: 'assistant',
                         name: context.agentName,
@@ -369,38 +399,72 @@ import * as interruptHandler from './modules/interruptHandler.js';
                         content: '思考中...',
                         timestamp: Date.now(),
                         isThinking: true,
-                        isGroupMessage: true,
+                        isGroupMessage: context.isGroupMessage || false,
                         groupId: context.groupId,
-                        topicId: context.topicId
+                        topicId: context.topicId,
+                        context: context // Pass the full context
                     });
-                } else {
-                    // If not relevant, we still need to add a placeholder to the history so it can be updated later.
-                    // The streamManager's `startStreamingMessage` handles this history update.
-                    // We can call a simplified version or ensure startStreamingMessage is called for non-relevant views too.
-                    // For now, let's rely on the fact that 'start' will follow and handle the history.
-                     console.log(`[Renderer onVCPStreamEvent AGENT_THINKING] Event for non-visible chat. UI not rendered for msgId: ${messageId}`);
+                } else if (window.messageRenderer && typeof window.messageRenderer.startStreamingMessage === 'function') {
+                    // Fallback to messageRenderer if streamManager not available
+                    window.messageRenderer.startStreamingMessage({
+                        id: messageId,
+                        role: 'assistant',
+                        name: context.agentName,
+                        agentId: context.agentId,
+                        avatarUrl: context.avatarUrl,
+                        avatarColor: context.avatarColor,
+                        content: '思考中...',
+                        timestamp: Date.now(),
+                        isThinking: true,
+                        isGroupMessage: context.isGroupMessage || false,
+                        groupId: context.groupId,
+                        topicId: context.topicId,
+                        context: context
+                    });
                 }
                 break;
 
             case 'start':
-                // `startStreamingMessage` handles both UI creation and history update.
-                // It needs to be called for all streams to ensure history is consistent.
-                // The function itself should internally decide whether to render to DOM based on visibility.
-                // Let's modify this assumption: we call it, and it will handle history. The DOM part is what matters for visibility.
-                window.messageRenderer.startStreamingMessage({
-                    id: messageId,
-                    role: 'assistant',
-                    name: context.agentName,
-                    agentId: context.agentId,
-                    avatarUrl: context.avatarUrl,
-                    avatarColor: context.avatarColor,
-                    content: '',
-                    timestamp: Date.now(),
-                    isThinking: false,
-                    isGroupMessage: context.isGroupMessage,
-                    groupId: context.groupId,
-                    topicId: context.topicId
-                });
+                // START事件时，思考消息应该已经存在了
+                // 我们只需要确保消息已经初始化，如果没有则初始化
+                console.log(`[Renderer onVCPStreamEvent START] Processing start event for ${context.agentName} (msgId: ${messageId})`);
+                
+                // 确保消息被初始化（如果agent_thinking被跳过）
+                if (window.streamManager && typeof window.streamManager.startStreamingMessage === 'function') {
+                    // streamManager 会检查消息是否已存在，避免重复初始化
+                    window.streamManager.startStreamingMessage({
+                        id: messageId,
+                        role: 'assistant',
+                        name: context.agentName,
+                        agentId: context.agentId,
+                        avatarUrl: context.avatarUrl,
+                        avatarColor: context.avatarColor,
+                        content: '',
+                        timestamp: Date.now(),
+                        isThinking: false,
+                        isGroupMessage: context.isGroupMessage || false,
+                        groupId: context.groupId,
+                        topicId: context.topicId,
+                        context: context
+                    });
+                } else if (window.messageRenderer && typeof window.messageRenderer.startStreamingMessage === 'function') {
+                    window.messageRenderer.startStreamingMessage({
+                        id: messageId,
+                        role: 'assistant',
+                        name: context.agentName,
+                        agentId: context.agentId,
+                        avatarUrl: context.avatarUrl,
+                        avatarColor: context.avatarColor,
+                        content: '',
+                        timestamp: Date.now(),
+                        isThinking: false,
+                        isGroupMessage: context.isGroupMessage || false,
+                        groupId: context.groupId,
+                        topicId: context.topicId,
+                        context: context
+                    });
+                }
+                
                 if (isRelevantToCurrentView) {
                      console.log(`[Renderer onVCPStreamEvent START] UI updated for visible chat ${context.agentName} (msgId: ${messageId})`);
                 } else {
@@ -606,6 +670,8 @@ import * as interruptHandler from './modules/interruptHandler.js';
                 modelList: modelList,
                 modelSearchInput: modelSearchInput,
                 refreshModelsBtn: refreshModelsBtn,
+                topicSummaryModelInput: document.getElementById('topicSummaryModel'),
+                openTopicSummaryModelSelectBtn: document.getElementById('openTopicSummaryModelSelectBtn'),
                 // TTS Elements
                 agentTtsVoiceSelect: document.getElementById('agentTtsVoice'),
                 refreshTtsModelsBtn: document.getElementById('refreshTtsModelsBtn'),
@@ -875,6 +941,7 @@ async function loadAndApplyGlobalSettings() {
         document.getElementById('vcpApiKey').value = globalSettings.vcpApiKey || '';
         document.getElementById('vcpLogUrl').value = globalSettings.vcpLogUrl || '';
         document.getElementById('vcpLogKey').value = globalSettings.vcpLogKey || '';
+        document.getElementById('topicSummaryModel').value = globalSettings.topicSummaryModel || '';
         
         // --- Load Network Notes Paths ---
         const networkNotesPathsContainer = document.getElementById('networkNotesPathsContainer');
@@ -1087,6 +1154,7 @@ function setupEventListeners() {
             vcpApiKey: document.getElementById('vcpApiKey').value,
             vcpLogUrl: document.getElementById('vcpLogUrl').value.trim(),
             vcpLogKey: document.getElementById('vcpLogKey').value.trim(),
+            topicSummaryModel: document.getElementById('topicSummaryModel').value.trim(),
             networkNotesPaths: networkNotesPaths, // Use the new array
             sidebarWidth: globalSettings.sidebarWidth, // Keep existing value if not changed by resizer
             notificationsSidebarWidth: globalSettings.notificationsSidebarWidth, // Keep existing
@@ -1637,5 +1705,3 @@ async function handleConfirmForward() {
 window.getCroppedFile = getCroppedFile;
 window.setCroppedFile = setCroppedFile;
 window.ensureAudioContext = () => { /* Placeholder, will be defined in setupTtsListeners */ };
-
-

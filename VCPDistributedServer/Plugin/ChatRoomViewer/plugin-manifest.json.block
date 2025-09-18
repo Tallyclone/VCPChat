@@ -34,11 +34,19 @@
       {
         "placeholder": "{{VCPChatModeBubbleTip}}",
         "description": "主题模式自适应气泡实现指导，教授Agent如何创建亮暗模式自动切换的气泡样式"
+      },
+      {
+        "placeholder": "{{VCPChatSessionTimeElapsed}}",
+        "description": "当前会话时间流逝信息，包括距离上次对话的时间、会话持续时间、集中交流时段分析等"
+      },
+      {
+        "placeholder": "{{VCPChatGroupSessionWatcher}}",
+        "description": "群聊会话监控信息，包括当前监控的群聊会话文件地址和状态"
       }
     ],
     "invocationCommands": []
   },
-  "refreshIntervalCron": "*/2 * * * * *",
+  "refreshIntervalCron": "* * * * * *",
   "configSchema": {
     "DebugMode": {
       "type": "boolean",

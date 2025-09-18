@@ -50,7 +50,9 @@ const settingsManager = (() => {
     let agentSystemPromptTextarea, agentModelInput, agentTemperatureInput;
     let agentContextTokenLimitInput, agentMaxOutputTokensInput, agentTopPInput, agentTopKInput;
     let openModelSelectBtn, modelSelectModal, modelList, modelSearchInput, refreshModelsBtn;
+    let topicSummaryModelInput, openTopicSummaryModelSelectBtn; // New elements for topic summary model
     let agentTtsVoicePrimarySelect, agentTtsRegexPrimaryInput, agentTtsVoiceSecondarySelect, agentTtsRegexSecondaryInput, refreshTtsModelsBtn, agentTtsSpeedSlider, ttsSpeedValueSpan;
+    let stripRegexListContainer; // 新增：正则列表容器
 
     /**
      * Displays the appropriate settings view (agent, group, or default prompt)
@@ -142,8 +144,20 @@ const settingsManager = (() => {
         agentTtsRegexSecondaryInput.value = agentConfig.ttsRegexSecondary || '';
 
         agentTtsSpeedSlider.value = agentConfig.ttsSpeed !== undefined ? agentConfig.ttsSpeed : 1.0;
-        ttsSpeedValueSpan.textContent = parseFloat(agentTtsSpeedSlider.value).toFixed(1);
+    ttsSpeedValueSpan.textContent = parseFloat(agentTtsSpeedSlider.value).toFixed(1);
+    
+    // 加载正则设置
+    if (stripRegexListContainer) {
+        stripRegexListContainer.innerHTML = '';
+        const stripRegexes = agentConfig.stripRegexes || [];
+        
+        if (stripRegexes.length > 0) {
+            stripRegexes.forEach(regex => createRegexRow(regex));
+        } else {
+            createRegexRow(); // 创建一个空行
+        }
     }
+}
 
     /**
      * Handles the submission of the agent settings form, saving the changes.
@@ -166,7 +180,8 @@ const settingsManager = (() => {
             ttsRegexPrimary: agentTtsRegexPrimaryInput.value.trim(),
             ttsVoiceSecondary: agentTtsVoiceSecondarySelect.value,
             ttsRegexSecondary: agentTtsRegexSecondaryInput.value.trim(),
-            ttsSpeed: parseFloat(agentTtsSpeedSlider.value)
+            ttsSpeed: parseFloat(agentTtsSpeedSlider.value),
+            stripRegexes: collectRegexSettings()
         };
      
         if (!newConfig.name) {
@@ -385,6 +400,8 @@ const settingsManager = (() => {
             modelList = options.elements.modelList;
             modelSearchInput = options.elements.modelSearchInput;
             refreshModelsBtn = options.elements.refreshModelsBtn;
+            topicSummaryModelInput = options.elements.topicSummaryModelInput; // Get new element
+            openTopicSummaryModelSelectBtn = options.elements.openTopicSummaryModelSelectBtn; // Get new element
             
             // TTS Elements
             agentTtsVoicePrimarySelect = document.getElementById('agentTtsVoicePrimary');
@@ -421,7 +438,10 @@ const settingsManager = (() => {
             }
 
             if (openModelSelectBtn) {
-                openModelSelectBtn.addEventListener('click', handleOpenModelSelect);
+                openModelSelectBtn.addEventListener('click', () => handleOpenModelSelect(agentModelInput));
+            }
+            if (openTopicSummaryModelSelectBtn) {
+                openTopicSummaryModelSelectBtn.addEventListener('click', () => handleOpenModelSelect(topicSummaryModelInput));
             }
             if (modelSearchInput) {
                 modelSearchInput.addEventListener('input', filterModels);
@@ -456,6 +476,9 @@ const settingsManager = (() => {
                 });
             }
 
+            // 创建正则设置UI
+            createStripRegexUI();
+            
             console.log('settingsManager initialized.');
 
             // --- Global Settings Enhancements ---
@@ -476,10 +499,15 @@ const settingsManager = (() => {
     /**
      * Opens the model selection modal and populates it with cached models.
      */
-    async function handleOpenModelSelect() {
+    async function handleOpenModelSelect(targetInputElement) {
         try {
             const models = await electronAPI.getCachedModels();
-            populateModelList(models);
+            populateModelList(models, (modelId) => {
+                if (targetInputElement) {
+                    targetInputElement.value = modelId;
+                }
+                uiHelper.closeModal('modelSelectModal');
+            });
             uiHelper.openModal('modelSelectModal');
         } catch (error) {
             console.error('Failed to get cached models:', error);
@@ -491,7 +519,7 @@ const settingsManager = (() => {
      * Populates the model list in the modal.
      * @param {Array} models - An array of model objects.
      */
-    function populateModelList(models) {
+    function populateModelList(models, onModelSelect) {
         if (!modelList) return;
         modelList.innerHTML = ''; // Clear existing list
 
@@ -505,10 +533,9 @@ const settingsManager = (() => {
             li.textContent = model.id;
             li.dataset.modelId = model.id;
             li.addEventListener('click', () => {
-                if (agentModelInput) {
-                    agentModelInput.value = model.id;
+                if (typeof onModelSelect === 'function') {
+                    onModelSelect(model.id);
                 }
-                uiHelper.closeModal('modelSelectModal');
             });
             modelList.appendChild(li);
         });
@@ -539,6 +566,210 @@ const settingsManager = (() => {
             electronAPI.refreshModels();
             uiHelper.showToastNotification('正在刷新模型列表...', 'info');
         }
+    }
+
+    /**
+     * Creates the strip regex UI section
+     */
+    function createStripRegexUI() {
+        if (!agentSettingsForm) return;
+
+        // 查找合适的插入位置 - 在TTS速度设置之后
+        const ttsSpeedContainer = document.querySelector('.slider-container');
+        if (!ttsSpeedContainer) {
+            console.warn('[SettingsManager] Could not find TTS speed container for regex UI insertion');
+            return;
+        }
+
+        // 创建分隔线
+        const divider = document.createElement('hr');
+        divider.className = 'form-divider';
+        
+        // 创建主容器
+        const container = document.createElement('div');
+        container.className = 'form-group strip-regex-container';
+
+        // 创建标题
+        const title = document.createElement('div');
+        title.className = 'form-section-title';
+        title.textContent = '正则设置';
+        container.appendChild(title);
+
+        // 创建列表容器
+        stripRegexListContainer = document.createElement('div');
+        stripRegexListContainer.id = 'stripRegexListContainer';
+        stripRegexListContainer.className = 'strip-regex-list-container';
+        container.appendChild(stripRegexListContainer);
+
+        // 创建添加按钮
+        const addBtn = document.createElement('button');
+        addBtn.type = 'button';
+        addBtn.textContent = '添加正则';
+        addBtn.className = 'btn-add-regex';
+        addBtn.addEventListener('click', () => createRegexRow());
+        container.appendChild(addBtn);
+
+        // 插入到TTS速度设置后面
+        const parent = ttsSpeedContainer.parentNode;
+        parent.insertBefore(divider, ttsSpeedContainer.nextSibling);
+        parent.insertBefore(container, divider.nextSibling);
+    }
+
+    /**
+     * Creates a single regex row
+     */
+    function createRegexRow(regexData = {}) {
+        const row = document.createElement('div');
+        row.className = 'strip-regex-row';
+        row.dataset.regexId = regexData.id || `regex_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+        // 正则输入框
+        const regexInput = document.createElement('input');
+        regexInput.type = 'text';
+        regexInput.placeholder = '例如: /<tucao>[\\s\\S]*?<\\/tucao>/g';
+        regexInput.className = 'strip-regex-input';
+        regexInput.value = regexData.pattern || '';
+
+        // 作用范围容器
+        const selectContainer = document.createElement('div');
+        selectContainer.className = 'custom-select-container';
+
+        const selectButton = document.createElement('button');
+        selectButton.type = 'button';
+        selectButton.className = 'custom-select-button';
+        selectButton.title = '设置作用范围';
+        selectButton.innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+        `;
+
+        const dropdown = document.createElement('div');
+        dropdown.className = 'custom-dropdown';
+        dropdown.style.display = 'none';
+
+        const frontendOption = createCheckboxOption('frontend', '前端', regexData.applyToFrontend);
+        const backendOption = createCheckboxOption('backend', '上下文', regexData.applyToBackend);
+        
+        dropdown.appendChild(frontendOption);
+        dropdown.appendChild(backendOption);
+        
+        selectButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+            updateSelectDisplay();
+        });
+
+        // 点击外部关闭下拉菜单
+        const closeDropdown = (e) => {
+            if (!selectContainer.contains(e.target)) {
+                dropdown.style.display = 'none';
+            }
+        };
+        
+        document.addEventListener('click', closeDropdown);
+        
+        // 当行被删除时，移除事件监听器
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                mutation.removedNodes.forEach((node) => {
+                    if (node === row || node.contains(row)) {
+                        document.removeEventListener('click', closeDropdown);
+                        observer.disconnect();
+                    }
+                });
+            });
+        });
+        
+        observer.observe(stripRegexListContainer, { childList: true });
+
+        function updateSelectDisplay() {
+            const checkedOptions = dropdown.querySelectorAll('input[type="checkbox"]:checked');
+            const labels = Array.from(checkedOptions).map(cb => {
+                return cb.value === 'frontend' ? '前端' : '上下文';
+            });
+            
+            // 更新按钮的 title 属性来显示选中状态
+            if (labels.length > 0) {
+                selectButton.title = `作用范围: ${labels.join(', ')}`;
+                selectButton.classList.add('has-selection');
+            } else {
+                selectButton.title = '设置作用范围';
+                selectButton.classList.remove('has-selection');
+            }
+        }
+
+        selectContainer.appendChild(selectButton);
+        selectContainer.appendChild(dropdown);
+
+        // 删除按钮
+        const deleteBtn = document.createElement('button');
+        deleteBtn.type = 'button';
+        deleteBtn.className = 'btn-delete-regex';
+        deleteBtn.innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                <line x1="10" y1="11" x2="10" y2="17"></line>
+                <line x1="14" y1="11" x2="14" y2="17"></line>
+            </svg>
+        `;
+        deleteBtn.addEventListener('click', () => row.remove());
+
+        // 组装行元素
+        row.appendChild(regexInput);
+        row.appendChild(selectContainer);
+        row.appendChild(deleteBtn);
+
+        stripRegexListContainer.appendChild(row);
+        updateSelectDisplay();
+    }
+
+    function createCheckboxOption(value, label, checked = false) {
+        const container = document.createElement('div');
+        container.className = 'dropdown-option';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.value = value;
+        checkbox.id = `${value}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        checkbox.checked = checked;
+
+        const labelEl = document.createElement('label');
+        labelEl.htmlFor = checkbox.id;
+        labelEl.textContent = label;
+
+        container.appendChild(checkbox);
+        container.appendChild(labelEl);
+
+        return container;
+    }
+
+    /**
+     * Collects regex settings from the UI
+     */
+    function collectRegexSettings() {
+        if (!stripRegexListContainer) return [];
+        const rows = stripRegexListContainer.querySelectorAll('.strip-regex-row');
+        const regexes = [];
+        
+        rows.forEach(row => {
+            const patternInput = row.querySelector('.strip-regex-input');
+            const frontendCheckbox = row.querySelector('input[value="frontend"]');
+            const backendCheckbox = row.querySelector('input[value="backend"]');
+
+            if (patternInput && patternInput.value.trim()) {
+                regexes.push({
+                    id: row.dataset.regexId,
+                    // 直接保存用户输入，JSON.stringify会自动处理转义
+                    pattern: patternInput.value.trim(),
+                    applyToFrontend: frontendCheckbox ? frontendCheckbox.checked : false,
+                    applyToBackend: backendCheckbox ? backendCheckbox.checked : false
+                });
+            }
+        });
+        
+        return regexes;
     }
 })();
 

@@ -763,7 +763,8 @@ textarea::placeholder {
     flex-grow: 1; /* Allow select to take up available space */
 }
 
-#agentSettingsForm .model-input-container button {
+#agentSettingsForm .model-input-container button,
+#globalSettingsForm .model-input-container button {
     flex-shrink: 0; /* Prevent button from shrinking */
     margin-left: 0; /* Gap property handles spacing */
     /* Let's borrow styles from #refreshModelsBtn for consistency */
@@ -782,20 +783,27 @@ textarea::placeholder {
     width: 38px;
 }
 
-#agentSettingsForm .model-input-container button:hover {
+#agentSettingsForm .model-input-container button:hover,
+#globalSettingsForm .model-input-container button:hover {
     background-color: var(--button-hover-bg);
     border-color: var(--button-hover-bg);
 }
 
-#agentSettingsForm .model-input-container button svg {
+#agentSettingsForm .model-input-container button svg,
+#globalSettingsForm .model-input-container button svg {
     stroke: var(--primary-text);
     transition: transform 0.5s ease;
 }
 
-#agentSettingsForm .model-input-container button:active svg {
+#agentSettingsForm .model-input-container button:active svg,
+#globalSettingsForm .model-input-container button:active svg {
     transform: rotate(360deg);
 }
 
+#globalSettingsForm .model-input-container button {
+    position: relative;
+    top: -8px;
+}
 
 #agentModel {
     padding-right: 35px; /* Make space for the button */
@@ -961,4 +969,203 @@ textarea::placeholder {
     height: 38px; /* Match input height */
     position: relative;
     top: -6.8px;
+}
+
+/* 正则设置样式 */
+.strip-regex-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.strip-regex-list-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.strip-regex-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.strip-regex-input {
+    flex-grow: 1;
+    padding: 9px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background-color: var(--input-bg);
+    color: var(--primary-text);
+    font-size: 0.95em;
+    font-family: monospace; /* 使用等宽字体显示正则表达式 */
+}
+
+.strip-regex-input::placeholder {
+    color: var(--placeholder-text);
+    opacity: 0.7;
+    font-family: monospace;
+}
+
+/* 自定义下拉框 */
+.custom-select-container {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.custom-select-button {
+    padding: 0;
+    background-color: var(--button-bg);
+    border: 1px solid var(--button-bg);
+    color: var(--primary-text);
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+    box-sizing: border-box;
+    height: 38px;
+    width: 38px;
+    position: relative;
+}
+
+.custom-select-button:hover {
+    background-color: var(--button-hover-bg);
+    border-color: var(--button-hover-bg);
+}
+
+.custom-select-button.has-selection {
+    background-color: var(--button-bg);
+    border-color: var(--button-bg);
+}
+
+.custom-select-button.has-selection:hover {
+    background-color: var(--button-hover-bg);
+    border-color: var(--button-hover-bg);
+}
+
+.custom-select-button svg {
+    stroke: var(--primary-text);
+    transition: transform 0.2s ease;
+}
+
+.custom-select-button.has-selection::after {
+    content: '';
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    background-color: var(--user-bubble-bg);
+    border-radius: 50%;
+    top: 4px;
+    right: 4px;
+}
+
+.custom-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin-top: 4px;
+    background-color: var(--panel-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 10000; /* 提高z-index确保下拉框在最上层 */
+    overflow: visible; /* 改为visible确保内容完整显示 */
+    min-width: 120px; /* 设置最小宽度 */
+}
+
+.dropdown-option {
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.dropdown-option:hover {
+    background-color: var(--accent-bg);
+}
+
+.dropdown-option input[type="checkbox"] {
+    margin: 0;
+    width: 16px;
+    height: 16px;
+    accent-color: var(--user-bubble-bg);
+    cursor: pointer;
+}
+
+.dropdown-option label {
+    margin: 0;
+    cursor: pointer;
+    font-size: 0.9em;
+    flex-grow: 1;
+    user-select: none;
+}
+
+/* 按钮样式 - 与刷新模型按钮保持一致 */
+.btn-add-regex {
+    padding: 10px 18px;
+    font-size: 1em;
+    border-radius: 8px;
+    border: 1px solid var(--button-bg);
+    cursor: pointer;
+    background-color: var(--button-bg);
+    color: var(--primary-text);
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+    width: 100%;
+}
+
+.btn-add-regex:hover {
+    background-color: var(--button-hover-bg);
+    border-color: var(--button-hover-bg);
+}
+
+.btn-delete-regex {
+    height: 38px;
+    width: 38px;
+    padding: 0;
+    background-color: var(--danger-color);
+    border: 1px solid var(--danger-color);
+    color: white;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.1s ease;
+    flex-shrink: 0;
+}
+
+.btn-delete-regex:hover {
+    background-color: var(--danger-hover-bg);
+    border-color: var(--danger-hover-bg);
+    transform: scale(1.05);
+}
+
+.btn-delete-regex svg {
+    stroke: white;
+    width: 16px;
+    height: 16px;
+}
+
+/* 亮色主题调整 */
+body.light-theme .custom-dropdown {
+    background-color: var(--secondary-bg);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* 响应式调整 */
+@media (max-width: 600px) {
+    .strip-regex-row {
+        flex-wrap: nowrap; /* 保持单行布局 */
+    }
+    
+    .strip-regex-input {
+        flex: 1;
+        min-width: 0;
+    }
 }

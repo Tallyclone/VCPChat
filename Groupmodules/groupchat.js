@@ -7,15 +7,11 @@ const fileManager = require('../modules/fileManager'); // Import fileManager
 // const { v4: uuidv4 } = require('uuid'); // 如果需要唯一ID生成
 
 const CANVAS_PLACEHOLDER = '{{VCPChatCanvas}}';
+const GROUP_SESSION_WATCHER_PLACEHOLDER = '{{VCPChatGroupSessionWatcher}}';
 
 // 新增：话题总结相关常量
 const MIN_MESSAGES_FOR_SUMMARY = 4;
 const DEFAULT_TOPIC_NAMES = ["主要群聊"]; // 也可以包含 "新话题" 的模式匹配
-const SUMMARY_MODEL_CONFIG = { // 可以根据需要调整
-    model: 'gemini-2.5-flash-preview-05-20', // 或者其他合适的模型
-    temperature: 0.3,
-    max_tokens: 4000 // 标题通常较短
-};
 
 
 let mainAppPaths = {}; // 将由 main.js 初始化时传入
@@ -34,6 +30,68 @@ function initializePaths(paths) {
 }
 
 /**
+ * 获取群聊会话监控信息
+ * @param {string} groupId - 群组ID
+ * @param {string} topicId - 话题ID
+ * @returns {Promise<object>} - 群聊会话监控信息
+ */
+async function getGroupSessionWatcher(groupId, topicId) {
+    try {
+        if (!mainAppPaths.USER_DATA_DIR) {
+            return {
+                status: "error",
+                error: "用户数据目录未初始化",
+                timestamp: new Date().toISOString(),
+                displayTime: new Date().toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai' })
+            };
+        }
+
+        const groupHistoryPath = path.join(mainAppPaths.USER_DATA_DIR, groupId, 'topics', topicId, 'history.json');
+        
+        if (await fs.pathExists(groupHistoryPath)) {
+            const stats = await fs.stat(groupHistoryPath);
+            const historyContent = await fs.readJson(groupHistoryPath);
+            
+            return {
+                status: "active",
+                currentSession: {
+                    groupId: groupId,
+                    topicId: topicId,
+                    filePath: groupHistoryPath,
+                    lastModified: stats.mtime.toISOString(),
+                    lastModifiedDisplay: stats.mtime.toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai' }),
+                    modifiedTimestamp: stats.mtime.getTime(),
+                    size: stats.size,
+                    messageCount: historyContent.length
+                },
+                timestamp: new Date().toISOString(),
+                displayTime: new Date().toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai' })
+            };
+        } else {
+            return {
+                status: "no_session",
+                message: `未找到群聊会话文件: ${groupHistoryPath}`,
+                groupId: groupId,
+                topicId: topicId,
+                timestamp: new Date().toISOString(),
+                displayTime: new Date().toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai' })
+            };
+        }
+    } catch (error) {
+        console.error(`[GroupChat] Error in getGroupSessionWatcher for group ${groupId}, topic ${topicId}:`, error.message);
+        return {
+            status: "error",
+            error: error.message,
+            groupId: groupId,
+            topicId: topicId,
+            timestamp: new Date().toISOString(),
+            displayTime: new Date().toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai' })
+        };
+    }
+}
+
+
+/**
  * 获取全局VCP设置（如URL, API Key, 用户名）
  * @returns {Promise<object>}
  */
@@ -45,13 +103,14 @@ async function getVcpGlobalSettings() {
                 vcpUrl: settings.vcpServerUrl, // 注意settings中的字段名
                 vcpApiKey: settings.vcpApiKey,
                 userName: settings.userName || '用户',
+                topicSummaryModel: settings.topicSummaryModel,
                 enableAgentBubbleTheme: settings.enableAgentBubbleTheme === true
             };
         } catch (e) {
             console.error("[GroupChat] Error reading VCP settings from settings.json", e);
         }
     }
-    return { vcpUrl: null, vcpApiKey: null, userName: '用户', enableAgentBubbleTheme: false };
+    return { vcpUrl: null, vcpApiKey: null, userName: '用户', topicSummaryModel: null, enableAgentBubbleTheme: false };
 }
 
 
@@ -369,7 +428,13 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
         // 1. 构建 SystemPrompt (基于当前 agentConfig 和 groupConfig)
         let combinedSystemPrompt = agentConfig.systemPrompt || `你是${agentName}。`;
         if (groupConfig.groupPrompt) {
-            combinedSystemPrompt += `\n\n[群聊设定]:\n${groupConfig.groupPrompt}`;
+            let groupPrompt = groupConfig.groupPrompt;
+            // 处理 VCPChatGroupSessionWatcher 占位符
+            if (groupPrompt.includes(GROUP_SESSION_WATCHER_PLACEHOLDER)) {
+                const sessionWatcherInfo = await getGroupSessionWatcher(groupId, topicId);
+                groupPrompt = groupPrompt.replace(new RegExp(GROUP_SESSION_WATCHER_PLACEHOLDER, 'g'), JSON.stringify(sessionWatcherInfo));
+            }
+            combinedSystemPrompt += `\n\n[群聊设定]:\n${groupPrompt}`;
         }
 
         // 2. 构建上下文结构 (每次循环都基于最新的 groupHistory)
@@ -388,7 +453,14 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
                     try {
                         const canvasData = await ipcMain.invoke('get-latest-canvas-content');
                         if (canvasData && !canvasData.error) {
-                            const formattedCanvasContent = `\n[Canvas Content]\n${canvasData.content || ''}\n[Canvas Path]\n${canvasData.path || 'No file path'}\n[Canvas Errors]\n${canvasData.errors || 'No errors'}\n`;
+                            const formattedCanvasContent = `
+[Canvas Content]
+${canvasData.content || ''}
+[Canvas Path]
+${canvasData.path || 'No file path'}
+[Canvas Errors]
+${canvasData.errors || 'No errors'}
+`;
                             textForAIContext = textForAIContext.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), formattedCanvasContent);
                         } else {
                             console.error("[GroupChat] Failed to get latest canvas content:", canvasData?.error);
@@ -406,7 +478,11 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
                 if (msg.attachments && msg.attachments.length > 0) {
                     for (const att of msg.attachments) {
                         if (att._fileManagerData && typeof att._fileManagerData.extractedText === 'string' && att._fileManagerData.extractedText.trim() !== '') {
-                            textForAIContext += `\n\n[附加文件: ${att.name || '未知文件'}]\n${att._fileManagerData.extractedText}\n[/附加文件结束: ${att.name || '未知文件'}]`;
+                            textForAIContext += `
+
+[附加文件: ${att.name || '未知文件'}]
+${att._fileManagerData.extractedText}
+[/附加文件结束: ${att.name || '未知文件'}]`;
                         } else if (att._fileManagerData && att.type && !att.type.startsWith('image/')) {
                             textForAIContext += `\n\n[附加文件: ${att.name || '未知文件'} (无法预览文本内容)]`;
                         } else if (!att._fileManagerData) {
@@ -521,19 +597,43 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
                 stream: agentConfig.streamOutput === true || String(agentConfig.streamOutput) === 'true'
             };
 
-            const response = await fetch(globalVcpSettings.vcpUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${globalVcpSettings.vcpApiKey}`
-                },
-                body: JSON.stringify({
-                    messages: messagesForAI,
-                    model: modelConfigForAgent.model,
-                    temperature: modelConfigForAgent.temperature,
-                    stream: modelConfigForAgent.stream
-                })
-            });
+            // 添加超时控制
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超时
+            
+            let response;
+            try {
+                response = await fetch(globalVcpSettings.vcpUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${globalVcpSettings.vcpApiKey}`
+                    },
+                    body: JSON.stringify({
+                        messages: messagesForAI,
+                        model: modelConfigForAgent.model,
+                        temperature: modelConfigForAgent.temperature,
+                        stream: modelConfigForAgent.stream
+                    }),
+                    signal: controller.signal
+                });
+            } catch (fetchError) {
+                clearTimeout(timeoutId);
+                if (fetchError.name === 'AbortError') {
+                    console.error(`[GroupChat] VCP request timeout for ${agentName} after 30 seconds`);
+                    const timeoutMsg = `[系统消息] ${agentName} 响应超时（30秒）`;
+                    const timeoutResponse = { role: 'assistant', name: agentName, agentId: agentId, content: timeoutMsg, timestamp: Date.now(), id: messageIdForAgentResponse };
+                    groupHistory.push(timeoutResponse);
+                    await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
+                    if (typeof sendStreamChunkToRenderer === 'function') {
+                        sendStreamChunkToRenderer({ type: 'end', error: '请求超时', fullResponse: timeoutMsg, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true } });
+                    }
+                    continue;
+                }
+                throw fetchError;
+            } finally {
+                clearTimeout(timeoutId);
+            }
 
             if (!response.ok) {
                 const errorText = await response.text();
@@ -608,15 +708,50 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
                                     }
                                     try {
                                         const parsedChunk = JSON.parse(jsonData);
-                                        if (parsedChunk.choices && parsedChunk.choices[0].delta && parsedChunk.choices[0].delta.content) {
-                                            accumulatedResponse += parsedChunk.choices[0].delta.content;
-                                        } else if (parsedChunk.delta && typeof parsedChunk.delta.content === 'string') {
-                                            accumulatedResponse += parsedChunk.delta.content;
-                                        } else if (typeof parsedChunk.content === 'string') {
-                                            accumulatedResponse += parsedChunk.content;
+                                        
+                                        // 更全面的安全检查，处理各种可能的响应格式
+                                        let hasContent = false;
+                                        
+                                        // 标准OpenAI格式 (choices[0].delta.content)
+                                        if (parsedChunk.choices && Array.isArray(parsedChunk.choices) && parsedChunk.choices.length > 0) {
+                                            const choice = parsedChunk.choices[0];
+                                            if (choice && choice.delta) {
+                                                if (typeof choice.delta.content === 'string' && choice.delta.content !== '') {
+                                                    accumulatedResponse += choice.delta.content;
+                                                    hasContent = true;
+                                                }
+                                            }
                                         }
+                                        
+                                        // 备选格式1 (delta.content)
+                                        if (!hasContent && parsedChunk.delta) {
+                                            if (typeof parsedChunk.delta.content === 'string' && parsedChunk.delta.content !== '') {
+                                                accumulatedResponse += parsedChunk.delta.content;
+                                                hasContent = true;
+                                            }
+                                        }
+                                        
+                                        // 备选格式2 (content)
+                                        if (!hasContent && typeof parsedChunk.content === 'string' && parsedChunk.content !== '') {
+                                            accumulatedResponse += parsedChunk.content;
+                                            hasContent = true;
+                                        }
+                                        
+                                        // 备选格式3 (message.content) - 某些API的格式
+                                        if (!hasContent && parsedChunk.message && typeof parsedChunk.message.content === 'string' && parsedChunk.message.content !== '') {
+                                            accumulatedResponse += parsedChunk.message.content;
+                                            hasContent = true;
+                                        }
+                                        
+                                        // 总是发送chunk事件，即使没有新内容（保持流的连续性）
                                         if (typeof sendStreamChunkToRenderer === 'function') {
-                                            sendStreamChunkToRenderer({ type: 'data', chunk: parsedChunk, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true } });
+                                            sendStreamChunkToRenderer({ 
+                                                type: 'data', 
+                                                chunk: parsedChunk, 
+                                                messageId: messageIdForAgentResponse, 
+                                                context: { groupId, topicId, agentId, agentName, isGroupMessage: true },
+                                                hasContent: hasContent // 添加标志位，让前端知道是否有实际内容
+                                            });
                                         }
                                     } catch (e) {
                                         console.error(`[GroupChat] Failed to parse VCP stream chunk JSON for ${agentName}:`, e, 'Raw data:', jsonData);
@@ -756,7 +891,13 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
     // 1. 构建 SystemPrompt
     let combinedSystemPrompt = agentConfig.systemPrompt || `你是${agentName}。`;
     if (groupConfig.groupPrompt) {
-        combinedSystemPrompt += `\n\n[群聊设定]:\n${groupConfig.groupPrompt}`;
+        let groupPrompt = groupConfig.groupPrompt;
+        // 处理 VCPChatGroupSessionWatcher 占位符
+        if (groupPrompt.includes(GROUP_SESSION_WATCHER_PLACEHOLDER)) {
+            const sessionWatcherInfo = await getGroupSessionWatcher(groupId, topicId);
+            groupPrompt = groupPrompt.replace(new RegExp(GROUP_SESSION_WATCHER_PLACEHOLDER, 'g'), JSON.stringify(sessionWatcherInfo));
+        }
+        combinedSystemPrompt += `\n\n[群聊设定]:\n${groupPrompt}`;
     }
 
     // 2. 构建上下文结构 (基于最新的 groupHistory)
@@ -775,7 +916,14 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
             try {
                 const canvasData = await ipcMain.invoke('get-latest-canvas-content');
                 if (canvasData && !canvasData.error) {
-                    const formattedCanvasContent = `\n[Canvas Content]\n${canvasData.content || ''}\n[Canvas Path]\n${canvasData.path || 'No file path'}\n[Canvas Errors]\n${canvasData.errors || 'No errors'}\n`;
+                    const formattedCanvasContent = `
+[Canvas Content]
+${canvasData.content || ''}
+[Canvas Path]
+${canvasData.path || 'No file path'}
+[Canvas Errors]
+${canvasData.errors || 'No errors'}
+`;
                     textForAIContext = textForAIContext.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), formattedCanvasContent);
                 } else {
                     console.error("[GroupChat Invite] Failed to get latest canvas content:", canvasData?.error);
@@ -790,7 +938,11 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
         if (msg.attachments && msg.attachments.length > 0) {
             for (const att of msg.attachments) {
                 if (att._fileManagerData && typeof att._fileManagerData.extractedText === 'string' && att._fileManagerData.extractedText.trim() !== '') {
-                    textForAIContext += `\n\n[附加文件: ${att.name || '未知文件'}]\n${att._fileManagerData.extractedText}\n[/附加文件结束: ${att.name || '未知文件'}]`;
+                    textForAIContext += `
+
+[附加文件: ${att.name || '未知文件'}]
+${att._fileManagerData.extractedText}
+[/附加文件结束: ${att.name || '未知文件'}]`;
                 } else if (att._fileManagerData && att.type && !att.type.startsWith('image/')) {
                     textForAIContext += `\n\n[附加文件: ${att.name || '未知文件'} (无法预览文本内容)]`;
                 } else if (!att._fileManagerData) {
@@ -895,20 +1047,44 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
             stream: agentConfig.streamOutput === true || String(agentConfig.streamOutput) === 'true'
         };
 
-        const response = await fetch(globalVcpSettings.vcpUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${globalVcpSettings.vcpApiKey}`
-            },
-            body: JSON.stringify({
-                messages: messagesForAI,
-                model: modelConfigForAgent.model,
-                temperature: modelConfigForAgent.temperature,
-                stream: modelConfigForAgent.stream,
-                max_tokens: modelConfigForAgent.max_tokens
-            })
-        });
+        // 添加超时控制
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超时
+        
+        let response;
+        try {
+            response = await fetch(globalVcpSettings.vcpUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${globalVcpSettings.vcpApiKey}`
+                },
+                body: JSON.stringify({
+                    messages: messagesForAI,
+                    model: modelConfigForAgent.model,
+                    temperature: modelConfigForAgent.temperature,
+                    stream: modelConfigForAgent.stream,
+                    max_tokens: modelConfigForAgent.max_tokens
+                }),
+                signal: controller.signal
+            });
+        } catch (fetchError) {
+            clearTimeout(timeoutId);
+            if (fetchError.name === 'AbortError') {
+                console.error(`[GroupChat Invite] VCP request timeout for ${agentName} after 30 seconds`);
+                const timeoutMsg = `[系统消息] ${agentName} 响应超时（30秒）`;
+                const timeoutResponse = { role: 'assistant', name: agentName, agentId: invitedAgentId, content: timeoutMsg, timestamp: Date.now(), id: messageIdForAgentResponse };
+                groupHistory.push(timeoutResponse);
+                await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
+                if (typeof sendStreamChunkToRenderer === 'function') {
+                    sendStreamChunkToRenderer({ type: 'end', error: '请求超时', fullResponse: timeoutMsg, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true } });
+                }
+                return;
+            }
+            throw fetchError;
+        } finally {
+            clearTimeout(timeoutId);
+        }
 
         if (!response.ok) {
             const errorText = await response.text();
@@ -978,18 +1154,57 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
                                 }
                                 try {
                                     const parsedChunk = JSON.parse(jsonData);
-                                    if (parsedChunk.choices && parsedChunk.choices[0].delta && parsedChunk.choices[0].delta.content) {
-                                        accumulatedResponse += parsedChunk.choices[0].delta.content;
-                                    } else if (parsedChunk.delta && typeof parsedChunk.delta.content === 'string') {
-                                        accumulatedResponse += parsedChunk.delta.content;
-                                    } else if (typeof parsedChunk.content === 'string') {
-                                        accumulatedResponse += parsedChunk.content;
+                                    
+                                    // 更全面的安全检查，处理各种可能的响应格式
+                                    let hasContent = false;
+                                    
+                                    // 标准OpenAI格式 (choices[0].delta.content)
+                                    if (parsedChunk.choices && Array.isArray(parsedChunk.choices) && parsedChunk.choices.length > 0) {
+                                        const choice = parsedChunk.choices[0];
+                                        if (choice && choice.delta) {
+                                            if (typeof choice.delta.content === 'string' && choice.delta.content !== '') {
+                                                accumulatedResponse += choice.delta.content;
+                                                hasContent = true;
+                                            }
+                                        }
                                     }
+                                    
+                                    // 备选格式1 (delta.content)
+                                    if (!hasContent && parsedChunk.delta) {
+                                        if (typeof parsedChunk.delta.content === 'string' && parsedChunk.delta.content !== '') {
+                                            accumulatedResponse += parsedChunk.delta.content;
+                                            hasContent = true;
+                                        }
+                                    }
+                                    
+                                    // 备选格式2 (content)
+                                    if (!hasContent && typeof parsedChunk.content === 'string' && parsedChunk.content !== '') {
+                                        accumulatedResponse += parsedChunk.content;
+                                        hasContent = true;
+                                    }
+                                    
+                                    // 备选格式3 (message.content) - 某些API的格式
+                                    if (!hasContent && parsedChunk.message && typeof parsedChunk.message.content === 'string' && parsedChunk.message.content !== '') {
+                                        accumulatedResponse += parsedChunk.message.content;
+                                        hasContent = true;
+                                    }
+                                    
+                                    // 总是发送chunk事件，即使没有新内容（保持流的连续性）
                                     if (typeof sendStreamChunkToRenderer === 'function') {
-                                        sendStreamChunkToRenderer({ type: 'data', chunk: parsedChunk, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true } });
+                                        sendStreamChunkToRenderer({ 
+                                            type: 'data', 
+                                            chunk: parsedChunk, 
+                                            messageId: messageIdForAgentResponse, 
+                                            context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true },
+                                            hasContent: hasContent // 添加标志位，让前端知道是否有实际内容
+                                        });
                                     }
                                 } catch (e) {
                                     console.error(`[GroupChat Invite] Failed to parse VCP stream chunk JSON for ${agentName}:`, e, 'Raw data:', jsonData);
+                                    // 添加错误chunk发送，保持一致性
+                                    if (typeof sendStreamChunkToRenderer === 'function') {
+                                        sendStreamChunkToRenderer({ type: 'data', chunk: { raw: jsonData, error: 'json_parse_error' }, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true } });
+                                    }
                                 }
                             }
                         }
@@ -1112,7 +1327,11 @@ async function triggerTopicSummarizationIfNeeded(groupId, topicId, groupHistory,
             if (msg.attachments && msg.attachments.length > 0) {
                 for (const att of msg.attachments) {
                     if (att._fileManagerData && typeof att._fileManagerData.extractedText === 'string' && att._fileManagerData.extractedText.trim() !== '') {
-                        contentText += `\n\n[附加文件: ${att.name || '未知文件'}]\n${att._fileManagerData.extractedText}\n[/附加文件结束: ${att.name || '未知文件'}]`;
+                        contentText += `
+
+[附加文件: ${att.name || '未知文件'}]
+${att._fileManagerData.extractedText}
+[/附加文件结束: ${att.name || '未知文件'}]`;
                     } else if (att._fileManagerData && att.type && !att.type.startsWith('image/')) {
                         contentText += `\n\n[附加文件: ${att.name || '未知文件'} (无法预览文本内容)]`;
                     }
@@ -1131,20 +1350,37 @@ async function triggerTopicSummarizationIfNeeded(groupId, topicId, groupHistory,
                 return;
             }
 
-            const response = await fetch(globalVcpSettings.vcpUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${globalVcpSettings.vcpApiKey}`
-                },
-                body: JSON.stringify({
-                    messages: messagesForAISummary,
-                    model: SUMMARY_MODEL_CONFIG.model,
-                    temperature: SUMMARY_MODEL_CONFIG.temperature,
-                    max_tokens: SUMMARY_MODEL_CONFIG.max_tokens,
-                    stream: false // 总结通常不需要流式
-                })
-            });
+            // 添加超时控制
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 20000); // 20秒超时（总结用时较短）
+            
+            let response;
+            try {
+                response = await fetch(globalVcpSettings.vcpUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${globalVcpSettings.vcpApiKey}`
+                    },
+                    body: JSON.stringify({
+                        messages: messagesForAISummary,
+                        model: globalVcpSettings.topicSummaryModel || 'gemini-2.5-flash-preview-05-20',
+                        temperature: 0.3,
+                        max_tokens: 4000,
+                        stream: false // 总结通常不需要流式
+                    }),
+                    signal: controller.signal
+                });
+            } catch (fetchError) {
+                clearTimeout(timeoutId);
+                if (fetchError.name === 'AbortError') {
+                    console.error(`[TopicSummary] VCP request timeout after 20 seconds`);
+                    return;
+                }
+                throw fetchError;
+            } finally {
+                clearTimeout(timeoutId);
+            }
 
             if (!response.ok) {
                 const errorText = await response.text();

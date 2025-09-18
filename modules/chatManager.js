@@ -23,6 +23,41 @@ window.chatManager = (() => {
     let mainRendererFunctions = {};
     let isCanvasWindowOpen = false; // State to track if the canvas window is open
 
+    // --- Virtual Scrolling State ---
+    let fullChatHistoryForTopic = [];
+    let currentMessageIndex = 0;
+    const INITIAL_LOAD_SIZE = 30; // 初始加载的消息数量
+    const MORE_LOAD_SIZE = 20;    // 每次向上滚动加载的消息数量
+
+
+    /**
+     * Parses and applies a regex to strip content from text.
+     * @param {string} text The input text.
+     * @param {string} regexString The regex pattern string.
+     * @returns {string} The processed text.
+     */
+    function stripHiddenTags(text, regexString) {
+        if (!regexString || typeof regexString !== 'string') {
+            return text;
+        }
+
+        try {
+            const regexMatch = regexString.match(/^\/(.+?)\/([gimuy]*)$/);
+            let regex;
+            
+            if (regexMatch) {
+                regex = new RegExp(regexMatch[1], regexMatch[2]);
+            } else {
+                regex = new RegExp(regexString, 'g');
+            }
+            
+            return text.replace(regex, '');
+        } catch (error) {
+            console.error('Invalid regex pattern:', regexString, error);
+            return text; // Return original text on invalid regex
+        }
+    }
+
     /**
      * Initializes the ChatManager module.
      * @param {object} config - The configuration object.
@@ -240,65 +275,83 @@ window.chatManager = (() => {
     async function loadChatHistory(itemId, itemType, topicId) {
         if (messageRenderer) messageRenderer.clearChat();
         currentChatHistoryRef.set([]);
-
+    
+        // --- Virtual Scroll Reset ---
+        fullChatHistoryForTopic = [];
+        currentMessageIndex = 0;
+        if (window.historyObserver && window.historySentinel) {
+            window.historyObserver.unobserve(window.historySentinel);
+            window.historySentinel.style.display = 'none';
+        }
+        // --- End Reset ---
+    
         document.querySelectorAll('.topic-list .topic-item').forEach(item => {
             const isCurrent = item.dataset.topicId === topicId && item.dataset.itemId === itemId && item.dataset.itemType === itemType;
             item.classList.toggle('active', isCurrent);
             item.classList.toggle('active-topic-glowing', isCurrent);
         });
-
+    
         if (messageRenderer) messageRenderer.setCurrentTopicId(topicId);
-
+    
         if (!itemId) {
             const errorMsg = `错误：无法加载聊天记录，${itemType === 'group' ? '群组' : '助手'}ID (${itemId}) 缺失。`;
             console.error(errorMsg);
-            if (messageRenderer) {
-                messageRenderer.renderMessage({ role: 'system', content: errorMsg, timestamp: Date.now() });
-            }
+            if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: errorMsg, timestamp: Date.now() });
             await displayTopicTimestampBubble(null, null, null);
             return;
         }
-        
+    
         if (!topicId) {
-            if (messageRenderer) {
-                messageRenderer.renderMessage({ role: 'system', content: '请选择或创建一个话题以开始聊天。', timestamp: Date.now() });
-            }
+            if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: '请选择或创建一个话题以开始聊天。', timestamp: Date.now() });
             await displayTopicTimestampBubble(itemId, itemType, null);
             return;
         }
-
+    
         if (messageRenderer) {
             messageRenderer.renderMessage({ role: 'system', name: '系统', content: '加载聊天记录中...', timestamp: Date.now(), isThinking: true, id: 'loading_history' });
         }
-
+    
         let historyResult;
         if (itemType === 'agent') {
             historyResult = await electronAPI.getChatHistory(itemId, topicId);
         } else if (itemType === 'group') {
             historyResult = await electronAPI.getGroupChatHistory(itemId, topicId);
         }
-
-        // Also ensure watcher is started when history is loaded directly
+    
         const currentSelectedItem = currentSelectedItemRef.get();
         if (electronAPI.watcherStart && currentSelectedItem.config?.agentDataPath) {
             const historyFilePath = `${currentSelectedItem.config.agentDataPath}\\topics\\${topicId}\\history.json`;
             await electronAPI.watcherStart(historyFilePath, itemId, topicId);
         }
-        
+    
         if (messageRenderer) messageRenderer.removeMessageById('loading_history');
-
+    
         await displayTopicTimestampBubble(itemId, itemType, topicId);
-
+    
         if (historyResult && historyResult.error) {
             if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `加载话题 "${topicId}" 的聊天记录失败: ${historyResult.error}`, timestamp: Date.now() });
-        } else if (historyResult) {
-            currentChatHistoryRef.set(historyResult);
+        } else if (historyResult && historyResult.length > 0) {
+            fullChatHistoryForTopic = historyResult;
+            const initialMessages = fullChatHistoryForTopic.slice(-INITIAL_LOAD_SIZE);
+            currentMessageIndex = Math.max(0, fullChatHistoryForTopic.length - INITIAL_LOAD_SIZE);
+    
+            currentChatHistoryRef.set(initialMessages);
             if (messageRenderer) {
-                historyResult.forEach(msg => messageRenderer.renderMessage(msg, true));
+                initialMessages.forEach(msg => messageRenderer.renderMessage(msg, true));
             }
+    
+            // If there are more messages to load, set up the observer
+            if (currentMessageIndex > 0 && window.historyObserver && window.historySentinel) {
+                window.historySentinel.style.display = 'block';
+                window.historyObserver.observe(window.historySentinel);
+            }
+    
+        } else if (historyResult) { // History is empty
+            currentChatHistoryRef.set([]);
         } else {
-             if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `加载话题 "${topicId}" 的聊天记录时返回了无效数据。`, timestamp: Date.now() });
+            if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `加载话题 "${topicId}" 的聊天记录时返回了无效数据。`, timestamp: Date.now() });
         }
+    
         if (itemId && topicId && !(historyResult && historyResult.error)) {
             localStorage.setItem(`lastActiveTopic_${itemId}_${itemType}`, topicId);
         }
@@ -494,6 +547,13 @@ window.chatManager = (() => {
         if (messageRenderer) {
             await messageRenderer.renderMessage(userMessage);
         }
+        // Manually update history after rendering
+        const currentChatHistory = currentChatHistoryRef.get();
+        currentChatHistory.push(userMessage);
+        currentChatHistoryRef.set(currentChatHistory);
+
+        // Save history with the user message before adding the thinking message or making API calls
+        await electronAPI.saveChatHistory(currentSelectedItem.id, currentTopicId, currentChatHistory);
 
         messageInput.value = '';
         attachedFilesRef.set([]);
@@ -522,6 +582,10 @@ window.chatManager = (() => {
         if (messageRenderer) {
             thinkingMessageItem = await messageRenderer.renderMessage(thinkingMessage);
         }
+        // Manually update history with the thinking message
+        const currentChatHistoryWithThinking = currentChatHistoryRef.get();
+        currentChatHistoryWithThinking.push(thinkingMessage);
+        currentChatHistoryRef.set(currentChatHistoryWithThinking);
 
         try {
             const agentConfig = currentSelectedItem.config;
@@ -533,6 +597,18 @@ window.chatManager = (() => {
                 let vcpAudioAttachmentsPayload = [];
                 let vcpVideoAttachmentsPayload = [];
                 let currentMessageTextContent = msg.content;
+
+                // --- VCP Regex Stripping (Backend/Context) ---
+                if (msg.role === 'assistant' && agentConfig?.stripRegexes && Array.isArray(agentConfig.stripRegexes)) {
+                    if (typeof currentMessageTextContent === 'string') {
+                        agentConfig.stripRegexes.forEach(regex => {
+                            if (regex.pattern && regex.applyToBackend) {
+                                currentMessageTextContent = stripHiddenTags(currentMessageTextContent, regex.pattern);
+                            }
+                        });
+                    }
+                }
+                // --- End of VCP Regex Stripping ---
 
                 if (msg.role === 'user' && msg.id === userMessage.id) {
                     // This is the current user message being sent. Resolve the placeholder now.
@@ -725,7 +801,7 @@ window.chatManager = (() => {
                 if (messageRenderer) {
                     await new Promise(resolve => setTimeout(resolve, 500));
                     // Pass the created DOM element directly to avoid race conditions with querySelector
-                    messageRenderer.startStreamingMessage({ ...thinkingMessage, content: "" }, thinkingMessageItem);
+                    await messageRenderer.startStreamingMessage({ ...thinkingMessage, content: "" }, thinkingMessageItem);
                 }
             }
 
@@ -746,27 +822,69 @@ window.chatManager = (() => {
             );
 
             if (!useStreaming) {
-                if (messageRenderer) messageRenderer.removeMessageById(thinkingMessage.id);
+                const { response, context } = vcpResponse;
+                const currentSelectedItem = currentSelectedItemRef.get();
+                const currentTopicId = currentTopicIdRef.get();
 
-                if (vcpResponse.error) {
-                    if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `VCP错误: ${vcpResponse.error}`, timestamp: Date.now() });
-                } else if (vcpResponse.choices && vcpResponse.choices.length > 0) {
-                    const assistantMessageContent = vcpResponse.choices[0].message.content;
-                    if (messageRenderer) messageRenderer.renderMessage({ role: 'assistant', name: currentSelectedItem.name, avatarUrl: currentSelectedItem.avatarUrl, avatarColor: currentSelectedItem.config?.avatarCalculatedColor, content: assistantMessageContent, timestamp: Date.now() });
-                } else {
-                    if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: 'VCP返回了未知格式的响应。', timestamp: Date.now() });
+                // Determine if the response is for the currently active chat
+                const isForActiveChat = context && context.agentId === currentSelectedItem.id && context.topicId === currentTopicId;
+
+                if (isForActiveChat) {
+                    // If it's for the active chat, update the UI as usual
+                    if (messageRenderer) messageRenderer.removeMessageById(thinkingMessage.id);
                 }
-                await electronAPI.saveChatHistory(currentSelectedItem.id, currentTopicId, currentChatHistoryRef.get().filter(msg => !msg.isThinking));
-                await attemptTopicSummarizationIfNeeded();
+
+                if (response.error) {
+                    if (isForActiveChat && messageRenderer) {
+                        messageRenderer.renderMessage({ role: 'system', content: `VCP错误: ${response.error}`, timestamp: Date.now() });
+                    }
+                    console.error(`[ChatManager] VCP Error for background message:`, response.error);
+                } else if (response.choices && response.choices.length > 0) {
+                    const assistantMessageContent = response.choices[0].message.content;
+                    const assistantMessage = {
+                        role: 'assistant',
+                        name: context.agentName || 'AI', // Use context name
+                        avatarUrl: currentSelectedItem.avatarUrl, // This might be incorrect if user switched, but it's a minor UI detail for background saves.
+                        avatarColor: currentSelectedItem.config?.avatarCalculatedColor,
+                        content: assistantMessageContent,
+                        timestamp: Date.now(),
+                        id: `msg_${Date.now()}_assistant_${Math.random().toString(36).substring(2, 9)}`
+                    };
+
+                    // Fetch the correct history from the file, update it, and save it back.
+                    const historyForSave = await electronAPI.getChatHistory(context.agentId, context.topicId);
+                    if (historyForSave && !historyForSave.error) {
+                        // Remove any lingering 'thinking' message and add the new one
+                        const finalHistory = historyForSave.filter(msg => msg.id !== thinkingMessage.id && !msg.isThinking);
+                        finalHistory.push(assistantMessage);
+                        
+                        // Save the final, complete history to the correct file
+                        await electronAPI.saveChatHistory(context.agentId, context.topicId, finalHistory);
+
+                        if (isForActiveChat) {
+                            // If it's the active chat, also update the UI and in-memory state
+                            currentChatHistoryRef.set(finalHistory);
+                            if (messageRenderer) messageRenderer.renderMessage(assistantMessage);
+                            await attemptTopicSummarizationIfNeeded();
+                        } else {
+                            console.log(`[ChatManager] Saved non-streaming response for background chat: Agent ${context.agentId}, Topic ${context.topicId}`);
+                        }
+                    } else {
+                         console.error(`[ChatManager] Failed to get history for background save:`, historyForSave.error);
+                    }
+                } else {
+                    if (isForActiveChat && messageRenderer) {
+                        messageRenderer.renderMessage({ role: 'system', content: 'VCP返回了未知格式的响应。', timestamp: Date.now() });
+                    }
+                }
             } else {
                 if (vcpResponse && vcpResponse.streamError) {
                     console.error("Streaming setup failed in main process:", vcpResponse.errorDetail || vcpResponse.error);
                 } else if (vcpResponse && !vcpResponse.streamingStarted && !vcpResponse.streamError) {
                     console.warn("Expected streaming to start, but main process returned non-streaming or error:", vcpResponse);
-                    if (messageRenderer) messageRenderer.removeMessageById(thinkingMessage.id);
+                    if (messageRenderer) messageRenderer.removeMessageById(thinkingMessage.id); // This will also remove from history
                     if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: '请求流式回复失败，收到非流式响应或错误。', timestamp: Date.now() });
-                    await electronAPI.saveChatHistory(currentSelectedItem.id, currentTopicId, currentChatHistoryRef.get().filter(msg => !msg.isThinking));
-                    await attemptTopicSummarizationIfNeeded();
+                    // No need to save again here as removeMessageById handles it if configured
                 }
             }
         } catch (error) {
@@ -1080,6 +1198,34 @@ window.chatManager = (() => {
     }
 
 
+    function loadMoreChatHistory() {
+        if (currentMessageIndex <= 0) {
+            if (window.historyObserver && window.historySentinel) {
+                window.historyObserver.unobserve(window.historySentinel);
+                window.historySentinel.style.display = 'none';
+            }
+            console.log('[ChatManager] All history loaded.');
+            return;
+        }
+    
+        const newIndex = Math.max(0, currentMessageIndex - MORE_LOAD_SIZE);
+        const messagesToPrepend = fullChatHistoryForTopic.slice(newIndex, currentMessageIndex);
+        currentMessageIndex = newIndex;
+    
+        if (messageRenderer && typeof messageRenderer.prependMessages === 'function') {
+            messageRenderer.prependMessages(messagesToPrepend);
+        }
+    
+        // Update the main history ref as well
+        const currentHistory = currentChatHistoryRef.get();
+        currentChatHistoryRef.set([...messagesToPrepend, ...currentHistory]);
+    
+        if (currentMessageIndex <= 0 && window.historyObserver && window.historySentinel) {
+            window.historyObserver.unobserve(window.historySentinel);
+            window.historySentinel.style.display = 'none';
+        }
+    }
+
     // --- Public API ---
     return {
         init,
@@ -1087,6 +1233,7 @@ window.chatManager = (() => {
         selectTopic,
         handleTopicDeletion,
         loadChatHistory,
+        loadMoreChatHistory, // Expose the new function
         handleSendMessage,
         createNewTopicForItem,
         displayNoItemSelected,
@@ -1094,5 +1241,6 @@ window.chatManager = (() => {
         handleCreateBranch,
         handleForwardMessage,
         syncHistoryFromFile, // Expose the new function
+        hasMoreHistoryToLoad: () => currentMessageIndex > 0,
     };
 })();
