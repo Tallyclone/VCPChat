@@ -19,6 +19,7 @@ const windowHandlers = require('./modules/ipc/windowHandlers'); // Import window
 const settingsHandlers = require('./modules/ipc/settingsHandlers'); // Import settings IPC handlers
 const fileDialogHandlers = require('./modules/ipc/fileDialogHandlers'); // Import file dialog handlers
 const { getAgentConfigById, ...agentHandlers } = require('./modules/ipc/agentHandlers'); // Import agent handlers
+const regexHandlers = require('./modules/ipc/regexHandlers'); // Import regex handlers
 const chatHandlers = require('./modules/ipc/chatHandlers'); // Import chat handlers
 const groupChatHandlers = require('./modules/ipc/groupChatHandlers'); // Import group chat handlers
 const sovitsHandlers = require('./modules/ipc/sovitsHandlers'); // Import SovitsTTS IPC handlers
@@ -463,6 +464,7 @@ if (!gotTheLock) {
         stopSelectionListener: assistantHandlers.stopSelectionListener,
         startSelectionListener: assistantHandlers.startSelectionListener
     });
+    regexHandlers.initialize({ AGENT_DIR });
     chatHandlers.initialize(mainWindow, {
         AGENT_DIR,
         USER_DATA_DIR,

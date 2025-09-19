@@ -52,7 +52,14 @@ const settingsManager = (() => {
     let openModelSelectBtn, modelSelectModal, modelList, modelSearchInput, refreshModelsBtn;
     let topicSummaryModelInput, openTopicSummaryModelSelectBtn; // New elements for topic summary model
     let agentTtsVoicePrimarySelect, agentTtsRegexPrimaryInput, agentTtsVoiceSecondarySelect, agentTtsRegexSecondaryInput, refreshTtsModelsBtn, agentTtsSpeedSlider, ttsSpeedValueSpan;
-    let stripRegexListContainer; // 新增：正则列表容器
+    let stripRegexListContainer;
+    
+    // --- New Regex Modal Elements ---
+    let regexRuleModal, regexRuleForm, editingRegexRuleId, regexRuleTitle, regexRuleFind, regexRuleReplace;
+    let regexRuleMinDepth, regexRuleMaxDepth, cancelRegexRuleBtn, closeRegexRuleModalBtn;
+    
+    // A private variable to hold the regex rules for the currently edited agent
+    let currentAgentRegexes = [];
 
     /**
      * Displays the appropriate settings view (agent, group, or default prompt)
@@ -146,17 +153,9 @@ const settingsManager = (() => {
         agentTtsSpeedSlider.value = agentConfig.ttsSpeed !== undefined ? agentConfig.ttsSpeed : 1.0;
     ttsSpeedValueSpan.textContent = parseFloat(agentTtsSpeedSlider.value).toFixed(1);
     
-    // 加载正则设置
-    if (stripRegexListContainer) {
-        stripRegexListContainer.innerHTML = '';
-        const stripRegexes = agentConfig.stripRegexes || [];
-        
-        if (stripRegexes.length > 0) {
-            stripRegexes.forEach(regex => createRegexRow(regex));
-        } else {
-            createRegexRow(); // 创建一个空行
-        }
-    }
+    // Load and render regex rules
+    currentAgentRegexes = JSON.parse(JSON.stringify(agentConfig.stripRegexes || [])); // Deep copy
+    renderRegexList();
 }
 
     /**
@@ -181,7 +180,7 @@ const settingsManager = (() => {
             ttsVoiceSecondary: agentTtsVoiceSecondarySelect.value,
             ttsRegexSecondary: agentTtsRegexSecondaryInput.value.trim(),
             ttsSpeed: parseFloat(agentTtsSpeedSlider.value),
-            stripRegexes: collectRegexSettings()
+            stripRegexes: currentAgentRegexes
         };
      
         if (!newConfig.name) {
@@ -412,9 +411,37 @@ const settingsManager = (() => {
             agentTtsSpeedSlider = options.elements.agentTtsSpeedSlider;
             ttsSpeedValueSpan = options.elements.ttsSpeedValueSpan;
 
+            // --- New Regex Modal Elements ---
+            regexRuleModal = document.getElementById('regexRuleModal');
+            regexRuleForm = document.getElementById('regexRuleForm');
+            editingRegexRuleId = document.getElementById('editingRegexRuleId');
+            regexRuleTitle = document.getElementById('regexRuleTitle');
+            regexRuleFind = document.getElementById('regexRuleFind');
+            regexRuleReplace = document.getElementById('regexRuleReplace');
+            regexRuleMinDepth = document.getElementById('regexRuleMinDepth');
+            regexRuleMaxDepth = document.getElementById('regexRuleMaxDepth');
+            cancelRegexRuleBtn = document.getElementById('cancelRegexRule');
+            closeRegexRuleModalBtn = document.getElementById('closeRegexRuleModal');
+
             // Event Listeners
             if (agentSettingsForm) {
                 agentSettingsForm.addEventListener('submit', saveCurrentAgentSettings);
+            }
+            if (regexRuleForm) {
+                regexRuleForm.addEventListener('submit', handleRegexFormSubmit);
+            }
+            if (cancelRegexRuleBtn) {
+                cancelRegexRuleBtn.addEventListener('click', closeRegexModal);
+            }
+            if (closeRegexRuleModalBtn) {
+                closeRegexRuleModalBtn.addEventListener('click', closeRegexModal);
+            }
+            if (regexRuleModal) {
+                regexRuleModal.addEventListener('click', (e) => {
+                    if (e.target === regexRuleModal) {
+                        closeRegexModal();
+                    }
+                });
             }
             if (deleteItemBtn) {
                 deleteItemBtn.addEventListener('click', handleDeleteCurrentItem);
@@ -571,205 +598,220 @@ const settingsManager = (() => {
     /**
      * Creates the strip regex UI section
      */
+    // --- Regex Settings V2 ---
+
     function createStripRegexUI() {
-        if (!agentSettingsForm) return;
-
-        // 查找合适的插入位置 - 在TTS速度设置之后
         const ttsSpeedContainer = document.querySelector('.slider-container');
-        if (!ttsSpeedContainer) {
-            console.warn('[SettingsManager] Could not find TTS speed container for regex UI insertion');
-            return;
-        }
+        if (!ttsSpeedContainer) return;
 
-        // 创建分隔线
         const divider = document.createElement('hr');
         divider.className = 'form-divider';
         
-        // 创建主容器
         const container = document.createElement('div');
         container.className = 'form-group strip-regex-container';
 
-        // 创建标题
         const title = document.createElement('div');
         title.className = 'form-section-title';
         title.textContent = '正则设置';
         container.appendChild(title);
 
-        // 创建列表容器
         stripRegexListContainer = document.createElement('div');
         stripRegexListContainer.id = 'stripRegexListContainer';
         stripRegexListContainer.className = 'strip-regex-list-container';
         container.appendChild(stripRegexListContainer);
 
-        // 创建添加按钮
+        // 添加正则按钮
         const addBtn = document.createElement('button');
         addBtn.type = 'button';
-        addBtn.textContent = '添加正则';
+        addBtn.textContent = '添加正则';  // 改为"添加正则"
         addBtn.className = 'btn-add-regex';
-        addBtn.addEventListener('click', () => createRegexRow());
+        addBtn.addEventListener('click', () => openRegexModal());
         container.appendChild(addBtn);
 
-        // 插入到TTS速度设置后面
+        // 导入正则按钮（放在添加正则按钮下方）
+        const importBtn = document.createElement('button');
+        importBtn.type = 'button';
+        importBtn.textContent = '导入正则';
+        importBtn.className = 'btn-add-regex';  // 使用与"添加正则"相同的样式
+        importBtn.style.marginTop = '8px';  // 添加上边距
+        importBtn.addEventListener('click', () => handleImportRegex());
+        container.appendChild(importBtn);
+        
+        // 在导入正则按钮后添加分隔线
+        const bottomDivider = document.createElement('hr');
+        bottomDivider.className = 'form-divider';
+        bottomDivider.style.marginTop = '15px';
+        bottomDivider.style.marginBottom = '15px';
+        container.appendChild(bottomDivider);
+
         const parent = ttsSpeedContainer.parentNode;
         parent.insertBefore(divider, ttsSpeedContainer.nextSibling);
         parent.insertBefore(container, divider.nextSibling);
     }
 
-    /**
-     * Creates a single regex row
-     */
-    function createRegexRow(regexData = {}) {
+    function renderRegexList() {
+        if (!stripRegexListContainer) return;
+        stripRegexListContainer.innerHTML = '';
+        currentAgentRegexes.forEach(rule => {
+            const row = createRegexRow(rule);
+            stripRegexListContainer.appendChild(row);
+        });
+    }
+
+    function createRegexRow(rule) {
         const row = document.createElement('div');
         row.className = 'strip-regex-row';
-        row.dataset.regexId = regexData.id || `regex_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        row.dataset.ruleId = rule.id;
 
-        // 正则输入框
-        const regexInput = document.createElement('input');
-        regexInput.type = 'text';
-        regexInput.placeholder = '例如: /<tucao>[\\s\\S]*?<\\/tucao>/g';
-        regexInput.className = 'strip-regex-input';
-        regexInput.value = regexData.pattern || '';
+        const title = document.createElement('span');
+        title.className = 'strip-regex-title';
+        title.textContent = rule.title || '(无标题)';
+        title.title = rule.findPattern || '无查找内容';
 
-        // 作用范围容器
-        const selectContainer = document.createElement('div');
-        selectContainer.className = 'custom-select-container';
+        const buttonsContainer = document.createElement('div');
+        buttonsContainer.style.display = 'flex';
+        buttonsContainer.style.gap = '8px';
 
-        const selectButton = document.createElement('button');
-        selectButton.type = 'button';
-        selectButton.className = 'custom-select-button';
-        selectButton.title = '设置作用范围';
-        selectButton.innerHTML = `
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="6 9 12 15 18 9"></polyline>
-            </svg>
-        `;
+        const editBtn = document.createElement('button');
+        editBtn.type = 'button';
+        editBtn.className = 'btn-edit-regex';  // 保持原始样式类，保持主题适应性
+        editBtn.title = '编辑规则';
+        // 调整为与删除按钮完全相同的大小（38x38px）
+        editBtn.style.height = '38px';    // 与删除按钮相同高度
+        editBtn.style.width = '38px';     // 与删除按钮相同宽度
+        editBtn.style.minHeight = '38px';
+        editBtn.style.minWidth = '38px';
+        editBtn.style.padding = '0';      // 与删除按钮相同的内边距
+        editBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`;
+        editBtn.addEventListener('click', () => openRegexModal(rule));
 
-        const dropdown = document.createElement('div');
-        dropdown.className = 'custom-dropdown';
-        dropdown.style.display = 'none';
-
-        const frontendOption = createCheckboxOption('frontend', '前端', regexData.applyToFrontend);
-        const backendOption = createCheckboxOption('backend', '上下文', regexData.applyToBackend);
-        
-        dropdown.appendChild(frontendOption);
-        dropdown.appendChild(backendOption);
-        
-        selectButton.addEventListener('click', (e) => {
-            e.stopPropagation();
-            dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
-            updateSelectDisplay();
-        });
-
-        // 点击外部关闭下拉菜单
-        const closeDropdown = (e) => {
-            if (!selectContainer.contains(e.target)) {
-                dropdown.style.display = 'none';
-            }
-        };
-        
-        document.addEventListener('click', closeDropdown);
-        
-        // 当行被删除时，移除事件监听器
-        const observer = new MutationObserver((mutations) => {
-            mutations.forEach((mutation) => {
-                mutation.removedNodes.forEach((node) => {
-                    if (node === row || node.contains(row)) {
-                        document.removeEventListener('click', closeDropdown);
-                        observer.disconnect();
-                    }
-                });
-            });
-        });
-        
-        observer.observe(stripRegexListContainer, { childList: true });
-
-        function updateSelectDisplay() {
-            const checkedOptions = dropdown.querySelectorAll('input[type="checkbox"]:checked');
-            const labels = Array.from(checkedOptions).map(cb => {
-                return cb.value === 'frontend' ? '前端' : '上下文';
-            });
-            
-            // 更新按钮的 title 属性来显示选中状态
-            if (labels.length > 0) {
-                selectButton.title = `作用范围: ${labels.join(', ')}`;
-                selectButton.classList.add('has-selection');
-            } else {
-                selectButton.title = '设置作用范围';
-                selectButton.classList.remove('has-selection');
-            }
-        }
-
-        selectContainer.appendChild(selectButton);
-        selectContainer.appendChild(dropdown);
-
-        // 删除按钮
         const deleteBtn = document.createElement('button');
         deleteBtn.type = 'button';
         deleteBtn.className = 'btn-delete-regex';
-        deleteBtn.innerHTML = `
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="3 6 5 6 21 6"></polyline>
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                <line x1="10" y1="11" x2="10" y2="17"></line>
-                <line x1="14" y1="11" x2="14" y2="17"></line>
-            </svg>
-        `;
-        deleteBtn.addEventListener('click', () => row.remove());
+        deleteBtn.title = '删除规则';
+        deleteBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
+        deleteBtn.addEventListener('click', () => {
+            if (confirm(`确定要删除规则 "${rule.title}" 吗？`)) {
+                currentAgentRegexes = currentAgentRegexes.filter(r => r.id !== rule.id);
+                renderRegexList();
+            }
+        });
 
-        // 组装行元素
-        row.appendChild(regexInput);
-        row.appendChild(selectContainer);
-        row.appendChild(deleteBtn);
-
-        stripRegexListContainer.appendChild(row);
-        updateSelectDisplay();
+        buttonsContainer.appendChild(editBtn);
+        buttonsContainer.appendChild(deleteBtn);
+        row.appendChild(title);
+        row.appendChild(buttonsContainer);
+        return row;
     }
 
-    function createCheckboxOption(value, label, checked = false) {
-        const container = document.createElement('div');
-        container.className = 'dropdown-option';
+    function openRegexModal(ruleData = null) {
+        regexRuleForm.reset();
+        if (ruleData) {
+            // Edit mode
+            editingRegexRuleId.value = ruleData.id;
+            regexRuleTitle.value = ruleData.title || '';
+            regexRuleFind.value = ruleData.findPattern || '';
+            regexRuleReplace.value = ruleData.replaceWith || '';
+            
+            (ruleData.applyToRoles || []).forEach(role => {
+                const checkbox = regexRuleForm.querySelector(`input[name="applyToRoles"][value="${role}"]`);
+                if (checkbox) checkbox.checked = true;
+            });
 
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.value = value;
-        checkbox.id = `${value}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-        checkbox.checked = checked;
+            // 设置应用范围
+            if (ruleData.applyToFrontend !== undefined) {
+                document.getElementById('applyToFrontend').checked = ruleData.applyToFrontend;
+            } else if (ruleData.applyToScopes) {
+                // 兼容旧数据结构
+                document.getElementById('applyToFrontend').checked = ruleData.applyToScopes.includes('frontend');
+            } else {
+                document.getElementById('applyToFrontend').checked = true;
+            }
+            
+            if (ruleData.applyToContext !== undefined) {
+                document.getElementById('applyToContext').checked = ruleData.applyToContext;
+            } else if (ruleData.applyToScopes) {
+                // 兼容旧数据结构
+                document.getElementById('applyToContext').checked = ruleData.applyToScopes.includes('context');
+            } else {
+                document.getElementById('applyToContext').checked = true;
+            }
 
-        const labelEl = document.createElement('label');
-        labelEl.htmlFor = checkbox.id;
-        labelEl.textContent = label;
+            regexRuleMinDepth.value = ruleData.minDepth !== undefined ? ruleData.minDepth : 0;
+            regexRuleMaxDepth.value = ruleData.maxDepth !== undefined ? ruleData.maxDepth : -1;
+        } else {
+            // New rule mode
+            editingRegexRuleId.value = '';
+            regexRuleMinDepth.value = 0;
+            regexRuleMaxDepth.value = -1;
+        }
+        regexRuleModal.style.display = 'block';
+    }
 
-        container.appendChild(checkbox);
-        container.appendChild(labelEl);
+    function closeRegexModal() {
+        regexRuleModal.style.display = 'none';
+    }
 
-        return container;
+    function handleRegexFormSubmit(event) {
+        event.preventDefault();
+        
+        const id = editingRegexRuleId.value || `rule_${Date.now()}`;
+        const title = regexRuleTitle.value.trim();
+        const findPattern = regexRuleFind.value.trim();
+
+        if (!title || !findPattern) {
+            uiHelper.showToastNotification('规则标题和查找内容不能为空！', 'error');
+            return;
+        }
+
+        const newRule = {
+            id,
+            title,
+            findPattern,
+            replaceWith: regexRuleReplace.value,
+            applyToRoles: Array.from(regexRuleForm.querySelectorAll('input[name="applyToRoles"]:checked')).map(cb => cb.value),
+            applyToFrontend: document.getElementById('applyToFrontend').checked,
+            applyToContext: document.getElementById('applyToContext').checked,
+            minDepth: parseInt(regexRuleMinDepth.value, 10),
+            maxDepth: parseInt(regexRuleMaxDepth.value, 10)
+        };
+
+        const existingIndex = currentAgentRegexes.findIndex(r => r.id === id);
+        if (existingIndex > -1) {
+            currentAgentRegexes[existingIndex] = newRule;
+        } else {
+            currentAgentRegexes.push(newRule);
+        }
+
+        renderRegexList();
+        closeRegexModal();
     }
 
     /**
-     * Collects regex settings from the UI
+     * 处理导入正则规则（暂时未实现）
      */
-    function collectRegexSettings() {
-        if (!stripRegexListContainer) return [];
-        const rows = stripRegexListContainer.querySelectorAll('.strip-regex-row');
-        const regexes = [];
-        
-        rows.forEach(row => {
-            const patternInput = row.querySelector('.strip-regex-input');
-            const frontendCheckbox = row.querySelector('input[value="frontend"]');
-            const backendCheckbox = row.querySelector('input[value="backend"]');
+    async function handleImportRegex() {
+        const agentId = editingAgentIdInput.value;
+        if (!agentId) {
+            uiHelper.showToastNotification('请先选择一个Agent。', 'warning');
+            return;
+        }
 
-            if (patternInput && patternInput.value.trim()) {
-                regexes.push({
-                    id: row.dataset.regexId,
-                    // 直接保存用户输入，JSON.stringify会自动处理转义
-                    pattern: patternInput.value.trim(),
-                    applyToFrontend: frontendCheckbox ? frontendCheckbox.checked : false,
-                    applyToBackend: backendCheckbox ? backendCheckbox.checked : false
-                });
+        try {
+            const result = await electronAPI.importRegexRules(agentId);
+
+            if (result.success) {
+                currentAgentRegexes = result.rules;
+                renderRegexList();
+                uiHelper.showToastNotification('正则规则导入成功！', 'success');
+            } else if (!result.canceled) {
+                // Don't show an error if the user just canceled the dialog
+                uiHelper.showToastNotification(`导入失败: ${result.error}`, 'error');
             }
-        });
-        
-        return regexes;
+        } catch (error) {
+            console.error('导入正则规则时发生意外错误:', error);
+            uiHelper.showToastNotification(`导入失败: ${error.message}`, 'error');
+        }
     }
 })();
 

@@ -31,31 +31,85 @@ window.chatManager = (() => {
 
 
     /**
-     * Parses and applies a regex to strip content from text.
-     * @param {string} text The input text.
-     * @param {string} regexString The regex pattern string.
-     * @returns {string} The processed text.
+     * 应用单个正则规则到文本
+     * @param {string} text - 输入文本
+     * @param {Object} rule - 正则规则对象
+     * @returns {string} 处理后的文本
      */
-    function stripHiddenTags(text, regexString) {
-        if (!regexString || typeof regexString !== 'string') {
+    function applyRegexRule(text, rule) {
+        if (!rule || !rule.findPattern || typeof text !== 'string') {
             return text;
         }
 
         try {
-            const regexMatch = regexString.match(/^\/(.+?)\/([gimuy]*)$/);
-            let regex;
-            
-            if (regexMatch) {
-                regex = new RegExp(regexMatch[1], regexMatch[2]);
+            // 使用 uiHelperFunctions.regexFromString 来解析正则表达式
+            let regex = null;
+            if (window.uiHelperFunctions && window.uiHelperFunctions.regexFromString) {
+                regex = window.uiHelperFunctions.regexFromString(rule.findPattern);
             } else {
-                regex = new RegExp(regexString, 'g');
+                // 后备方案：手动解析
+                const regexMatch = rule.findPattern.match(/^\/(.+?)\/([gimuy]*)$/);
+                if (regexMatch) {
+                    regex = new RegExp(regexMatch[1], regexMatch[2]);
+                } else {
+                    regex = new RegExp(rule.findPattern, 'g');
+                }
             }
             
-            return text.replace(regex, '');
+            if (!regex) {
+                console.error('无法解析正则表达式:', rule.findPattern);
+                return text;
+            }
+            
+            // 应用替换（如果没有替换内容，则默认替换为空字符串）
+            return text.replace(regex, rule.replaceWith || '');
         } catch (error) {
-            console.error('Invalid regex pattern:', regexString, error);
-            return text; // Return original text on invalid regex
+            console.error('应用正则规则时出错:', rule.findPattern, error);
+            return text;
         }
+    }
+
+    /**
+     * 应用所有匹配的正则规则到文本
+     * @param {string} text - 输入文本
+     * @param {Array} rules - 正则规则数组
+     * @param {string} scope - 作用域 ('frontend' 或 'context')
+     * @param {string} role - 消息角色 ('user' 或 'assistant')
+     * @param {number} depth - 消息深度（0 = 最新消息）
+     * @returns {string} 处理后的文本
+     */
+    function applyRegexRules(text, rules, scope, role, depth = 0) {
+        if (!rules || !Array.isArray(rules) || typeof text !== 'string') {
+            return text;
+        }
+
+        let processedText = text;
+        
+        rules.forEach(rule => {
+            // 检查是否应该应用此规则
+            
+            // 1. 检查作用域
+            const shouldApplyToScope =
+                (scope === 'context' && rule.applyToContext) ||
+                (scope === 'frontend' && rule.applyToFrontend);
+            
+            if (!shouldApplyToScope) return;
+            
+            // 2. 检查角色
+            const shouldApplyToRole = rule.applyToRoles && rule.applyToRoles.includes(role);
+            if (!shouldApplyToRole) return;
+            
+            // 3. 检查深度（-1 表示无限制）
+            const minDepthOk = rule.minDepth === undefined || rule.minDepth === -1 || depth >= rule.minDepth;
+            const maxDepthOk = rule.maxDepth === undefined || rule.maxDepth === -1 || depth <= rule.maxDepth;
+            
+            if (!minDepthOk || !maxDepthOk) return;
+            
+            // 应用规则
+            processedText = applyRegexRule(processedText, rule);
+        });
+        
+        return processedText;
     }
 
     /**
@@ -598,38 +652,69 @@ window.chatManager = (() => {
                 let vcpVideoAttachmentsPayload = [];
                 let currentMessageTextContent = msg.content;
 
-                // --- VCP Regex Stripping (Backend/Context) ---
-                if (msg.role === 'assistant' && agentConfig?.stripRegexes && Array.isArray(agentConfig.stripRegexes)) {
-                    if (typeof currentMessageTextContent === 'string') {
-                        agentConfig.stripRegexes.forEach(regex => {
-                            if (regex.pattern && regex.applyToBackend) {
-                                currentMessageTextContent = stripHiddenTags(currentMessageTextContent, regex.pattern);
+                // --- 应用正则规则（后端/上下文）---
+                if (agentConfig?.stripRegexes && Array.isArray(agentConfig.stripRegexes) && agentConfig.stripRegexes.length > 0) {
+                    // --- 按“对话轮次”计算深度 ---
+                    const turns = [];
+                    for (let i = historySnapshotForVCP.length - 1; i >= 0; i--) {
+                        if (historySnapshotForVCP[i].role === 'assistant') {
+                            const turn = { assistant: historySnapshotForVCP[i], user: null };
+                            if (i > 0 && historySnapshotForVCP[i - 1].role === 'user') {
+                                turn.user = historySnapshotForVCP[i - 1];
+                                i--; // 跳过用户消息，因为已经配对
                             }
-                        });
+                            turns.unshift(turn);
+                        } else if (historySnapshotForVCP[i].role === 'user') {
+                            // 处理末尾的单个用户消息
+                            turns.unshift({ assistant: null, user: historySnapshotForVCP[i] });
+                        }
                     }
+                    
+                    // 找到当前消息所在的轮次
+                    const turnIndex = turns.findIndex(t => (t.assistant && t.assistant.id === msg.id) || (t.user && t.user.id === msg.id));
+                    const depth = turnIndex !== -1 ? (turns.length - 1 - turnIndex) : -1;
+
+                    if (depth !== -1) {
+                        // 应用规则到消息内容
+                        currentMessageTextContent = applyRegexRules(
+                            currentMessageTextContent,
+                            agentConfig.stripRegexes,
+                            'context',  // 这里处理的是发送给AI的上下文
+                            msg.role,
+                            depth
+                        );
+                    }
+                    // --- 深度计算和应用结束 ---
                 }
-                // --- End of VCP Regex Stripping ---
+                // --- 正则规则应用结束 ---
 
                 if (msg.role === 'user' && msg.id === userMessage.id) {
-                    // This is the current user message being sent. Resolve the placeholder now.
+                    // This is the current user message being sent.
+                    // IMPORTANT: We need to handle Canvas placeholder WITHOUT overwriting the regex-processed content
+                    
+                    // First, check if we need to replace Canvas placeholder
                     if (contentForVCP.includes(CANVAS_PLACEHOLDER)) {
+                        // We need to apply Canvas replacement to the already regex-processed content
+                        // NOT to the original contentForVCP
+                        let baseContent = currentMessageTextContent; // This already has regex rules applied
+                        
                         try {
                             const canvasData = await electronAPI.getLatestCanvasContent();
                             if (canvasData && !canvasData.error) {
                                 const formattedCanvasContent = `\n[Canvas Content]\n${canvasData.content || ''}\n[Canvas Path]\n${canvasData.path || 'No file path'}\n[Canvas Errors]\n${canvasData.errors || 'No errors'}\n`;
-                                // Replace all occurrences in this specific message's content
-                                currentMessageTextContent = contentForVCP.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), formattedCanvasContent);
+                                // Replace Canvas placeholder in the regex-processed content
+                                currentMessageTextContent = baseContent.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), formattedCanvasContent);
                             } else {
                                 console.error("Failed to get latest canvas content:", canvasData?.error);
-                                currentMessageTextContent = contentForVCP.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), '\n[Canvas content could not be loaded]\n');
+                                currentMessageTextContent = baseContent.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), '\n[Canvas content could not be loaded]\n');
                             }
                         } catch (error) {
                             console.error("Error fetching canvas content:", error);
-                            currentMessageTextContent = contentForVCP.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), '\n[Error loading canvas content]\n');
+                            currentMessageTextContent = baseContent.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), '\n[Error loading canvas content]\n');
                         }
-                    } else {
-                        currentMessageTextContent = contentForVCP;
                     }
+                    // If no Canvas placeholder, keep the regex-processed content as is
+                    // (no else clause needed since currentMessageTextContent already has the right value)
                 } else if (msg.attachments && msg.attachments.length > 0) {
                     let historicalAppendedText = "";
                     for (const att of msg.attachments) {

@@ -12,8 +12,21 @@ async function getAgentConfigById(agentId) {
     }
     const agentDir = path.join(AGENT_DIR_CACHE, agentId);
     const configPath = path.join(agentDir, 'config.json');
+    const regexPath = path.join(agentDir, 'regex_rules.json');
+
     if (await fs.pathExists(configPath)) {
         const config = await fs.readJson(configPath);
+
+        // Check for external regex rules file
+        if (await fs.pathExists(regexPath)) {
+            try {
+                config.stripRegexes = await fs.readJson(regexPath);
+            } catch (e) {
+                console.error(`Error reading regex_rules.json for agent ${agentId}:`, e);
+                // Keep stripRegexes from config.json as a fallback
+            }
+        }
+
         const avatarPathPng = path.join(agentDir, 'avatar.png');
         const avatarPathJpg = path.join(agentDir, 'avatar.jpg');
         const avatarPathJpeg = path.join(agentDir, 'avatar.jpeg');
@@ -70,6 +83,17 @@ function initialize(context) {
 
                     if (await fs.pathExists(configPath)) {
                         const config = await fs.readJson(configPath);
+
+                        // Load external regex rules if they exist
+                        const regexPath = path.join(agentPath, 'regex_rules.json');
+                        if (await fs.pathExists(regexPath)) {
+                            try {
+                                config.stripRegexes = await fs.readJson(regexPath);
+                            } catch (e) {
+                                console.error(`Error reading regex_rules.json for agent ${folderName} in get-agents:`, e);
+                            }
+                        }
+                        
                         agentData.name = config.name || folderName;
                         agentData.config.avatarCalculatedColor = config.avatarCalculatedColor || null;
                         let topicsArray = config.topics && Array.isArray(config.topics) && config.topics.length > 0
@@ -320,13 +344,32 @@ function initialize(context) {
             const agentDir = path.join(AGENT_DIR, agentId);
             await fs.ensureDir(agentDir);
             const configPath = path.join(agentDir, 'config.json');
-            
+            const regexPath = path.join(agentDir, 'regex_rules.json');
+
+            // Handle stripRegexes separately if the property exists in the incoming config
+            if (config.hasOwnProperty('stripRegexes')) {
+                const stripRegexes = config.stripRegexes;
+                if (Array.isArray(stripRegexes) && stripRegexes.length > 0) {
+                    // Save non-empty regexes to the separate file
+                    await fs.writeJson(regexPath, stripRegexes, { spaces: 2 });
+                } else {
+                    // If the array is empty or not an array, remove the regex file if it exists
+                    if (await fs.pathExists(regexPath)) {
+                        await fs.remove(regexPath);
+                    }
+                }
+            }
+
             let existingConfig = {};
             if (await fs.pathExists(configPath)) {
                 existingConfig = await fs.readJson(configPath);
             }
             
-            const newConfigData = { ...existingConfig, ...config }; 
+            // Merge configs
+            const newConfigData = { ...existingConfig, ...config };
+            
+            // CRITICAL: Always remove stripRegexes from the object to be saved to config.json
+            delete newConfigData.stripRegexes;
             
             await fs.writeJson(configPath, newConfigData, { spaces: 2 });
             return { success: true, message: `Agent ${agentId} 配置已保存。` };

@@ -63,32 +63,80 @@ function escapeHtml(text) {
 }
 
 /**
- * Parses and applies a regex to strip content from text.
- * Handles /pattern/flags format and provides error catching.
- * @param {string} text The input text.
- * @param {string} regexString The regex pattern string.
- * @returns {string} The processed text.
+ * 应用单个正则规则到文本
+ * @param {string} text - 输入文本
+ * @param {Object} rule - 正则规则对象
+ * @returns {string} 处理后的文本
  */
-function stripHiddenTags(text, regexString) {
-    if (!regexString || typeof regexString !== 'string') {
+function applyRegexRule(text, rule) {
+    if (!rule || !rule.findPattern || typeof text !== 'string') {
         return text;
     }
 
     try {
-        const regexMatch = regexString.match(/^\/(.+?)\/([gimuy]*)$/);
-        let regex;
-        
-        if (regexMatch) {
-            regex = new RegExp(regexMatch[1], regexMatch[2]);
+        // 使用 uiHelperFunctions.regexFromString 来解析正则表达式
+        let regex = null;
+        if (window.uiHelperFunctions && window.uiHelperFunctions.regexFromString) {
+            regex = window.uiHelperFunctions.regexFromString(rule.findPattern);
         } else {
-            regex = new RegExp(regexString, 'g');
+            // 后备方案：手动解析
+            const regexMatch = rule.findPattern.match(/^\/(.+?)\/([gimuy]*)$/);
+            if (regexMatch) {
+                regex = new RegExp(regexMatch[1], regexMatch[2]);
+            } else {
+                regex = new RegExp(rule.findPattern, 'g');
+            }
         }
         
-        return text.replace(regex, '');
+        if (!regex) {
+            console.error('无法解析正则表达式:', rule.findPattern);
+            return text;
+        }
+        
+        // 应用替换（如果没有替换内容，则默认替换为空字符串）
+        return text.replace(regex, rule.replaceWith || '');
     } catch (error) {
-        console.error('Invalid regex pattern:', regexString, error);
-        return text; // Return original text on invalid regex
+        console.error('应用正则规则时出错:', rule.findPattern, error);
+        return text;
     }
+}
+
+/**
+ * 应用所有匹配的正则规则到文本（前端版本）
+ * @param {string} text - 输入文本
+ * @param {Array} rules - 正则规则数组
+ * @param {string} role - 消息角色 ('user' 或 'assistant')
+ * @param {number} depth - 消息深度（0 = 最新消息）
+ * @returns {string} 处理后的文本
+ */
+function applyFrontendRegexRules(text, rules, role, depth) {
+    if (!rules || !Array.isArray(rules) || typeof text !== 'string') {
+        return text;
+    }
+
+    let processedText = text;
+    
+    rules.forEach(rule => {
+        // 检查是否应该应用此规则
+        
+        // 1. 检查是否应用于前端
+        if (!rule.applyToFrontend) return;
+        
+        // 2. 检查角色
+        const shouldApplyToRole = rule.applyToRoles && rule.applyToRoles.includes(role);
+        if (!shouldApplyToRole) return;
+        
+        // 3. 检查深度（-1 表示无限制）
+        const minDepthOk = rule.minDepth === undefined || rule.minDepth === -1 || depth >= rule.minDepth;
+        const maxDepthOk = rule.maxDepth === undefined || rule.maxDepth === -1 || depth <= rule.maxDepth;
+        
+        if (!minDepthOk || !maxDepthOk) return;
+        
+        // 应用规则
+        processedText = applyRegexRule(processedText, rule);
+    });
+    
+    return processedText;
 }
 
 /**
@@ -364,23 +412,48 @@ function deIndentHtml(text) {
 
 
 /**
+ * 根据对话轮次计算消息的深度。
+ * @param {string} messageId - 目标消息的ID。
+ * @param {Array<Message>} history - 完整的聊天记录数组。
+ * @returns {number} - 计算出的深度（0代表最新一轮）。
+ */
+function calculateDepthByTurns(messageId, history) {
+    const turns = [];
+    for (let i = history.length - 1; i >= 0; i--) {
+        if (history[i].role === 'assistant') {
+            const turn = { assistant: history[i], user: null };
+            if (i > 0 && history[i - 1].role === 'user') {
+                turn.user = history[i - 1];
+                i--; // 跳过用户消息
+            }
+            turns.unshift(turn);
+        } else if (history[i].role === 'user') {
+            turns.unshift({ assistant: null, user: history[i] });
+        }
+    }
+    
+    const turnIndex = turns.findIndex(t => (t.assistant && t.assistant.id === messageId) || (t.user && t.user.id === messageId));
+    
+    // 如果找不到，默认为最新消息（深度0），这对于新消息渲染是安全的回退
+    return turnIndex !== -1 ? (turns.length - 1 - turnIndex) : 0;
+}
+
+
+/**
  * A helper function to preprocess the full message content string before parsing.
  * @param {string} text The raw text content.
  * @returns {string} The processed text.
  */
-function preprocessFullContent(text, settings = {}) {
-    // --- VCP Regex Stripping (Frontend) ---
+function preprocessFullContent(text, settings = {}, messageRole = 'assistant', depth = 0) {
+    // --- 应用正则规则（前端）---
     const currentSelectedItem = mainRendererReferences.currentSelectedItemRef.get();
     const agentConfig = currentSelectedItem?.config;
 
     if (agentConfig?.stripRegexes && Array.isArray(agentConfig.stripRegexes)) {
-        agentConfig.stripRegexes.forEach(regex => {
-            if (regex.pattern && regex.applyToFrontend) {
-                text = stripHiddenTags(text, regex.pattern);
-            }
-        });
+        // 应用前端正则规则，包含深度控制
+        text = applyFrontendRegexRules(text, agentConfig.stripRegexes, messageRole, depth);
     }
-    // --- End of VCP Regex Stripping ---
+    // --- 正则规则应用结束 ---
 
     const codeBlockMap = new Map();
     let placeholderId = 0;
@@ -772,7 +845,15 @@ async function renderMessage(message, isInitialLoad = false) {
             textToRender = transformVCPChatCanvas(textToRender);
         }
         
-        const processedContent = preprocessFullContent(textToRender, globalSettings);
+        // --- 按“对话轮次”计算深度 ---
+        // 如果是新消息，它此时还不在 history 数组里，先临时加进去计算
+        const historyForDepthCalc = currentChatHistory.some(m => m.id === message.id)
+            ? [...currentChatHistory]
+            : [...currentChatHistory, message];
+        const depth = calculateDepthByTurns(message.id, historyForDepthCalc);
+        // --- 深度计算结束 ---
+
+        const processedContent = preprocessFullContent(textToRender, globalSettings, message.role, depth);
         let rawHtml = markedInstance.parse(processedContent);
         
         // Create a temporary div to apply emoticon fixes before setting innerHTML
@@ -1001,7 +1082,11 @@ async function createMessageItemWithoutAppending(message) {
         textToRender = transformVCPChatCanvas(textToRender);
     }
 
-    const processedContent = preprocessFullContent(textToRender, globalSettings);
+    // --- 按“对话轮次”计算深度 (用于历史消息渲染) ---
+    const currentChatHistoryForPrepend = mainRendererReferences.currentChatHistoryRef.get();
+    const depthForPrepend = calculateDepthByTurns(message.id, currentChatHistoryForPrepend);
+    // --- 深度计算结束 ---
+    const processedContent = preprocessFullContent(textToRender, globalSettings, message.role, depthForPrepend);
     let rawHtml = markedInstance.parse(processedContent);
 
     const tempDiv = document.createElement('div');
@@ -1130,7 +1215,7 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId) {
 
     // --- Update DOM ---
     const globalSettings = mainRendererReferences.globalSettingsRef.get();
-    const processedFinalText = preprocessFullContent(fullContent, globalSettings);
+    const processedFinalText = preprocessFullContent(fullContent, globalSettings, 'assistant');
     let rawHtml = markedInstance.parse(processedFinalText);
 
     // Create a temporary div to apply emoticon fixes before setting innerHTML
@@ -1171,7 +1256,14 @@ function updateMessageContent(messageId, newContent) {
     const globalSettings = globalSettingsRef.get();
     let textToRender = (typeof newContent === 'string') ? newContent : (newContent?.text || "[内容格式异常]");
     
-    const processedContent = preprocessFullContent(textToRender, globalSettings);
+    // --- 深度计算 (用于历史消息渲染) ---
+    const currentChatHistoryForUpdate = mainRendererReferences.currentChatHistoryRef.get();
+    const messageInHistory = currentChatHistoryForUpdate.find(m => m.id === messageId);
+    
+    // --- 按“对话轮次”计算深度 ---
+    const depthForUpdate = calculateDepthByTurns(messageId, currentChatHistoryForUpdate);
+    // --- 深度计算结束 ---
+    const processedContent = preprocessFullContent(textToRender, globalSettings, messageInHistory?.role || 'assistant', depthForUpdate);
     let rawHtml = markedInstance.parse(processedContent);
 
     const tempDiv = document.createElement('div');
@@ -1191,7 +1283,6 @@ function updateMessageContent(messageId, newContent) {
     contentProcessor.processRenderedContent(contentDiv);
 
     // Re-render attachments if they exist in the new content object
-    const messageInHistory = mainRendererReferences.currentChatHistoryRef.get().find(m => m.id === messageId);
     if (messageInHistory) {
         // First, remove any existing attachments container
         const existingAttachments = contentDiv.querySelector('.message-attachments');
