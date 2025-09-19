@@ -2054,9 +2054,10 @@
             `;
             document.body.appendChild(this.connectionGuide);
 
-            // 绑定连接创建事件来显示引导
+            // 绑定连接创建事件来显示引导（必须返回 true，避免阻断连接创建）
             this.jsPlumbInstance.bind('beforeDrop', (info) => {
                 this.showConnectionGuide(info);
+                return true; // 允许创建连接
             });
 
             this.jsPlumbInstance.bind('connectionDrag', (info) => {
@@ -2067,9 +2068,10 @@
                 this.hideConnectionGuide();
             });
 
-            // 绑定连接重连事件
+            // 绑定连接重连事件（同样需要返回 true）
             this.jsPlumbInstance.bind('beforeDrop', (info) => {
                 this.showConnectionGuide(info);
+                return true; // 允许重连
             });
 
             this.jsPlumbInstance.bind('connectionDrag', (info) => {
@@ -2192,14 +2194,7 @@
                 try {
                     this.jsPlumbInstance.deleteEveryConnection();
                     this.jsPlumbInstance.deleteEveryEndpoint();
-                    // 重置内部管理状态，清空残留引用
-                    try {
-                        if (typeof this.jsPlumbInstance.reset === 'function') {
-                            this.jsPlumbInstance.reset();
-                        }
-                    } catch (e) {
-                        console.warn('[CanvasManager] jsPlumb reset failed:', e);
-                    }
+                    // 注意：不要调用 jsPlumbInstance.reset()，否则会清空事件绑定，导致新建后连线无法触发保存
                     
                     // 清除所有拖拽元素
                     this.nodes.forEach((nodeElement) => {
