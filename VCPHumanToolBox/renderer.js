@@ -4330,11 +4330,11 @@ document.addEventListener('DOMContentLoaded', () => {
     async function loadWorkflowEditorModules() {
         // 首先加载 WorkflowEditorLoader 脚本
         const loaderScript = document.createElement('script');
-        loaderScript.src = 'WorkflowEditormodules/WorkflowEditorLoader.js';
+        loaderScript.src = 'WorkflowEditormodules/WorkflowEditorLoader_Simplified.js';
         
         await new Promise((resolve, reject) => {
             loaderScript.onload = resolve;
-            loaderScript.onerror = () => reject(new Error('无法加载 WorkflowEditorLoader.js'));
+            loaderScript.onerror = () => reject(new Error('无法加载 WorkflowEditorLoader_Simplified.js'));
             document.head.appendChild(loaderScript);
         });
 

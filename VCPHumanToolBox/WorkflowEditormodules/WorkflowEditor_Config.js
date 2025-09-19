@@ -413,6 +413,7 @@
         }
     }
 
-    // 导出为全局单例
+    // 导出类和实例
+    window.WorkflowEditor_Config = WorkflowEditor_Config;
     window.workflowEditor = WorkflowEditor_Config.getInstance();
 })();

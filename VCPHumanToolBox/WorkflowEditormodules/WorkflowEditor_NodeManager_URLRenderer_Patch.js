@@ -8,12 +8,184 @@
     if (window.WorkflowEditor_NodeManager) {
         const nodeManager = window.WorkflowEditor_NodeManager;
 
-        // 执行URL渲染节点 - 简化版本
+        // 注入一次性样式与全局工具（灯箱 + 右键菜单）
+        if (!nodeManager.ensureUrlRendererEnhancements) {
+            nodeManager.ensureUrlRendererEnhancements = function() {
+                if (window.__UrlRenderer && window.__UrlRenderer.__inited) return;
+
+                // 样式
+                const styleId = 'url-renderer-enhance-style';
+                if (!document.getElementById(styleId)) {
+                    const style = document.createElement('style');
+                    style.id = styleId;
+                    style.textContent = `
+                    .url-lightbox-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.85);display:none;align-items:center;justify-content:center;z-index:9999}
+                    .url-lightbox-backdrop.show{display:flex}
+                    .url-lightbox-content{position:relative;width:95vw;height:95vh;display:flex;align-items:center;justify-content:center;cursor:grab}
+                    .url-lightbox-img{max-width:100%;max-height:100%;transform-origin:center center;transition:transform .05s ease-out}
+                    .url-lightbox-toolbar{position:fixed;top:16px;right:16px;display:flex;gap:8px;z-index:10000}
+                    .url-lightbox-btn{background:#2a2a2a;border:1px solid #444;color:#eee;padding:6px 10px;border-radius:6px;font-size:12px;cursor:pointer}
+                    .url-ctxmenu{position:fixed;background:#1b1b1b;border:1px solid #333;border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,.4);min-width:160px;display:none;z-index:10001;overflow:hidden}
+                    .url-ctxmenu.show{display:block}
+                    .url-ctxmenu-item{padding:8px 12px;color:#ddd;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:8px}
+                    .url-ctxmenu-item:hover{background:#2a2a2a}
+                    /* 渲染区图片布局修正：固定行高+contain，避免撑高 */
+                    .multiple-urls-container{grid-auto-rows: 1fr}
+                    `;
+                    document.head.appendChild(style);
+                }
+
+                const backdrop = document.createElement('div');
+                backdrop.className = 'url-lightbox-backdrop';
+                backdrop.innerHTML = `
+                    <div class="url-lightbox-toolbar">
+                        <button class="url-lightbox-btn" data-act="zoomIn">放大</button>
+                        <button class="url-lightbox-btn" data-act="zoomOut">缩小</button>
+                        <button class="url-lightbox-btn" data-act="reset">重置</button>
+                        <button class="url-lightbox-btn" data-act="open">新标签打开</button>
+                        <button class="url-lightbox-btn" data-act="copy">复制图片</button>
+                        <button class="url-lightbox-btn" data-act="copyUrl">复制链接</button>
+                        <button class="url-lightbox-btn" data-act="download">下载</button>
+                        <button class="url-lightbox-btn" data-act="close">关闭</button>
+                    </div>
+                    <div class="url-lightbox-content">
+                        <img class="url-lightbox-img" src="" alt="preview" />
+                    </div>`;
+                document.body.appendChild(backdrop);
+
+                const ctx = document.createElement('div');
+                ctx.className = 'url-ctxmenu';
+                ctx.innerHTML = `
+                    <div class="url-ctxmenu-item" data-act="open">🔍 在新标签打开</div>
+                    <div class="url-ctxmenu-item" data-act="copy">📋 复制图片</div>
+                    <div class="url-ctxmenu-item" data-act="copyUrl">🔗 复制图片链接</div>
+                    <div class="url-ctxmenu-item" data-act="download">⬇️ 下载图片</div>`;
+                document.body.appendChild(ctx);
+
+                const img = backdrop.querySelector('.url-lightbox-img');
+                const content = backdrop.querySelector('.url-lightbox-content');
+                const toolbar = backdrop.querySelector('.url-lightbox-toolbar');
+                let state = { scale: 1, translateX: 0, translateY: 0, dragging: false, lastX: 0, lastY: 0, url: '' };
+
+                function applyTransform(){
+                    img.style.transform = `translate(${state.translateX}px, ${state.translateY}px) scale(${state.scale})`;
+                }
+                function close(){ backDropHide(); }
+                function backDropHide(){
+                    backdrop.classList.remove('show');
+                    state = { scale: 1, translateX: 0, translateY: 0, dragging: false, lastX: 0, lastY: 0, url: '' };
+                    img.src = '';
+                    applyTransform();
+                }
+                function open(url){
+                    state.url = url;
+                    img.src = url;
+                    state.scale = 1; state.translateX = 0; state.translateY = 0;
+                    applyTransform();
+                    backdrop.classList.add('show');
+                }
+                function zoom(delta){
+                    const newScale = Math.max(0.1, Math.min(8, state.scale + delta));
+                    state.scale = newScale; applyTransform();
+                }
+                function reset(){ state.scale = 1; state.translateX = 0; state.translateY = 0; applyTransform(); }
+
+                // 拖拽平移
+                content.addEventListener('mousedown', (e)=>{ state.dragging = true; state.lastX = e.clientX; state.lastY = e.clientY; content.style.cursor = 'grabbing'; });
+                window.addEventListener('mouseup', ()=>{ state.dragging = false; content.style.cursor = 'grab'; });
+                window.addEventListener('mousemove', (e)=>{
+                    if(!state.dragging) return;
+                    state.translateX += (e.clientX - state.lastX);
+                    state.translateY += (e.clientY - state.lastY);
+                    state.lastX = e.clientX; state.lastY = e.clientY;
+                    applyTransform();
+                });
+
+                // 滚轮缩放
+                content.addEventListener('wheel', (e)=>{ e.preventDefault(); zoom(e.deltaY > 0 ? -0.1 : 0.1); }, { passive: false });
+                // 右键菜单（灯箱内也可用）
+                content.addEventListener('contextmenu', (e)=>{ if (window.__UrlRenderer) window.__UrlRenderer.showContextMenu(e, state.url); });
+                backdrop.addEventListener('click', (e)=>{ if(e.target === backdrop) backDropHide(); });
+
+                // 工具栏
+                toolbar.addEventListener('click', async (e)=>{
+                    const btn = e.target.closest('[data-act]'); if(!btn) return;
+                    const act = btn.getAttribute('data-act');
+                    if (act === 'zoomIn') zoom(0.2);
+                    else if (act === 'zoomOut') zoom(-0.2);
+                    else if (act === 'reset') reset();
+                    else if (act === 'open') window.open(state.url, '_blank');
+                    else if (act === 'copy') await copyImage(state.url);
+                    else if (act === 'copyUrl') await copyText(state.url);
+                    else if (act === 'download') downloadUrl(state.url);
+                    else if (act === 'close') close();
+                });
+
+                // 右键菜单行为
+                document.addEventListener('click', ()=> ctx.classList.remove('show'));
+                // 防止外部代码全局阻断右键：仅当我们菜单展示时阻断默认行为
+                document.addEventListener('contextmenu', (e)=>{
+                    if (ctx.classList.contains('show')) { e.preventDefault(); }
+                }, { capture: true });
+
+                async function copyText(text){
+                    try { await navigator.clipboard.writeText(text); } catch (e) { console.warn('复制链接失败', e); }
+                }
+                async function copyImage(url){
+                    try {
+                        const res = await fetch(url);
+                        const blob = await res.blob();
+                        if (navigator.clipboard && window.ClipboardItem) {
+                            const item = new ClipboardItem({ [blob.type]: blob });
+                            await navigator.clipboard.write([item]);
+                        } else {
+                            await copyText(url);
+                        }
+                    } catch (e) { console.warn('复制图片失败', e); }
+                }
+                function downloadUrl(url){
+                    const a = document.createElement('a');
+                    a.href = url; a.download = '';
+                    document.body.appendChild(a); a.click(); a.remove();
+                }
+                function showContextMenu(ev, url){
+                    ev.preventDefault();
+                    ctx.style.left = ev.clientX + 'px';
+                    ctx.style.top = ev.clientY + 'px';
+                    ctx.classList.add('show');
+                    ctx.onclick = async (e)=>{
+                        const item = e.target.closest('.url-ctxmenu-item'); if(!item) return;
+                        const act = item.getAttribute('data-act');
+                        if (act === 'open') window.open(url, '_blank');
+                        else if (act === 'copy') await copyImage(url);
+                        else if (act === 'copyUrl') await copyText(url);
+                        else if (act === 'download') downloadUrl(url);
+                        ctx.classList.remove('show');
+                    };
+                }
+
+                window.__UrlRenderer = {
+                    __inited: true,
+                    openLightbox: open,
+                    closeLightbox: close,
+                    showContextMenu: showContextMenu,
+                    copyImage: copyImage,
+                    copyText: copyText,
+                    downloadUrl: downloadUrl
+                };
+            };
+        }
+
+        // 执行URL渲染节点 - 简化版本（已合入 NodeManager 主实现，这里仅做防御性代理）
         nodeManager.executeUrlRendererNode = async function(node, inputData) {
-            const { urlPath, renderType, width, height } = node.config;
+            if (window.WorkflowEditor_NodeManager && window.WorkflowEditor_NodeManager !== nodeManager &&
+                typeof window.WorkflowEditor_NodeManager.executeUrlRendererNode === 'function') {
+                return window.WorkflowEditor_NodeManager.executeUrlRendererNode(node, inputData);
+            }
+            const { urlPath, renderType } = node.config;
             
             console.log(`[URLRenderer] 开始处理输入数据:`, inputData);
-            console.log(`[URLRenderer] 配置参数:`, { urlPath, renderType, width, height });
+            console.log(`[URLRenderer] 配置参数:`, { urlPath, renderType });
             console.log(`[URLRenderer] 输入数据键值:`, Object.keys(inputData || {}));
 
             // 智能输入数据处理
@@ -138,6 +310,10 @@
             }
         };
 
+        // 导出增强版别名，便于主 NodeManager 统一代理
+        // 废弃别名，维持空实现以兼容仍在引用的旧入口
+        nodeManager.executeUrlRendererNodeEnhanced = undefined;
+
         // 提取URL数据 - 简化版本
         nodeManager.extractUrlData = function(data, path) {
             console.log(`[URLRenderer] extractUrlData - data:`, data, `path:`, path);
@@ -243,7 +419,7 @@
             // 在节点UI中显示渲染结果
             const nodeElement = document.querySelector(`[data-node-id="${node.id}"]`);
             if (nodeElement) {
-                this.renderUrlInNode(nodeElement, url, detectedType, { width, height });
+                this.renderUrlInNode(nodeElement, url, detectedType, {});
             }
 
             return {
@@ -269,7 +445,7 @@
             // 在节点UI中显示渲染结果
             const nodeElement = document.querySelector(`[data-node-id="${node.id}"]`);
             if (nodeElement) {
-                this.renderMultipleUrlsInNode(nodeElement, validUrls, { renderType, width, height });
+                this.renderMultipleUrlsInNode(nodeElement, validUrls, { renderType });
             }
 
             return {
@@ -282,11 +458,13 @@
 
         // 在节点中渲染单个URL
         nodeManager.renderUrlInNode = function(nodeElement, url, type, config) {
-            const { width, height } = config;
+            // 确保增强工具已注入
+            if (this.ensureUrlRendererEnhancements) this.ensureUrlRendererEnhancements();
             
             let renderArea = nodeElement.querySelector('.url-render-area');
             
             if (!renderArea) {
+                const galleryWidth = 520;
                 renderArea = document.createElement('div');
                 renderArea.className = 'url-render-area';
                 renderArea.style.cssText = `
@@ -295,7 +473,8 @@
                     background: transparent;
                     border: none;
                     border-radius: 4px;
-                    width: 100%;
+                    width: ${galleryWidth}px;
+                    max-width: 520px;
                     display: flex;
                     flex-direction: column;
                 `;
@@ -304,13 +483,25 @@
                 nodeContent.appendChild(renderArea);
             }
 
+            // 固定宽度缩略图容器参数
+            const galleryWidth = 520;
+            const thumbAspect = '4 / 3';
+            const cardStyle = `width: 100%; aspect-ratio: ${thumbAspect}; overflow: hidden; background: #1a1a1a; display: flex; align-items: center; justify-content: center; position: relative; border-radius: 6px;`;
+            const imgStyle = `width: 100%; height: 100%; object-fit: contain; cursor: pointer; transition: transform 0.2s ease;`;
+
+            // 统一参数：从节点配置可读，提供默认
+            const s_galleryWidth = Number(config.galleryWidth) || 520;
+            const s_thumbAspect = config.thumbAspectRatio || '4 / 3';
+            const s_fitMode = config.fitMode || 'contain';
+            const s_cardStyle = `width: 100%; aspect-ratio: ${s_thumbAspect}; overflow: hidden; background: #1a1a1a; display: flex; align-items: center; justify-content: center; position: relative; border-radius: 6px;`;
+            const s_imgStyle = `width: 100%; height: 100%; object-fit: ${s_fitMode}; cursor: pointer; transition: transform 0.2s ease;`;
             let contentHtml = '';
             
             switch (type) {
                 case 'image':
                     const imageId = `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
                     contentHtml = `
-                        <div class="single-image-container" style="width: 100%; display: flex; flex-direction: column;">
+                        <div class="single-image-container we-url-gallery" style="width: 100%; max-width: ${s_galleryWidth}px; display: flex; flex-direction: column;">
                             <!-- 控制面板 -->
                             <div class="image-controls" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; padding: 4px 8px; background: #2a2a2a; border-radius: 4px; font-size: 10px;">
                                 <div style="display: flex; align-items: center; gap: 8px;">
@@ -328,16 +519,15 @@
                                            style="width: 60px; height: 12px;">
                                     <span id="sizeLabel_${imageId}" style="color: #888; font-size: 9px; min-width: 35px;">自适应</span>
                                 </div>
-                                <button onclick="window.open('${url}', '_blank')" style="background: #1a73e8; color: white; border: none; border-radius: 3px; padding: 2px 6px; font-size: 9px; cursor: pointer;">🔍</button>
+                                <button class="open-in-new" data-url="${url}" style="background: #1a73e8; color: white; border: none; border-radius: 3px; padding: 2px 6px; font-size: 9px; cursor: pointer;">🔍</button>
                             </div>
                             <!-- 图片显示区域 -->
-                            <div class="image-display-area" style="width: 100%; height: auto; min-height: 150px; max-height: 500px; overflow: hidden; border-radius: 6px; background: #1a1a1a; display: flex; align-items: center; justify-content: center; position: relative;">
+                            <div class="image-display-area we-url-card" style="${s_cardStyle}">
                                 <img src="${url}" alt="图片" id="${imageId}"
-                                     style="max-width: 100%; height: auto; object-fit: contain; cursor: pointer; transition: transform 0.2s ease;"
-                                     onclick="window.open('${url}', '_blank')"
+                                     style="${s_imgStyle}"
                                      onmouseover="this.style.transform='scale(1.02)'"
                                      onmouseout="this.style.transform='scale(1)'"
-                                     onload="this.parentElement.style.height = 'auto'; this.parentElement.style.minHeight = Math.min(this.naturalHeight, 500) + 'px';"
+                                     onload="/* 固定纵横比，无需动态高度 */"
                                      onerror="this.parentElement.innerHTML='<div style=\\'color: #ff6b6b; text-align: center; padding: 20px; font-size: 12px;\\'>图片加载失败</div>'" />
                             </div>
                             <div style="margin-top: 6px; font-size: 10px; color: #666; word-break: break-all; text-align: center; line-height: 1.2;">
@@ -394,11 +584,39 @@
             }
 
             renderArea.innerHTML = contentHtml;
+            // 强制容器固定宽度，防止外层样式拉伸
+            try {
+                renderArea.style.setProperty('width', s_galleryWidth + 'px', 'important');
+                renderArea.style.setProperty('max-width', s_galleryWidth + 'px', 'important');
+                console.log('[URLRenderer] 单图容器宽度:', renderArea.getBoundingClientRect().width);
+            } catch(e) {}
+
+            // 绑定图片的灯箱与右键菜单
+            if (type === 'image') {
+                try {
+                    const imgEl = renderArea.querySelector('img');
+                    if (imgEl && window.__UrlRenderer) {
+                        imgEl.addEventListener('click', (e) => {
+                            e.preventDefault(); e.stopPropagation();
+                            window.__UrlRenderer.openLightbox(url);
+                        });
+                        imgEl.addEventListener('contextmenu', (e) => {
+                            window.__UrlRenderer.showContextMenu(e, url);
+                        });
+                        const openBtn = renderArea.querySelector('.open-in-new');
+                        if (openBtn) {
+                            openBtn.addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation(); window.open(openBtn.getAttribute('data-url'), '_blank'); });
+                        }
+                    }
+                } catch (e) { console.warn('[URLRenderer] 绑定单图事件失败', e); }
+            }
         };
 
         // 在节点中渲染多个URL
         nodeManager.renderMultipleUrlsInNode = function(nodeElement, urlArray, config) {
-            const { renderType, width, height } = config;
+            // 确保增强工具已注入
+            if (this.ensureUrlRendererEnhancements) this.ensureUrlRendererEnhancements();
+            const { renderType } = config;
             
             let renderArea = nodeElement.querySelector('.url-render-area');
             
@@ -423,9 +641,15 @@
             }
 
             const containerId = `multi_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const m_galleryWidth = Number(config.galleryWidth) || 520;
+            const m_thumbSize = Number(config.thumbSize) || 256;
+            const m_thumbAspect = config.thumbAspectRatio || '4 / 3';
+            const m_fitMode = config.fitMode || 'contain';
+            const m_cardStyle = `width: 100%; aspect-ratio: ${m_thumbAspect}; overflow: hidden; background: #1a1a1a; display: flex; align-items: center; justify-content: center; position: relative; border-radius: 6px;`;
+            const m_imgStyle = `width: 100%; height: 100%; object-fit: ${m_fitMode}; cursor: pointer; transition: transform 0.2s ease;`;
             let contentHtml = `
                 <!-- ComfyUI风格控制面板 -->
-                <div class="multi-image-controls" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding: 6px 8px; background: #2a2a2a; border-radius: 4px; font-size: 10px;">
+                <div class="multi-image-controls" style="width: 100%; max-width: ${m_galleryWidth}px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding: 6px 8px; background: #2a2a2a; border-radius: 4px; font-size: 10px;">
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <span style="color: #ccc;">共 ${urlArray.length} 张</span>
                         <select id="multiFitMode_${containerId}" onchange="document.querySelectorAll('#${containerId} img').forEach(img => img.style.objectFit = this.value)" 
@@ -463,7 +687,7 @@
                         <button onclick="const container = document.getElementById('${containerId}'); container.style.gap = '12px';" style="background: #333; color: #ccc; border: 1px solid #444; border-radius: 3px; padding: 2px 6px; font-size: 9px; cursor: pointer;" title="宽松排列">宽松</button>
                     </div>
                 </div>
-                <div id="${containerId}" class="multiple-urls-container" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; padding: 4px;">
+                <div id="${containerId}" class="multiple-urls-container we-url-gallery" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(${m_thumbSize}px, 1fr)); gap: 6px; padding: 4px; align-items: stretch; width: 100%; max-width: ${m_galleryWidth}px;">
             `;
 
             urlArray.forEach((url, index) => {
@@ -475,17 +699,16 @@
                     case 'image':
                         const itemImageId = `multiImg_${index}_${Date.now()}`;
                         itemHtml = `
-                            <div class="url-item image-item" style="display: flex; flex-direction: column; background: #1a1a1a; border-radius: 6px; overflow: hidden; border: 1px solid #333;">
-                                <div style="width: 100%; height: auto; min-height: 120px; max-height: 300px; overflow: hidden; background: #2a2a2a; display: flex; align-items: center; justify-content: center; position: relative;">
+                            <div class="url-item image-item we-url-card" style="display: flex; flex-direction: column; background: #1a1a1a; border-radius: 6px; overflow: hidden; border: 1px solid #333;">
+                                <div style="${m_cardStyle}">
                                     <img src="${url}" alt="图片 ${index + 1}" id="${itemImageId}"
-                                         style="width: 100%; height: auto; object-fit: contain; cursor: pointer; transition: transform 0.2s ease;"
-                                         onclick="window.open('${url}', '_blank')"
+                                         style="${m_imgStyle}"
                                          onmouseover="this.style.transform='scale(1.05)'"
                                          onmouseout="this.style.transform='scale(1)'"
-                                         onload="const container = this.parentElement; const aspectRatio = this.naturalWidth / this.naturalHeight; const containerWidth = container.offsetWidth; const autoHeight = Math.min(containerWidth / aspectRatio, 300); container.style.height = autoHeight + 'px';"
+                                         onload="/* 使用固定纵横比避免撑高 */"
                                          onerror="this.parentElement.innerHTML='<div style=\\'color: #ff6b6b; font-size: 10px; text-align: center; padding: 20px;\\'>加载失败</div>'" />
                                     <div style="position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,0.7); border-radius: 3px; padding: 2px 4px;">
-                                        <button onclick="window.open('${url}', '_blank')" style="background: none; border: none; color: white; font-size: 10px; cursor: pointer; padding: 0;" title="查看原图">🔍</button>
+                                        <button class="open-in-new" data-url="${url}" style="background: none; border: none; color: white; font-size: 10px; cursor: pointer; padding: 0;" title="查看原图">🔍</button>
                                     </div>
                                 </div>
                                 <div style="padding: 4px; font-size: 9px; color: #666; word-break: break-all; text-align: center; line-height: 1.2; background: #1a1a1a;">
@@ -515,6 +738,32 @@
 
             contentHtml += '</div>';
             renderArea.innerHTML = contentHtml;
+            // 强制容器固定宽度，防止外层样式拉伸
+            try {
+                renderArea.style.setProperty('width', m_galleryWidth + 'px', 'important');
+                renderArea.style.setProperty('max-width', m_galleryWidth + 'px', 'important');
+                console.log('[URLRenderer] 多图容器宽度:', renderArea.getBoundingClientRect().width);
+            } catch(e) {}
+
+            // 批量绑定图片的灯箱与右键菜单
+            try {
+                const imgs = renderArea.querySelectorAll('img');
+                if (imgs && imgs.length && window.__UrlRenderer) {
+                    imgs.forEach((imgEl) => {
+                        const u = imgEl.getAttribute('src');
+                        imgEl.addEventListener('click', (e) => {
+                            e.preventDefault(); e.stopPropagation();
+                            window.__UrlRenderer.openLightbox(u);
+                        });
+                        imgEl.addEventListener('contextmenu', (e) => {
+                            window.__UrlRenderer.showContextMenu(e, u);
+                        });
+                    });
+                    renderArea.querySelectorAll('.open-in-new').forEach(btn => {
+                        btn.addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation(); window.open(btn.getAttribute('data-url'), '_blank'); });
+                    });
+                }
+            } catch (e) { console.warn('[URLRenderer] 绑定多图事件失败', e); }
         };
 
         // 检测URL类型
