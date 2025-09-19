@@ -72,6 +72,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     refreshModels: () => ipcRenderer.send('refresh-models'),
     onModelsUpdated: (callback) => ipcRenderer.on('models-updated', (_event, models) => callback(models)),
     getAllItems: () => ipcRenderer.invoke('get-all-items'),
+    importRegexRules: (agentId) => ipcRenderer.invoke('import-regex-rules', agentId),
 
     // Topic related
     getAgentTopics: (agentId) => ipcRenderer.invoke('get-agent-topics', agentId),

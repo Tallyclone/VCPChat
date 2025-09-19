@@ -5,6 +5,36 @@
     const uiHelperFunctions = {};
 
     /**
+     * 从字符串中解析正则表达式（支持 /pattern/flags 格式）
+     * @param {string} input - 正则表达式字符串，如 "/test/gi" 或普通字符串 "test"
+     * @returns {RegExp|null} - 返回RegExp对象，如果解析失败则返回null
+     */
+    uiHelperFunctions.regexFromString = function(input) {
+        if (!input || typeof input !== 'string') {
+            return null;
+        }
+        
+        try {
+            // 尝试匹配 /pattern/flags 格式
+            const match = input.match(/^\/(.+?)\/([gimsuvy]*)$/);
+            
+            if (match) {
+                // 如果匹配成功，使用提取的模式和标志创建正则
+                const [, pattern, flags] = match;
+                return new RegExp(pattern, flags);
+            } else {
+                // 如果不是 /pattern/flags 格式，将整个字符串作为模式（无标志）
+                // 需要转义特殊字符
+                const escapedPattern = input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                return new RegExp(escapedPattern, 'g');
+            }
+        } catch (e) {
+            console.error('[regexFromString] 解析正则表达式失败:', e);
+            return null;
+        }
+    };
+
+    /**
      * Scrolls the chat messages div to the bottom.
      */
     uiHelperFunctions.scrollToBottom = function() {
