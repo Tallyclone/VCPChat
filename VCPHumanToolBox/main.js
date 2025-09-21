@@ -33,7 +33,7 @@ function createWindow() {
 
     // 加载应用的 index.html
     mainWindow.loadFile(path.join(__dirname, 'index.html'));
-
+}
 // Electron会在初始化完成并且准备好创建浏览器窗口时调用这个方法
 app.whenReady().then(async () => {
     createWindow();
@@ -364,3 +364,4 @@ function registerFileSystemHandlers() {
         }
     });
 }
+
