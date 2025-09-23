@@ -17,7 +17,7 @@ const fileManager = require('../fileManager');
  * @param {function} context.startSelectionListener - Function to start the selection listener.
  */
 function initialize(mainWindow, context) {
-    const { AGENT_DIR, USER_DATA_DIR, APP_DATA_ROOT_IN_PROJECT, NOTES_AGENT_ID, getMusicState, fileWatcher } = context;
+    const { AGENT_DIR, USER_DATA_DIR, APP_DATA_ROOT_IN_PROJECT, NOTES_AGENT_ID, getMusicState, fileWatcher, agentConfigManager } = context;
 
     // Ensure the watcher is in a clean state on initialization
     if (fileWatcher) {
@@ -46,7 +46,14 @@ function initialize(mainWindow, context) {
             newTopicsArray.push(...topicMap.values());
             agentConfig.topics = newTopicsArray;
 
-            await fs.writeJson(agentConfigPath, agentConfig, { spaces: 2 });
+            if (agentConfigManager) {
+                await agentConfigManager.updateAgentConfig(agentId, config => ({
+                    ...config,
+                    topics: newTopicsArray
+                }));
+            } else {
+                await fs.writeJson(agentConfigPath, agentConfig, { spaces: 2 });
+            }
             return { success: true };
         } catch (error) {
             console.error(`Error saving topic order for agent ${agentId}:`, error);
@@ -141,8 +148,23 @@ function initialize(mainWindow, context) {
             const topicIndex = config.topics.findIndex(t => t.id === topicId);
             if (topicIndex === -1) return { error: `保存话题标题失败: Agent ${agentId} 中未找到 ID 为 ${topicId} 的话题。` };
 
-            config.topics[topicIndex].name = newTitle;
-            await fs.writeJson(configPath, config, { spaces: 2 });
+            if (agentConfigManager) {
+                await agentConfigManager.updateAgentConfig(agentId, existingConfig => {
+                    const updatedConfig = { ...existingConfig };
+                    const topicIndex = updatedConfig.topics.findIndex(t => t.id === topicId);
+                    if (topicIndex !== -1) {
+                        updatedConfig.topics[topicIndex].name = newTitle;
+                    }
+                    return updatedConfig;
+                });
+                // 重新读取配置以获取最新的topics
+                const updatedConfig = await agentConfigManager.readAgentConfig(agentId);
+                return { success: true, topics: updatedConfig.topics };
+            } else {
+                config.topics[topicIndex].name = newTitle;
+                await fs.writeJson(configPath, config, { spaces: 2 });
+                return { success: true, topics: config.topics };
+            }
             return { success: true, topics: config.topics }; 
         } catch (error) {
             console.error(`保存Agent ${agentId} 话题 ${topicId} 标题为 "${newTitle}" 失败:`, error);
@@ -193,8 +215,15 @@ function initialize(mainWindow, context) {
                     return config.topics;
                 } else { 
                     const defaultTopics = [{ id: "default", name: "主要对话", createdAt: Date.now() }];
-                    config.topics = defaultTopics;
-                    await fs.writeJson(configPath, config, { spaces: 2 });
+                    if (agentConfigManager) {
+                        await agentConfigManager.updateAgentConfig(agentId, existingConfig => ({
+                            ...existingConfig,
+                            topics: defaultTopics
+                        }));
+                    } else {
+                        config.topics = defaultTopics;
+                        await fs.writeJson(configPath, config, { spaces: 2 });
+                    }
                     return defaultTopics;
                 }
             }
@@ -215,8 +244,18 @@ function initialize(mainWindow, context) {
 
             const newTopicId = `topic_${Date.now()}`;
             const newTopic = { id: newTopicId, name: topicName || `新话题 ${config.topics.length + 1}`, createdAt: Date.now() };
-            config.topics.push(newTopic);
-            await fs.writeJson(configPath, config, { spaces: 2 });
+            
+            if (agentConfigManager) {
+                const result = await agentConfigManager.updateAgentConfig(agentId, existingConfig => ({
+                    ...existingConfig,
+                    topics: [...(existingConfig.topics || []), newTopic]
+                }));
+                const updatedConfig = await agentConfigManager.readAgentConfig(agentId);
+                config.topics = updatedConfig.topics;
+            } else {
+                config.topics.push(newTopic);
+                await fs.writeJson(configPath, config, { spaces: 2 });
+            }
 
             const topicHistoryDir = path.join(USER_DATA_DIR, agentId, 'topics', newTopicId);
             await fs.ensureDir(topicHistoryDir);
@@ -250,7 +289,14 @@ function initialize(mainWindow, context) {
                 await fs.writeJson(path.join(defaultTopicHistoryDir, 'history.json'), [], { spaces: 2 });
             }
 
-            await fs.writeJson(configPath, config, { spaces: 2 });
+            if (agentConfigManager) {
+                await agentConfigManager.updateAgentConfig(agentId, existingConfig => ({
+                    ...existingConfig,
+                    topics: config.topics
+                }));
+            } else {
+                await fs.writeJson(configPath, config, { spaces: 2 });
+            }
 
             const topicDataDir = path.join(USER_DATA_DIR, agentId, 'topics', topicIdToDelete);
             if (await fs.pathExists(topicDataDir)) await fs.remove(topicDataDir);
