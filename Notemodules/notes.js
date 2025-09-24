@@ -45,6 +45,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- SVG Icons ---
     const FOLDER_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="item-icon"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"></path></svg>`;
+    const CLOUD_FOLDER_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="item-icon"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"></path></svg>`;
     const NOTE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="item-icon"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zM6 20V4h7v5h5v11H6z"></path></svg>`;
     const TOGGLE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="folder-toggle"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"></path></svg>`;
 
@@ -477,8 +478,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             const folderHeader = document.createElement('div');
             folderHeader.className = 'folder-header-row';
             // No longer draggable itself, the parent <li> is.
-            const nameSpan = `<span class="item-name">${item.name || item.title}</span>`;
-            folderHeader.innerHTML = `${TOGGLE_ICON} ${FOLDER_ICON} ${nameSpan}`;
+            let displayName = item.name || item.title;
+            let icon = FOLDER_ICON; // Default icon
+
+            // Specifically target the cloud 'dailynote' folder
+            if (isCloudItem(item.id) && displayName.includes('dailynote')) {
+                displayName = 'VCP核心记忆库';
+                icon = CLOUD_FOLDER_ICON;
+                folderHeader.classList.add('dailynote-folder');
+            }
+            
+            const nameSpan = `<span class="item-name">${displayName}</span>`;
+            folderHeader.innerHTML = `${TOGGLE_ICON} ${icon} ${nameSpan}`;
             folderHeader.querySelector('.folder-toggle').classList.toggle('collapsed', isCollapsed);
             
             // Apply selection/active styles to the header for visual consistency
@@ -1025,8 +1036,19 @@ function handleListDragEnd(e) {
         const deleteBtn = document.getElementById('context-delete');
         const copyNoteBtn = document.getElementById('context-copy-note');
 
-        renameBtn.onclick = () => startInlineRename(item.id);
-        deleteBtn.onclick = () => handleDirectDelete(true);
+        const isProtected = isCloudItem(item.id) && (item.name || item.title).includes('dailynote');
+
+        if (isProtected) {
+            renameBtn.classList.add('disabled');
+            deleteBtn.classList.add('disabled');
+            renameBtn.onclick = null;
+            deleteBtn.onclick = null;
+        } else {
+            renameBtn.classList.remove('disabled');
+            deleteBtn.classList.remove('disabled');
+            renameBtn.onclick = () => startInlineRename(item.id);
+            deleteBtn.onclick = () => handleDirectDelete(true);
+        }
         
         copyNoteBtn.onclick = async () => {
             const result = await window.electronAPI.copyNoteContent(item.path);
@@ -1045,6 +1067,16 @@ function handleListDragEnd(e) {
     });
 
     function startInlineRename(itemId) {
+        const item = findItemById(getCombinedTree(), itemId);
+        if (!item) return;
+
+        // Prevent renaming the protected folder
+        const isProtected = isCloudItem(item.id) && (item.name || item.title).includes('dailynote');
+        if (isProtected) {
+            showErrorModal('操作禁止', 'VCP核心记忆库是受保护的，不能被重命名。');
+            return;
+        }
+
         const itemElement = noteList.querySelector(`[data-id="${itemId}"]`);
         if (!itemElement) return;
     
@@ -1114,6 +1146,17 @@ function handleListDragEnd(e) {
         }
 
         const itemsToDelete = Array.from(selectedItems).map(id => findItemById(getCombinedTree(), id)).filter(Boolean);
+
+        // Prevent deleting the protected folder
+        const isProtectedFolderSelected = itemsToDelete.some(item =>
+            isCloudItem(item.id) && (item.name || item.title).includes('dailynote')
+        );
+
+        if (isProtectedFolderSelected) {
+            await showErrorModal('操作禁止', 'VCP核心记忆库是受保护的，不能被删除。');
+            return;
+        }
+
         const containsFolder = itemsToDelete.some(item => item.type === 'folder');
         const containsCloudFolder = itemsToDelete.some(item => item.type === 'folder' && isCloudItem(item.id));
 

@@ -187,6 +187,18 @@ textarea:focus {
     font-weight: 600;
 }
 
+/* Special style for the VCP core memory folder */
+.note-list-panel .dailynote-folder {
+    background: linear-gradient(45deg, rgba(118, 75, 162, 0.3), rgba(102, 126, 234, 0.3));
+    box-shadow: 0 0 8px rgba(102, 126, 234, 0.5);
+    border-radius: 4px;
+}
+
+.note-list-panel .dailynote-folder .item-name {
+    color: #E6E6FA; /* Lavender color for the text */
+    font-weight: bold;
+}
+
 .folder-toggle {
     width: 16px;
     height: 16px;
