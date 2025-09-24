@@ -744,16 +744,6 @@ import * as interruptHandler from './modules/interruptHandler.js';
         }
     });
 
-    // Listen for theme updates from the main process
-    window.electronAPI.onThemeUpdated((theme) => {
-        // The theme might be a simple string from broadcast or an object from a direct reply
-        const themeName = typeof theme === 'object' && theme !== null ? theme.theme : theme;
-        if (themeName) {
-            applyTheme(themeName);
-            // Also update the global settings object in case it was out of sync
-            globalSettings.currentThemeMode = themeName;
-        }
-    });
 });
 
 function setupTtsListeners() {
@@ -941,27 +931,6 @@ function prepareGroupSettingsDOM() {
 }
 
 
-/**
- * Applies the specified theme to the document body and updates UI elements.
- * @param {string} theme - The theme to apply ('light' or 'dark').
- */
-function applyTheme(theme) {
-    if (!theme || (theme !== 'light' && theme !== 'dark')) {
-        console.warn(`[Theme] Invalid theme specified: ${theme}. Defaulting to 'light'.`);
-        theme = 'light';
-    }
-    document.body.classList.remove('light-theme', 'dark-theme');
-    document.body.classList.add(`${theme}-theme`);
-    if (themeToggleBtn) {
-        const themeIcon = themeToggleBtn.querySelector('i');
-        if (themeIcon) {
-            // Assuming sun for light theme, moon for dark theme
-            themeIcon.className = theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
-        }
-    }
-    console.log(`[Renderer] Theme applied: ${theme}`);
-}
-
 async function loadAndApplyGlobalSettings() {
     const settings = await window.electronAPI.loadSettings();
     if (settings && !settings.error) {
@@ -1051,8 +1020,6 @@ async function loadAndApplyGlobalSettings() {
         document.getElementById('agentMusicControl').checked = globalSettings.agentMusicControl === true;
         document.getElementById('enableVcpToolInjection').checked = globalSettings.enableVcpToolInjection === true;
 
-        // Apply the theme loaded from settings
-        applyTheme(globalSettings.currentThemeMode);
 
     } else {
         console.warn('加载全局设置失败或无设置:', settings?.error);

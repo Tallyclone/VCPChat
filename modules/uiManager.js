@@ -138,33 +138,57 @@ const uiManager = (() => {
     }
 
     /**
-     * Applies the specified theme (light/dark) to the document body.
+     * Applies the specified theme (light/dark) to the document body and updates the toggle button.
      * @param {string} theme - The theme to apply ('light' or 'dark').
      */
     function applyTheme(theme) {
-        const isLightTheme = theme === 'light';
-        document.body.classList.toggle('light-theme', isLightTheme);
+        if (!theme || (theme !== 'light' && theme !== 'dark')) {
+            console.warn(`[UIManager] Invalid theme specified: ${theme}. Defaulting to system or light.`);
+            // As a fallback, we'll default to light, but the initial theme should come from the main process.
+            theme = 'light';
+        }
+        
+        // Apply class to body for CSS styling
+        document.body.classList.remove('light-theme', 'dark-theme');
+        document.body.classList.add(`${theme}-theme`);
 
-        const sunIcon = document.getElementById('sun-icon');
-        const moonIcon = document.getElementById('moon-icon');
-
-        if (sunIcon) sunIcon.style.display = isLightTheme ? 'none' : 'inline-block';
-        if (moonIcon) moonIcon.style.display = isLightTheme ? 'inline-block' : 'none';
+        // Update the toggle button icon
+        if (themeToggleBtn) {
+            const themeIcon = themeToggleBtn.querySelector('i');
+            if (themeIcon) {
+                // Assuming sun for light theme, moon for dark theme
+                themeIcon.className = theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+            }
+        }
+        console.log(`[UIManager] Theme applied: ${theme}`);
     }
 
     /**
-     * Loads the theme preference from localStorage or follows the system theme.
+     * Initializes theme handling by getting the current theme and listening for updates.
      */
-    function loadAndApplyThemePreference() {
-        electronAPI.onThemeUpdated(applyTheme);
+    async function initializeTheme() {
+        // Listen for theme updates broadcast from the main process
+        if (electronAPI && electronAPI.onThemeUpdated) {
+            electronAPI.onThemeUpdated((theme) => {
+                // The theme might be a simple string from broadcast or an object from a direct reply
+                const themeName = typeof theme === 'object' && theme !== null ? theme.theme : theme;
+                if (themeName) {
+                    applyTheme(themeName);
+                }
+            });
+        }
 
-        const savedTheme = localStorage.getItem('theme');
-        if (savedTheme) {
-            console.log(`[Theme] Found saved theme: ${savedTheme}. Applying and notifying main process.`);
-            applyTheme(savedTheme);
-            electronAPI.setTheme(savedTheme);
-        } else {
-            console.log("[Theme] No saved theme found. Will follow system theme.");
+        // Get the initial theme from the main process (which reads it from settings.json)
+        // Note: This is slightly redundant if renderer.js also applies the theme on load,
+        // but centralizing it here is cleaner. We'll remove the logic from renderer.js.
+        if (electronAPI && electronAPI.getCurrentTheme) {
+            try {
+                const currentTheme = await electronAPI.getCurrentTheme();
+                applyTheme(currentTheme);
+            } catch (error) {
+                console.error('[UIManager] Failed to get initial theme:', error);
+                applyTheme('light'); // Fallback
+            }
         }
     }
 
@@ -282,16 +306,19 @@ const uiManager = (() => {
             // Initialize all features
             setupTitleBarControls();
             initializeResizers();
-            loadAndApplyThemePreference();
+            initializeTheme(); // Replaces loadAndApplyThemePreference
             initializeDigitalClock();
             setupSidebarTabs();
 
             // Setup theme toggle button listener
             if (themeToggleBtn) {
                 themeToggleBtn.addEventListener('click', () => {
-                    const isCurrentlyLight = document.body.classList.contains('light-theme');
-                    const newTheme = isCurrentlyLight ? 'dark' : 'light';
-                    localStorage.setItem('theme', newTheme);
+                    // Determine the new theme based on the current one
+                    const isCurrentlyDark = document.body.classList.contains('dark-theme');
+                    const newTheme = isCurrentlyDark ? 'light' : 'dark';
+                    
+                    // Just tell the main process to set the theme.
+                    // The UI update will happen automatically when we receive the 'theme-updated' event.
                     electronAPI.setTheme(newTheme);
                 });
             }
