@@ -297,6 +297,78 @@ function highlightQuotesInMessage(messageElement) {
 }
 
 /**
+ * Highlights text within double asterisks (**) as bold.
+ * This runs after the main markdown parsing to catch patterns inside pre-generated HTML.
+ * @param {HTMLElement} messageElement - The HTML element containing the message content.
+ */
+function highlightBoldTextInMessage(messageElement) {
+    if (!messageElement) return;
+
+    const boldRegex = /\*\*([^\*]+)\*\*/g;
+    const walker = document.createTreeWalker(
+        messageElement,
+        NodeFilter.SHOW_TEXT,
+        (node) => {
+            // Filter out nodes within code blocks, preformatted text, or already highlighted elements
+            let parent = node.parentElement;
+            while (parent && parent !== messageElement) {
+                if (['PRE', 'CODE', 'STYLE', 'SCRIPT', 'STRONG', 'B'].includes(parent.tagName) ||
+                    parent.classList.contains('highlighted-tag') ||
+                    parent.classList.contains('highlighted-quote')) {
+                    return NodeFilter.FILTER_REJECT;
+                }
+                parent = parent.parentElement;
+            }
+            return NodeFilter.FILTER_ACCEPT;
+        },
+        false
+    );
+
+    const nodesToProcess = [];
+    let node;
+    while (node = walker.nextNode()) {
+        const text = node.nodeValue;
+        boldRegex.lastIndex = 0; // Reset regex state
+        if (boldRegex.test(text)) {
+            nodesToProcess.push(node);
+        }
+    }
+
+    // Process nodes in reverse to avoid issues with node splitting and indices
+    for (let i = nodesToProcess.length - 1; i >= 0; i--) {
+        const node = nodesToProcess[i];
+        const text = node.nodeValue;
+        const fragment = document.createDocumentFragment();
+        let lastIndex = 0;
+        let match;
+
+        boldRegex.lastIndex = 0; // Reset regex state for execution
+
+        while ((match = boldRegex.exec(text)) !== null) {
+            // Add text before the match
+            if (match.index > lastIndex) {
+                fragment.appendChild(document.createTextNode(text.substring(lastIndex, match.index)));
+            }
+            // Create and add the bold element
+            const strong = document.createElement('strong');
+            strong.textContent = match[1]; // Group 1 is the content between **
+            fragment.appendChild(strong);
+            lastIndex = match.index + match[0].length;
+        }
+
+        // Add any remaining text after the last match
+        if (lastIndex < text.length) {
+            fragment.appendChild(document.createTextNode(text.substring(lastIndex)));
+        }
+
+        // Replace the original text node with the new fragment
+        if (node.parentNode) {
+            node.parentNode.replaceChild(fragment, node);
+        }
+    }
+}
+
+/**
  * Processes all relevant <pre> blocks within a message's contentDiv AFTER marked.parse().
  * @param {HTMLElement} contentDiv - The div containing the parsed Markdown.
  */
@@ -563,6 +635,7 @@ function processRenderedContent(contentDiv) {
     // Highlighting must run after KaTeX and other DOM manipulations
     highlightTagsInMessage(contentDiv);
     highlightQuotesInMessage(contentDiv);
+    highlightBoldTextInMessage(contentDiv);
 
     // Apply syntax highlighting to code blocks
     if (window.hljs) {
@@ -589,6 +662,7 @@ export {
     processRenderedContent,
     processInteractiveButtons,
     handleAIButtonClick,
+    highlightBoldTextInMessage,
     sendButtonMessage
 
 };
