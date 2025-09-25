@@ -23,11 +23,6 @@ window.chatManager = (() => {
     let mainRendererFunctions = {};
     let isCanvasWindowOpen = false; // State to track if the canvas window is open
 
-    // --- Virtual Scrolling State ---
-    let fullChatHistoryForTopic = [];
-    let currentMessageIndex = 0;
-    const INITIAL_LOAD_SIZE = 30; // 初始加载的消息数量
-    const MORE_LOAD_SIZE = 20;    // 每次向上滚动加载的消息数量
 
 
     /**
@@ -330,14 +325,6 @@ window.chatManager = (() => {
         if (messageRenderer) messageRenderer.clearChat();
         currentChatHistoryRef.set([]);
     
-        // --- Virtual Scroll Reset ---
-        fullChatHistoryForTopic = [];
-        currentMessageIndex = 0;
-        if (window.historyObserver && window.historySentinel) {
-            window.historyObserver.unobserve(window.historySentinel);
-            window.historySentinel.style.display = 'none';
-        }
-        // --- End Reset ---
     
         document.querySelectorAll('.topic-list .topic-item').forEach(item => {
             const isCurrent = item.dataset.topicId === topicId && item.dataset.itemId === itemId && item.dataset.itemType === itemType;
@@ -385,19 +372,9 @@ window.chatManager = (() => {
         if (historyResult && historyResult.error) {
             if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `加载话题 "${topicId}" 的聊天记录失败: ${historyResult.error}`, timestamp: Date.now() });
         } else if (historyResult && historyResult.length > 0) {
-            fullChatHistoryForTopic = historyResult;
-            const initialMessages = fullChatHistoryForTopic.slice(-INITIAL_LOAD_SIZE);
-            currentMessageIndex = Math.max(0, fullChatHistoryForTopic.length - INITIAL_LOAD_SIZE);
-    
-            currentChatHistoryRef.set(initialMessages);
+            currentChatHistoryRef.set(historyResult);
             if (messageRenderer) {
-                initialMessages.forEach(msg => messageRenderer.renderMessage(msg, true));
-            }
-    
-            // If there are more messages to load, set up the observer
-            if (currentMessageIndex > 0 && window.historyObserver && window.historySentinel) {
-                window.historySentinel.style.display = 'block';
-                window.historyObserver.observe(window.historySentinel);
+                historyResult.forEach(msg => messageRenderer.renderMessage(msg, true));
             }
     
         } else if (historyResult) { // History is empty
@@ -1283,33 +1260,6 @@ window.chatManager = (() => {
     }
 
 
-    function loadMoreChatHistory() {
-        if (currentMessageIndex <= 0) {
-            if (window.historyObserver && window.historySentinel) {
-                window.historyObserver.unobserve(window.historySentinel);
-                window.historySentinel.style.display = 'none';
-            }
-            console.log('[ChatManager] All history loaded.');
-            return;
-        }
-    
-        const newIndex = Math.max(0, currentMessageIndex - MORE_LOAD_SIZE);
-        const messagesToPrepend = fullChatHistoryForTopic.slice(newIndex, currentMessageIndex);
-        currentMessageIndex = newIndex;
-    
-        if (messageRenderer && typeof messageRenderer.prependMessages === 'function') {
-            messageRenderer.prependMessages(messagesToPrepend);
-        }
-    
-        // Update the main history ref as well
-        const currentHistory = currentChatHistoryRef.get();
-        currentChatHistoryRef.set([...messagesToPrepend, ...currentHistory]);
-    
-        if (currentMessageIndex <= 0 && window.historyObserver && window.historySentinel) {
-            window.historyObserver.unobserve(window.historySentinel);
-            window.historySentinel.style.display = 'none';
-        }
-    }
 
     // --- Public API ---
     return {
@@ -1318,7 +1268,6 @@ window.chatManager = (() => {
         selectTopic,
         handleTopicDeletion,
         loadChatHistory,
-        loadMoreChatHistory, // Expose the new function
         handleSendMessage,
         createNewTopicForItem,
         displayNoItemSelected,
@@ -1326,6 +1275,5 @@ window.chatManager = (() => {
         handleCreateBranch,
         handleForwardMessage,
         syncHistoryFromFile, // Expose the new function
-        hasMoreHistoryToLoad: () => currentMessageIndex > 0,
     };
 })();

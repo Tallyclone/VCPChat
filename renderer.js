@@ -126,33 +126,6 @@ import * as interruptHandler from './modules/interruptHandler.js';
  
  // --- Initialization ---
  document.addEventListener('DOMContentLoaded', async () => {
-    // --- Virtual Scroll Initialization ---
-    const historySentinel = document.createElement('div');
-    historySentinel.id = 'historySentinel';
-    historySentinel.style.height = '10px'; // Small, non-intrusive height
-    historySentinel.style.display = 'none'; // Initially hidden
-    chatMessagesDiv.prepend(historySentinel);
-    window.historySentinel = historySentinel; // Expose for chatManager
-
-    const observerOptions = {
-        root: chatMessagesDiv,
-        rootMargin: '0px',
-        threshold: 1.0
-    };
-
-    const observerCallback = (entries) => {
-        entries.forEach(entry => {
-            if (entry.isIntersecting) {
-                console.log('[Observer] Sentinel is visible, loading more history...');
-                if (window.chatManager && typeof window.chatManager.loadMoreChatHistory === 'function') {
-                    window.chatManager.loadMoreChatHistory();
-                }
-            }
-        });
-    };
-
-    window.historyObserver = new IntersectionObserver(observerCallback, observerOptions);
-    // --- End Virtual Scroll Initialization ---
 
     // 确保在GroupRenderer初始化之前，其容器已准备好
     prepareGroupSettingsDOM();
