@@ -1,6 +1,8 @@
 const fs = require('fs').promises;
 const path = require('path');
 const dotenv = require('dotenv');
+const Fuse = require('fuse.js');
+const cheerio = require('cheerio');
 
 // --- 主逻辑 ---
 async function main() {
@@ -170,37 +172,61 @@ async function searchHistories(vchatPath, agentUuid, keywords, windowSize, userN
                 const stats = await fs.stat(historyPath);
                 historyFiles.push({ path: historyPath, mtime: stats.mtime });
             } catch (e) {
-                // 忽略无法获取状态的文件 (例如，目录中没有 history.json)
+                // 忽略无法获取状态的文件
             }
         }
 
         // 2. 按修改时间降序排序
         historyFiles.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
 
-        // 3. 排除最新的一个文件进行搜索 (如果只有一个或没有文件，则不搜索)
+        // 3. 排除最新的一个文件进行搜索
         const filesToSearch = historyFiles.slice(1);
 
-        // 4. 遍历剩余的文件进行搜索
+        // 4. 遍历剩余的文件进行模糊搜索和去重
         for (const fileInfo of filesToSearch) {
             try {
                 const content = await fs.readFile(fileInfo.path, 'utf-8');
-                const history = JSON.parse(content);
+                const history = JSON.parse(content).filter(entry => entry.content && typeof entry.content === 'string');
 
-                for (let i = 0; i < history.length; i++) {
-                    const entry = history[i];
-                    if (entry.content && typeof entry.content === 'string') {
-                        const contentLower = entry.content.toLowerCase();
-                        if (keywords.some(kw => contentLower.includes(kw.toLowerCase()))) {
-                            const start = Math.max(0, i - windowSize);
-                            const end = Math.min(history.length, i + windowSize + 1);
-                            const contextSlice = history.slice(start, end);
+                if (history.length === 0) continue;
 
-                            const formattedMemory = formatMemory(contextSlice, userName, agentName, memoryIndex);
-                            if (formattedMemory) {
-                                allMemories.push(formattedMemory);
-                                memoryIndex++;
-                            }
-                        }
+                // A. 使用 Fuse.js 进行模糊搜索
+                const fuseOptions = {
+                    keys: ['content'],
+                    includeScore: true,
+                    minMatchCharLength: 2, // 避免无意义的单字符匹配
+                    threshold: 0.3, // 收紧阈值，确保搜索结果高度相关
+                    distance: 10,   // 严格限制多关键词之间的距离
+                    ignoreLocation: true,
+                };
+                const fuse = new Fuse(history, fuseOptions);
+
+                let matchedIndices = new Set();
+                keywords.forEach(kw => {
+                    const results = fuse.search(kw);
+                    results.forEach(result => matchedIndices.add(result.refIndex));
+                });
+
+                const sortedIndices = Array.from(matchedIndices).sort((a, b) => a - b);
+
+                // B. 基于排序后的索引构建不重叠的回忆片段
+                for (let i = 0; i < sortedIndices.length; i++) {
+                    const matchIndex = sortedIndices[i];
+                    
+                    const start = Math.max(0, matchIndex - windowSize);
+                    const end = Math.min(history.length, matchIndex + windowSize + 1);
+                    
+                    const contextSlice = history.slice(start, end);
+                    const formattedMemory = formatMemory(contextSlice, userName, agentName, memoryIndex);
+                    
+                    if (formattedMemory) {
+                        allMemories.push(formattedMemory);
+                        memoryIndex++;
+                    }
+
+                    // C. 跳过已经被当前回忆片段覆盖的索引，实现去重
+                    while (i + 1 < sortedIndices.length && sortedIndices[i + 1] < end) {
+                        i++;
                     }
                 }
             } catch (e) {
@@ -211,7 +237,7 @@ async function searchHistories(vchatPath, agentUuid, keywords, windowSize, userN
         if (error.code !== 'ENOENT') {
             throw new Error("读取用户聊天记录时出错。");
         }
-        // 如果topics目录不存在，说明没有历史记录，返回空数组
+        // 如果topics目录不存在，则返回空数组
     }
     return allMemories;
 }
@@ -221,8 +247,10 @@ function formatMemory(slice, userName, agentName, memoryIndex) {
     slice.forEach(entry => {
         if (entry.role === 'user' || entry.role === 'assistant') {
             const name = entry.role === 'user' ? userName : agentName;
-            // 剔除HTML标签
-            const cleanContent = entry.content.replace(/<[^>]*>/g, '').trim();
+            // 使用 cheerio 精准提取纯文本
+            const $ = cheerio.load(entry.content);
+            const cleanContent = $.text().trim();
+            
             if (cleanContent) {
                 memoryString += `${name}: ${cleanContent}\n`;
             }
