@@ -142,7 +142,13 @@ function initialize(mainWindow, context) {
             const configPath = path.join(AGENT_DIR, agentId, 'config.json');
             if (!await fs.pathExists(configPath)) return { error: `保存话题标题失败: Agent ${agentId} 的配置文件不存在。` };
             
-            let config = await fs.readJson(configPath);
+            let config;
+            try {
+                config = await fs.readJson(configPath);
+            } catch (e) {
+                console.error(`读取Agent ${agentId} 配置文件失败 (save-agent-topic-title):`, e);
+                return { error: `读取配置文件失败: ${e.message}` };
+            }
             if (!config.topics || !Array.isArray(config.topics)) return { error: `保存话题标题失败: Agent ${agentId} 没有话题列表。` };
 
             const topicIndex = config.topics.findIndex(t => t.id === topicId);
@@ -239,8 +245,14 @@ function initialize(mainWindow, context) {
             const configPath = path.join(AGENT_DIR, agentId, 'config.json');
             if (!await fs.pathExists(configPath)) return { error: `Agent ${agentId} 的配置文件不存在。` };
             
-            const config = await fs.readJson(configPath);
-            if (!config.topics || !Array.isArray(config.topics)) config.topics = []; 
+            let config;
+            try {
+                config = await fs.readJson(configPath);
+            } catch (e) {
+                console.error(`读取Agent ${agentId} 配置文件失败 (create-new-topic-for-agent):`, e);
+                return { error: `读取配置文件失败: ${e.message}` };
+            }
+            if (!config.topics || !Array.isArray(config.topics)) config.topics = [];
 
             const newTopicId = `topic_${Date.now()}`;
             const newTopic = { id: newTopicId, name: topicName || `新话题 ${config.topics.length + 1}`, createdAt: Date.now() };
@@ -273,7 +285,13 @@ function initialize(mainWindow, context) {
             const configPath = path.join(AGENT_DIR, agentId, 'config.json');
             if (!await fs.pathExists(configPath)) return { error: `Agent ${agentId} 的配置文件不存在。` };
             
-            let config = await fs.readJson(configPath);
+            let config;
+            try {
+                config = await fs.readJson(configPath);
+            } catch (e) {
+                console.error(`读取Agent ${agentId} 配置文件失败 (delete-topic):`, e);
+                return { error: `读取配置文件失败: ${e.message}` };
+            }
             if (!config.topics || !Array.isArray(config.topics)) return { error: `Agent ${agentId} 没有话题列表可供删除。` };
 
             const initialTopicCount = config.topics.length;

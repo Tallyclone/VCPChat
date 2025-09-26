@@ -80,11 +80,13 @@ function initialize(paths) {
                     const configPath = path.join(AGENT_DIR, id, 'config.json');
                     if (await fs.pathExists(configPath)) {
                         let agentConfig;
+                        // 修复：如果解析失败，应抛出错误而不是创建一个不完整的对象
+                        // 这可以防止意外覆盖整个配置文件
                         try {
                             agentConfig = await fs.readJson(configPath);
                         } catch (parseError) {
-                            console.error(`[Main] Error parsing agent config for ${id}, using basic structure:`, parseError.message);
-                            agentConfig = { id: id };
+                            console.error(`[Main] Error parsing agent config for ${id} to save avatar color:`, parseError);
+                            return { success: false, error: `Failed to read agent config for ${id}: ${parseError.message}` };
                         }
                         
                         agentConfig.avatarCalculatedColor = color;

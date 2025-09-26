@@ -250,7 +250,12 @@ function initialize(context) {
                 const configPath = path.join(agentDir, 'config.json');
                 let existingConfig = {};
                 if (await fs.pathExists(configPath)) {
-                    existingConfig = await fs.readJson(configPath);
+                    try {
+                        existingConfig = await fs.readJson(configPath);
+                    } catch (e) {
+                        console.error(`读取现有Agent配置失败 ${agentId}:`, e);
+                        return { error: `读取现有Agent配置失败: ${e.message}` };
+                    }
                 }
                 
                 // Merge configs
