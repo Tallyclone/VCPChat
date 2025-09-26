@@ -413,7 +413,7 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
         // 按顺序让选中的 Agent 发言 (严格串行处理)
         for (const agentConfig of agentsToRespond) {
             const agentId = agentConfig.id;
-        const agentName = agentConfig.name;
+        const agentName = agentConfig.name || agentId; // 修复：如果名称丢失，回退到 agentId
         // 为每个Agent的响应生成唯一ID
         const messageIdForAgentResponse = `msg_group_${userMessage.id}_${agentId}_${Date.now()}`;
 
@@ -885,7 +885,7 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
     }
 
     const globalVcpSettings = await getVcpGlobalSettings();
-    const agentName = agentConfig.name;
+    const agentName = agentConfig.name || invitedAgentId; // 修复：如果名称丢失，回退到 invitedAgentId
     const messageIdForAgentResponse = `msg_group_invited_${groupId}_${topicId}_${invitedAgentId}_${Date.now()}`;
 
     // 1. 构建 SystemPrompt
