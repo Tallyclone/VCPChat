@@ -600,7 +600,7 @@ window.chatManager = (() => {
         const thinkingMessageId = `msg_${Date.now()}_assistant_${Math.random().toString(36).substring(2, 9)}`;
         const thinkingMessage = {
             role: 'assistant',
-            name: currentSelectedItem.name || 'AI',
+            name: currentSelectedItem.name || currentSelectedItem.id || 'AI', // 修复：使用 ID 作为更可靠的回退
             content: '思考中...',
             timestamp: Date.now(),
             id: thinkingMessageId,
@@ -869,6 +869,7 @@ window.chatManager = (() => {
 
             const context = {
                 agentId: currentSelectedItem.id,
+                agentName: currentSelectedItem.name || currentSelectedItem.id, // 修复：为单聊上下文添加 agentName，并使用 ID 作为回退
                 topicId: currentTopicId,
                 isGroupMessage: false
             };
@@ -905,7 +906,7 @@ window.chatManager = (() => {
                     const assistantMessageContent = response.choices[0].message.content;
                     const assistantMessage = {
                         role: 'assistant',
-                        name: context.agentName || 'AI', // Use context name
+                        name: context.agentName || context.agentId || 'AI', // 修复：使用 context 中的 agentName 或 agentId 作为回退
                         avatarUrl: currentSelectedItem.avatarUrl, // This might be incorrect if user switched, but it's a minor UI detail for background saves.
                         avatarColor: currentSelectedItem.config?.avatarCalculatedColor,
                         content: assistantMessageContent,
