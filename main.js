@@ -514,7 +514,7 @@ if (!gotTheLock) {
     sovitsHandlers.initialize(mainWindow); // Initialize SovitsTTS handlers
     musicHandlers.initialize({ mainWindow, openChildWindows, APP_DATA_ROOT_IN_PROJECT, startAudioEngine, stopAudioEngine });
     diceHandlers.initialize({ projectRoot: PROJECT_ROOT });
-    themeHandlers.initialize({ mainWindow, openChildWindows, projectRoot: PROJECT_ROOT, APP_DATA_ROOT_IN_PROJECT, settingsManager });
+    themeHandlers.initialize({ mainWindow, openChildWindows, projectRoot: PROJECT_ROOT, APP_DATA_ROOT_IN_PROJECT, settingsManager: settingsManager });
     emoticonHandlers.initialize({ SETTINGS_FILE, APP_DATA_ROOT_IN_PROJECT });
     emoticonHandlers.setupEmoticonHandlers();
     canvasHandlers.initialize({ mainWindow, openChildWindows, CANVAS_CACHE_DIR });

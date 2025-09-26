@@ -242,6 +242,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     getCurrentTheme: () => ipcRenderer.invoke('get-current-theme'),
     setTheme: (theme) => ipcRenderer.send('set-theme', theme),
+    setThemeMode: (themeMode) => ipcRenderer.send('set-theme-mode', themeMode),
 
     // Themes
     openThemesWindow: () => ipcRenderer.send('open-themes-window'),

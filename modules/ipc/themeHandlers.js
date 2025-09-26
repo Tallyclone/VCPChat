@@ -11,6 +11,7 @@ let mainWindow = null; // To be initialized
 let openChildWindows = []; // To be initialized
 let WALLPAPER_THUMBNAIL_CACHE_DIR;
 let PROJECT_ROOT;
+let settingsManager;
 
 function createThemesWindow() {
     if (themesWindow && !themesWindow.isDestroyed()) {
@@ -50,10 +51,27 @@ function initialize(options) {
     mainWindow = options.mainWindow;
     openChildWindows = options.openChildWindows;
     PROJECT_ROOT = options.projectRoot;
+    settingsManager = options.settingsManager;
     WALLPAPER_THUMBNAIL_CACHE_DIR = path.join(options.APP_DATA_ROOT_IN_PROJECT, 'WallpaperThumbnailCache');
 
     ipcMain.on('open-themes-window', () => {
         createThemesWindow();
+    });
+
+    ipcMain.on('set-theme-mode', async (event, themeMode) => {
+        if (['light', 'dark', 'system'].includes(themeMode)) {
+            console.log(`[ThemeHandlers] Setting theme source to: ${themeMode}`);
+            nativeTheme.themeSource = themeMode;
+            if (settingsManager) {
+                try {
+                    await settingsManager.updateSetting('currentThemeMode', themeMode);
+                    await settingsManager.updateSetting('themeLastUpdated', Date.now());
+                    console.log(`[ThemeHandlers] Saved theme mode '${themeMode}' to settings.`);
+                } catch (error) {
+                    console.error('[ThemeHandlers] Failed to save theme mode setting:', error);
+                }
+            }
+        }
     });
 
     // Listen for theme changes and notify all relevant windows

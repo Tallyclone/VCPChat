@@ -993,6 +993,11 @@ async function loadAndApplyGlobalSettings() {
         document.getElementById('agentMusicControl').checked = globalSettings.agentMusicControl === true;
         document.getElementById('enableVcpToolInjection').checked = globalSettings.enableVcpToolInjection === true;
 
+        // Apply the theme mode from settings on startup
+        if (globalSettings.currentThemeMode && window.electronAPI) {
+            console.log(`[Renderer] Applying initial theme mode from settings: ${globalSettings.currentThemeMode}`);
+            window.electronAPI.setThemeMode(globalSettings.currentThemeMode);
+        }
 
     } else {
         console.warn('加载全局设置失败或无设置:', settings?.error);
