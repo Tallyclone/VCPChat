@@ -285,12 +285,15 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
         currentChatHistoryRef.set([...historyForThisMessage]);
     }
     
-    // Only save to disk if it's not a temporary assistant chat
-    if (context.topicId !== 'assistant_chat') {
+    // Only save history for persistent chats (not temporary assistant/voice chats)
+    if (context.topicId !== 'assistant_chat' && !context.topicId.startsWith('voicechat_')) {
         await saveHistoryForContext(context, historyForThisMessage);
     }
     
-    // Process pre-buffered chunks
+    // Initialization is complete, message is ready to process chunks.
+    messageInitializationStatus.set(messageId, 'ready');
+    
+    // Process any chunks that were pre-buffered during initialization.
     const bufferedChunks = preBufferedChunks.get(messageId);
     if (bufferedChunks && bufferedChunks.length > 0) {
         console.log(`[StreamManager] Processing ${bufferedChunks.length} pre-buffered chunks for message ${messageId}`);
@@ -299,8 +302,6 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
         }
         preBufferedChunks.delete(messageId);
     }
-    
-    messageInitializationStatus.set(messageId, 'ready');
     
     if (isForCurrentView) {
         uiHelper.scrollToBottom();

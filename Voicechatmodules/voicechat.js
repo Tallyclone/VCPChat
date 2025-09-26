@@ -15,6 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let agentId = null;
     let globalSettings = {};
     let currentChatHistory = [];
+    let activeStreamingMessageId = null;
     let inputMode = 'text'; // 'text' or 'voice'
     const markedInstance = new window.marked.Marked({ gfm: true, breaks: true });
     let speechRecognitionTimeout = null;
@@ -132,13 +133,16 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!messageContent.trim() || !agentConfig || !window.messageRenderer) return;
 
         const userMessage = { role: 'user', content: messageContent, timestamp: Date.now(), id: `user_msg_${Date.now()}` };
-        await window.messageRenderer.renderMessage(userMessage); // This will also update history
+        await window.messageRenderer.renderMessage(userMessage);
+        currentChatHistory.push(userMessage);
 
         messageInput.value = '';
         messageInput.disabled = true;
         sendMessageBtn.disabled = true;
 
         const thinkingMessageId = `assistant_msg_${Date.now()}`;
+        activeStreamingMessageId = thinkingMessageId;
+
         const assistantMessagePlaceholder = {
             id: thinkingMessageId,
             role: 'assistant',
@@ -150,79 +154,108 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         await window.messageRenderer.renderMessage(assistantMessagePlaceholder);
 
-        // Send to main process for handling
-        window.electronAPI.sendVoiceChatMessage({
+        const context = {
             agentId: agentId,
-            history: currentChatHistory.filter(m => !m.isThinking), // Send history without the placeholder
-            thinkingMessageId: thinkingMessageId
-        });
+            topicId: `voicechat_${agentId}`
+        };
+
+        try {
+            const voiceModePromptInjection = "\n\n当前处于语音模式中，你的回复应当口语化，内容简短直白。由于用户输入同样是语音识别模型构成，注意自主判断、理解其中的同音错别字或者错误语义识别。";
+            const systemPrompt = (agentConfig.systemPrompt || '').replace(/\{\{AgentName\}\}/g, agentConfig.name) + voiceModePromptInjection;
+            
+            const messagesForVCP = [];
+            if (systemPrompt) {
+                messagesForVCP.push({ role: 'system', content: [{ type: 'text', text: systemPrompt }] });
+            }
+
+            const historyForVCP = currentChatHistory.filter(msg => !msg.isThinking).map(msg => {
+                const contentPayload = (typeof msg.content === 'string')
+                    ? [{ type: 'text', text: msg.content }]
+                    : msg.content;
+                return { role: msg.role, content: contentPayload };
+            });
+            messagesForVCP.push(...historyForVCP);
+
+            const modelConfig = {
+                model: agentConfig.model,
+                temperature: agentConfig.temperature,
+                stream: true,
+                ...(agentConfig.maxOutputTokens && { max_tokens: parseInt(agentConfig.maxOutputTokens, 10) }),
+                ...(agentConfig.top_p && { top_p: parseFloat(agentConfig.top_p) }),
+                ...(agentConfig.top_k && { top_k: parseInt(agentConfig.top_k, 10) })
+            };
+
+            await window.electronAPI.sendToVCP(globalSettings.vcpServerUrl, globalSettings.vcpApiKey, messagesForVCP, modelConfig, thinkingMessageId, false, context);
+
+        } catch (error) {
+            console.error('Error sending message to VCP:', error);
+            if (window.messageRenderer) {
+                window.messageRenderer.finalizeStreamedMessage(thinkingMessageId, 'error');
+                const messageItemContent = document.querySelector(`.message-item[data-message-id="${thinkingMessageId}"] .md-content`);
+                if (messageItemContent) {
+                    messageItemContent.innerHTML = `<p style="color: var(--danger-color);">请求失败: ${error.message}</p>`;
+                }
+            }
+            activeStreamingMessageId = null;
+            messageInput.disabled = false;
+            sendMessageBtn.disabled = false;
+            messageInput.focus();
+        }
     };
 
-    // Listen for the reply from the main process
-    window.electronAPI.onVoiceChatReply(async (reply) => {
-        const { thinkingMessageId, error, fullText } = reply;
+    const activeStreams = new Set();
+    window.electronAPI.onVCPStreamEvent((eventData) => {
+        if (!window.messageRenderer || eventData.messageId !== activeStreamingMessageId) return;
 
-        // Always remove the placeholder
-        await window.messageRenderer.removeMessageById(thinkingMessageId);
+        const { messageId, type, chunk, error, context } = eventData;
 
-        if (error) {
-            console.error('Error from voice chat backend:', error);
-            const errorMessage = {
-                id: thinkingMessageId,
-                role: 'system',
-                content: `请求失败: ${error}`,
-                timestamp: Date.now(),
-            };
-            await window.messageRenderer.renderMessage(errorMessage);
-        } else {
-            const finalMessage = {
-                id: thinkingMessageId,
+        if (!activeStreams.has(messageId) && type === 'data') {
+            window.messageRenderer.startStreamingMessage({
+                id: messageId,
                 role: 'assistant',
-                content: fullText,
-                timestamp: Date.now(),
                 name: agentConfig.name,
-                avatarUrl: agentConfig.avatarUrl
-            };
-            await window.messageRenderer.renderMessage(finalMessage);
-
-            // After rendering, find the message element and get its text content for TTS
-            // After rendering, find the message element and get its text content for TTS
-            // This reuses the same logic as the "Read Aloud" context menu item for consistency.
-            const messageElement = document.getElementById(`message-item-${thinkingMessageId}`);
-            let textToSpeak = '';
-            if (messageElement) {
-                const contentElement = messageElement.querySelector('.md-content');
-                if (contentElement) {
-                    // Clone the content element to avoid modifying the actual displayed content
-                    const contentClone = contentElement.cloneNode(true);
-                    
-                    // Remove all tool-use bubbles from the clone
-                    contentClone.querySelectorAll('.vcp-tool-use-bubble').forEach(el => el.remove());
-                    
-                    // Now, get the innerText from the cleaned-up clone
-                    textToSpeak = contentClone.innerText || '';
-                } else {
-                    // Fallback for safety, though .md-content should exist
-                    textToSpeak = messageElement.textContent || messageElement.innerText;
-                }
-            } else {
-                // If the element can't be found, fall back to parsing the raw HTML as a last resort.
-                // This is less ideal as it doesn't benefit from the DOM-based filtering.
-                const tempDiv = document.createElement('div');
-                tempDiv.innerHTML = fullText;
-                // A simple regex to strip tool blocks from the raw text as a fallback.
-                const toolRegex = /<<<\[TOOL_REQUEST\]>>>(.*?)<<<\[END_TOOL_REQUEST\]>>>/gs;
-                const cleanedFullText = fullText.replace(toolRegex, '');
-                tempDiv.innerHTML = cleanedFullText;
-                textToSpeak = tempDiv.textContent || tempDiv.innerText || '';
-            }
-            
-            playTTS(textToSpeak.trim(), thinkingMessageId);
+                avatarUrl: agentConfig.avatarUrl,
+                context: context,
+            });
+            activeStreams.add(messageId);
         }
 
-        messageInput.disabled = false;
-        sendMessageBtn.disabled = false;
-        messageInput.focus();
+        if (type === 'data') {
+            window.messageRenderer.appendStreamChunk(messageId, chunk, context);
+        } else if (type === 'end') {
+            window.messageRenderer.finalizeStreamedMessage(messageId, 'completed', context).then(() => {
+                const messageElement = document.getElementById(`message-item-${messageId}`);
+                let textToSpeak = '';
+                if (messageElement) {
+                    const contentElement = messageElement.querySelector('.md-content');
+                    if (contentElement) {
+                        const contentClone = contentElement.cloneNode(true);
+                        contentClone.querySelectorAll('.vcp-tool-use-bubble').forEach(el => el.remove());
+                        textToSpeak = contentClone.innerText || '';
+                    } else {
+                        textToSpeak = messageElement.textContent || messageElement.innerText;
+                    }
+                }
+                playTTS(textToSpeak.trim(), messageId);
+            });
+
+            activeStreams.delete(messageId);
+            activeStreamingMessageId = null;
+            messageInput.disabled = false;
+            sendMessageBtn.disabled = false;
+            messageInput.focus();
+        } else if (type === 'error') {
+            window.messageRenderer.finalizeStreamedMessage(messageId, 'error', context);
+            const messageItemContent = document.querySelector(`.message-item[data-message-id="${messageId}"] .md-content`);
+            if (messageItemContent) {
+                messageItemContent.innerHTML = `<p style="color: var(--danger-color);">${error || '未知流错误'}</p>`;
+            }
+            activeStreams.delete(messageId);
+            activeStreamingMessageId = null;
+            messageInput.disabled = false;
+            sendMessageBtn.disabled = false;
+            messageInput.focus();
+        }
     });
     
     function playTTS(text, msgId) {

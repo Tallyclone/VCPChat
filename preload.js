@@ -276,8 +276,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Voice Chat
     openVoiceChatWindow: (data) => ipcRenderer.send('open-voice-chat-window', data),
     onVoiceChatData: (callback) => ipcRenderer.on('voice-chat-data', (_event, data) => callback(data)),
-    sendVoiceChatMessage: (data) => ipcRenderer.send('send-voice-chat-message', data),
-    onVoiceChatReply: (callback) => ipcRenderer.on('voice-chat-reply', (_event, data) => callback(data)),
 
     // --- Speech Recognition via Puppeteer ---
     startSpeechRecognition: () => ipcRenderer.send('start-speech-recognition'),
