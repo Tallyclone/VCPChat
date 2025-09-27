@@ -540,6 +540,7 @@ window.chatManager = (() => {
         // The 'content' variable still holds the user's raw input, including the placeholder.
         // We will resolve the placeholder later, only for the final message sent to VCP.
         let contentForVCP = content;
+        let combinedTextContent = content; // 用于发送给VCP的组合文本内容
  
         const uiAttachments = [];
         if (attachedFiles.length > 0) {
@@ -552,6 +553,12 @@ window.chatManager = (() => {
                     size: af.file.size,
                     _fileManagerData: fileManagerData
                 });
+                
+                // 立即将附件内容添加到组合文本中
+                if (fileManagerData.extractedText) {
+                    combinedTextContent += `\n\n[附加文件: ${af.originalName}]\n${fileManagerData.extractedText}\n[/附加文件结束: ${af.originalName}]`;
+                }
+                
                 // Append filename for all attachments for AI context
                 // NEW LOGIC: Generalize for all file types to include local path
                 if (af.file.type.startsWith('image/')) {
@@ -666,32 +673,27 @@ window.chatManager = (() => {
                 // --- 正则规则应用结束 ---
 
                 if (msg.role === 'user' && msg.id === userMessage.id) {
-                    // This is the current user message being sent.
-                    // IMPORTANT: We need to handle Canvas placeholder WITHOUT overwriting the regex-processed content
+                    // 关键修复：使用已经包含附件内容的 combinedTextContent
+                    currentMessageTextContent = combinedTextContent;
                     
+                    // IMPORTANT: We need to handle Canvas placeholder WITHOUT overwriting the combined content
                     // First, check if we need to replace Canvas placeholder
-                    if (contentForVCP.includes(CANVAS_PLACEHOLDER)) {
-                        // We need to apply Canvas replacement to the already regex-processed content
-                        // NOT to the original contentForVCP
-                        let baseContent = currentMessageTextContent; // This already has regex rules applied
-                        
+                    if (currentMessageTextContent.includes(CANVAS_PLACEHOLDER)) {
                         try {
                             const canvasData = await electronAPI.getLatestCanvasContent();
                             if (canvasData && !canvasData.error) {
                                 const formattedCanvasContent = `\n[Canvas Content]\n${canvasData.content || ''}\n[Canvas Path]\n${canvasData.path || 'No file path'}\n[Canvas Errors]\n${canvasData.errors || 'No errors'}\n`;
-                                // Replace Canvas placeholder in the regex-processed content
-                                currentMessageTextContent = baseContent.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), formattedCanvasContent);
+                                // Replace Canvas placeholder in the combined content
+                                currentMessageTextContent = currentMessageTextContent.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), formattedCanvasContent);
                             } else {
                                 console.error("Failed to get latest canvas content:", canvasData?.error);
-                                currentMessageTextContent = baseContent.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), '\n[Canvas content could not be loaded]\n');
+                                currentMessageTextContent = currentMessageTextContent.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), '\n[Canvas content could not be loaded]\n');
                             }
                         } catch (error) {
                             console.error("Error fetching canvas content:", error);
-                            currentMessageTextContent = baseContent.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), '\n[Error loading canvas content]\n');
+                            currentMessageTextContent = currentMessageTextContent.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), '\n[Error loading canvas content]\n');
                         }
                     }
-                    // If no Canvas placeholder, keep the regex-processed content as is
-                    // (no else clause needed since currentMessageTextContent already has the right value)
                 } else if (msg.attachments && msg.attachments.length > 0) {
                     let historicalAppendedText = "";
                     for (const att of msg.attachments) {
