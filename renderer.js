@@ -1062,7 +1062,8 @@ function setupEventListeners() {
                     return;
                 }
                 // For http, https, file protocols, open externally
-                if (href.startsWith('http:') || href.startsWith('https:') || href.startsWith('file:')) {
+                // For http, https, file, magnet protocols, open externally
+                if (href.startsWith('http:') || href.startsWith('https:') || href.startsWith('file:') || href.startsWith('magnet:')) {
                     if (window.electronAPI && window.electronAPI.sendOpenExternalLink) {
                         window.electronAPI.sendOpenExternalLink(href);
                     } else {
