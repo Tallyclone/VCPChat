@@ -198,7 +198,7 @@ function initialize(mainWindow, context) {
     });
 
     ipcMain.on('open-external-link', (event, url) => {
-        if (url && (url.startsWith('http:') || url.startsWith('https:') || url.startsWith('file:'))) {
+        if (url && (url.startsWith('http:') || url.startsWith('https:') || url.startsWith('file:') || url.startsWith('magnet:'))) {
             shell.openExternal(url).catch(err => {
                 console.error('Failed to open external link:', err);
             });
