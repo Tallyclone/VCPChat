@@ -498,7 +498,17 @@ export async function finalizeStreamedMessage(messageId, finishReason, context) 
                 const processedFinalText = refs.preprocessFullContent(finalFullText, globalSettings);
                 const rawHtml = markedInstance.parse(processedFinalText);
                 refs.setContentAndProcessImages(contentDiv, rawHtml, messageId);
+                
+                // Step 1: Run synchronous processors (KaTeX, hljs, etc.)
                 refs.processRenderedContent(contentDiv);
+
+                // Step 2: Defer TreeWalker-based highlighters to ensure DOM is stable
+                setTimeout(() => {
+                    if (contentDiv && contentDiv.isConnected) {
+                        refs.runTextHighlights(contentDiv);
+                    }
+                }, 0);
+
                 if (globalSettings.enableAgentBubbleTheme && refs.processAnimationsInContent) {
                     refs.processAnimationsInContent(contentDiv);
                 }

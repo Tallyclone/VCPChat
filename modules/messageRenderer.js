@@ -620,6 +620,7 @@ function initializeMessageRenderer(refs) {
        startStreamingMessage: startStreamingMessage,
        setContentAndProcessImages: setContentAndProcessImages,
        processRenderedContent: contentProcessor.processRenderedContent,
+       runTextHighlights: contentProcessor.runTextHighlights,
        preprocessFullContent: preprocessFullContent,
        renderAttachments: renderAttachments,
        interruptHandler: mainRendererReferences.interruptHandler, // Pass the interrupt handler
@@ -643,6 +644,7 @@ function initializeMessageRenderer(refs) {
        showContextMenu: contextMenu.showContextMenu,
        setContentAndProcessImages: setContentAndProcessImages,
        processRenderedContent: contentProcessor.processRenderedContent,
+       runTextHighlights: contentProcessor.runTextHighlights,
        preprocessFullContent: preprocessFullContent,
        // Pass individual processors needed by streamManager
        removeSpeakerTags: contentProcessor.removeSpeakerTags,
@@ -652,7 +654,6 @@ function initializeMessageRenderer(refs) {
        ensureSeparatorBetweenImgAndCode: contentProcessor.ensureSeparatorBetweenImgAndCode,
 
        // Pass the main processor function
-       processRenderedContent: contentProcessor.processRenderedContent,
        processAnimationsInContent: processAnimationsInContent, // Pass the animation processor
 
        // Debouncing and Timers
@@ -876,23 +877,39 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
             const finalHtml = tempDiv.innerHTML;
             contentDiv.innerHTML = finalHtml;
 
-            // Defer all further processing to ensure the element is in the DOM.
-            // This fixes a race condition where content (like images) might not load
-            // when rendering history because processing was attempted on a detached DOM element.
-            requestAnimationFrame(() => {
-                if (!messageItem.isConnected) {
-                    return; // Abort if message was removed from the DOM
-                }
-
-                // Now that the element is attached, process its content fully.
+            // Define the post-processing logic as a function.
+            // This allows us to control WHEN it gets executed.
+            const runPostRenderProcessing = () => {
+                // This function should only be called when messageItem is connected to the DOM.
+                
+                // Process images, attachments, and synchronous content first.
                 setContentAndProcessImages(contentDiv, finalHtml, message.id);
-                renderAttachments(message, contentDiv); // Moved here
-                contentProcessor.processRenderedContent(contentDiv); // Consolidated call
+                renderAttachments(message, contentDiv);
+                contentProcessor.processRenderedContent(contentDiv);
 
+                // Defer TreeWalker-based highlighters with a hardcoded delay to ensure the DOM is stable.
+                setTimeout(() => {
+                    if (contentDiv && contentDiv.isConnected) {
+                        contentProcessor.runTextHighlights(contentDiv);
+                    }
+                }, 0);
+
+                // Finally, process any animations.
                 if (globalSettings.enableAgentBubbleTheme) {
                     processAnimationsInContent(contentDiv);
                 }
-            });
+            };
+
+            // If we are appending directly to the DOM, schedule the processing immediately.
+            if (appendToDom) {
+                // We still use requestAnimationFrame to ensure the element is painted before we process it.
+                requestAnimationFrame(runPostRenderProcessing);
+            } else {
+                // If not, attach the processing function to the element itself.
+                // The caller (e.g., a batch renderer) will be responsible for executing it
+                // AFTER the element has been attached to the DOM.
+                messageItem._vcp_process = runPostRenderProcessing;
+            }
         }
     
     // 然后应用颜色（现在 messageItem.isConnected 是 true）
@@ -1100,8 +1117,16 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId) {
 
     setContentAndProcessImages(contentDiv, tempDiv.innerHTML, messageId);
 
-    // Apply post-processing
+    // Apply post-processing in two steps
+    // Step 1: Synchronous processing
     contentProcessor.processRenderedContent(contentDiv);
+
+    // Step 2: Asynchronous, deferred highlighting for DOM stability with a hardcoded delay
+    setTimeout(() => {
+        if (contentDiv && contentDiv.isConnected) {
+            contentProcessor.runTextHighlights(contentDiv);
+        }
+    }, 0);
 
     // After content is rendered, check if we need to run animations
     if (globalSettings.enableAgentBubbleTheme) {
@@ -1145,16 +1170,31 @@ function updateMessageContent(messageId, newContent) {
         }
     });
 
-    setContentAndProcessImages(contentDiv, tempDiv.innerHTML, messageId);
-    contentProcessor.processRenderedContent(contentDiv);
+    // --- Post-Render Processing (aligned with renderMessage logic) ---
 
-    // Re-render attachments if they exist in the new content object
+    // 1. Set content and process images
+    setContentAndProcessImages(contentDiv, tempDiv.innerHTML, messageId);
+
+    // 2. Re-render attachments if they exist
     if (messageInHistory) {
-        // First, remove any existing attachments container
         const existingAttachments = contentDiv.querySelector('.message-attachments');
         if (existingAttachments) existingAttachments.remove();
-        // Then, render new ones if they exist
         renderAttachments({ ...messageInHistory, content: newContent }, contentDiv);
+    }
+
+    // 3. Synchronous processing (KaTeX, buttons, etc.)
+    contentProcessor.processRenderedContent(contentDiv);
+
+    // 4. Asynchronous, deferred highlighting for DOM stability
+    setTimeout(() => {
+        if (contentDiv && contentDiv.isConnected) {
+            contentProcessor.runTextHighlights(contentDiv);
+        }
+    }, 0);
+
+    // 5. Re-run animations
+    if (globalSettings.enableAgentBubbleTheme) {
+        processAnimationsInContent(contentDiv);
     }
 }
 
@@ -1205,14 +1245,6 @@ async function renderHistory(history, options = {}) {
     // 最终滚动到底部
     mainRendererReferences.uiHelper.scrollToBottom();
     console.log(`[MessageRenderer] 所有 ${history.length} 条消息渲染完成`);
-
-    // Final pass to ensure all content is processed correctly after batch rendering
-    setTimeout(() => {
-        if (mainRendererReferences.chatMessagesDiv && mainRendererReferences.chatMessagesDiv.isConnected) {
-            console.log('[MessageRenderer] Running final post-processing pass for batch-rendered history.');
-            contentProcessor.highlightBoldTextInMessage(mainRendererReferences.chatMessagesDiv);
-        }
-    }, 150); // A small delay to ensure the DOM is fully updated after the last batch.
 }
 
 /**
@@ -1238,7 +1270,17 @@ async function renderMessageBatch(messages, scrollToBottom = false) {
     // 使用 requestAnimationFrame 确保 DOM 更新不阻塞 UI
     return new Promise(resolve => {
         requestAnimationFrame(() => {
+            // Step 1: Append all elements to the DOM at once.
             mainRendererReferences.chatMessagesDiv.appendChild(fragment);
+            
+            // Step 2: Now that they are in the DOM, run the deferred processing for each.
+            messageElements.forEach(el => {
+                if (typeof el._vcp_process === 'function') {
+                    el._vcp_process();
+                    delete el._vcp_process; // Clean up to avoid memory leaks
+                }
+            });
+
             if (scrollToBottom) {
                 mainRendererReferences.uiHelper.scrollToBottom();
             }
@@ -1267,10 +1309,12 @@ async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay
         // 创建批次的 fragment
         const batchFragment = document.createDocumentFragment();
         
+        const elementsForProcessing = [];
         for (const msg of batch) {
             const messageElement = await renderMessage(msg, true, false);
             if (messageElement) {
                 batchFragment.appendChild(messageElement);
+                elementsForProcessing.push(messageElement);
             }
         }
         
@@ -1290,6 +1334,15 @@ async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay
                 } else {
                     chatMessagesDiv.appendChild(batchFragment);
                 }
+
+                // Run processors for the newly added batch
+                elementsForProcessing.forEach(el => {
+                    if (typeof el._vcp_process === 'function') {
+                        el._vcp_process();
+                        delete el._vcp_process;
+                    }
+                });
+
                 resolve();
             });
         });
@@ -1322,7 +1375,17 @@ async function renderHistoryLegacy(history) {
     
     return new Promise(resolve => {
         requestAnimationFrame(() => {
+            // Step 1: Append all elements to the DOM.
             mainRendererReferences.chatMessagesDiv.appendChild(fragment);
+
+            // Step 2: Run the deferred processing for each element now that it's attached.
+            allMessageElements.forEach(el => {
+                if (typeof el._vcp_process === 'function') {
+                    el._vcp_process();
+                    delete el._vcp_process; // Clean up
+                }
+            });
+
             mainRendererReferences.uiHelper.scrollToBottom();
             resolve();
         });

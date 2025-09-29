@@ -221,8 +221,8 @@ function highlightQuotesInMessage(messageElement) {
                     parent.tagName === 'STYLE' ||
                     parent.tagName === 'SCRIPT' ||
                     parent.tagName === 'PRE' ||
-                    parent.tagName === 'CODE' ||
-                    (parent.hasAttribute && parent.hasAttribute('style'))
+                    parent.tagName === 'CODE'
+                    /* (parent.hasAttribute && parent.hasAttribute('style')) */ // This rule was too aggressive, preventing highlights in AI-generated rich content.
                 ) {
                     return NodeFilter.FILTER_REJECT;
                 }
@@ -239,8 +239,8 @@ function highlightQuotesInMessage(messageElement) {
     try {
         while ((node = walker.nextNode())) {
             const parentEl = node.parentElement;
-            // 跳过：父元素内含有子元素（复杂富文本），避免跨标签切割
-            if (!parentEl || parentEl.children.length > 0) continue;
+            // 跳过：父元素内含有子元素（复杂富文本），避免跨标签切割 - This rule was too aggressive and is now disabled to allow highlighting in more complex structures.
+            // if (!parentEl || parentEl.children.length > 0) continue;
 
             const text = node.nodeValue || '';
             let match;
@@ -609,7 +609,9 @@ function showErrorNotification(message) {
 }
 
 /**
- * Applies all post-render processing to the message content.
+ * Applies synchronous post-render processing to the message content.
+ * This handles tasks like KaTeX, code highlighting, and button processing
+ * that do not depend on a fully stable DOM tree from complex innerHTML.
  * @param {HTMLElement} contentDiv The message content element.
  */
 function processRenderedContent(contentDiv) {
@@ -629,13 +631,8 @@ function processRenderedContent(contentDiv) {
     // Special block formatting (VCP/Diary)
     processAllPreBlocksInContentDiv(contentDiv);
 
-    // Process interactive buttons (NEW)
+    // Process interactive buttons
     processInteractiveButtons(contentDiv);
-
-    // Highlighting must run after KaTeX and other DOM manipulations
-    highlightTagsInMessage(contentDiv);
-    highlightQuotesInMessage(contentDiv);
-    highlightBoldTextInMessage(contentDiv);
 
     // Apply syntax highlighting to code blocks
     if (window.hljs) {
@@ -646,6 +643,23 @@ function processRenderedContent(contentDiv) {
             }
         });
     }
+}
+
+/**
+ * Runs all text-based highlighting that relies on TreeWalker and a stable DOM.
+ * This should be called asynchronously after the main content is rendered to avoid race conditions.
+ * @param {HTMLElement} contentDiv The message content element.
+ */
+function runTextHighlights(contentDiv) {
+    if (!contentDiv) return;
+
+    // Highlighting order is important for nested formats like **"@tag"**
+    // The original order (tags -> quotes -> bold) is better for handling nested cases.
+    // The order is important for nested formats like **"text"**.
+    // Process bolding first, then quotes, to allow quotes to be highlighted inside bolded text.
+    highlightTagsInMessage(contentDiv);
+    highlightBoldTextInMessage(contentDiv);
+    highlightQuotesInMessage(contentDiv);
 }
 
 
@@ -663,6 +677,7 @@ export {
     processInteractiveButtons,
     handleAIButtonClick,
     highlightBoldTextInMessage,
+    runTextHighlights, // Export the new async highlighter
     sendButtonMessage
 
 };

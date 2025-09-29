@@ -404,6 +404,13 @@ function toggleEditMode(messageItem, message) {
         contextMenuDependencies.setContentAndProcessImages(contentDiv, rawHtml, message.id);
         contextMenuDependencies.processRenderedContent(contentDiv);
 
+        // Re-run highlights to restore quotes, bolding, etc., which was missing.
+        setTimeout(() => {
+            if (contentDiv && contentDiv.isConnected) {
+                contextMenuDependencies.runTextHighlights(contentDiv);
+            }
+        }, 0);
+
         messageItem.classList.remove('message-item-editing');
         existingTextarea.remove();
         if (existingControls) existingControls.remove();
@@ -445,6 +452,21 @@ function toggleEditMode(messageItem, message) {
         saveButton.onclick = async () => {
             // 🔧 关键修复：添加防御性编程和错误处理
             const newContent = textarea.value;
+            
+            // Get original content for comparison
+            let originalTextContent = "";
+            if (typeof message.content === 'string') {
+                originalTextContent = message.content;
+            } else if (message.content && typeof message.content.text === 'string') {
+                originalTextContent = message.content.text;
+            }
+
+            // If content hasn't changed, just exit edit mode without saving.
+            if (newContent === originalTextContent) {
+                toggleEditMode(messageItem, message);
+                return;
+            }
+
             const messageIndex = currentChatHistoryArray.findIndex(msg => msg.id === message.id);
             
             if (messageIndex === -1) {
