@@ -321,39 +321,6 @@ window.chatManager = (() => {
         }
     }
 
-    /**
-     * Asynchronously renders chat history in chunks to prevent UI blocking.
-     * @param {Array} history - The array of messages to render.
-     */
-    async function renderHistoryInChunks(history) {
-        const chunkSize = 20; // Process 20 messages at a time
-        let index = 0;
-        const fragment = document.createDocumentFragment();
-        const allMessageElements = [];
-
-        // Phase 1: Create all message elements in memory without appending to DOM
-        for (const msg of history) {
-            // Call renderMessage with appendToDom = false
-            const messageElement = await messageRenderer.renderMessage(msg, true, false);
-            if (messageElement) {
-                allMessageElements.push(messageElement);
-            }
-        }
-
-        // Phase 2: Append all created elements at once using a DocumentFragment
-        allMessageElements.forEach(el => fragment.appendChild(el));
-        
-        return new Promise(resolve => {
-            // Use requestAnimationFrame to append to the DOM in the next paint cycle
-            requestAnimationFrame(() => {
-                elements.chatMessagesDiv.appendChild(fragment);
-                // After appending, scroll to the bottom to show the latest messages
-                uiHelper.scrollToBottom();
-                resolve();
-            });
-        });
-    }
-
     async function loadChatHistory(itemId, itemType, topicId) {
         if (messageRenderer) messageRenderer.clearChat();
         currentChatHistoryRef.set([]);
@@ -408,8 +375,8 @@ window.chatManager = (() => {
         } else if (historyResult && historyResult.length > 0) {
             currentChatHistoryRef.set(historyResult);
             if (messageRenderer) {
-                // 使用异步分块渲染来防止UI阻塞
-                await renderHistoryInChunks(historyResult);
+                // 调用 messageRenderer 的新接口来批量渲染
+                await messageRenderer.renderHistory(historyResult);
             }
     
         } else if (historyResult) { // History is empty

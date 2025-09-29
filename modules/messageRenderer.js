@@ -759,10 +759,6 @@ async function renderAttachments(message, contentDiv) {
 }
 
 async function renderMessage(message, isInitialLoad = false, appendToDom = true) {
-    // 核心修复：在渲染任何消息之前，确保表情包修复器已初始化完成。
-    // 由于 initialize 是幂等的，这在后续调用中几乎没有开销。
-    await emoticonUrlFixer.initialize(mainRendererReferences.electronAPI);
-
     console.log('[MessageRenderer renderMessage] Received message:', JSON.parse(JSON.stringify(message))); // Log incoming message
     const { chatMessagesDiv, electronAPI, markedInstance, uiHelper } = mainRendererReferences;
     const globalSettings = mainRendererReferences.globalSettingsRef.get();
@@ -1140,6 +1136,38 @@ function updateMessageContent(messageId, newContent) {
 }
 
 // Expose methods to renderer.js
+/**
+ * Renders a complete chat history in asynchronous, non-blocking chunks.
+ * @param {Array<Message>} history The chat history to render.
+ */
+async function renderHistory(history) {
+    // 核心修复：在开始批量渲染前，只等待一次依赖项。
+    await emoticonUrlFixer.initialize(mainRendererReferences.electronAPI);
+
+    const fragment = document.createDocumentFragment();
+    const allMessageElements = [];
+
+    // Phase 1: Create all message elements in memory without appending to DOM
+    for (const msg of history) {
+        const messageElement = await renderMessage(msg, true, false);
+        if (messageElement) {
+            allMessageElements.push(messageElement);
+        }
+    }
+
+    // Phase 2: Append all created elements at once using a DocumentFragment
+    allMessageElements.forEach(el => fragment.appendChild(el));
+    
+    return new Promise(resolve => {
+        requestAnimationFrame(() => {
+            mainRendererReferences.chatMessagesDiv.appendChild(fragment);
+            mainRendererReferences.uiHelper.scrollToBottom();
+            resolve();
+        });
+    });
+}
+
+
 window.messageRenderer = {
     initializeMessageRenderer,
     setCurrentSelectedItem, // Keep for renderer.js to call
@@ -1149,6 +1177,7 @@ window.messageRenderer = {
     setCurrentItemAvatarColor, // Renamed
     setUserAvatarColor,
     renderMessage,
+    renderHistory, // Expose the new batch rendering function
     startStreamingMessage,
     appendStreamChunk,
     finalizeStreamedMessage,
@@ -1185,3 +1214,4 @@ window.messageRenderer = {
         }
     }
 };
+

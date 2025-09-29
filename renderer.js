@@ -694,9 +694,7 @@ import * as interruptHandler from './modules/interruptHandler.js';
             console.error('[RENDERER_INIT] searchManager module not found!');
         }
 
-       // Initialize the emoticon URL fixer and wait for it to complete
-       await initializeEmoticonFixer(window.electronAPI);
-
+       // Emoticon URL fixer is now initialized within messageRenderer
     } catch (error) {
         console.error('Error during DOMContentLoaded initialization:', error);
         chatMessagesDiv.innerHTML = `<div class="message-item system">初始化失败: ${error.message}</div>`;
