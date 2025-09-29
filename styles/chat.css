@@ -77,8 +77,8 @@ body.light-theme .chat-header {
     object-fit: cover;
     flex-shrink: 0; 
     /* border: 1px solid var(--border-color); */ /* Original static border */
-    border: 2px solid transparent; /* Default transparent border, thickness can be adjusted */
-    transition: border-color 0.3s ease; /* Smooth transition if color changes */
+    border: 2px solid var(--dynamic-avatar-color, var(--border-color)); /* Use dynamic color with fallback */
+    transition: border 0.3s ease, color 0.3s ease; /* Transition the full border and color properties */
     margin-top: 0px;
 }
 
@@ -125,7 +125,7 @@ body.light-theme .chat-header {
 }
 
 .message-item.assistant .sender-name {
-    color: var(--highlight-text); 
+    color: var(--dynamic-avatar-color, var(--highlight-text)); /* Use dynamic color with fallback */
 }
 .message-item.user .sender-name {
     color: var(--secondary-text); 
