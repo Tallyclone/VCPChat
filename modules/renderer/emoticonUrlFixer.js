@@ -3,6 +3,7 @@
 let emoticonLibrary = [];
 let isInitialized = false;
 let electronAPI;
+let initializationPromise = null;
 
 // A simple string similarity function (Jaro-Winkler might be better, but this is simple)
 function getSimilarity(s1, s2) {
@@ -92,22 +93,33 @@ function extractEmoticonInfo(url) {
 }
 
 
-async function initialize(api) {
-    if (isInitialized) return;
-    electronAPI = api;
-    try {
-        console.log('[EmoticonFixer] Initializing and fetching library...');
-        const library = await electronAPI.getEmoticonLibrary();
-        if (library && library.length > 0) {
-            emoticonLibrary = library;
-            isInitialized = true;
-            console.log(`[EmoticonFixer] Library loaded with ${emoticonLibrary.length} items.`);
-        } else {
-            console.warn('[EmoticonFixer] Fetched library is empty.');
-        }
-    } catch (error) {
-        console.error('[EmoticonFixer] Failed to initialize:', error);
+function initialize(api) {
+    if (initializationPromise) {
+        return initializationPromise;
     }
+
+    initializationPromise = new Promise(async (resolve, reject) => {
+        electronAPI = api;
+        try {
+            console.log('[EmoticonFixer] Initializing and fetching library...');
+            const library = await electronAPI.getEmoticonLibrary();
+            if (library && library.length > 0) {
+                emoticonLibrary = library;
+                isInitialized = true;
+                console.log(`[EmoticonFixer] Library loaded with ${emoticonLibrary.length} items.`);
+                resolve();
+            } else {
+                console.warn('[EmoticonFixer] Fetched library is empty.');
+                isInitialized = true; // Mark as initialized even if empty to prevent re-fetching
+                resolve();
+            }
+        } catch (error) {
+            console.error('[EmoticonFixer] Failed to initialize:', error);
+            reject(error);
+        }
+    });
+
+    return initializationPromise;
 }
 
 function fixEmoticonUrl(originalSrc) {

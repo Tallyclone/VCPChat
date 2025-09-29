@@ -321,6 +321,39 @@ window.chatManager = (() => {
         }
     }
 
+    /**
+     * Asynchronously renders chat history in chunks to prevent UI blocking.
+     * @param {Array} history - The array of messages to render.
+     */
+    async function renderHistoryInChunks(history) {
+        const chunkSize = 20; // Process 20 messages at a time
+        let index = 0;
+        const fragment = document.createDocumentFragment();
+        const allMessageElements = [];
+
+        // Phase 1: Create all message elements in memory without appending to DOM
+        for (const msg of history) {
+            // Call renderMessage with appendToDom = false
+            const messageElement = await messageRenderer.renderMessage(msg, true, false);
+            if (messageElement) {
+                allMessageElements.push(messageElement);
+            }
+        }
+
+        // Phase 2: Append all created elements at once using a DocumentFragment
+        allMessageElements.forEach(el => fragment.appendChild(el));
+        
+        return new Promise(resolve => {
+            // Use requestAnimationFrame to append to the DOM in the next paint cycle
+            requestAnimationFrame(() => {
+                elements.chatMessagesDiv.appendChild(fragment);
+                // After appending, scroll to the bottom to show the latest messages
+                uiHelper.scrollToBottom();
+                resolve();
+            });
+        });
+    }
+
     async function loadChatHistory(itemId, itemType, topicId) {
         if (messageRenderer) messageRenderer.clearChat();
         currentChatHistoryRef.set([]);
@@ -348,8 +381,9 @@ window.chatManager = (() => {
             return;
         }
     
+        // 核心修改：使用 await 确保加载消息被渲染
         if (messageRenderer) {
-            messageRenderer.renderMessage({ role: 'system', name: '系统', content: '加载聊天记录中...', timestamp: Date.now(), isThinking: true, id: 'loading_history' });
+            await messageRenderer.renderMessage({ role: 'system', name: '系统', content: '加载聊天记录中...', timestamp: Date.now(), isThinking: true, id: 'loading_history' });
         }
     
         let historyResult;
@@ -374,7 +408,8 @@ window.chatManager = (() => {
         } else if (historyResult && historyResult.length > 0) {
             currentChatHistoryRef.set(historyResult);
             if (messageRenderer) {
-                historyResult.forEach(msg => messageRenderer.renderMessage(msg, true));
+                // 使用异步分块渲染来防止UI阻塞
+                await renderHistoryInChunks(historyResult);
             }
     
         } else if (historyResult) { // History is empty

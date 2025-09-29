@@ -280,22 +280,25 @@ const searchManager = {
             return;
         }
 
+        // 核心修复：确保 selectItem 的异步操作完成后再继续
         await this.chatManager.selectItem(itemId, itemType, itemName, itemAvatar, itemConfig);
+        // 核心修改：移除了 setTimeout，直接 await selectTopic，确保历史记录加载完毕
         await this.chatManager.selectTopic(topicId);
 
-        setTimeout(() => {
-            const messageEl = document.querySelector(`.message-item[data-message-id='${message.id}']`);
-            if (messageEl) {
-                messageEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                messageEl.classList.add('message-highlight');
-                setTimeout(() => {
-                    messageEl.classList.remove('message-highlight');
-                }, 2500);
-            } else {
-                console.warn(`[SearchManager] Could not find message element with ID: ${message.id} after loading history.`);
-                this.uiHelper.showToastNotification('成功定位到话题，但无法高亮显示具体消息。', 'info');
-            }
-        }, 500);
+        // 核心修复：在 requestAnimationFrame 之后给浏览器一个渲染的喘息时间
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        const messageEl = document.querySelector(`.message-item[data-message-id='${message.id}']`);
+        if (messageEl) {
+            messageEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            messageEl.classList.add('message-highlight');
+            setTimeout(() => {
+                messageEl.classList.remove('message-highlight');
+            }, 2500); // 保留高亮效果的延时
+        } else {
+            console.warn(`[SearchManager] Could not find message element with ID: ${message.id} after loading history.`);
+            this.uiHelper.showToastNotification('成功定位到话题，但无法高亮显示具体消息。', 'info');
+        }
     },
 
     escapeRegExp(string) {

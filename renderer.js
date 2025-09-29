@@ -694,8 +694,8 @@ import * as interruptHandler from './modules/interruptHandler.js';
             console.error('[RENDERER_INIT] searchManager module not found!');
         }
 
-       // Initialize the emoticon URL fixer
-       initializeEmoticonFixer(window.electronAPI);
+       // Initialize the emoticon URL fixer and wait for it to complete
+       await initializeEmoticonFixer(window.electronAPI);
 
     } catch (error) {
         console.error('Error during DOMContentLoaded initialization:', error);

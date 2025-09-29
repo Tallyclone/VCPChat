@@ -757,7 +757,7 @@ async function renderAttachments(message, contentDiv) {
     }
 }
 
-async function renderMessage(message, isInitialLoad = false) {
+async function renderMessage(message, isInitialLoad = false, appendToDom = true) {
     console.log('[MessageRenderer renderMessage] Received message:', JSON.parse(JSON.stringify(message))); // Log incoming message
     const { chatMessagesDiv, electronAPI, markedInstance, uiHelper } = mainRendererReferences;
     const globalSettings = mainRendererReferences.globalSettingsRef.get();
@@ -818,7 +818,9 @@ async function renderMessage(message, isInitialLoad = false) {
         }
     }
 
-    chatMessagesDiv.appendChild(messageItem);
+    if (appendToDom) {
+        chatMessagesDiv.appendChild(messageItem);
+    }
 
     if (message.isThinking) {
         contentDiv.innerHTML = `<span class="thinking-indicator">${message.content || '思考中'}<span class="thinking-indicator-dots">...</span></span>`;
@@ -966,7 +968,9 @@ async function renderMessage(message, isInitialLoad = false) {
 
    // Highlighting is now part of processRenderedContent
    
-   mainRendererReferences.uiHelper.scrollToBottom();
+   if (appendToDom) {
+       mainRendererReferences.uiHelper.scrollToBottom();
+   }
    return messageItem;
 }
 
