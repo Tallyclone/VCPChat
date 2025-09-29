@@ -1205,6 +1205,14 @@ async function renderHistory(history, options = {}) {
     // 最终滚动到底部
     mainRendererReferences.uiHelper.scrollToBottom();
     console.log(`[MessageRenderer] 所有 ${history.length} 条消息渲染完成`);
+
+    // Final pass to ensure all content is processed correctly after batch rendering
+    setTimeout(() => {
+        if (mainRendererReferences.chatMessagesDiv && mainRendererReferences.chatMessagesDiv.isConnected) {
+            console.log('[MessageRenderer] Running final post-processing pass for batch-rendered history.');
+            contentProcessor.highlightBoldTextInMessage(mainRendererReferences.chatMessagesDiv);
+        }
+    }, 150); // A small delay to ensure the DOM is fully updated after the last batch.
 }
 
 /**
