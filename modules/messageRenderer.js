@@ -873,14 +873,28 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
             }
         });
         
-        setContentAndProcessImages(contentDiv, tempDiv.innerHTML, message.id);
-        contentProcessor.processRenderedContent(contentDiv);
-        
-        // After content is rendered, check if we need to run animations
-        if (globalSettings.enableAgentBubbleTheme) {
-            processAnimationsInContent(contentDiv);
+            // Synchronously set the base HTML content
+            const finalHtml = tempDiv.innerHTML;
+            contentDiv.innerHTML = finalHtml;
+
+            // Defer all further processing to ensure the element is in the DOM.
+            // This fixes a race condition where content (like images) might not load
+            // when rendering history because processing was attempted on a detached DOM element.
+            requestAnimationFrame(() => {
+                if (!messageItem.isConnected) {
+                    return; // Abort if message was removed from the DOM
+                }
+
+                // Now that the element is attached, process its content fully.
+                setContentAndProcessImages(contentDiv, finalHtml, message.id);
+                renderAttachments(message, contentDiv); // Moved here
+                contentProcessor.processRenderedContent(contentDiv); // Consolidated call
+
+                if (globalSettings.enableAgentBubbleTheme) {
+                    processAnimationsInContent(contentDiv);
+                }
+            });
         }
-    }
     
     // Avatar Color Application (after messageItem is in DOM)
     if ((message.role === 'user' || message.role === 'assistant') && avatarImg && senderNameDiv) {
@@ -930,12 +944,8 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
     }
 
 
-    // Render attachments using the new helper function
-    renderAttachments(message, contentDiv);
-    
-   if (!message.isThinking) {
-       contentProcessor.processRenderedContent(contentDiv);
-   }
+    // Attachments and content processing are now deferred within a requestAnimationFrame
+    // to prevent race conditions during history loading. See the block above.
    
    // The responsibility of updating the history array is now moved to the caller (e.g., chatManager.handleSendMessage)
    // to ensure a single source of truth and prevent race conditions.
