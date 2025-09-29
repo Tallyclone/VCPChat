@@ -375,8 +375,16 @@ window.chatManager = (() => {
         } else if (historyResult && historyResult.length > 0) {
             currentChatHistoryRef.set(historyResult);
             if (messageRenderer) {
-                // 调用 messageRenderer 的新接口来批量渲染
-                await messageRenderer.renderHistory(historyResult);
+                // 使用优化的分批渲染策略
+                const renderOptions = {
+                    initialBatch: 5,    // 首先显示最新的5条消息
+                    batchSize: 10,      // 后续每批10条消息
+                    batchDelay: 80      // 批次间延迟80ms，平衡性能和用户体验
+                };
+                
+                console.log(`[ChatManager] 开始加载话题历史，共 ${historyResult.length} 条消息`);
+                await messageRenderer.renderHistory(historyResult, renderOptions);
+                console.log(`[ChatManager] 话题历史加载完成`);
             }
     
         } else if (historyResult) { // History is empty

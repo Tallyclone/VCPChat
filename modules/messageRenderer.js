@@ -1137,13 +1137,144 @@ function updateMessageContent(messageId, newContent) {
 
 // Expose methods to renderer.js
 /**
- * Renders a complete chat history in asynchronous, non-blocking chunks.
+ * Renders a complete chat history with progressive loading for better UX.
+ * First shows the latest 5 messages, then loads older messages in batches of 10.
  * @param {Array<Message>} history The chat history to render.
+ * @param {Object} options Rendering options
+ * @param {number} options.initialBatch - Number of latest messages to show first (default: 5)
+ * @param {number} options.batchSize - Size of subsequent batches (default: 10)
+ * @param {number} options.batchDelay - Delay between batches in ms (default: 100)
  */
-async function renderHistory(history) {
+async function renderHistory(history, options = {}) {
+    const {
+        initialBatch = 5,
+        batchSize = 10,
+        batchDelay = 100
+    } = options;
+
     // 核心修复：在开始批量渲染前，只等待一次依赖项。
     await emoticonUrlFixer.initialize(mainRendererReferences.electronAPI);
 
+    if (!history || history.length === 0) {
+        return Promise.resolve();
+    }
+
+    // 如果消息数量很少，直接使用原来的方式渲染
+    if (history.length <= initialBatch) {
+        return renderHistoryLegacy(history);
+    }
+
+    console.log(`[MessageRenderer] 开始分批渲染 ${history.length} 条消息，首批 ${initialBatch} 条，后续每批 ${batchSize} 条`);
+
+    // 分离最新的消息和历史消息
+    const latestMessages = history.slice(-initialBatch);
+    const olderMessages = history.slice(0, -initialBatch);
+
+    // 第一阶段：立即渲染最新的消息
+    await renderMessageBatch(latestMessages, true);
+    console.log(`[MessageRenderer] 首批 ${latestMessages.length} 条最新消息已渲染`);
+
+    // 第二阶段：分批渲染历史消息（从旧到新）
+    if (olderMessages.length > 0) {
+        await renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay);
+    }
+
+    // 最终滚动到底部
+    mainRendererReferences.uiHelper.scrollToBottom();
+    console.log(`[MessageRenderer] 所有 ${history.length} 条消息渲染完成`);
+}
+
+/**
+ * 渲染一批消息
+ * @param {Array<Message>} messages 要渲染的消息数组
+ * @param {boolean} scrollToBottom 是否滚动到底部
+ */
+async function renderMessageBatch(messages, scrollToBottom = false) {
+    const fragment = document.createDocumentFragment();
+    const messageElements = [];
+
+    // 在内存中创建所有消息元素
+    for (const msg of messages) {
+        const messageElement = await renderMessage(msg, true, false);
+        if (messageElement) {
+            messageElements.push(messageElement);
+        }
+    }
+
+    // 一次性添加到 fragment
+    messageElements.forEach(el => fragment.appendChild(el));
+    
+    // 使用 requestAnimationFrame 确保 DOM 更新不阻塞 UI
+    return new Promise(resolve => {
+        requestAnimationFrame(() => {
+            mainRendererReferences.chatMessagesDiv.appendChild(fragment);
+            if (scrollToBottom) {
+                mainRendererReferences.uiHelper.scrollToBottom();
+            }
+            resolve();
+        });
+    });
+}
+
+/**
+ * 分批渲染历史消息
+ * @param {Array<Message>} olderMessages 历史消息数组
+ * @param {number} batchSize 每批大小
+ * @param {number} batchDelay 批次间延迟
+ */
+async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay) {
+    const totalBatches = Math.ceil(olderMessages.length / batchSize);
+    
+    // 从最新的历史消息开始，向前渲染（这样插入顺序就是正确的）
+    for (let i = totalBatches - 1; i >= 0; i--) {
+        const startIndex = i * batchSize;
+        const endIndex = Math.min(startIndex + batchSize, olderMessages.length);
+        const batch = olderMessages.slice(startIndex, endIndex);
+        
+        console.log(`[MessageRenderer] 渲染历史消息批次 ${totalBatches - i}/${totalBatches} (${batch.length} 条)`);
+        
+        // 创建批次的 fragment
+        const batchFragment = document.createDocumentFragment();
+        
+        for (const msg of batch) {
+            const messageElement = await renderMessage(msg, true, false);
+            if (messageElement) {
+                batchFragment.appendChild(messageElement);
+            }
+        }
+        
+        // 将批次插入到已渲染内容的最前面（在系统消息之后）
+        await new Promise(resolve => {
+            requestAnimationFrame(() => {
+                const chatMessagesDiv = mainRendererReferences.chatMessagesDiv;
+                
+                // 找到第一个非系统消息作为插入点
+                let insertPoint = chatMessagesDiv.firstChild;
+                while (insertPoint && insertPoint.classList && insertPoint.classList.contains('topic-timestamp-bubble')) {
+                    insertPoint = insertPoint.nextSibling;
+                }
+                
+                if (insertPoint) {
+                    chatMessagesDiv.insertBefore(batchFragment, insertPoint);
+                } else {
+                    chatMessagesDiv.appendChild(batchFragment);
+                }
+                resolve();
+            });
+        });
+        
+        // 批次间延迟，避免阻塞 UI
+        if (i > 0 && batchDelay > 0) {
+            await new Promise(resolve => setTimeout(resolve, batchDelay));
+        }
+    }
+}
+
+/**
+ * 原始的历史渲染方法（用于少量消息的情况）
+ * @param {Array<Message>} history 聊天历史
+ */
+async function renderHistoryLegacy(history) {
     const fragment = document.createDocumentFragment();
     const allMessageElements = [];
 
@@ -1177,7 +1308,9 @@ window.messageRenderer = {
     setCurrentItemAvatarColor, // Renamed
     setUserAvatarColor,
     renderMessage,
-    renderHistory, // Expose the new batch rendering function
+    renderHistory, // Expose the new progressive batch rendering function
+    renderHistoryLegacy, // Expose the legacy rendering for compatibility
+    renderMessageBatch, // Expose batch rendering utility
     startStreamingMessage,
     appendStreamChunk,
     finalizeStreamedMessage,
