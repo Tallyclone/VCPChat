@@ -584,7 +584,8 @@ function initializeMessageRenderer(refs) {
        chatMessagesDiv: mainRendererReferences.chatMessagesDiv,
    });
 
-   // Initialize the emoticon fixer
+   // Start the emoticon fixer initialization, but don't wait for it here.
+   // The await will happen inside renderMessage to ensure it's ready before rendering.
    emoticonUrlFixer.initialize(mainRendererReferences.electronAPI);
 
    // Add event listener for collapsible tool results
@@ -758,6 +759,10 @@ async function renderAttachments(message, contentDiv) {
 }
 
 async function renderMessage(message, isInitialLoad = false, appendToDom = true) {
+    // 核心修复：在渲染任何消息之前，确保表情包修复器已初始化完成。
+    // 由于 initialize 是幂等的，这在后续调用中几乎没有开销。
+    await emoticonUrlFixer.initialize(mainRendererReferences.electronAPI);
+
     console.log('[MessageRenderer renderMessage] Received message:', JSON.parse(JSON.stringify(message))); // Log incoming message
     const { chatMessagesDiv, electronAPI, markedInstance, uiHelper } = mainRendererReferences;
     const globalSettings = mainRendererReferences.globalSettingsRef.get();
