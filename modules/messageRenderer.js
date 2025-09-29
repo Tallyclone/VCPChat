@@ -5,8 +5,6 @@ const ENHANCED_RENDER_DEBOUNCE_DELAY = 400; // ms, for general blocks during str
 const DIARY_RENDER_DEBOUNCE_DELAY = 1000; // ms, potentially longer for diary if complex
 const enhancedRenderDebounceTimers = new WeakMap(); // For debouncing prettify calls
 
-
-
 import { avatarColorCache, getDominantAvatarColor } from './renderer/colorUtils.js';
 import { initializeImageHandler, setContentAndProcessImages, clearImageState, clearAllImageStates } from './renderer/imageHandler.js';
 import { processAnimationsInContent } from './renderer/animation.js';
@@ -41,9 +39,6 @@ function injectEnhancedStyles() {
        console.error('VCPSub Enhanced UI: Failed to load external styles:', error);
    }
 }
-
-
-
 
 // --- Core Logic ---
 
@@ -447,7 +442,7 @@ function calculateDepthByTurns(messageId, history) {
 function preprocessFullContent(text, settings = {}, messageRole = 'assistant', depth = 0) {
     // --- 应用正则规则（前端）---
     const currentSelectedItem = mainRendererReferences.currentSelectedItemRef.get();
-    const agentConfig = currentSelectedItem?.config;
+    const agentConfig = currentSelectedItem?.config || currentSelectedItem;
 
     if (agentConfig?.stripRegexes && Array.isArray(agentConfig.stripRegexes)) {
         // 应用前端正则规则，包含深度控制
@@ -803,7 +798,7 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
         });
     }
 
-    // Determine avatar color and URL to use
+    // 先确定颜色值（但不应用）
     let avatarColorToUse;
     let avatarUrlToUse; // This was the missing variable
     if (message.role === 'user') {
@@ -814,11 +809,15 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
             avatarColorToUse = message.avatarColor;
             avatarUrlToUse = message.avatarUrl;
         } else if (currentSelectedItem) {
-            avatarColorToUse = currentSelectedItem.config?.avatarCalculatedColor;
+            avatarColorToUse = currentSelectedItem.config?.avatarCalculatedColor
+                            || currentSelectedItem.avatarCalculatedColor
+                            || currentSelectedItem.config?.avatarColor
+                            || currentSelectedItem.avatarColor;
             avatarUrlToUse = currentSelectedItem.avatarUrl;
         }
     }
 
+    // 先添加到DOM
     if (appendToDom) {
         chatMessagesDiv.appendChild(messageItem);
     }
@@ -896,50 +895,64 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
             });
         }
     
-    // Avatar Color Application (after messageItem is in DOM)
+    // 然后应用颜色（现在 messageItem.isConnected 是 true）
     if ((message.role === 'user' || message.role === 'assistant') && avatarImg && senderNameDiv) {
         const applyColorToElements = (colorStr) => {
-            if (colorStr && messageItem.isConnected) { // Check if still in DOM
-                senderNameDiv.style.color = colorStr;
-                avatarImg.style.borderColor = colorStr;
+            if (colorStr) {
+                console.log(`[DEBUG] Applying color ${colorStr} to message item ${messageItem.dataset.messageId}`);
+                messageItem.style.setProperty('--dynamic-avatar-color', colorStr);
+                
+                // 后备方案：直接应用到avatarImg
+                if (avatarImg) {
+                    avatarImg.style.borderColor = colorStr;
+                    avatarImg.style.borderWidth = '2px';
+                    avatarImg.style.borderStyle = 'solid';
+                }
+            } else {
+                console.log(`[DEBUG] No color to apply, using default`);
+                messageItem.style.removeProperty('--dynamic-avatar-color');
             }
         };
 
-        if (avatarColorToUse) { // If a specific color was passed (e.g. for group member or persisted user/agent color)
+        if (avatarColorToUse) {
             applyColorToElements(avatarColorToUse);
         } else if (avatarUrlToUse && !avatarUrlToUse.includes('default_')) { // No persisted color, try to extract
             const dominantColor = await getDominantAvatarColor(avatarUrlToUse);
-            applyColorToElements(dominantColor);
-            if (dominantColor && messageItem.isConnected) { // If extracted and still in DOM, try to persist
-                let typeToSave, idToSaveFor;
-                if (message.role === 'user') {
-                    typeToSave = 'user'; idToSaveFor = 'user_global';
-                } else if (message.isGroupMessage && message.agentId) {
-                    typeToSave = 'agent'; idToSaveFor = message.agentId; // Save for the specific group member
-                } else if (currentSelectedItem && currentSelectedItem.type === 'agent') {
-                    typeToSave = 'agent'; idToSaveFor = currentSelectedItem.id; // Current agent
-                }
+            if (dominantColor) { // Successfully extracted a color
+                applyColorToElements(dominantColor);
+                if (messageItem.isConnected) { // If extracted and still in DOM, try to persist
+                    let typeToSave, idToSaveFor;
+                    if (message.role === 'user') {
+                        typeToSave = 'user'; idToSaveFor = 'user_global';
+                    } else if (message.isGroupMessage && message.agentId) {
+                        typeToSave = 'agent'; idToSaveFor = message.agentId; // Save for the specific group member
+                    } else if (currentSelectedItem && currentSelectedItem.type === 'agent') {
+                        typeToSave = 'agent'; idToSaveFor = currentSelectedItem.id; // Current agent
+                    }
 
-                if (typeToSave && idToSaveFor) {
-                    electronAPI.saveAvatarColor({ type: typeToSave, id: idToSaveFor, color: dominantColor })
-                        .then(result => {
-                            if (result.success) {
-                                if (typeToSave === 'user') {
-                                     mainRendererReferences.globalSettingsRef.set({...globalSettings, userAvatarCalculatedColor: dominantColor });
-                                } else if (typeToSave === 'agent' && idToSaveFor === currentSelectedItem.id && currentSelectedItem.config) {
-                                    // Update currentSelectedItem.config if it's the active agent
-                                    currentSelectedItem.config.avatarCalculatedColor = dominantColor;
+                    if (typeToSave && idToSaveFor) {
+                        electronAPI.saveAvatarColor({ type: typeToSave, id: idToSaveFor, color: dominantColor })
+                            .then(result => {
+                                if (result.success) {
+                                    if (typeToSave === 'user') {
+                                        mainRendererReferences.globalSettingsRef.set({...globalSettings, userAvatarCalculatedColor: dominantColor });
+                                    } else if (typeToSave === 'agent' && idToSaveFor === currentSelectedItem.id) {
+                                        if (currentSelectedItem.config) { // Handle nested structure
+                                            currentSelectedItem.config.avatarCalculatedColor = dominantColor;
+                                        } else { // Handle flat structure
+                                            currentSelectedItem.avatarCalculatedColor = dominantColor;
+                                        }
+                                    }
                                 }
-                                // For group messages, the individual agent's config isn't directly held in currentSelectedItem.config
-                                // The color is applied directly to the message. If persistence is needed for each group member,
-                                // it should happen when their main config is loaded/saved.
-                            }
-                        });
+                            });
+                    }
                 }
+            } else { // Failed to extract color (e.g., CORS issue), apply a default border
+                avatarImg.style.borderColor = 'var(--border-color)';
             }
         } else { // Default avatar or no URL, reset to theme defaults
-            senderNameDiv.style.color = message.role === 'user' ? 'var(--secondary-text)' : 'var(--highlight-text)';
-            avatarImg.style.borderColor = 'transparent';
+            // Remove the custom property. The CSS will automatically use its fallback values.
+            messageItem.style.removeProperty('--dynamic-avatar-color');
         }
     }
 

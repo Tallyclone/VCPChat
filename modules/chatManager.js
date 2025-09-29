@@ -284,8 +284,9 @@ window.chatManager = (() => {
             const currentSelectedItem = currentSelectedItemRef.get();
             
             // Explicitly start watcher for the new topic
-            if (electronAPI.watcherStart && currentSelectedItem.config?.agentDataPath) {
-                const historyFilePath = `${currentSelectedItem.config.agentDataPath}\\topics\\${topicId}\\history.json`;
+            const agentConfigForWatcher = currentSelectedItem.config || currentSelectedItem;
+            if (electronAPI.watcherStart && agentConfigForWatcher?.agentDataPath) {
+                const historyFilePath = `${agentConfigForWatcher.agentDataPath}\\topics\\${topicId}\\history.json`;
                 await electronAPI.watcherStart(historyFilePath, currentSelectedItem.id, topicId);
             }
 
@@ -301,12 +302,13 @@ window.chatManager = (() => {
 
     async function handleTopicDeletion(remainingTopics) {
         let currentSelectedItem = currentSelectedItemRef.get();
-        currentSelectedItem.config.topics = remainingTopics;
+        const config = currentSelectedItem.config || currentSelectedItem;
+        config.topics = remainingTopics;
         currentSelectedItemRef.set(currentSelectedItem);
 
         if (remainingTopics && remainingTopics.length > 0) {
             const newSelectedTopic = remainingTopics.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0];
-            await selectItem(currentSelectedItem.id, currentSelectedItem.type, currentSelectedItem.name, currentSelectedItem.avatarUrl, currentSelectedItem.config);
+            await selectItem(currentSelectedItem.id, currentSelectedItem.type, currentSelectedItem.name, currentSelectedItem.avatarUrl, (currentSelectedItem.config || currentSelectedItem));
             await loadChatHistory(currentSelectedItem.id, currentSelectedItem.type, newSelectedTopic.id);
             currentTopicIdRef.set(newSelectedTopic.id);
             if (messageRenderer) messageRenderer.setCurrentTopicId(newSelectedTopic.id);
@@ -361,8 +363,9 @@ window.chatManager = (() => {
         }
     
         const currentSelectedItem = currentSelectedItemRef.get();
-        if (electronAPI.watcherStart && currentSelectedItem.config?.agentDataPath) {
-            const historyFilePath = `${currentSelectedItem.config.agentDataPath}\\topics\\${topicId}\\history.json`;
+        const agentConfigForHistory = currentSelectedItem.config || currentSelectedItem;
+        if (electronAPI.watcherStart && agentConfigForHistory?.agentDataPath) {
+            const historyFilePath = `${agentConfigForHistory.agentDataPath}\\topics\\${topicId}\\history.json`;
             await electronAPI.watcherStart(historyFilePath, itemId, topicId);
         }
     
@@ -474,7 +477,11 @@ window.chatManager = (() => {
                 return;
             }
             // 使用最新的配置更新内存中的状态，以保持同步
-            currentSelectedItem.config = agentConfigForSummary;
+            if (currentSelectedItem.config) {
+                currentSelectedItem.config = agentConfigForSummary;
+            } else {
+                Object.assign(currentSelectedItem, agentConfigForSummary);
+            }
             currentSelectedItemRef.set(currentSelectedItem);
 
             const topics = agentConfigForSummary.topics || [];
@@ -623,7 +630,7 @@ window.chatManager = (() => {
             id: thinkingMessageId,
             isThinking: true,
             avatarUrl: currentSelectedItem.avatarUrl,
-            avatarColor: currentSelectedItem.config?.avatarCalculatedColor
+            avatarColor: (currentSelectedItem.config || currentSelectedItem)?.avatarCalculatedColor
         };
 
         let thinkingMessageItem = null;
@@ -636,7 +643,7 @@ window.chatManager = (() => {
         currentChatHistoryRef.set(currentChatHistoryWithThinking);
 
         try {
-            const agentConfig = currentSelectedItem.config;
+            const agentConfig = currentSelectedItem.config || currentSelectedItem;
             const currentChatHistory = currentChatHistoryRef.get();
             const historySnapshotForVCP = currentChatHistory.filter(msg => msg.id !== thinkingMessage.id && !msg.isThinking);
 
@@ -920,7 +927,7 @@ window.chatManager = (() => {
                         role: 'assistant',
                         name: context.agentName || context.agentId || 'AI', // 修复：使用 context 中的 agentName 或 agentId 作为回退
                         avatarUrl: currentSelectedItem.avatarUrl, // This might be incorrect if user switched, but it's a minor UI detail for background saves.
-                        avatarColor: currentSelectedItem.config?.avatarCalculatedColor,
+                        avatarColor: (currentSelectedItem.config || currentSelectedItem)?.avatarCalculatedColor,
                         content: assistantMessageContent,
                         timestamp: Date.now(),
                         id: `msg_${Date.now()}_assistant_${Math.random().toString(36).substring(2, 9)}`

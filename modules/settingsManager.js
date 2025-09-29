@@ -80,7 +80,7 @@ const settingsManager = (() => {
                 if (groupSettingsExists) groupSettingsContainer.style.display = 'none';
                 itemSettingsContainerTitle.textContent = 'Agent 设置: ';
                 deleteItemBtn.textContent = '删除此 Agent';
-                populateAgentSettingsForm(currentSelectedItem.id, currentSelectedItem.config);
+                populateAgentSettingsForm(currentSelectedItem.id, (currentSelectedItem.config || currentSelectedItem));
             } else if (currentSelectedItem.type === 'group') {
                 if (agentSettingsExists) agentSettingsContainer.style.display = 'none';
                 if (groupSettingsExists) groupSettingsContainer.style.display = 'block';
@@ -238,7 +238,11 @@ const settingsManager = (() => {
             if (currentSelectedItem.id === agentId && currentSelectedItem.type === 'agent') {
                 const updatedAgentConfig = await electronAPI.getAgentConfig(agentId);
                 currentSelectedItem.name = newConfig.name;
-                currentSelectedItem.config = updatedAgentConfig;
+                if (currentSelectedItem.config) {
+                    currentSelectedItem.config = updatedAgentConfig;
+                } else {
+                    Object.assign(currentSelectedItem, updatedAgentConfig);
+                }
                 
                 // Update other UI parts via callbacks or direct calls if modules are passed in
                 if (mainRendererFunctions.updateChatHeader) {
