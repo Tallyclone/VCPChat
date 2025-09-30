@@ -50,24 +50,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             imageControls.style.display = 'flex'; // Set display so it can become visible
             errorDiv.style.display = 'none';
 
-            // Add hover listeners for showing/hiding controls
-            imgElement.addEventListener('mouseenter', () => {
-                imageControls.classList.add('active');
-            });
-            imgElement.addEventListener('mouseleave', () => {
-                // Check if mouse is over the controls themselves before hiding
-                setTimeout(() => { // Timeout to allow moving to controls
-                    if (!imageControls.matches(':hover')) {
-                        imageControls.classList.remove('active');
-                    }
-                }, 50); // Small delay
-            });
-            // Keep controls visible if mouse moves onto them
-            imageControls.addEventListener('mouseenter', () => {
-                imageControls.classList.add('active');
-            });
-            imageControls.addEventListener('mouseleave', () => {
-                imageControls.classList.remove('active');
+            // Toggle controls visibility on click
+            imgElement.addEventListener('click', () => {
+                imageControls.classList.toggle('active');
             });
 
             // Zoom functionality
