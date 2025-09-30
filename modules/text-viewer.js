@@ -695,6 +695,52 @@ document.addEventListener('DOMContentLoaded', async () => {
         return textarea.value;
     }
 
+    function applyBoldFormatting(container) {
+        const walker = document.createTreeWalker(
+            container,
+            NodeFilter.SHOW_TEXT,
+            { acceptNode: (node) => {
+                // 拒绝在这些元素内进行加粗处理
+                if (node.parentElement.closest('pre, code, script, style, .vcp-tool-use-bubble, .vcp-tool-result-bubble, a')) {
+                    return NodeFilter.FILTER_REJECT;
+                }
+                // 只接受包含 "**" 的文本节点
+                if (/\*\*/.test(node.nodeValue)) {
+                    return NodeFilter.FILTER_ACCEPT;
+                }
+                return NodeFilter.FILTER_SKIP;
+            }},
+            false
+        );
+
+        const nodesToProcess = [];
+        // TreeWalker 会动态变化，所以先收集所有节点
+        while (walker.nextNode()) {
+            nodesToProcess.push(walker.currentNode);
+        }
+
+        nodesToProcess.forEach(node => {
+            const parent = node.parentElement;
+            if (!parent) return;
+
+            const fragment = document.createDocumentFragment();
+            // 使用正则表达式分割文本，保留分隔符
+            const parts = node.nodeValue.split(/(\*\*.*?\*\*)/g);
+
+            parts.forEach(part => {
+                if (part.startsWith('**') && part.endsWith('**')) {
+                    const strong = document.createElement('strong');
+                    strong.textContent = part.slice(2, -2);
+                    fragment.appendChild(strong);
+                } else if (part) { // 避免添加空的文本节点
+                    fragment.appendChild(document.createTextNode(part));
+                }
+            });
+            // 用新的文档片段替换旧的文本节点
+            parent.replaceChild(fragment, node);
+        });
+    }
+
     const textContent = params.get('text');
     const windowTitle = params.get('title') || '文本阅读模式';
     const encoding = params.get('encoding');
@@ -1155,6 +1201,9 @@ ${codeContent}
         
         // --- Call animation processor after all other enhancements ---
         processAnimationsInContent(container);
+
+        // --- Final formatting pass for bold text ---
+        applyBoldFormatting(container);
     }
 
     if (textContent) {
