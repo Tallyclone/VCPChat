@@ -602,14 +602,19 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
         try {
             // --- Agent Music Control Injection ---
             if (getMusicState) {
-                // Settings already loaded, just check the flag
                 try {
+                    const { musicWindow, currentSongInfo } = getMusicState();
+                    const topParts = [];
+                    const bottomParts = [];
+
+                    // 1. 始终注入当前播放的歌曲信息（如果存在）
+                    if (currentSongInfo) {
+                        bottomParts.push(`[当前播放音乐：${currentSongInfo.title} - ${currentSongInfo.artist} (${currentSongInfo.album || '未知专辑'})]`);
+                    }
+
+                    // 2. 如果启用了音乐控制，则注入播放列表和控制器
                     if (settings.agentMusicControl) {
-                        const { musicWindow, currentSongInfo } = getMusicState();
-                        const topParts = [];
-                        const bottomParts = [];
-    
-                        // 1. 构建播放列表信息 (注入到顶部)
+                        // 2a. 构建播放列表信息 (注入到顶部)
                         const songlistPath = path.join(APP_DATA_ROOT_IN_PROJECT, 'songlist.json');
                         if (await fs.pathExists(songlistPath)) {
                             const songlistJson = await fs.readJson(songlistPath);
@@ -620,37 +625,29 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
                                 }
                             }
                         }
-    
-                        // 2. 构建注入到底部的信息
-                        // 2a. 插件权限
+
+                        // 2b. 注入插件权限
                         bottomParts.push(`点歌台{{VCPMusicController}}`);
-    
-                        // 2b. 当前歌曲信息 (仅当播放器打开且有歌曲信息时)
-                        if (musicWindow && !musicWindow.isDestroyed() && currentSongInfo) {
-                            bottomParts.push(`[当前播放音乐：${currentSongInfo.title} - ${currentSongInfo.artist} (${currentSongInfo.album || '未知专辑'})]`);
+                    }
+
+                    // 3. 组合并注入到消息数组
+                    if (topParts.length > 0 || bottomParts.length > 0) {
+                        let systemMsgIndex = messages.findIndex(m => m.role === 'system');
+                        let originalContent = '';
+
+                        if (systemMsgIndex !== -1) {
+                            originalContent = messages[systemMsgIndex].content;
+                        } else {
+                            messages.unshift({ role: 'system', content: '' });
+                            systemMsgIndex = 0;
                         }
-    
-                        // 3. 组合并注入到消息数组
-                        if (topParts.length > 0 || bottomParts.length > 0) {
-                            let systemMsgIndex = messages.findIndex(m => m.role === 'system');
-                            let originalContent = '';
-    
-                            if (systemMsgIndex !== -1) {
-                                originalContent = messages[systemMsgIndex].content;
-                            } else {
-                                // 如果没有系统消息，则创建一个以便注入
-                                messages.unshift({ role: 'system', content: '' });
-                                systemMsgIndex = 0;
-                            }
-                            
-                            const finalParts = [];
-                            if (topParts.length > 0) finalParts.push(topParts.join('\n'));
-                            if (originalContent) finalParts.push(originalContent);
-                            if (bottomParts.length > 0) finalParts.push(bottomParts.join('\n'));
-    
-                            // 用换行符连接各个部分，确保格式正确
-                            messages[systemMsgIndex].content = finalParts.join('\n\n').trim();
-                        }
+                        
+                        const finalParts = [];
+                        if (topParts.length > 0) finalParts.push(topParts.join('\n'));
+                        if (originalContent) finalParts.push(originalContent);
+                        if (bottomParts.length > 0) finalParts.push(bottomParts.join('\n'));
+
+                        messages[systemMsgIndex].content = finalParts.join('\n\n').trim();
                     }
                 } catch (e) {
                     console.error('[Agent Music Control] Failed to inject music info:', e);

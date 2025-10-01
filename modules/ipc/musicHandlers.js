@@ -90,6 +90,7 @@ function createOrFocusMusicWindow() {
 
             openChildWindows = openChildWindows.filter(win => win !== musicWindow);
             musicWindow = null;
+            currentSongInfo = null; // 清理歌曲信息
         });
 
         musicWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
@@ -197,15 +198,28 @@ function initialize(options) {
             }
         });
 
-        ipcMain.handle('music-load', (event, filePath) => {
-            return audioEngineApi('/load', 'POST', { path: filePath });
+        ipcMain.handle('music-load', (event, track) => {
+            if (track && track.path) {
+                currentSongInfo = {
+                    title: track.title || '未知标题',
+                    artist: track.artist || '未知艺术家',
+                    album: track.album || '未知专辑'
+                };
+                return audioEngineApi('/load', 'POST', { path: track.path });
+            }
+            return { status: 'error', message: 'Invalid track data provided.' };
         });
 
         ipcMain.handle('music-play', () => {
-            return audioEngineApi('/play', 'POST');
+            // 只有在有歌曲信息时才真正播放
+            if (currentSongInfo) {
+                return audioEngineApi('/play', 'POST');
+            }
+            return { status: 'error', message: 'No song loaded to play.' };
         });
 
         ipcMain.handle('music-pause', () => {
+            currentSongInfo = null; // 暂停时也清除信息
             return audioEngineApi('/pause', 'POST');
         });
 

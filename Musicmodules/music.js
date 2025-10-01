@@ -206,7 +206,7 @@ let isDraggingProgress = false;
         fetchAndDisplayLyrics(track.artist, track.title);
 
         // 通过IPC让主进程通知Python引擎加载文件
-        const result = await window.electron.invoke('music-load', track.path);
+        const result = await window.electron.invoke('music-load', track);
         if (result && result.status === 'success') {
             updateUIWithState(result.state);
             if (andPlay) {
