@@ -9,7 +9,7 @@ def sanitize_filename(name):
     return re.sub(r'[\\/*?:"<>|]', "", name)
 
 # 定义输出目录
-output_dir = '音乐列表日记本'
+output_dir = '音乐列表'
 
 # 如果目录不存在，则创建它
 if not os.path.exists(output_dir):
@@ -47,4 +47,5 @@ except FileNotFoundError:
 except json.JSONDecodeError:
     print(f"错误: '{json_file_path}' 文件格式不正确，无法解析。")
 except Exception as e:
+
     print(f"发生了一个未知错误: {e}")
