@@ -64,8 +64,11 @@ function initialize(options) {
             nativeTheme.themeSource = themeMode;
             if (settingsManager) {
                 try {
-                    await settingsManager.updateSetting('currentThemeMode', themeMode);
-                    await settingsManager.updateSetting('themeLastUpdated', Date.now());
+                    await settingsManager.updateSettings(settings => ({
+                        ...settings,
+                        currentThemeMode: themeMode,
+                        themeLastUpdated: Date.now()
+                    }));
                     console.log(`[ThemeHandlers] Saved theme mode '${themeMode}' to settings.`);
                 } catch (error) {
                     console.error('[ThemeHandlers] Failed to save theme mode setting:', error);

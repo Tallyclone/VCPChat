@@ -219,7 +219,6 @@ function initialize(options) {
         });
 
         ipcMain.handle('music-pause', () => {
-            currentSongInfo = null; // 暂停时也清除信息
             return audioEngineApi('/pause', 'POST');
         });
 
