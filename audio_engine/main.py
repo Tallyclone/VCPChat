@@ -208,36 +208,35 @@ class AudioEngine:
                     original_data, original_samplerate = sf.read(file_path, dtype='float64')
                     logging.info("Successfully loaded with soundfile.")
                 except sf.LibsndfileError as e:
-                    if 'Format not recognised' in str(e):
-                        logging.warning(f"Soundfile failed: {e}. Falling back to FFmpeg.")
-                        ffmpeg_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'bin', 'ffmpeg.exe'))
-                        if not os.path.exists(ffmpeg_path):
-                            logging.warning(f"ffmpeg.exe not found at {ffmpeg_path}, assuming it's in PATH.")
-                            ffmpeg_path = 'ffmpeg'
-                        
-                        # 改进的 FFmpeg 命令：降低日志噪音，并标准化输出为 f32le PCM
-                        command = [
-                            ffmpeg_path, '-v', 'error',
-                            '-i', file_path,
-                            '-acodec', 'pcm_f32le', # 标准化为 32-bit float
-                            '-f', 'wav', '-'
-                        ]
-                        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                        stdout_data, stderr_data = process.communicate()
+                    # 修改：对所有 soundfile 错误都尝试 FFmpeg 回退
+                    # 这样可以解决 Windows 中文路径 MP3 文件的问题
+                    logging.warning(f"Soundfile failed: {e}. Falling back to FFmpeg.")
+                    ffmpeg_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'bin', 'ffmpeg.exe'))
+                    if not os.path.exists(ffmpeg_path):
+                        logging.warning(f"ffmpeg.exe not found at {ffmpeg_path}, assuming it's in PATH.")
+                        ffmpeg_path = 'ffmpeg'
 
-                        if process.returncode != 0:
-                            err_msg = f"FFmpeg failed with return code {process.returncode}. Stderr: {stderr_data.decode(errors='ignore')}"
-                            logging.error(err_msg)
-                            raise sf.LibsndfileError(f"FFmpeg decoding failed for {file_path}")
+                    # 改进的 FFmpeg 命令：降低日志噪音，并标准化输出为 f32le PCM
+                    command = [
+                        ffmpeg_path, '-v', 'error',
+                        '-i', file_path,
+                        '-acodec', 'pcm_f32le', # 标准化为 32-bit float
+                        '-f', 'wav', '-'
+                    ]
+                    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    stdout_data, stderr_data = process.communicate()
 
-                        try:
-                            original_data, original_samplerate = sf.read(io.BytesIO(stdout_data), dtype='float64')
-                            logging.info(f"Successfully loaded {file_path} via FFmpeg.")
-                        except Exception as read_e:
-                            logging.error(f"Failed to read from FFmpeg stdout stream: {read_e}", exc_info=True)
-                            raise read_e
-                    else:
-                        raise e
+                    if process.returncode != 0:
+                        err_msg = f"FFmpeg failed with return code {process.returncode}. Stderr: {stderr_data.decode(errors='ignore')}"
+                        logging.error(err_msg)
+                        raise sf.LibsndfileError(f"FFmpeg decoding failed for {file_path}")
+
+                    try:
+                        original_data, original_samplerate = sf.read(io.BytesIO(stdout_data), dtype='float64')
+                        logging.info(f"Successfully loaded {file_path} via FFmpeg.")
+                    except Exception as read_e:
+                        logging.error(f"Failed to read from FFmpeg stdout stream: {read_e}", exc_info=True)
+                        raise read_e
 
                 # --- 2. Correctly Determine Channels ---
                 # 修复：在读取数据后立即确定通道数
