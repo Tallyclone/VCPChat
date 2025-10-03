@@ -13,7 +13,17 @@ import argparse
 import hashlib
 import subprocess
 import io
-import rust_audio_resampler # <-- 导入我们新的 Rust 模块
+# --- 动态导入 Rust 模块，增强鲁棒性 ---
+try:
+    import rust_audio_resampler
+    RUST_RESAMPLER_AVAILABLE = True
+    logging.info("Successfully imported Rust audio resampler module.")
+except ImportError:
+    rust_audio_resampler = None
+    RUST_RESAMPLER_AVAILABLE = False
+    logging.warning("Could not import 'rust_audio_resampler'. "
+                    "High-quality upsampling will be disabled. "
+                    "The application will continue with basic functionality.")
 
 # --- 全局配置 ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -267,26 +277,31 @@ class AudioEngine:
                     logging.info(f"Loading resampled data from cache: {cache_filepath}")
                     self.data, self.samplerate = sf.read(cache_filepath, dtype='float64')
                 else:
-                    # --- 5. Perform Resampling if needed (with correct channel count) ---
+                    # --- 5. Perform Resampling if needed (with graceful fallback) ---
                     if target_sr != original_samplerate:
-                        logging.info(f"Resampling from {original_samplerate} Hz to {target_sr} Hz...")
-                        flat_data = original_data.flatten()
-                        
-                        # 修复：将正确的通道数传递给 Rust 重采样器
-                        resampled_flat = rust_audio_resampler.resample(
-                            flat_data,
-                            original_samplerate,
-                            target_sr,
-                            channels # 使用局部变量 `channels`
-                        )
-                        
-                        self.data = resampled_flat.reshape((-1, channels)) # 使用局部变量 `channels`
-                        self.samplerate = target_sr
-                        logging.info("Resampling complete.")
-                        
-                        if cache_filepath:
-                            logging.info(f"Writing resampled data to cache: {cache_filepath}")
-                            sf.write(cache_filepath, self.data, self.samplerate)
+                        if RUST_RESAMPLER_AVAILABLE:
+                            logging.info(f"Resampling from {original_samplerate} Hz to {target_sr} Hz using Rust module...")
+                            flat_data = original_data.flatten()
+                            
+                            # 修复：将正确的通道数传递给 Rust 重采样器
+                            resampled_flat = rust_audio_resampler.resample(
+                                flat_data,
+                                original_samplerate,
+                                target_sr,
+                                channels # 使用局部变量 `channels`
+                            )
+                            
+                            self.data = resampled_flat.reshape((-1, channels)) # 使用局部变量 `channels`
+                            self.samplerate = target_sr
+                            logging.info("Resampling complete.")
+                            
+                            if cache_filepath:
+                                logging.info(f"Writing resampled data to cache: {cache_filepath}")
+                                sf.write(cache_filepath, self.data, self.samplerate)
+                        else:
+                            logging.warning(f"Upsampling from {original_samplerate} Hz to {target_sr} Hz is required, but the Rust resampler module is not available. Playback will use the original sample rate.")
+                            self.data = original_data
+                            self.samplerate = original_samplerate
                     else:
                         self.data = original_data
                         self.samplerate = original_samplerate
