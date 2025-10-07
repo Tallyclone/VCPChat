@@ -21,11 +21,22 @@ async function main() {
         if (!maidName) {
             throw new Error("请求中缺少 'maid' 参数。");
         }
-        const keywords = (args.keyword || '').split(/[,，\s]+/).filter(Boolean);
+        let keywords = (args.keyword || '').split(/[,，\s]+/).filter(Boolean);
         if (keywords.length === 0) {
             throw new Error("请求中缺少 'keyword' 参数。");
         }
-        let windowSize = parseInt(args.window_size || '10', 10);
+        
+        // 4. 过滤屏蔽词
+        if (config.BlockedKeywords && config.BlockedKeywords.length > 0) {
+            const blockedKeywordsSet = new Set(config.BlockedKeywords);
+            keywords = keywords.filter(kw => !blockedKeywordsSet.has(kw));
+        }
+
+        if (keywords.length === 0) {
+            throw new Error("关键词均被屏蔽，无有效搜索词。");
+        }
+
+        let windowSize = parseInt(args.window_size || '5', 10);
         if (windowSize < 1) {
             windowSize = 1;
         }
@@ -136,7 +147,8 @@ async function loadConfig() {
             RerankApi: config.RerankApi || '',
             RerankModel: config.RerankModel || '',
             RerankMaxTokensPerBatch: parseInt(config.RerankMaxTokensPerBatch, 10) || 30000,
-            RerankTopN: parseInt(config.RerankTopN, 10) || 5
+            RerankTopN: parseInt(config.RerankTopN, 10) || 5,
+            BlockedKeywords: (config.BlockedKeywords || '').split(',').map(kw => kw.trim()).filter(Boolean)
         };
     } catch (error) {
         if (error.code === 'ENOENT') {
@@ -363,64 +375,100 @@ async function rerankMemories(memories, query, config) {
         return memories;
     }
 
-    // 1. 预处理：确保发送的文本总量不超过API限制
+    // 1. 将回忆片段分割成多个批次，确保每个批次不超过 token 上限
+    const batches = [];
+    let currentBatch = [];
     let currentTokens = 0;
-    const memoriesForRerank = [];
     for (const memory of memories) {
-        if (currentTokens + memory.length > config.RerankMaxTokensPerBatch) {
-            console.error(`[DEBUG] Rerank batch is full. Truncating from ${memories.length} to ${memoriesForRerank.length} memories to fit the token limit.`);
-            break;
+        // 如果当前批次非空，并且加入新片段会超限，则将当前批次存入，并开启新批次
+        if (currentBatch.length > 0 && currentTokens + memory.length > config.RerankMaxTokensPerBatch) {
+            batches.push(currentBatch);
+            currentBatch = [];
+            currentTokens = 0;
         }
-        memoriesForRerank.push(memory);
+        currentBatch.push(memory);
         currentTokens += memory.length;
     }
-    
-    if (memoriesForRerank.length === 0) {
-        console.error("[DEBUG] No memories to rerank after checking token limits.");
-        return memories; // 如果没有任何内容可供重排，则返回原始结果
+    if (currentBatch.length > 0) {
+        batches.push(currentBatch);
     }
+
+    if (batches.length === 0) {
+        console.error("[DEBUG] No memories to rerank after batching.");
+        return memories;
+    }
+    
+    console.error(`[DEBUG] Split memories into ${batches.length} batches for reranking.`);
 
     const headers = {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${config.RerankApi}`
     };
-
-    const data = {
-        model: config.RerankModel,
-        query: query,
-        documents: memoriesForRerank, // 使用截断后的数组
-        top_n: config.RerankTopN
-    };
+    const baseUrl = config.RerankUrl.endsWith('/') ? config.RerankUrl : config.RerankUrl + '/';
+    const rerankEndpoint = baseUrl + 'v1/rerank';
 
     try {
-        const baseUrl = config.RerankUrl.endsWith('/') ? config.RerankUrl : config.RerankUrl + '/';
-        const rerankEndpoint = baseUrl + 'v1/rerank';
-        
-        console.error(`[DEBUG] Sending ${memoriesForRerank.length} memories for rerank to: ${rerankEndpoint}`);
-        
-        const response = await axios.post(rerankEndpoint, data, {
-            headers: headers,
-            timeout: 15000 // 设置15秒超时
+        // 2. 并行发送所有批次的重排请求
+        const rerankPromises = batches.map((batch, index) => {
+            const data = {
+                model: config.RerankModel,
+                query: query,
+                documents: batch,
+                return_documents: false, // 我们只需要索引和分数
+                top_n: batch.length // 请求返回批次内所有文档的分数，以便全局排序
+            };
+            console.error(`[DEBUG] Sending batch ${index + 1}/${batches.length} with ${batch.length} memories for rerank.`);
+            return axios.post(rerankEndpoint, data, {
+                headers: headers,
+                timeout: 30000 // 增加超时时间以应对可能的并发压力
+            });
         });
-        
-        if (response.data && Array.isArray(response.data.results)) {
-            const rerankedResults = response.data.results;
-            
-            // 重要：根据 rerankedResults 中的 index 从我们实际发送的 `memoriesForRerank` 数组中重建结果
-            const rerankedMemories = rerankedResults.map(result => memoriesForRerank[result.index]);
-            
-            // 返回重排后的、截取 top_n 的结果
-            return rerankedMemories.slice(0, config.RerankTopN);
-        } else {
-            console.error("[DEBUG] Rerank API response is not in the expected format:", response.data);
-            return memories; // 返回原始顺序
+
+        const responses = await Promise.all(rerankPromises);
+
+        // 3. 收集并整合所有批次的结果
+        let allRankedDocs = [];
+        responses.forEach((response, batchIndex) => {
+            if (response.data && Array.isArray(response.data.results)) {
+                const batch = batches[batchIndex];
+                const batchResults = response.data.results.map(result => {
+                    // API需要返回 relevance_score 用于全局排序
+                    if (typeof result.relevance_score === 'undefined') {
+                         throw new Error("Rerank API response is missing 'relevance_score'. Cannot perform global sorting.");
+                    }
+                    return {
+                        document: batch[result.index],
+                        score: result.relevance_score
+                    };
+                });
+                allRankedDocs.push(...batchResults);
+            } else {
+                 console.error(`[DEBUG] Rerank API response for batch ${batchIndex} is not in the expected format:`, response.data);
+            }
+        });
+
+        if (allRankedDocs.length === 0) {
+            console.error("[DEBUG] No valid results received from rerank API across all batches.");
+            return memories; // 如果所有批次都失败或返回空，则返回原始结果
         }
+
+        // 4. 全局排序
+        allRankedDocs.sort((a, b) => b.score - a.score);
+
+        // 5. 提取排序后的文档内容，并截取 top_n
+        const finalMemories = allRankedDocs.map(doc => doc.document).slice(0, config.RerankTopN);
+        
+        console.error(`[DEBUG] Rerank completed. Globally sorted ${allRankedDocs.length} results, returning top ${finalMemories.length}.`);
+        
+        return finalMemories;
+
     } catch (error) {
         let errorMessage = error.message;
         if (error.response) {
             errorMessage += ` - Status: ${error.response.status}, Data: ${JSON.stringify(error.response.data)}`;
         }
-        console.error(`[DEBUG] Rerank API request failed: ${errorMessage}`);
+        console.error(`[DEBUG] Rerank API request failed during batch processing: ${errorMessage}`);
+        // 出现任何网络或API错误时，抛出异常，由上层逻辑决定是使用原始数据还是报错
         throw new Error(`Rerank API request failed: ${errorMessage}`);
     }
 }
