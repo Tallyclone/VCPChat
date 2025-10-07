@@ -1,7 +1,8 @@
 const fs = require('fs').promises;
 const path = require('path');
 const dotenv = require('dotenv');
-const Fuse = require('fuse.js');
+const { Document } = require('flexsearch');
+const jieba = require('node-jieba');
 const cheerio = require('cheerio');
 
 // --- 主逻辑 ---
@@ -186,27 +187,117 @@ async function searchHistories(vchatPath, agentUuid, keywords, windowSize, userN
         for (const fileInfo of filesToSearch) {
             try {
                 const content = await fs.readFile(fileInfo.path, 'utf-8');
-                const history = JSON.parse(content).filter(entry => entry.content && typeof entry.content === 'string');
+                const rawData = JSON.parse(content);
+                let history;
+
+                // 兼容新版（直接是数组）和旧版（对象内含messages数组）的聊天记录格式
+                if (Array.isArray(rawData)) {
+                    history = rawData; // 新版格式
+                } else if (rawData && Array.isArray(rawData.messages)) {
+                    history = rawData.messages; // 兼容可能存在的旧版格式
+                } else {
+                    history = []; // 未知或无效格式，跳过
+                }
+
+                history = history.filter(entry => entry.content && typeof entry.content === 'string');
 
                 if (history.length === 0) continue;
 
-                // A. 使用 Fuse.js 进行模糊搜索
-                const fuseOptions = {
-                    keys: ['content'],
-                    includeScore: true,
-                    minMatchCharLength: 2, // 避免无意义的单字符匹配
-                    threshold: 0.3, // 收紧阈值，确保搜索结果高度相关
-                    distance: 10,   // 严格限制多关键词之间的距离
-                    ignoreLocation: true,
-                };
-                const fuse = new Fuse(history, fuseOptions);
-
-                let matchedIndices = new Set();
-                keywords.forEach(kw => {
-                    const results = fuse.search(kw);
-                    results.forEach(result => matchedIndices.add(result.refIndex));
+                // A. 使用 flexsearch 进行高性能相关性搜索
+                // 1. 创建搜索索引实例，并配置为按空格分词
+                const index = new Document({
+                    document: {
+                        id: "id",
+                        index: "content"
+                    },
+                    // 采用jieba进行中文分词
+                    tokenize: function(str) {
+                        const tokens = jieba.cut(str);
+                        // 确保返回的是字符串数组
+                        return Array.isArray(tokens) ? tokens : Array.from(tokens);
+                    }
                 });
 
+                // 2. 将所有历史记录添加到索引中
+                history.forEach((entry, i) => {
+                    const $ = cheerio.load(entry.content);
+                    const cleanContent = $.text().trim();
+                    if (cleanContent) {
+                        index.add({ id: i, content: cleanContent });
+                    }
+                });
+
+                // 3. 对每个关键词分别搜索，然后合并结果
+                console.error(`[DEBUG] Searching keywords: ${keywords.join(', ')}`);
+                let matchedIndices = new Set();
+                let rawResults = []; // 用于调试
+
+                for (const keyword of keywords) {
+                    // 对每个关键词进行搜索
+                    const results = index.search(keyword, {
+                        enrich: true,
+                        limit: 100  // 增加结果数量限制
+                    });
+                    rawResults.push({keyword, results});
+                    
+                    // 正确解析 FlexSearch Document 的返回结果
+                    if (results && results.length > 0) {
+                        for (const fieldResult of results) {
+                            // fieldResult 格式: { field: "content", result: [...] }
+                            if (fieldResult.field === "content" && fieldResult.result) {
+                                fieldResult.result.forEach(id => {
+                                    matchedIndices.add(id);
+                                });
+                            }
+                        }
+                    }
+                }
+                console.error(`[DEBUG] Raw results:`, JSON.stringify(rawResults, null, 2));
+
+
+                // 如果还是没有结果，尝试另一种解析方式
+                if (matchedIndices.size === 0) {
+                    // 尝试不用 enrich 选项
+                    for (const keyword of keywords) {
+                        const simpleResults = index.search(keyword);
+                        if (simpleResults && simpleResults.length > 0) {
+                            // simpleResults for a document search without enrich is just an array of IDs.
+                            // But the documentation says it returns an array of objects {field: string, result: Array<ID>}.
+                            // Let's handle both cases.
+                            if (typeof simpleResults[0] === 'object' && simpleResults[0].field) {
+                                for (const fieldResult of simpleResults) {
+                                    if (fieldResult.result) {
+                                        fieldResult.result.forEach(id => matchedIndices.add(id));
+                                    }
+                                }
+                            } else { // Fallback for flat array of IDs
+                                simpleResults.forEach(id => {
+                                    if (typeof id === 'number') {
+                                        matchedIndices.add(id);
+                                    }
+                                });
+                            }
+                        }
+                    }
+                }
+                
+                // 如果 FlexSearch 仍然没有找到结果，使用简单的字符串匹配作为后备
+                if (matchedIndices.size === 0) {
+                    history.forEach((entry, i) => {
+                        const $ = cheerio.load(entry.content);
+                        const cleanContent = $.text().toLowerCase();
+                        
+                        for (const keyword of keywords) {
+                            if (cleanContent.includes(keyword.toLowerCase())) {
+                                matchedIndices.add(i);
+                                break; // 匹配到一个关键词即可
+                            }
+                        }
+                    });
+                }
+
+                console.error(`[DEBUG] Search results count: ${matchedIndices.size}`);
+                
                 const sortedIndices = Array.from(matchedIndices).sort((a, b) => a - b);
 
                 // B. 基于排序后的索引构建不重叠的回忆片段
