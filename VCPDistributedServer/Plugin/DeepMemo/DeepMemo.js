@@ -4,6 +4,7 @@ const dotenv = require('dotenv');
 const { Document } = require('flexsearch');
 const jieba = require('node-jieba');
 const cheerio = require('cheerio');
+const axios = require('axios');
 
 // --- 主逻辑 ---
 async function main() {
@@ -38,7 +39,19 @@ async function main() {
         const userName = await findUserName(VchatDataURL);
 
         // 4. 搜索聊天记录
-        const memories = await searchHistories(VchatDataURL, agentInfo.uuid, keywords, windowSize, userName, agentInfo.name);
+        let memories = await searchHistories(VchatDataURL, agentInfo.uuid, keywords, windowSize, userName, agentInfo.name);
+
+        // 4.5. 如果启用了Rerank，则进行重排
+        if (config.RerankSearch && memories.length > 0) {
+            try {
+                console.error(`[DEBUG] Starting rerank for ${memories.length} memories...`);
+                memories = await rerankMemories(memories, keywords.join(' '), config);
+                console.error(`[DEBUG] Rerank completed. Got ${memories.length} memories back.`);
+            } catch (rerankError) {
+                console.error(JSON.stringify({ status: "error", error: `[DeepMemo] Rerank failed: ${rerankError.message}` }));
+                // Rerank失败时，我们选择继续使用原始结果而不是中断流程
+            }
+        }
 
         // 5. 格式化并输出结果
         let output = memories.join('\n\n');
@@ -102,19 +115,28 @@ function parseToolArgs(input) {
 }
 
 async function loadConfig() {
-    // 动态计算 VchatDataURL 路径，它应该是插件目录向上三层，然后进入 AppData
     const VchatDataURL = path.join(__dirname, '..', '..', '..', 'AppData');
-
     const configPath = path.join(__dirname, 'config.env');
     try {
         const configContent = await fs.readFile(configPath, 'utf-8');
         const config = dotenv.parse(configContent);
+
         if (!config.MaxMemoTokens) {
             throw new Error("config.env 文件不完整，缺少 MaxMemoTokens。");
         }
+
+        // 加载 Rerank 配置
+        const RerankSearch = config.RerankSearch ? config.RerankSearch.toLowerCase() === 'true' : false;
+
         return {
             VchatDataURL: VchatDataURL,
-            MaxMemoTokens: parseInt(config.MaxMemoTokens, 10)
+            MaxMemoTokens: parseInt(config.MaxMemoTokens, 10),
+            RerankSearch: RerankSearch,
+            RerankUrl: config.RerankUrl || '',
+            RerankApi: config.RerankApi || '',
+            RerankModel: config.RerankModel || '',
+            RerankMaxTokensPerBatch: parseInt(config.RerankMaxTokensPerBatch, 10) || 30000,
+            RerankTopN: parseInt(config.RerankTopN, 10) || 5
         };
     } catch (error) {
         if (error.code === 'ENOENT') {
@@ -236,7 +258,8 @@ async function searchHistories(vchatPath, agentUuid, keywords, windowSize, userN
                     // 对每个关键词进行搜索
                     const results = index.search(keyword, {
                         enrich: true,
-                        limit: 100  // 增加结果数量限制
+                        limit: 100,  // 增加结果数量限制
+                        suggest: true // 开启建议功能，处理轻微的变体
                     });
                     rawResults.push({keyword, results});
                     
@@ -331,6 +354,75 @@ async function searchHistories(vchatPath, agentUuid, keywords, windowSize, userN
         // 如果topics目录不存在，则返回空数组
     }
     return allMemories;
+}
+
+// --- Rerank 函数 ---
+async function rerankMemories(memories, query, config) {
+    if (!config.RerankUrl) {
+        console.error("[DEBUG] Rerank URL is not configured. Skipping rerank.");
+        return memories;
+    }
+
+    // 1. 预处理：确保发送的文本总量不超过API限制
+    let currentTokens = 0;
+    const memoriesForRerank = [];
+    for (const memory of memories) {
+        if (currentTokens + memory.length > config.RerankMaxTokensPerBatch) {
+            console.error(`[DEBUG] Rerank batch is full. Truncating from ${memories.length} to ${memoriesForRerank.length} memories to fit the token limit.`);
+            break;
+        }
+        memoriesForRerank.push(memory);
+        currentTokens += memory.length;
+    }
+    
+    if (memoriesForRerank.length === 0) {
+        console.error("[DEBUG] No memories to rerank after checking token limits.");
+        return memories; // 如果没有任何内容可供重排，则返回原始结果
+    }
+
+    const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.RerankApi}`
+    };
+
+    const data = {
+        model: config.RerankModel,
+        query: query,
+        documents: memoriesForRerank, // 使用截断后的数组
+        top_n: config.RerankTopN
+    };
+
+    try {
+        const baseUrl = config.RerankUrl.endsWith('/') ? config.RerankUrl : config.RerankUrl + '/';
+        const rerankEndpoint = baseUrl + 'v1/rerank';
+        
+        console.error(`[DEBUG] Sending ${memoriesForRerank.length} memories for rerank to: ${rerankEndpoint}`);
+        
+        const response = await axios.post(rerankEndpoint, data, {
+            headers: headers,
+            timeout: 15000 // 设置15秒超时
+        });
+        
+        if (response.data && Array.isArray(response.data.results)) {
+            const rerankedResults = response.data.results;
+            
+            // 重要：根据 rerankedResults 中的 index 从我们实际发送的 `memoriesForRerank` 数组中重建结果
+            const rerankedMemories = rerankedResults.map(result => memoriesForRerank[result.index]);
+            
+            // 返回重排后的、截取 top_n 的结果
+            return rerankedMemories.slice(0, config.RerankTopN);
+        } else {
+            console.error("[DEBUG] Rerank API response is not in the expected format:", response.data);
+            return memories; // 返回原始顺序
+        }
+    } catch (error) {
+        let errorMessage = error.message;
+        if (error.response) {
+            errorMessage += ` - Status: ${error.response.status}, Data: ${JSON.stringify(error.response.data)}`;
+        }
+        console.error(`[DEBUG] Rerank API request failed: ${errorMessage}`);
+        throw new Error(`Rerank API request failed: ${errorMessage}`);
+    }
 }
 
 function formatMemory(slice, userName, agentName, memoryIndex) {
