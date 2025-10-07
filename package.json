@@ -22,7 +22,8 @@
     "@electron/rebuild": "^3.7.2",
     "electron": "^37.2.6",
     "electron-builder": "^26.0.12",
-    "node-addon-api": "^8.3.1"
+    "node-addon-api": "^8.3.1",
+    "node-gyp": "^11.4.2"
   },
   "dependencies": {
     "@3d-dice/dice-box": "^1.1.4",
@@ -41,6 +42,7 @@
     "fuse": "^0.12.1",
     "fuse.js": "^7.1.0",
     "glob": "^10.0.0",
+    "hnswlib-node": "^3.0.0",
     "html2canvas": "^1.4.1",
     "iconv-lite": "^0.6.3",
     "mammoth": "^1.9.1",
