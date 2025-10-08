@@ -240,9 +240,13 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
     // 初始化焦点清理机制
     initializeFocusCleanup();
 
-    // Render Floating Toast only if the sidebar is not already active
+    // Render Floating Toast only if the sidebar is not already active and do not disturb mode is not enabled
     const notificationsSidebarElement = document.getElementById('notificationsSidebar');
-    if (toastContainer && (!notificationsSidebarElement || !notificationsSidebarElement.classList.contains('active'))) {
+    // Check if do not disturb mode is enabled (globalSettings.doNotDisturbLogMode or localStorage fallback)
+    const isDoNotDisturbMode = (window.globalSettings && window.globalSettings.doNotDisturbLogMode === true) ||
+                               (localStorage.getItem('doNotDisturbLogMode') === 'true');
+
+    if (toastContainer && (!notificationsSidebarElement || !notificationsSidebarElement.classList.contains('active')) && !isDoNotDisturbMode) {
         const toastBubble = document.createElement('div');
         toastBubble.classList.add('floating-toast-notification');
         // 添加创建时间戳
@@ -262,6 +266,8 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
         toastBubble.dataset.autoDismissTimeout = autoDismissTimeout.toString();
     } else if (toastContainer && notificationsSidebarElement && notificationsSidebarElement.classList.contains('active')) {
         // console.log('Notification sidebar is active, suppressing floating toast.');
+    } else if (isDoNotDisturbMode) {
+        console.log('Do not disturb mode is enabled, suppressing floating toast. globalSettings:', window.globalSettings);
     } else if (!toastContainer) {
         console.warn('Floating toast container not found. Toast not displayed.');
     }
@@ -346,3 +352,8 @@ window.notificationRenderer = {
     renderVCPLogNotification,
     initializeFocusCleanup
 };
+
+// Make globalSettings accessible for do not disturb mode check
+if (typeof window.globalSettings === 'undefined') {
+    window.globalSettings = {};
+}

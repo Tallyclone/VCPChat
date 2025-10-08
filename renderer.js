@@ -3,6 +3,7 @@ let globalSettings = {
     sidebarWidth: 260,
     notificationsSidebarWidth: 300,
     userName: '用户', // Default username
+    doNotDisturbLogMode: false, // 勿扰模式状态
 };
 // Unified selected item state
 let currentSelectedItem = {
@@ -73,6 +74,7 @@ const notificationsSidebar = document.getElementById('notificationsSidebar');
 const vcpLogConnectionStatusDiv = document.getElementById('vcpLogConnectionStatus');
 const notificationsListUl = document.getElementById('notificationsList');
 const clearNotificationsBtn = document.getElementById('clearNotificationsBtn');
+const doNotDisturbBtn = document.getElementById('doNotDisturbBtn');
 
 const sidebarTabButtons = document.querySelectorAll('.sidebar-tab-button');
 const sidebarTabContents = document.querySelectorAll('.sidebar-tab-content');
@@ -999,6 +1001,16 @@ async function loadAndApplyGlobalSettings() {
         document.getElementById('agentMusicControl').checked = globalSettings.agentMusicControl === true;
         document.getElementById('enableVcpToolInjection').checked = globalSettings.enableVcpToolInjection === true;
 
+        // Load do not disturb mode setting (check both globalSettings and localStorage)
+        const doNotDisturbLogMode = globalSettings.doNotDisturbLogMode || (localStorage.getItem('doNotDisturbLogMode') === 'true');
+        if (doNotDisturbLogMode) {
+            doNotDisturbBtn.classList.add('active');
+            globalSettings.doNotDisturbLogMode = true;
+        } else {
+            doNotDisturbBtn.classList.remove('active');
+            globalSettings.doNotDisturbLogMode = false;
+        }
+
         // Apply the theme mode from settings on startup
         if (globalSettings.currentThemeMode && window.electronAPI) {
             console.log(`[Renderer] Applying initial theme mode from settings: ${globalSettings.currentThemeMode}`);
@@ -1279,6 +1291,32 @@ function setupEventListeners() {
     clearNotificationsBtn.addEventListener('click', () => {
         notificationsListUl.innerHTML = '';
     });
+
+    if (doNotDisturbBtn) {
+        doNotDisturbBtn.addEventListener('click', async () => {
+            const isActive = doNotDisturbBtn.classList.toggle('active');
+            globalSettings.doNotDisturbLogMode = isActive;
+
+            // Also save to localStorage as backup
+            localStorage.setItem('doNotDisturbLogMode', isActive.toString());
+
+            // Save the setting immediately
+            const result = await window.electronAPI.saveSettings({
+                ...globalSettings, // Send all settings to avoid overwriting
+                doNotDisturbLogMode: isActive
+            });
+
+            if (result.success) {
+                uiHelperFunctions.showToastNotification(`勿扰模式已${isActive ? '开启' : '关闭'}`, 'info');
+            } else {
+                uiHelperFunctions.showToastNotification(`设置勿扰模式失败: ${result.error}`, 'error');
+                // Revert UI on failure
+                doNotDisturbBtn.classList.toggle('active', !isActive);
+                globalSettings.doNotDisturbLogMode = !isActive;
+                localStorage.setItem('doNotDisturbLogMode', (!isActive).toString());
+            }
+        });
+    }
 
 
     const openTranslatorBtn = document.getElementById('openTranslatorBtn');
@@ -1699,3 +1737,6 @@ async function handleConfirmForward() {
 window.getCroppedFile = getCroppedFile;
 window.setCroppedFile = setCroppedFile;
 window.ensureAudioContext = () => { /* Placeholder, will be defined in setupTtsListeners */ };
+
+// Make globalSettings accessible for notification renderer
+window.globalSettings = globalSettings;
