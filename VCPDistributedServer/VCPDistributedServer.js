@@ -238,7 +238,6 @@ class DistributedServer {
     async pushStaticPlaceholderValues() {
         const placeholderValues = pluginManager.getAllPlaceholderValues();
         if (placeholderValues.size === 0) {
-            if (this.debugMode) console.log(`[${this.serverName}] No static placeholder values to push.`);
             return;
         }
 
