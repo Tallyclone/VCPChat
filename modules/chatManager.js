@@ -556,7 +556,6 @@ window.chatManager = (() => {
         // --- Standard Agent Message Sending ---
         // The 'content' variable still holds the user's raw input, including the placeholder.
         // We will resolve the placeholder later, only for the final message sent to VCP.
-        let contentForVCP = content;
         let combinedTextContent = content; // 用于发送给VCP的组合文本内容
  
         const uiAttachments = [];
@@ -570,22 +569,19 @@ window.chatManager = (() => {
                     size: af.file.size,
                     _fileManagerData: fileManagerData
                 });
-                
-                // 立即将附件内容添加到组合文本中
-                if (fileManagerData.extractedText) {
-                    combinedTextContent += `\n\n[附加文件: ${af.originalName}]\n${fileManagerData.extractedText}\n[/附加文件结束: ${af.originalName}]`;
-                }
-                
-                // Append filename for all attachments for AI context
-                // NEW LOGIC: Generalize for all file types to include local path
+
+                // 修正：将文件路径和提取的文本正确地附加到 combinedTextContent
+                const filePathForContext = af.localPath || af.originalName;
+
                 if (af.file.type.startsWith('image/')) {
-                    contentForVCP += `\n\n[附加图片: ${af.localPath}]`;
+                    // 对于图片，我们只附加路径，因为内容将作为多模态部分发送
+                    combinedTextContent += `\n\n[附加图片: ${filePathForContext}]`;
                 } else if (fileManagerData.extractedText) {
-                    // For other files with extracted text, add the path and keep the text
-                    contentForVCP += `\n\n[附加文件: ${af.localPath}]\n${fileManagerData.extractedText}\n[/附加文件结束: ${af.originalName}]`;
+                    // 对于有提取文本的文件，同时附加路径和文本
+                    combinedTextContent += `\n\n[附加文件: ${filePathForContext}]\n${fileManagerData.extractedText}\n[/附加文件结束: ${af.originalName}]`;
                 } else {
-                    // For other files without extracted text, just use the path
-                    contentForVCP += `\n\n[附加文件: ${af.localPath}]`;
+                    // 对于其他文件（如音频、视频、无文本的PDF等），只附加路径
+                    combinedTextContent += `\n\n[附加文件: ${filePathForContext}]`;
                 }
             }
         }
