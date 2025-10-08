@@ -60,28 +60,48 @@ function showContextMenu(event, messageItem, message) {
         interruptOption.innerHTML = `<i class="fas fa-stop-circle"></i> 中止回复`;
         interruptOption.onclick = async () => {
             closeContextMenu();
-            const { uiHelper } = mainRefs;
-            const activeMessageId = message.id; // The ID of the message being streamed or thought about
+            const { electronAPI, uiHelper } = mainRefs;
+            const activeMessageId = message.id;
 
-            if (activeMessageId) {
-                console.log(`[ContextMenu] Attempting to interrupt message: ${activeMessageId}`);
-                // We need a reference to the interrupt handler, which should be initialized in renderer.js
-                // and passed into the context menu dependencies.
+            if (!activeMessageId) return;
+
+            if (message.isGroupMessage) {
+                // --- 群聊中止逻辑 ---
+                console.log(`[ContextMenu] Attempting to interrupt GROUP message: ${activeMessageId}`);
+                if (electronAPI && typeof electronAPI.interruptGroupRequest === 'function') {
+                    const result = await electronAPI.interruptGroupRequest(activeMessageId);
+                    if (result.success) {
+                        uiHelper.showToastNotification("已发送群聊中止信号。", "success");
+                    } else {
+                        uiHelper.showToastNotification(`群聊中止失败: ${result.error}`, "error");
+                        // 作为后备，在前端直接停止渲染
+                        if (contextMenuDependencies.finalizeStreamedMessage) {
+                            contextMenuDependencies.finalizeStreamedMessage(activeMessageId, 'cancelled_by_user');
+                        }
+                    }
+                } else {
+                    console.error("[ContextMenu] electronAPI.interruptGroupRequest is not available.");
+                    uiHelper.showToastNotification("无法发送群聊中止信号 (API不存在)。", "error");
+                }
+            } else {
+                // --- 普通单聊中止逻辑 ---
+                console.log(`[ContextMenu] Attempting to interrupt AGENT message: ${activeMessageId}`);
                 if (contextMenuDependencies.interruptHandler && typeof contextMenuDependencies.interruptHandler.interrupt === 'function') {
                     const result = await contextMenuDependencies.interruptHandler.interrupt(activeMessageId);
                     if (result.success) {
                         uiHelper.showToastNotification("已发送中止信号。", "success");
-                        // The backend will stop the stream, which will trigger the 'end' event in chatHandlers,
-                        // which will then call finalizeStreamedMessage. We don't need to call it here.
                     } else {
                         uiHelper.showToastNotification(`中止失败: ${result.error}`, "error");
-                        // If interrupting fails, we might want to offer a manual cancel as a fallback.
-                        contextMenuDependencies.finalizeStreamedMessage(activeMessageId, 'cancelled_by_user');
+                        if (contextMenuDependencies.finalizeStreamedMessage) {
+                            contextMenuDependencies.finalizeStreamedMessage(activeMessageId, 'cancelled_by_user');
+                        }
                     }
                 } else {
                     console.error("[ContextMenu] Interrupt handler not available. Manually cancelling.");
                     uiHelper.showToastNotification("无法发送中止信号，已在本地取消。", "warning");
-                    contextMenuDependencies.finalizeStreamedMessage(activeMessageId, 'cancelled_by_user');
+                    if (contextMenuDependencies.finalizeStreamedMessage) {
+                        contextMenuDependencies.finalizeStreamedMessage(activeMessageId, 'cancelled_by_user');
+                    }
                 }
             }
         };
