@@ -4,6 +4,7 @@ const fs = require('fs-extra');
 const path = require('path');
 const { ipcMain } = require('electron');
 const fileManager = require('../modules/fileManager'); // Import fileManager
+const canvasHandlers = require('../modules/ipc/canvasHandlers'); // 新增：直接引用canvas处理器
 // const { v4: uuidv4 } = require('uuid'); // 如果需要唯一ID生成
 
 const CANVAS_PLACEHOLDER = '{{VCPChatCanvas}}';
@@ -451,7 +452,7 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
                 
                 if (textForAIContext.includes(CANVAS_PLACEHOLDER)) {
                     try {
-                        const canvasData = await ipcMain.invoke('get-latest-canvas-content');
+                        const canvasData = await canvasHandlers.handleGetLatestCanvasContent();
                         if (canvasData && !canvasData.error) {
                             const formattedCanvasContent = `
 [Canvas Content]
@@ -467,8 +468,9 @@ ${canvasData.errors || 'No errors'}
                             textForAIContext = textForAIContext.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), '\n[Canvas content could not be loaded]\n');
                         }
                     } catch (error) {
-                        console.error("[GroupChat] Error fetching canvas content:", error);
-                        textForAIContext = textForAIContext.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), '\n[Error loading canvas content]\n');
+                        // 这个catch块现在理论上不会因为handleGetLatestCanvasContent本身被触发，但保留以防万一
+                        console.error("[GroupChat] Error processing canvas content:", error);
+                        textForAIContext = textForAIContext.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), '\n[Error processing canvas content]\n');
                     }
                 }
             } else {
@@ -599,7 +601,7 @@ ${att._fileManagerData.extractedText}
 
             // 添加超时控制
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超时
+            const timeoutId = setTimeout(() => controller.abort(), 60000); // 60秒超时
             
             let response;
             try {
@@ -914,7 +916,7 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
         // 仅当是最后一条用户消息时，才解析Canvas占位符
         if (isLastUserMessageInContext && textForAIContext.includes(CANVAS_PLACEHOLDER)) {
             try {
-                const canvasData = await ipcMain.invoke('get-latest-canvas-content');
+                const canvasData = await canvasHandlers.handleGetLatestCanvasContent();
                 if (canvasData && !canvasData.error) {
                     const formattedCanvasContent = `
 [Canvas Content]
@@ -930,8 +932,8 @@ ${canvasData.errors || 'No errors'}
                     textForAIContext = textForAIContext.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), '\n[Canvas content could not be loaded]\n');
                 }
             } catch (error) {
-                console.error("[GroupChat Invite] Error fetching canvas content:", error);
-                textForAIContext = textForAIContext.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), '\n[Error loading canvas content]\n');
+                console.error("[GroupChat Invite] Error processing canvas content:", error);
+                textForAIContext = textForAIContext.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), '\n[Error processing canvas content]\n');
             }
         }
 
@@ -1049,7 +1051,7 @@ ${att._fileManagerData.extractedText}
 
         // 添加超时控制
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超时
+        const timeoutId = setTimeout(() => controller.abort(), 60000); // 60秒超时
         
         let response;
         try {
