@@ -670,28 +670,24 @@ body.light-theme {
 
 /* Default state (collapsed): show + */
 .vcp-result-toggle-icon::before {
-    width: 10px;
-    height: 2px;
-    transform: translate(-50%, -50%);
+    width: 12px;
+    height: 3px;
+    transform: translate(-50%, -50%) rotateZ(0deg);
 }
 
 .vcp-result-toggle-icon::after {
-    width: 2px;
-    height: 10px;
-    transform: translate(-50%, -50%);
+    width: 3px;
+    height: 12px;
+    transform: translate(-50%, -50%) rotateZ(0deg);
 }
 
-/* Expanded state: show × */
+/* Expanded state: rotate vertical line 90° to hide it, leaving horizontal line as - */
 .vcp-tool-result-bubble.expanded .vcp-result-toggle-icon::before {
-    transform: translate(-50%, -50%) rotate(45deg);
-    width: 10px;
-    height: 2px;
+    transform: translate(-50%, -50%) rotateZ(0deg);
 }
 
 .vcp-tool-result-bubble.expanded .vcp-result-toggle-icon::after {
-    transform: translate(-50%, -50%) rotate(-45deg);
-    width: 10px;
-    height: 2px;
+    transform: translate(-50%, -50%) rotateZ(90deg);
 }
 
 .vcp-tool-result-status:containing("SUCCESS") { /* This is a pseudo-selector, might not work directly in CSS */
