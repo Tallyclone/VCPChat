@@ -91,6 +91,7 @@ const maximizeBtn = document.getElementById('maximize-btn');
 const restoreBtn = document.getElementById('restore-btn');
 const closeBtn = document.getElementById('close-btn');
 const settingsBtn = document.getElementById('settings-btn'); // DevTools button
+const minimizeToTrayBtn = document.getElementById('minimize-to-tray-btn');
 const agentSearchInput = document.getElementById('agentSearchInput');
 
 let croppedAgentAvatarFile = null; // For agent avatar
@@ -484,15 +485,16 @@ import * as interruptHandler from './modules/interruptHandler.js';
         console.log(`[Renderer] Received topic update for group ${groupId}, topic ${topicId}: "${newTitle}"`);
         if (currentSelectedItem.id === groupId && currentSelectedItem.type === 'group') {
             // Update the currentSelectedItem's config if it's the active group
-            if (currentSelectedItem.config && currentSelectedItem.config.topics) {
-                const topicIndex = currentSelectedItem.config.topics.findIndex(t => t.id === topicId);
+            const config = currentSelectedItem.config || currentSelectedItem;
+            if (config && config.topics) {
+                const topicIndex = config.topics.findIndex(t => t.id === topicId);
                 if (topicIndex !== -1) {
-                    currentSelectedItem.config.topics[topicIndex].name = newTitle;
+                    config.topics[topicIndex].name = newTitle;
                 } else { // Topic might be new or ID changed, replace topics array
-                    currentSelectedItem.config.topics = topics;
+                    config.topics = topics;
                 }
-            } else if (currentSelectedItem.config) {
-                currentSelectedItem.config.topics = topics;
+            } else if (config) {
+                config.topics = topics;
             }
 
 
@@ -522,7 +524,13 @@ import * as interruptHandler from './modules/interruptHandler.js';
             },
             uiHelper: uiHelperFunctions,
             mainRendererFunctions: {
-                updateCurrentItemConfig: (newConfig) => { currentSelectedItem.config = newConfig; },
+                updateCurrentItemConfig: (newConfig) => {
+                    if (currentSelectedItem.config) {
+                        currentSelectedItem.config = newConfig;
+                    } else {
+                        Object.assign(currentSelectedItem, newConfig);
+                    }
+                },
                 handleTopicDeletion: (remainingTopics) => {
                     if (window.chatManager) {
                         return window.chatManager.handleTopicDeletion(remainingTopics);
@@ -1395,6 +1403,14 @@ function setupEventListeners() {
     if (agentSearchInput) {
         agentSearchInput.addEventListener('input', (e) => {
             filterAgentList(e.target.value);
+        });
+    }
+
+    if (minimizeToTrayBtn) {
+        minimizeToTrayBtn.addEventListener('click', () => {
+            // This will be handled by a function exposed on the electronAPI
+            // which in turn sends an IPC message to the main process.
+            window.electronAPI.minimizeToTray();
         });
     }
 }

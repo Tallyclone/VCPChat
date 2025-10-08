@@ -206,9 +206,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     openAdminPanel: () => ipcRenderer.invoke('open-admin-panel'), 
     onWindowMaximized: (callback) => ipcRenderer.on('window-maximized', (_event) => callback()),
     onWindowUnmaximized: (callback) => ipcRenderer.on('window-unmaximized', (_event) => callback()),
-
-    // Image Context Menu
-    showImageContextMenu: (imageUrl) => ipcRenderer.send('show-image-context-menu', imageUrl),
+    minimizeToTray: () => ipcRenderer.send('minimize-to-tray'),
+ 
+     // Image Context Menu
+     showImageContextMenu: (imageUrl) => ipcRenderer.send('show-image-context-menu', imageUrl),
     // Open Image in New Window
     openImageViewer: (data) => ipcRenderer.send('open-image-viewer', data), // { src, title, theme }
     // Open Text in New Window (Read Mode)
