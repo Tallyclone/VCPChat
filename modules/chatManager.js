@@ -984,11 +984,11 @@ window.chatManager = (() => {
             uiHelper.showToastNotification("请先选择一个项目。", 'error');
             return;
         }
-        
+
         const currentSelectedItem = currentSelectedItemRef.get();
         const itemName = currentSelectedItem.name || (itemType === 'group' ? "当前群组" : "当前助手");
         const newTopicName = `新话题 ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
-        
+
         try {
             let result;
             if (itemType === 'agent') {
@@ -1000,18 +1000,18 @@ window.chatManager = (() => {
             if (result && result.success && result.topicId) {
                 currentTopicIdRef.set(result.topicId);
                 currentChatHistoryRef.set([]);
-                
+
                 if (messageRenderer) {
                     messageRenderer.setCurrentTopicId(result.topicId);
                     messageRenderer.clearChat();
                     // messageRenderer.renderMessage({ role: 'system', content: `新话题 "${result.topicName}" 已开始。`, timestamp: Date.now() });
                 }
                 localStorage.setItem(`lastActiveTopic_${itemId}_${itemType}`, result.topicId);
-                
+
                 if (document.getElementById('tabContentTopics').classList.contains('active')) {
                     if (topicListManager) await topicListManager.loadTopicList();
                 }
-                
+
                 await displayTopicTimestampBubble(itemId, itemType, result.topicId);
                 // elements.messageInput.focus();
             } else {
@@ -1020,6 +1020,116 @@ window.chatManager = (() => {
         } catch (error) {
             console.error(`创建新话题时出错:`, error);
             uiHelper.showToastNotification(`创建新话题时出错: ${error.message}`, 'error');
+        }
+    }
+
+    /**
+     * 创建带预制消息的新话题
+     * @param {string} agentId - Agent ID
+     * @param {string} topicName - 话题名称
+     * @param {Array} messages - 预制消息数组，每个消息包含 content 和 role
+     * @param {Object} options - 其他选项（如是否自动跳转等）
+     * @returns {Object} 创建结果
+     */
+    async function createNewTopicWithMessages(agentId, topicName, messages = [], options = {}) {
+        try {
+            // 1. 创建新话题
+            const result = await electronAPI.createNewTopicForAgent(agentId, topicName);
+
+            if (!result || !result.success || !result.topicId) {
+                return { success: false, error: result ? result.error : '创建话题失败' };
+            }
+
+            const topicId = result.topicId;
+            let historyMessages = [];
+
+            // 2. 准备预制消息并保存到文件
+            if (messages && messages.length > 0) {
+                historyMessages = messages.map((msg, index) => ({
+                    role: msg.role || 'user',
+                    name: msg.role === 'assistant' ? 'AI助手' : (msg.role === 'system' ? '系统' : '用户'),
+                    content: msg.content || '',
+                    timestamp: Date.now() + index, // 确保时间戳唯一且有序
+                    id: `preset_msg_${Date.now()}_${index}_${Math.random().toString(36).substring(2, 9)}`,
+                    isPreset: true // 标记为预制消息
+                }));
+
+                // 保存预制消息到历史文件 - 这是关键修复
+                const saveResult = await electronAPI.saveChatHistory(agentId, topicId, historyMessages);
+                if (!saveResult || !saveResult.success) {
+                    console.error(`保存预制消息失败: ${saveResult ? saveResult.error : '未知错误'}`);
+                    return { success: false, error: `保存预制消息失败: ${saveResult ? saveResult.error : '未知错误'}` };
+                }
+
+                console.log(`成功保存 ${historyMessages.length} 条预制消息到话题 ${topicId}`);
+            }
+
+            // 3. 如果需要自动跳转到新话题
+            if (options.autoSwitch !== false) {
+                // 先设置引用，确保状态一致性
+                currentTopicIdRef.set(topicId);
+                currentChatHistoryRef.set([...historyMessages]);
+
+                // 先设置消息渲染器的当前话题ID，避免异步竞争
+                if (messageRenderer) {
+                    messageRenderer.setCurrentTopicId(topicId);
+                }
+
+                // 清除现有聊天内容
+                if (messageRenderer) {
+                    messageRenderer.clearChat();
+                }
+
+                // 渲染预制消息到UI - 确保UI显示正确
+                if (historyMessages && historyMessages.length > 0 && messageRenderer) {
+                    console.log(`渲染 ${historyMessages.length} 条预制消息到UI`);
+                    for (const msg of historyMessages) {
+                        await messageRenderer.renderMessage({
+                            role: msg.role,
+                            name: msg.name,
+                            content: msg.content,
+                            timestamp: msg.timestamp,
+                            id: msg.id,
+                            isPreset: true
+                        });
+                    }
+                }
+
+                // 更新本地存储，记录最后活跃话题
+                localStorage.setItem(`lastActiveTopic_${agentId}_agent`, topicId);
+
+                // 刷新话题列表（如果话题面板激活）
+                if (document.getElementById('tabContentTopics').classList.contains('active')) {
+                    if (topicListManager) await topicListManager.loadTopicList();
+                }
+
+                // 显示话题时间戳气泡
+                await displayTopicTimestampBubble(agentId, 'agent', topicId);
+
+                // 启动FileWatcher监控新话题文件
+                const currentSelectedItem = currentSelectedItemRef.get();
+                if (currentSelectedItem && currentSelectedItem.config && currentSelectedItem.config.agentDataPath) {
+                    const historyFilePath = `${currentSelectedItem.config.agentDataPath}\\topics\\${topicId}\\history.json`;
+                    if (electronAPI.watcherStart) {
+                        await electronAPI.watcherStart(historyFilePath, agentId, topicId);
+                        console.log(`启动FileWatcher监控话题文件: ${historyFilePath}`);
+                    }
+                }
+
+                console.log(`[ChatManager] 新话题 ${topicId} 创建完成，已自动跳转`);
+            }
+
+            return {
+                success: true,
+                topicId: topicId,
+                topicName: topicName,
+                messageCount: messages ? messages.length : 0,
+                messages: historyMessages
+            };
+
+        } catch (error) {
+            console.error('创建带预制消息的话题时出错:', error);
+            return { success: false, error: error.message };
         }
     }
 
@@ -1290,6 +1400,7 @@ window.chatManager = (() => {
         loadChatHistory,
         handleSendMessage,
         createNewTopicForItem,
+        createNewTopicWithMessages, // 新增：带预制消息的新建话题功能
         displayNoItemSelected,
         attemptTopicSummarizationIfNeeded,
         handleCreateBranch,

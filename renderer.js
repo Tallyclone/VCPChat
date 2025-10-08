@@ -705,12 +705,28 @@ import * as interruptHandler from './modules/interruptHandler.js';
         }
 
        // Emoticon URL fixer is now initialized within messageRenderer
-    } catch (error) {
-        console.error('Error during DOMContentLoaded initialization:', error);
-        chatMessagesDiv.innerHTML = `<div class="message-item system">初始化失败: ${error.message}</div>`;
-    }
 
-    console.log('[Renderer DOMContentLoaded END] createNewGroupBtn textContent:', document.getElementById('createNewGroupBtn')?.textContent);
+       // Initialize Mailboxmodules
+       if (window.mailboxManager) {
+           const initResult = window.mailboxManager.init({
+               electronAPI: window.electronAPI,
+               chatManager: window.chatManager
+           });
+
+           if (initResult) {
+               console.log('[Renderer] Mailboxmodules 初始化成功');
+           } else {
+               console.error('[Renderer] Mailboxmodules 初始化失败');
+           }
+       } else {
+           console.error('[Renderer] mailboxManager 模块未找到');
+       }
+   } catch (error) {
+       console.error('Error during DOMContentLoaded initialization:', error);
+       chatMessagesDiv.innerHTML = `<div class="message-item system">初始化失败: ${error.message}</div>`;
+   }
+
+   console.log('[Renderer DOMContentLoaded END] createNewGroupBtn textContent:', document.getElementById('createNewGroupBtn')?.textContent);
     
     // --- TTS Audio Playback and Visuals ---
     setupTtsListeners();
@@ -1449,6 +1465,19 @@ function setupEventListeners() {
             // This will be handled by a function exposed on the electronAPI
             // which in turn sends an IPC message to the main process.
             window.electronAPI.minimizeToTray();
+        });
+    }
+
+    // Mailbox测试面板按钮
+    const openMailboxTestPanelBtn = document.getElementById('openMailboxTestPanelBtn');
+    if (openMailboxTestPanelBtn) {
+        openMailboxTestPanelBtn.addEventListener('click', () => {
+            if (window.mailboxManager && window.mailboxManager.showTestPanel) {
+                window.mailboxManager.showTestPanel();
+            } else {
+                console.error('[Renderer] mailboxManager 或 showTestPanel 方法未找到');
+                uiHelperFunctions.showToastNotification('Mailbox模块未初始化', 'error');
+            }
         });
     }
 }
