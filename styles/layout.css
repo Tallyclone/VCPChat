@@ -49,7 +49,7 @@ body.light-theme .title-bar {
     -webkit-app-region: no-drag;
     flex-shrink: 0; /* Crucial: Do not allow this container to shrink */
     height: 100%; /* Ensure controls container fills title bar height */
-    min-width: 120px; /* Ensure enough space for 4 buttons (4 * 30px) */
+    min-width: 150px; /* Ensure enough space for 5 buttons (5 * 30px) */
     flex-wrap: nowrap; /* Force buttons to stay on one line */
 }
 

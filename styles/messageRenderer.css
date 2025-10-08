@@ -429,9 +429,26 @@ audio[controls]::-webkit-media-controls-volume-slider::-webkit-slider-thumb {
    background-color: rgba(67, 160, 71, 0.1) !important;
 }
 
+/* Highlight for @tags */
+.md-content .highlighted-tag {
+    color: #00a99d; /* A distinct teal color */
+    font-weight: 500;
+    background-color: rgba(0, 169, 157, 0.1);
+    padding: 1px 4px;
+    border-radius: 4px;
+    display: inline-block;
+    line-height: 1.4;
+}
+
+body.light-theme .md-content .highlighted-tag {
+    color: #00796b;
+    background-color: rgba(0, 121, 107, 0.08);
+}
+
+
 /* Highlight for quoted text */
 .md-content .highlighted-quote { /* Increased specificity */
-   color: var(--quoted-text) !important; /* Use CSS variable and !important */
+   color: var(--quoted-text, #ff7f50) !important; /* Use CSS variable with a Coral fallback color */
    display: inline !important; /* Ensure it behaves as an inline element and does not break the line */
    vertical-align: baseline; /* Align properly with the surrounding text */
    word-break: break-all; /* Allow breaking within the quote to prevent overflow and layout issues */
