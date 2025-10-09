@@ -121,45 +121,6 @@ body.light-theme .sidebar-button:hover {
     color: var(--primary-text);
 }
 
-/* Beta按钮样式 - 通知区域头部按钮 */
-.notification-header-actions .header-button {
-    background: transparent;
-    border: 1px solid var(--button-bg);
-    color: var(--secondary-text);
-    padding: 0 8px;
-    height: 32px;
-    border-radius: 8px;
-    cursor: pointer;
-    margin-right: 4px;
-    font-size: 0.9em;
-    transition: background-color 0.2s, border-color 0.2s;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    box-sizing: border-box;
-    min-width: 32px;
-}
-
-.notification-header-actions .header-button:hover {
-    background-color: var(--button-hover-bg);
-    border-color: var(--button-hover-bg);
-    color: var(--primary-text);
-}
-
-.notification-header-actions .header-button#openMailboxTestPanelBtn {
-    font-size: 16px;
-    font-weight: bold;
-    opacity: 0.8;
-    color: var(--highlight-text);
-}
-
-.notification-header-actions .header-button#openMailboxTestPanelBtn:hover {
-    opacity: 1;
-    background-color: var(--button-hover-bg);
-    border-color: var(--button-hover-bg);
-    color: var(--primary-text);
-}
-
 button#devButton.header-button {
     background-color: var(--button-bg); 
     color: var(--secondary-text); 
