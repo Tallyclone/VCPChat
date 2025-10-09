@@ -11,7 +11,7 @@
     align-items: center;
     border-bottom: none;
     flex-shrink: 0;
-    padding: 10px 13px 10px 17px; /* 整体向右移动2px */
+    padding: 10px 6px 10px 17px; /* 整体向右移动2px */
 }
 /* 为亮色主题添加对应样式 */
 body.light-theme .notifications-header {
@@ -33,7 +33,7 @@ body.light-theme .notifications-header {
     align-items: center;
     justify-content: center;
     box-sizing: border-box;
-    margin-left: 4px; /* 间距缩小1px */
+    margin-right: -1px; /* 尝试 */
     position: relative; /* 为文字上移做准备 */
     top: 0px; /* 清空文字下挪1px */
 }
@@ -52,6 +52,11 @@ body.light-theme #clearNotificationsBtn, body.light-theme #doNotDisturbBtn, body
 }
 body.light-theme #clearNotificationsBtn:hover, body.light-theme #doNotDisturbBtn:hover, body.light-theme .notifications-header .header-button:hover {
     color: #ffffff;
+}
+
+.notifications-header #openMailboxTestPanelBtn {
+    margin-left: -1px; /* 向左移动 1px */
+    top: -1px; /* 向上移动 1px */
 }
 
 .notifications-header .header-button#openAdminPanelBtn {
