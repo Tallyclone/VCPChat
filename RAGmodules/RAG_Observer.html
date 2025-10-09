@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAG 召回信息监听器</title>
+    <title>VCP记忆可视化Beta</title>
     <link rel="stylesheet" href="../styles/themes.css">
     <style>
         body {
@@ -156,6 +156,17 @@
         }
         .full-text { display: none; }
         
+        #spectrum-canvas {
+            display: none;
+            width: 100%;
+            height: 60px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            background-color: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.2);
+        }
+        
         #infoContainer p {
             color: var(--secondary-text);
         }
@@ -165,13 +176,14 @@
 </head>
 <body>
     <div class="container">
+        <canvas id="spectrum-canvas"></canvas>
         <h1>
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle;">
                 <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C7.59 20 4 16.41 4 12C4 7.59 7.59 4 12 4C16.41 4 20 7.59 20 12C20 16.41 16.41 20 12 20Z" fill="#3498db"/>
-                <path d="M12 6C9.79 6 8 7.79 8 10H10C10 8.9 10.9 8 12 8C13.1 8 14 8.9 14 10C14 12 11 11.75 11 15H13C13 12.75 16 12.5 16 10C16 7.79 14.21 6 12 6Z" fill="#3498db"/>
-                <circle cx="12" cy="17" r="1" fill="#3498db"/>
+                <path d="M12 7C9.24 7 7 9.24 7 12C7 14.76 9.24 17 12 17C14.76 17 17 14.76 17 12C17 9.24 14.76 7 12 7ZM12 15C10.34 15 9 13.66 9 12C9 10.34 10.34 9 12 9C13.66 9 15 10.34 15 12C15 13.66 13.66 15 12 15Z" fill="#3498db"/>
+                <path d="M12 4V2M12 22V20M4 12H2M22 12H20M19.07 4.93L17.66 6.34M4.93 19.07L6.34 17.66M19.07 19.07L17.66 17.66M4.93 4.93L6.34 6.34" stroke="#3498db" stroke-width="2" stroke-linecap="round"/>
             </svg>
-            RAG 召回信息监听器
+            VCP 回忆流监听器
         </h1>
         
         <div id="connectionStatus" class="connection-status status-closed">
@@ -187,6 +199,60 @@
         </div>
     </div>
 
+    <script>
+        const spectrumCanvas = document.getElementById('spectrum-canvas');
+        if (spectrumCanvas) {
+            const spectrumCtx = spectrumCanvas.getContext('2d');
+            let animationFrameId;
+
+            window.stopSpectrumAnimation = function() {
+                if (animationFrameId) {
+                    cancelAnimationFrame(animationFrameId);
+                    animationFrameId = null;
+                }
+                spectrumCanvas.style.display = 'none';
+            }
+
+            function drawSpectrum() {
+                if (spectrumCanvas.width !== spectrumCanvas.offsetWidth || spectrumCanvas.height !== spectrumCanvas.offsetHeight) {
+                    spectrumCanvas.width = spectrumCanvas.offsetWidth;
+                    spectrumCanvas.height = spectrumCanvas.offsetHeight;
+                }
+                
+                const width = spectrumCanvas.width;
+                const height = spectrumCanvas.height;
+                spectrumCtx.clearRect(0, 0, width, height);
+
+                const bars = 64;
+                const barWidth = width / bars;
+                const time = Date.now() * 0.002;
+
+                for (let i = 0; i < bars; i++) {
+                    const x = i * barWidth;
+                    const amplitude = (Math.sin(i * 0.2 + time) + 1) / 2;
+                    const barHeight = amplitude * height * 0.8 + height * 0.1;
+                    
+                    const gradient = spectrumCtx.createLinearGradient(0, 0, 0, height);
+                    gradient.addColorStop(0, 'rgba(52, 152, 219, 0.8)');
+                    gradient.addColorStop(1, 'rgba(142, 68, 173, 0.8)');
+
+                    spectrumCtx.fillStyle = gradient;
+                    spectrumCtx.fillRect(x, height - barHeight, barWidth - 2, barHeight);
+                }
+
+                animationFrameId = requestAnimationFrame(drawSpectrum);
+            }
+
+            window.startSpectrumAnimation = function(duration = 3000) {
+                spectrumCanvas.style.display = 'block';
+                if (animationFrameId) {
+                    cancelAnimationFrame(animationFrameId);
+                }
+                drawSpectrum();
+                setTimeout(window.stopSpectrumAnimation, duration);
+            }
+        }
+    </script>
     <script>
         const connectionStatusDiv = document.getElementById('connectionStatus');
         const infoContainer = document.getElementById('infoContainer');

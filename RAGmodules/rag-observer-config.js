@@ -79,6 +79,9 @@ class RAGObserverConfig {
             try {
                 const data = JSON.parse(event.data);
                 if (data.type === 'RAG_RETRIEVAL_DETAILS') {
+                    if (window.startSpectrumAnimation) {
+                        window.startSpectrumAnimation(3000); // 动画持续3秒
+                    }
                     displayRagInfo(data);
                 }
             } catch (e) {
