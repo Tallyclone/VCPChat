@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG 召回信息监听器</title>
+    <link rel="stylesheet" href="../styles/themes.css">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            color: var(--primary-text);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            transition: background-color 0.3s ease;
+        }
+        .container {
+            width: 95%;
+            max-width: 1000px;
+            background: var(--panel-bg);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.37);
+            padding: 25px 35px;
+            box-sizing: border-box;
+        }
+        h1 {
+            color: var(--highlight-text);
+            text-align: center;
+            margin-bottom: 15px;
+            font-size: 2em;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            text-shadow: var(--panel-text-shadow);
+        }
+        .connection-status {
+            font-weight: 600;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-bottom: 25px;
+            text-align: center;
+            font-size: 1.1em;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+        .status-connecting { background-color: rgba(255, 152, 0, 0.2); color: #ff9800; border: 1px solid #ff9800; }
+        .status-open { background-color: rgba(76, 175, 80, 0.2); color: #4caf50; border: 1px solid #4caf50; }
+        .status-closed { background-color: rgba(244, 67, 54, 0.2); color: #f44336; border: 1px solid #f44336; }
+        .status-error { background-color: rgba(211, 47, 47, 0.2); color: #d32f2f; border: 1px solid #d32f2f; }
+
+        .controls {
+            text-align: center;
+            margin-bottom: 25px;
+        }
+
+        button {
+            background-color: var(--button-bg);
+            color: var(--text-on-accent);
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        button:hover {
+            background-color: var(--button-hover-bg);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+            transform: translateY(-2px);
+        }
+
+        #infoContainer {
+            border-top: 1px solid #e0e0e0;
+            padding-top: 20px;
+        }
+
+        .rag-block {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(12px) saturate(120%);
+            -webkit-backdrop-filter: blur(12px) saturate(120%);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            margin-bottom: 20px;
+            padding: 15px 20px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+        .rag-block:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+        }
+        .rag-block-header {
+            border-bottom: 1px dashed var(--border-color);
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+        .rag-block-header h3 { margin: 0 0 8px 0; color: var(--highlight-text); }
+        .rag-block-header p { margin: 2px 0; font-size: 0.9em; color: var(--secondary-text); }
+        .rag-block-header strong { color: var(--primary-text); }
+
+        .rag-item {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 12px 0;
+        }
+        .rag-item:last-child { border-bottom: none; }
+
+        .rag-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 0.9em;
+        }
+        .rag-meta span {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: var(--secondary-text);
+            padding: 3px 8px;
+            border-radius: 12px;
+            margin-right: 8px;
+            font-weight: 500;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .rag-meta .source-rag { background-color: rgba(52, 152, 219, 0.2); color: #5dade2; border-color: #5dade2; }
+        .rag-meta .source-time { background-color: rgba(46, 204, 113, 0.2); color: #58d68d; border-color: #58d68d; }
+        .rag-meta .date { background-color: rgba(142, 68, 173, 0.2); color: #af7ac5; border-color: #af7ac5; }
+
+        .toggle-button {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            color: var(--secondary-text);
+            padding: 4px 10px;
+            border-radius: 15px;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: all 0.3s ease;
+        }
+        .toggle-button:hover { 
+            background-color: var(--accent-bg);
+            color: var(--primary-text);
+            transform: scale(1.05);
+        }
+
+        .rag-content {
+            font-size: 0.95em;
+            line-height: 1.6;
+            color: var(--primary-text);
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .full-text { display: none; }
+        
+        #infoContainer p {
+            color: var(--secondary-text);
+        }
+    </style>
+    <script src="./settings.js"></script>
+    <script src="./rag-observer-config.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle;">
+                <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C7.59 20 4 16.41 4 12C4 7.59 7.59 4 12 4C16.41 4 20 7.59 20 12C20 16.41 16.41 20 12 20Z" fill="#3498db"/>
+                <path d="M12 6C9.79 6 8 7.79 8 10H10C10 8.9 10.9 8 12 8C13.1 8 14 8.9 14 10C14 12 11 11.75 11 15H13C13 12.75 16 12.5 16 10C16 7.79 14.21 6 12 6Z" fill="#3498db"/>
+                <circle cx="12" cy="17" r="1" fill="#3498db"/>
+            </svg>
+            RAG 召回信息监听器
+        </h1>
+        
+        <div id="connectionStatus" class="connection-status status-closed">
+            连接状态：未连接
+        </div>
+
+        <div class="controls">
+            <button onclick="clearLogs()">清空日志</button>
+        </div>
+
+        <div id="infoContainer">
+            <p style="text-align:center; color:#999;">等待连接...</p>
+        </div>
+    </div>
+
+    <script>
+        const connectionStatusDiv = document.getElementById('connectionStatus');
+        const infoContainer = document.getElementById('infoContainer');
+
+        function updateStatus(status, message) {
+            connectionStatusDiv.className = `connection-status status-${status}`;
+            connectionStatusDiv.textContent = `连接状态：${message}`;
+        }
+
+        function displayRagInfo(data) {
+            if (infoContainer.firstElementChild && infoContainer.firstElementChild.tagName === 'P') {
+                infoContainer.innerHTML = '';
+            }
+
+            const block = document.createElement('div');
+            block.className = 'rag-block';
+
+            const header = document.createElement('div');
+            header.className = 'rag-block-header';
+            header.innerHTML = `
+                <h3>知识库: <strong>${data.dbName}</strong></h3>
+                <p>查询: <em>${data.query}</em></p>
+                <p>
+                    <strong>K:</strong> ${data.k} | 
+                    <strong>Time:</strong> ${data.useTime} | 
+                    <strong>Group:</strong> ${data.useGroup} | 
+                    <strong>Rerank:</strong> ${data.useRerank} |
+                    <strong>召回数量:</strong> ${data.results.length}
+                </p>
+            `;
+            block.appendChild(header);
+
+            data.results.forEach(r => {
+                const item = document.createElement('div');
+                item.className = 'rag-item';
+
+                const itemHeader = document.createElement('div');
+                itemHeader.className = 'rag-item-header';
+                
+                const meta = document.createElement('div');
+                meta.className = 'rag-meta';
+                meta.innerHTML = `
+                    <span class="source-${r.source || 'unknown'}">来源: ${r.source || 'N/A'}</span>
+                    ${r.date ? `<span class="date">日期: ${r.date}</span>` : ''}
+                    ${r.score ? `<span>Score: ${r.score.toFixed(3)}</span>` : ''}
+                `;
+
+                const toggleBtn = document.createElement('button');
+                toggleBtn.className = 'toggle-button';
+                toggleBtn.textContent = '展开';
+                toggleBtn.onclick = () => toggleFullText(toggleBtn);
+
+                itemHeader.appendChild(meta);
+                itemHeader.appendChild(toggleBtn);
+
+                const content = document.createElement('div');
+                content.className = 'rag-content';
+                
+                const snippet = document.createElement('div');
+                snippet.className = 'snippet';
+                snippet.textContent = r.text.substring(0, 150) + (r.text.length > 150 ? '...' : '');
+
+                const fullText = document.createElement('div');
+                fullText.className = 'full-text';
+                fullText.textContent = r.text;
+
+                content.appendChild(snippet);
+                content.appendChild(fullText);
+                
+                item.appendChild(itemHeader);
+                item.appendChild(content);
+                block.appendChild(item);
+            });
+
+            infoContainer.prepend(block);
+        }
+
+        function toggleFullText(button) {
+            const contentDiv = button.closest('.rag-item').querySelector('.rag-content');
+            const snippet = contentDiv.querySelector('.snippet');
+            const fullText = contentDiv.querySelector('.full-text');
+
+            const isCollapsed = fullText.style.display === 'none';
+            if (isCollapsed) {
+                fullText.style.display = 'block';
+                snippet.style.display = 'none';
+                button.textContent = '收起';
+            } else {
+                fullText.style.display = 'none';
+                snippet.style.display = 'block';
+                button.textContent = '展开';
+            }
+        }
+
+        function clearLogs() {
+            infoContainer.innerHTML = '<p style="text-align:center; color:#999;">日志已清空。</p>';
+        }
+    </script>
+</body>
+</html>
