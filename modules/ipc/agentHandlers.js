@@ -1,5 +1,5 @@
 // modules/ipc/agentHandlers.js
-const { ipcMain } = require('electron');
+const { ipcMain, dialog } = require('electron');
 const fs = require('fs-extra');
 const path = require('path');
 
@@ -13,6 +13,7 @@ async function getAgentConfigById(agentId) {
     const agentDir = path.join(AGENT_DIR_CACHE, agentId);
     const configPath = path.join(agentDir, 'config.json');
     const regexPath = path.join(agentDir, 'regex_rules.json');
+    const presetMessagePath = path.join(agentDir, 'presetMessage.json');
 
     if (await fs.pathExists(configPath)) {
         const config = await fs.readJson(configPath);
@@ -25,6 +26,22 @@ async function getAgentConfigById(agentId) {
                 console.error(`Error reading regex_rules.json for agent ${agentId}:`, e);
                 // Keep stripRegexes from config.json as a fallback
             }
+        }
+
+        // Check for preset message file
+        if (await fs.pathExists(presetMessagePath)) {
+            try {
+                const presetMessageData = await fs.readJson(presetMessagePath);
+                config.presetMessages = presetMessageData.presetMessages || [];
+                config.presetMessageEnabled = presetMessageData.enabled !== false; // 默认启用
+            } catch (e) {
+                console.error(`Error reading presetMessage.json for agent ${agentId}:`, e);
+                // Keep presetMessages from config.json as a fallback
+            }
+        } else {
+            // 如果不存在presetMessage.json文件，检查config.json中是否有presetMessages
+            config.presetMessages = config.presetMessages || [];
+            config.presetMessageEnabled = config.presetMessageEnabled !== false; // 默认启用
         }
 
         const avatarPathPng = path.join(agentDir, 'avatar.png');
@@ -93,6 +110,23 @@ function initialize(context) {
                             } catch (e) {
                                 console.error(`Error reading regex_rules.json for agent ${folderName} in get-agents:`, e);
                             }
+                        }
+
+                        // Load preset messages if they exist
+                        const presetMessagePath = path.join(agentPath, 'presetMessage.json');
+                        if (await fs.pathExists(presetMessagePath)) {
+                            try {
+                                const presetMessageData = await fs.readJson(presetMessagePath);
+                                config.presetMessages = presetMessageData.presetMessages || [];
+                                config.presetMessageEnabled = presetMessageData.enabled !== false;
+                            } catch (e) {
+                                console.error(`Error reading presetMessage.json for agent ${folderName} in get-agents:`, e);
+                                config.presetMessages = [];
+                                config.presetMessageEnabled = false;
+                            }
+                        } else {
+                            config.presetMessages = [];
+                            config.presetMessageEnabled = false;
                         }
                         
                         agentData.name = config.name || folderName;
@@ -219,6 +253,7 @@ function initialize(context) {
             const agentDir = path.join(AGENT_DIR, agentId);
             await fs.ensureDir(agentDir);
             const regexPath = path.join(agentDir, 'regex_rules.json');
+            const presetMessagePath = path.join(agentDir, 'presetMessage.json');
 
             // Handle stripRegexes separately if the property exists in the incoming config
             if (config.hasOwnProperty('stripRegexes')) {
@@ -234,9 +269,29 @@ function initialize(context) {
                 }
             }
 
-            // CRITICAL: Always remove stripRegexes from the object to be saved to config.json
+            // Handle presetMessages separately if the property exists in the incoming config
+            if (config.hasOwnProperty('presetMessages')) {
+                const presetMessages = config.presetMessages;
+                if (Array.isArray(presetMessages) && presetMessages.length > 0) {
+                    // Save preset messages to the separate file
+                    const presetMessageData = {
+                        enabled: config.presetMessageEnabled !== false, // 默认启用
+                        presetMessages: presetMessages
+                    };
+                    await fs.writeJson(presetMessagePath, presetMessageData, { spaces: 2 });
+                } else {
+                    // If the array is empty or not an array, remove the preset message file if it exists
+                    if (await fs.pathExists(presetMessagePath)) {
+                        await fs.remove(presetMessagePath);
+                    }
+                }
+            }
+
+            // CRITICAL: Always remove stripRegexes and presetMessages from the object to be saved to config.json
             const configToSave = { ...config };
             delete configToSave.stripRegexes;
+            delete configToSave.presetMessages;
+            delete configToSave.presetMessageEnabled;
             
             if (agentConfigManager) {
                 // 使用AgentConfigManager进行安全的配置更新
@@ -409,6 +464,122 @@ function initialize(context) {
         const agents = await getAgentsInternal(context);
         const groups = await getGroupsInternal(context);
         return { success: true, items: [...agents, ...groups] };
+    });
+
+    // --- Preset Message Handlers ---
+
+    ipcMain.handle('import-preset-messages', async (event, agentId) => {
+        try {
+            if (!agentId) {
+                return { success: false, error: '未提供Agent ID' };
+            }
+
+            const agentDir = path.join(AGENT_DIR, agentId);
+            if (!await fs.pathExists(agentDir)) {
+                return { success: false, error: `Agent目录不存在: ${agentId}` };
+            }
+
+            const { canceled, filePaths } = await dialog.showOpenDialog({
+                title: '选择预设消息文件',
+                properties: ['openFile'],
+                filters: [
+                    { name: 'JSON 文件', extensions: ['json'] },
+                    { name: '所有文件', extensions: ['*'] }
+                ]
+            });
+
+            if (canceled || filePaths.length === 0) {
+                return { success: false, canceled: true };
+            }
+
+            const filePath = filePaths[0];
+            const importedData = await fs.readJson(filePath);
+
+            // 验证文件格式
+            if (!importedData || typeof importedData !== 'object') {
+                return { success: false, error: '无效的预设消息文件格式' };
+            }
+
+            if (!Array.isArray(importedData.presetMessages)) {
+                return { success: false, error: '预设消息文件缺少 presetMessages 数组' };
+            }
+
+            // 保存到Agent目录
+            const targetPath = path.join(agentDir, 'presetMessage.json');
+            await fs.writeJson(targetPath, {
+                enabled: importedData.enabled !== false,
+                presetMessages: importedData.presetMessages
+            }, { spaces: 2 });
+
+            return {
+                success: true,
+                messages: importedData.presetMessages,
+                enabled: importedData.enabled !== false
+            };
+
+        } catch (error) {
+            console.error(`导入预设消息失败 for agent ${agentId}:`, error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // --- JSON File Reading Handler ---
+
+    ipcMain.handle('read-json-file', async (event, filePath) => {
+        try {
+            if (!filePath) {
+                return { success: false, error: '未提供文件路径' };
+            }
+
+            if (!require('fs').existsSync(filePath)) {
+                return { success: false, error: '文件不存在' };
+            }
+
+            const jsonData = await fs.readJson(filePath);
+            return { success: true, data: jsonData };
+
+        } catch (error) {
+            console.error(`读取JSON文件失败 ${filePath}:`, error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('export-preset-messages', async (event, agentId) => {
+        try {
+            if (!agentId) {
+                return { success: false, error: '未提供Agent ID' };
+            }
+
+            const agentDir = path.join(AGENT_DIR, agentId);
+            const presetMessagePath = path.join(agentDir, 'presetMessage.json');
+
+            if (!await fs.pathExists(presetMessagePath)) {
+                return { success: false, error: '该Agent没有预设消息文件' };
+            }
+
+            const presetMessageData = await fs.readJson(presetMessagePath);
+
+            const { canceled, filePath } = await require('electron').dialog.showSaveDialog({
+                title: '导出预设消息文件',
+                defaultPath: `presetMessage_${agentId}.json`,
+                filters: [
+                    { name: 'JSON 文件', extensions: ['json'] },
+                    { name: '所有文件', extensions: ['*'] }
+                ]
+            });
+
+            if (canceled || !filePath) {
+                return { success: false, canceled: true };
+            }
+
+            await fs.writeJson(filePath, presetMessageData, { spaces: 2 });
+
+            return { success: true, path: filePath };
+
+        } catch (error) {
+            console.error(`导出预设消息失败 for agent ${agentId}:`, error);
+            return { success: false, error: error.message };
+        }
     });
 }
 

@@ -660,33 +660,34 @@ body.light-theme {
 .vcp-result-toggle-icon::after {
     content: '';
     position: absolute;
-    width: 10px;
-    height: 2px;
     background-color: var(--tool-result-item-key-color);
     border-radius: 1px;
     top: 50%;
     left: 50%;
     transform-origin: center;
+    transition: transform 0.3s ease;
 }
 
+/* Default state (collapsed): show + */
 .vcp-result-toggle-icon::before {
-    /* Forms one part of the chevron > */
-    transform: translate(-50%, -50%) rotate(45deg);
+    width: 12px;
+    height: 3px;
+    transform: translate(-50%, -50%) rotateZ(0deg);
 }
 
 .vcp-result-toggle-icon::after {
-    /* Forms the other part of the chevron > */
-    transform: translate(-50%, -50%) rotate(-45deg);
+    width: 3px;
+    height: 12px;
+    transform: translate(-50%, -50%) rotateZ(0deg);
 }
 
-/* By default (collapsed), the icon is a right-pointing chevron > */
-.vcp-tool-result-bubble:not(.expanded) .vcp-result-toggle-icon {
-    transform: rotate(0deg); /* No rotation needed for the default state */
+/* Expanded state: rotate vertical line 90° to hide it, leaving horizontal line as - */
+.vcp-tool-result-bubble.expanded .vcp-result-toggle-icon::before {
+    transform: translate(-50%, -50%) rotateZ(0deg);
 }
 
-/* When expanded, rotate the whole icon 90 degrees to point down */
-.vcp-tool-result-bubble.expanded .vcp-result-toggle-icon {
-    transform: rotate(90deg);
+.vcp-tool-result-bubble.expanded .vcp-result-toggle-icon::after {
+    transform: translate(-50%, -50%) rotateZ(90deg);
 }
 
 .vcp-tool-result-status:containing("SUCCESS") { /* This is a pseudo-selector, might not work directly in CSS */

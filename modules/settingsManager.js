@@ -61,6 +61,9 @@ const settingsManager = (() => {
     // A private variable to hold the regex rules for the currently edited agent
     let currentAgentRegexes = [];
 
+    // A private variable to hold the preset messages for the currently edited agent
+    let currentAgentPresetMessages = [];
+
     /**
      * Displays the appropriate settings view (agent, group, or default prompt)
      * based on the currently selected item.
@@ -156,6 +159,16 @@ const settingsManager = (() => {
     // Load and render regex rules
     currentAgentRegexes = JSON.parse(JSON.stringify(agentConfig.stripRegexes || [])); // Deep copy
     renderRegexList();
+
+    // Load and render preset messages
+    currentAgentPresetMessages = JSON.parse(JSON.stringify(agentConfig.presetMessages || [])); // Deep copy
+    renderPresetMessageList();
+
+    // Set the initial state of the enable switch
+    const enableCheckbox = document.getElementById('enablePresetMessage');
+    if (enableCheckbox) {
+        enableCheckbox.checked = agentConfig.presetMessageEnabled !== false; // Default to true if not specified
+    }
 }
 
     /**
@@ -180,7 +193,9 @@ const settingsManager = (() => {
             ttsVoiceSecondary: agentTtsVoiceSecondarySelect.value,
             ttsRegexSecondary: agentTtsRegexSecondaryInput.value.trim(),
             ttsSpeed: parseFloat(agentTtsSpeedSlider.value),
-            stripRegexes: currentAgentRegexes
+            stripRegexes: currentAgentRegexes,
+            presetMessages: currentAgentPresetMessages,
+            presetMessageEnabled: document.getElementById('enablePresetMessage')?.checked ?? true
         };
      
         if (!newConfig.name) {
@@ -641,16 +656,12 @@ const settingsManager = (() => {
         importBtn.addEventListener('click', () => handleImportRegex());
         container.appendChild(importBtn);
         
-        // 在导入正则按钮后添加分隔线
-        const bottomDivider = document.createElement('hr');
-        bottomDivider.className = 'form-divider';
-        bottomDivider.style.marginTop = '15px';
-        bottomDivider.style.marginBottom = '15px';
-        container.appendChild(bottomDivider);
-
         const parent = ttsSpeedContainer.parentNode;
         parent.insertBefore(divider, ttsSpeedContainer.nextSibling);
         parent.insertBefore(container, divider.nextSibling);
+
+        // 创建预设消息UI
+        createPresetMessageUI();
     }
 
     function renderRegexList() {
@@ -814,6 +825,536 @@ const settingsManager = (() => {
             }
         } catch (error) {
             console.error('导入正则规则时发生意外错误:', error);
+            uiHelper.showToastNotification(`导入失败: ${error.message}`, 'error');
+        }
+    }
+
+    /**
+     * 创建预设消息UI
+     */
+    function createPresetMessageUI() {
+        const formActions = document.querySelector('.form-actions');
+        if (!formActions) return;
+
+        // 创建分隔线
+        const divider = document.createElement('hr');
+        divider.className = 'form-divider';
+
+        // 创建预设消息容器
+        const container = document.createElement('div');
+        container.className = 'form-group preset-message-container';
+
+        const title = document.createElement('div');
+        title.className = 'form-section-title';
+        title.textContent = '预设消息';
+        container.appendChild(title);
+
+        // 创建启用开关
+        const enableContainer = document.createElement('div');
+        enableContainer.className = 'form-group-inline';
+        enableContainer.style.justifyContent = 'space-between';
+        enableContainer.style.alignItems = 'center';
+        enableContainer.style.marginBottom = '15px';
+
+        const enableLabel = document.createElement('label');
+        enableLabel.textContent = '启用预设消息';
+
+        const enableSwitch = document.createElement('label');
+        enableSwitch.className = 'switch';
+
+        const enableCheckbox = document.createElement('input');
+        enableCheckbox.type = 'checkbox';
+        enableCheckbox.id = 'enablePresetMessage';
+
+        const slider = document.createElement('span');
+        slider.className = 'slider round';
+
+        enableSwitch.appendChild(enableCheckbox);
+        enableSwitch.appendChild(slider);
+
+        enableContainer.appendChild(enableLabel);
+        enableContainer.appendChild(enableSwitch);
+        container.appendChild(enableContainer);
+
+        // Add event listener for the enable switch
+        enableCheckbox.addEventListener('change', () => {
+            savePresetMessageEnabledState(enableCheckbox.checked);
+        });
+
+        // 创建预设消息列表容器
+        const listContainer = document.createElement('div');
+        listContainer.id = 'presetMessageListContainer';
+        listContainer.className = 'preset-message-list-container';
+        container.appendChild(listContainer);
+
+        // 创建按钮容器
+        const buttonsContainer = document.createElement('div');
+        buttonsContainer.className = 'preset-message-buttons';
+        buttonsContainer.style.display = 'flex';
+        buttonsContainer.style.gap = '8px';
+        buttonsContainer.style.marginTop = '10px';
+
+        const addBtn = document.createElement('button');
+        addBtn.type = 'button';
+        addBtn.textContent = '添加预设消息';
+        addBtn.className = 'btn-add-regex';
+        addBtn.style.flex = '1';
+        addBtn.addEventListener('click', () => openPresetMessageModal());
+
+        const importBtn = document.createElement('button');
+        importBtn.type = 'button';
+        importBtn.textContent = '导入预设消息';
+        importBtn.className = 'btn-add-regex';
+        importBtn.style.flex = '1';
+        importBtn.addEventListener('click', () => handleImportPresetMessage());
+
+        buttonsContainer.appendChild(addBtn);
+        buttonsContainer.appendChild(importBtn);
+        container.appendChild(buttonsContainer);
+
+        // 添加底部分隔线，用于与保存按钮分离
+        const bottomDivider = document.createElement('hr');
+        bottomDivider.className = 'form-divider';
+        bottomDivider.style.marginTop = '15px';
+        bottomDivider.style.marginBottom = '15px';
+        container.appendChild(bottomDivider);
+
+        // 插入到表单操作按钮之前
+        const parent = formActions.parentNode;
+        parent.insertBefore(divider, formActions);
+        parent.insertBefore(container, formActions);
+    }
+
+    function renderPresetMessageList() {
+        const listContainer = document.getElementById('presetMessageListContainer');
+        if (!listContainer) return;
+
+        listContainer.innerHTML = '';
+
+        if (currentAgentPresetMessages.length === 0) {
+            const emptyMessage = document.createElement('div');
+            emptyMessage.textContent = '暂无首条消息，支持设置多条';
+            emptyMessage.style.textAlign = 'center';
+            emptyMessage.style.color = 'var(--secondary-text)';
+            emptyMessage.style.padding = '20px';
+            listContainer.appendChild(emptyMessage);
+            return;
+        }
+
+        currentAgentPresetMessages.forEach(message => {
+            const row = createPresetMessageRow(message);
+            listContainer.appendChild(row);
+        });
+    }
+
+    function createPresetMessageRow(message) {
+        const row = document.createElement('div');
+        row.className = 'preset-message-row';
+        row.dataset.messageId = message.id;
+        row.style.display = 'flex';
+        row.style.gap = '8px';
+        row.style.marginBottom = '8px';
+        row.style.padding = '12px';
+        row.style.border = '1px solid var(--border-color)';
+        row.style.borderRadius = '8px';
+        row.style.backgroundColor = 'var(--input-bg)';
+
+        // 左边容器 (1/4宽度)
+        const leftContainer = document.createElement('div');
+        leftContainer.style.flex = '1';
+        leftContainer.style.display = 'flex';
+        leftContainer.style.flexDirection = 'column';
+        leftContainer.style.gap = '4px';
+
+        // 角色选择
+        const roleContainer = document.createElement('div');
+        const roleSelect = document.createElement('select');
+        roleSelect.className = 'preset-message-role';
+        roleSelect.style.width = '100%';
+        roleSelect.style.padding = '4px 8px';
+        roleSelect.style.border = '1px solid var(--border-color)';
+        roleSelect.style.borderRadius = '4px';
+        roleSelect.style.backgroundColor = 'var(--input-bg)';
+        roleSelect.style.color = 'var(--primary-text)';
+        roleSelect.style.fontSize = '0.9em';
+
+        const roles = [
+            { value: 'user', text: '用户' },
+            { value: 'assistant', text: '助手' },
+            { value: 'system', text: '系统' }
+        ];
+
+        roles.forEach(role => {
+            const option = document.createElement('option');
+            option.value = role.value;
+            option.textContent = role.text;
+            if (message.role === role.value) {
+                option.selected = true;
+            }
+            roleSelect.appendChild(option);
+        });
+
+        roleSelect.addEventListener('change', (e) => {
+            message.role = e.target.value;
+            savePresetMessagesToAgent();
+        });
+
+        roleContainer.appendChild(roleSelect);
+
+        // 名字设定
+        const nameContainer = document.createElement('div');
+        const nameInput = document.createElement('input');
+        nameInput.type = 'text';
+        nameInput.className = 'preset-message-name';
+        nameInput.placeholder = '角色名字（可选）';
+        nameInput.value = message.name || '';
+        nameInput.style.width = '100%';
+        nameInput.style.padding = '4px 8px';
+        nameInput.style.border = '1px solid var(--border-color)';
+        nameInput.style.borderRadius = '4px';
+        nameInput.style.backgroundColor = 'var(--input-bg)';
+        nameInput.style.color = 'var(--primary-text)';
+        nameInput.style.fontSize = '0.9em';
+
+        nameInput.addEventListener('input', (e) => {
+            message.name = e.target.value;
+            savePresetMessagesToAgent();
+        });
+
+        nameContainer.appendChild(nameInput);
+
+        // 删除按钮
+        const deleteBtn = document.createElement('button');
+        deleteBtn.type = 'button';
+        deleteBtn.className = 'btn-delete-regex';
+        deleteBtn.title = '删除预设消息';
+        deleteBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
+        deleteBtn.addEventListener('click', () => {
+            if (confirm(`确定要删除这条预设消息吗？`)) {
+                currentAgentPresetMessages = currentAgentPresetMessages.filter(m => m.id !== message.id);
+                renderPresetMessageList();
+                savePresetMessagesToAgent();
+            }
+        });
+
+        leftContainer.appendChild(roleContainer);
+        leftContainer.appendChild(nameContainer);
+        leftContainer.appendChild(deleteBtn);
+
+        // 右边容器 (3/4宽度)
+        const rightContainer = document.createElement('div');
+        rightContainer.style.flex = '3';
+
+        const contentTextarea = document.createElement('textarea');
+        contentTextarea.className = 'preset-message-content';
+        contentTextarea.placeholder = '消息内容';
+        contentTextarea.value = message.content || '';
+        contentTextarea.style.width = '100%';
+        contentTextarea.style.minHeight = '80px';
+        contentTextarea.style.padding = '8px';
+        contentTextarea.style.border = '1px solid var(--border-color)';
+        contentTextarea.style.borderRadius = '4px';
+        contentTextarea.style.backgroundColor = 'var(--input-bg)';
+        contentTextarea.style.color = 'var(--primary-text)';
+        contentTextarea.style.fontSize = '0.9em';
+        contentTextarea.style.resize = 'vertical';
+
+        contentTextarea.addEventListener('input', (e) => {
+            message.content = e.target.value;
+            savePresetMessagesToAgent();
+        });
+
+        rightContainer.appendChild(contentTextarea);
+
+        row.appendChild(leftContainer);
+        row.appendChild(rightContainer);
+
+        return row;
+    }
+
+    function openPresetMessageModal(messageData = null) {
+        // 创建模态框
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.id = 'presetMessageModal';
+        modal.style.display = 'block';
+
+        const modalContent = document.createElement('div');
+        modalContent.className = 'modal-content';
+        modalContent.style.maxWidth = '600px';
+
+        const closeBtn = document.createElement('span');
+        closeBtn.className = 'close-button';
+        closeBtn.innerHTML = '×';
+        closeBtn.style.position = 'absolute';
+        closeBtn.style.top = '10px';
+        closeBtn.style.right = '15px';
+        closeBtn.style.fontSize = '24px';
+        closeBtn.style.cursor = 'pointer';
+        closeBtn.addEventListener('click', () => {
+            document.body.removeChild(modal);
+        });
+
+        const title = document.createElement('h2');
+        title.textContent = messageData ? '编辑预设消息' : '添加预设消息';
+        title.style.marginTop = '0';
+
+        const form = document.createElement('form');
+        form.id = 'presetMessageForm';
+        form.style.display = 'flex';
+        form.style.flexDirection = 'column';
+        form.style.gap = '15px';
+
+        // 角色选择
+        const roleGroup = document.createElement('div');
+        const roleLabel = document.createElement('label');
+        roleLabel.textContent = '角色:';
+        roleLabel.style.fontWeight = '500';
+        roleLabel.style.color = 'var(--secondary-text)';
+        roleLabel.style.fontSize = '0.9em';
+        roleLabel.style.marginBottom = '4px';
+        roleLabel.style.display = 'block';
+
+        const roleSelect = document.createElement('select');
+        roleSelect.id = 'modalMessageRole';
+        roleSelect.style.width = '100%';
+        roleSelect.style.padding = '9px 10px';
+        roleSelect.style.border = '1px solid var(--border-color)';
+        roleSelect.style.borderRadius = '8px';
+        roleSelect.style.backgroundColor = 'var(--input-bg)';
+        roleSelect.style.color = 'var(--primary-text)';
+
+        const roles = [
+            { value: 'user', text: '用户' },
+            { value: 'assistant', text: '助手' },
+            { value: 'system', text: '系统' }
+        ];
+
+        roles.forEach(role => {
+            const option = document.createElement('option');
+            option.value = role.value;
+            option.textContent = role.text;
+            if (messageData && messageData.role === role.value) {
+                option.selected = true;
+            }
+            roleSelect.appendChild(option);
+        });
+
+        roleGroup.appendChild(roleLabel);
+        roleGroup.appendChild(roleSelect);
+
+        // 名字设定
+        const nameGroup = document.createElement('div');
+        const nameLabel = document.createElement('label');
+        nameLabel.textContent = '角色名字（可选）:';
+        nameLabel.style.fontWeight = '500';
+        nameLabel.style.color = 'var(--secondary-text)';
+        nameLabel.style.fontSize = '0.9em';
+        nameLabel.style.marginBottom = '4px';
+        nameLabel.style.display = 'block';
+
+        const nameInput = document.createElement('input');
+        nameInput.type = 'text';
+        nameInput.id = 'modalMessageName';
+        nameInput.placeholder = '角色名字（可选）';
+        nameInput.value = messageData ? (messageData.name || '') : '';
+        nameInput.style.width = '100%';
+        nameInput.style.padding = '9px 10px';
+        nameInput.style.border = '1px solid var(--border-color)';
+        nameInput.style.borderRadius = '8px';
+        nameInput.style.backgroundColor = 'var(--input-bg)';
+        nameInput.style.color = 'var(--primary-text)';
+
+        nameGroup.appendChild(nameLabel);
+        nameGroup.appendChild(nameInput);
+
+        // 消息内容
+        const contentGroup = document.createElement('div');
+        const contentLabel = document.createElement('label');
+        contentLabel.textContent = '消息内容:';
+        contentLabel.style.fontWeight = '500';
+        contentLabel.style.color = 'var(--secondary-text)';
+        contentLabel.style.fontSize = '0.9em';
+        contentLabel.style.marginBottom = '4px';
+        contentLabel.style.display = 'block';
+
+        const contentTextarea = document.createElement('textarea');
+        contentTextarea.id = 'modalMessageContent';
+        contentTextarea.placeholder = '消息内容';
+        contentTextarea.value = messageData ? (messageData.content || '') : '';
+        contentTextarea.style.width = '100%';
+        contentTextarea.style.minHeight = '120px';
+        contentTextarea.style.padding = '9px 10px';
+        contentTextarea.style.border = '1px solid var(--border-color)';
+        contentTextarea.style.borderRadius = '8px';
+        contentTextarea.style.backgroundColor = 'var(--input-bg)';
+        contentTextarea.style.color = 'var(--primary-text)';
+        contentTextarea.style.resize = 'vertical';
+
+        contentGroup.appendChild(contentLabel);
+        contentGroup.appendChild(contentTextarea);
+
+        // 按钮容器
+        const actionsContainer = document.createElement('div');
+        actionsContainer.className = 'form-actions';
+        actionsContainer.style.marginTop = '10px';
+        actionsContainer.style.display = 'flex';
+        actionsContainer.style.justifyContent = 'flex-end';
+        actionsContainer.style.gap = '10px';
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.type = 'button';
+        cancelBtn.textContent = '取消';
+        cancelBtn.className = 'button-secondary';
+        cancelBtn.style.backgroundColor = 'var(--button-bg)';
+        cancelBtn.style.color = 'var(--primary-text)';
+        cancelBtn.addEventListener('click', () => {
+            document.body.removeChild(modal);
+        });
+
+        const submitBtn = document.createElement('button');
+        submitBtn.type = 'submit';
+        submitBtn.textContent = messageData ? '保存修改' : '添加消息';
+        submitBtn.style.backgroundColor = 'var(--user-bubble-bg)';
+        submitBtn.style.color = 'white';
+
+        actionsContainer.appendChild(cancelBtn);
+        actionsContainer.appendChild(submitBtn);
+
+        form.appendChild(roleGroup);
+        form.appendChild(nameGroup);
+        form.appendChild(contentGroup);
+        form.appendChild(actionsContainer);
+
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+
+            const role = roleSelect.value;
+            const name = nameInput.value.trim();
+            const content = contentTextarea.value.trim();
+
+            if (!content) {
+                uiHelper.showToastNotification('消息内容不能为空！', 'error');
+                return;
+            }
+
+            if (messageData) {
+                // 编辑模式
+                messageData.role = role;
+                messageData.name = name;
+                messageData.content = content;
+            } else {
+                // 新增模式
+                const newMessage = {
+                    id: `preset_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                    role,
+                    name,
+                    content
+                };
+                currentAgentPresetMessages.push(newMessage);
+            }
+
+            renderPresetMessageList();
+            savePresetMessagesToAgent();
+            document.body.removeChild(modal);
+        });
+
+        modalContent.appendChild(closeBtn);
+        modalContent.appendChild(title);
+        modalContent.appendChild(form);
+
+        modal.appendChild(modalContent);
+
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                document.body.removeChild(modal);
+            }
+        });
+
+        document.body.appendChild(modal);
+
+        // 聚焦到内容输入框
+        contentTextarea.focus();
+    }
+
+    function savePresetMessagesToAgent() {
+        const agentId = editingAgentIdInput.value;
+        if (!agentId) return;
+
+        // 这里可以立即保存到Agent配置中，或者等到用户点击保存按钮时再保存
+        // 为了更好的用户体验，我们选择立即保存
+        const agentConfig = {
+            presetMessages: currentAgentPresetMessages
+        };
+
+        electronAPI.saveAgentConfig(agentId, agentConfig).then(result => {
+            if (result.success) {
+                console.log('预设消息已保存');
+            } else {
+                console.error('保存预设消息失败:', result.error);
+                uiHelper.showToastNotification(`保存预设消息失败: ${result.error}`, 'error');
+            }
+        }).catch(error => {
+            console.error('保存预设消息时出错:', error);
+            uiHelper.showToastNotification(`保存预设消息出错: ${error.message}`, 'error');
+        });
+    }
+
+    function savePresetMessageEnabledState(enabled) {
+        const agentId = editingAgentIdInput.value;
+        if (!agentId) return;
+
+        // 立即保存启用状态到Agent配置中
+        const agentConfig = {
+            presetMessageEnabled: enabled,
+            presetMessages: currentAgentPresetMessages
+        };
+
+        electronAPI.saveAgentConfig(agentId, agentConfig).then(result => {
+            if (result.success) {
+                console.log(`预设消息启用状态已保存: ${enabled}`);
+            } else {
+                console.error('保存预设消息启用状态失败:', result.error);
+                uiHelper.showToastNotification(`保存预设消息启用状态失败: ${result.error}`, 'error');
+                // 恢复开关状态
+                const enableCheckbox = document.getElementById('enablePresetMessage');
+                if (enableCheckbox) {
+                    enableCheckbox.checked = !enabled;
+                }
+            }
+        }).catch(error => {
+            console.error('保存预设消息启用状态时出错:', error);
+            uiHelper.showToastNotification(`保存预设消息启用状态出错: ${error.message}`, 'error');
+            // 恢复开关状态
+            const enableCheckbox = document.getElementById('enablePresetMessage');
+            if (enableCheckbox) {
+                enableCheckbox.checked = !enabled;
+            }
+        });
+    }
+
+    /**
+     * 处理导入预设消息（暂时未实现）
+     */
+    async function handleImportPresetMessage() {
+        const agentId = editingAgentIdInput.value;
+        if (!agentId) {
+            uiHelper.showToastNotification('请先选择一个Agent。', 'warning');
+            return;
+        }
+
+        try {
+            const result = await electronAPI.importPresetMessages(agentId);
+
+            if (result.success) {
+                currentAgentPresetMessages = result.messages;
+                renderPresetMessageList();
+                uiHelper.showToastNotification('预设消息导入成功！', 'success');
+            } else if (!result.canceled) {
+                uiHelper.showToastNotification(`导入失败: ${result.error}`, 'error');
+            }
+        } catch (error) {
+            console.error('导入预设消息时发生意外错误:', error);
             uiHelper.showToastNotification(`导入失败: ${error.message}`, 'error');
         }
     }
