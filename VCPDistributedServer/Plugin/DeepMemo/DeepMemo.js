@@ -21,7 +21,13 @@ async function main() {
         if (!maidName) {
             throw new Error("请求中缺少 'maid' 参数。");
         }
-        let keywords = (args.keyword || '').split(/[,，\s]+/).filter(Boolean);
+        const rawKeywords = args.keyword || '';
+        // 该正则表达式可以匹配被引号包裹的短语（如 "hello world"）以及未被包裹的单个词语
+        const keywordMatches = rawKeywords.match(/"[^"]+"|'[^']+'|[^,，\s]+/g) || [];
+        let keywords = keywordMatches.map(kw => {
+            // 移除关键词首尾可能存在的引号
+            return kw.replace(/^["']|["']$/g, '').trim();
+        }).filter(Boolean); // 过滤掉空字符串
         if (keywords.length === 0) {
             throw new Error("请求中缺少 'keyword' 参数。");
         }
@@ -36,7 +42,7 @@ async function main() {
             throw new Error("关键词均被屏蔽，无有效搜索词。");
         }
 
-        let windowSize = parseInt(args.window_size || '5', 10);
+        let windowSize = parseInt(args.window_size || '3', 10);
         if (windowSize < 1) {
             windowSize = 1;
         }
@@ -263,7 +269,7 @@ async function searchHistories(vchatPath, agentUuid, keywords, windowSize, userN
 
                 // 3. 对每个关键词分别搜索，然后合并结果
                 console.error(`[DEBUG] Searching keywords: ${keywords.join(', ')}`);
-                let matchedIndices = new Set();
+                let matchedIndices = new Map(); // 使用 Map 存储索引及其匹配的关键词
                 let rawResults = []; // 用于调试
 
                 for (const keyword of keywords) {
@@ -281,7 +287,10 @@ async function searchHistories(vchatPath, agentUuid, keywords, windowSize, userN
                             // fieldResult 格式: { field: "content", result: [...] }
                             if (fieldResult.field === "content" && fieldResult.result) {
                                 fieldResult.result.forEach(id => {
-                                    matchedIndices.add(id);
+                                    if (!matchedIndices.has(id)) {
+                                        matchedIndices.set(id, new Set());
+                                    }
+                                    matchedIndices.get(id).add(keyword);
                                 });
                             }
                         }
@@ -296,19 +305,24 @@ async function searchHistories(vchatPath, agentUuid, keywords, windowSize, userN
                     for (const keyword of keywords) {
                         const simpleResults = index.search(keyword);
                         if (simpleResults && simpleResults.length > 0) {
-                            // simpleResults for a document search without enrich is just an array of IDs.
-                            // But the documentation says it returns an array of objects {field: string, result: Array<ID>}.
-                            // Let's handle both cases.
                             if (typeof simpleResults[0] === 'object' && simpleResults[0].field) {
                                 for (const fieldResult of simpleResults) {
                                     if (fieldResult.result) {
-                                        fieldResult.result.forEach(id => matchedIndices.add(id));
+                                        fieldResult.result.forEach(id => {
+                                            if (!matchedIndices.has(id)) {
+                                                matchedIndices.set(id, new Set());
+                                            }
+                                            matchedIndices.get(id).add(keyword);
+                                        });
                                     }
                                 }
                             } else { // Fallback for flat array of IDs
                                 simpleResults.forEach(id => {
                                     if (typeof id === 'number') {
-                                        matchedIndices.add(id);
+                                        if (!matchedIndices.has(id)) {
+                                            matchedIndices.set(id, new Set());
+                                        }
+                                        matchedIndices.get(id).add(keyword);
                                     }
                                 });
                             }
@@ -324,8 +338,10 @@ async function searchHistories(vchatPath, agentUuid, keywords, windowSize, userN
                         
                         for (const keyword of keywords) {
                             if (cleanContent.includes(keyword.toLowerCase())) {
-                                matchedIndices.add(i);
-                                break; // 匹配到一个关键词即可
+                                if (!matchedIndices.has(i)) {
+                                    matchedIndices.set(i, new Set());
+                                }
+                                matchedIndices.get(i).add(keyword);
                             }
                         }
                     });
@@ -333,7 +349,19 @@ async function searchHistories(vchatPath, agentUuid, keywords, windowSize, userN
 
                 console.error(`[DEBUG] Search results count: ${matchedIndices.size}`);
                 
-                const sortedIndices = Array.from(matchedIndices).sort((a, b) => a - b);
+                const sortedEntries = Array.from(matchedIndices.entries());
+
+                // 根据匹配的关键词数量（相关性）降序排序，如果数量相同则按原始索引（时间）升序排序
+                sortedEntries.sort((a, b) => {
+                    const scoreA = a[1].size;
+                    const scoreB = b[1].size;
+                    if (scoreA !== scoreB) {
+                        return scoreB - scoreA;
+                    }
+                    return a[0] - b[0]; // a[0] 和 b[0] 是原始索引
+                });
+
+                const sortedIndices = sortedEntries.map(entry => entry[0]);
 
                 // B. 基于排序后的索引构建不重叠的回忆片段
                 for (let i = 0; i < sortedIndices.length; i++) {
@@ -375,30 +403,153 @@ async function rerankMemories(memories, query, config) {
         return memories;
     }
 
-    // 1. 将回忆片段分割成多个批次，确保每个批次不超过 token 上限
+    try {
+        const finalMemories = await recursiveRerank(memories, query, config, 1);
+        console.error(`[DEBUG] Recursive rerank completed. Returning top ${finalMemories.length} memories.`);
+        return finalMemories.slice(0, config.RerankTopN);
+    } catch (error) {
+        let errorMessage = error.message;
+        if (error.response) {
+            errorMessage += ` - Status: ${error.response.status}, Data: ${JSON.stringify(error.response.data)}`;
+        }
+        console.error(`[DEBUG] Rerank failed during recursive process: ${errorMessage}`);
+        throw new Error(`Rerank failed: ${errorMessage}`);
+    }
+}
+
+async function recursiveRerank(documents, query, config, level = 1, maxLevel = 5) {
+    console.error(`[DEBUG] --- Starting Rerank Level ${level} with ${documents.length} documents ---`);
+
+    // 1. 添加递归深度限制
+    if (level > maxLevel) {
+        console.error(`[WARNING] Max recursion level ${maxLevel} reached. Performing final rerank on a subset.`);
+        const finalRanked = await performRerankRequest(documents.slice(0, 50), query, config); // Fallback to rerank a small subset
+        return finalRanked.map(item => item.document);
+    }
+
+    // 2. 如果文档数量已经足够少，直接进行最终排序
+    if (documents.length <= (config.RerankTopN * 1.5) || documents.length <= 10) {
+        console.error(`[DEBUG] Document count (${documents.length}) is small enough. Performing final rerank.`);
+        const finalRanked = await performRerankRequest(documents, query, config);
+        return finalRanked.map(item => item.document);
+    }
+
+    // 3. 改进的分批策略
+    const maxBatchSize = config.RerankMaxTokensPerBatch;
     const batches = [];
     let currentBatch = [];
     let currentTokens = 0;
-    for (const memory of memories) {
-        // 如果当前批次非空，并且加入新片段会超限，则将当前批次存入，并开启新批次
-        if (currentBatch.length > 0 && currentTokens + memory.length > config.RerankMaxTokensPerBatch) {
+
+    for (let doc of documents) {
+        let docToAdd = doc;
+        let docLength = doc.length;
+
+        // 对超长文档进行智能截断 (保留首尾)
+        if (docLength > maxBatchSize * 0.8) {
+            console.error(`[DEBUG] Document with length ${docLength} is too long. Applying smart truncation.`);
+            const keepLength = Math.floor(maxBatchSize / 4);
+            docToAdd = doc.substring(0, keepLength) +
+                "\n...[内容过长，中间已截断]...\n" +
+                doc.substring(doc.length - keepLength);
+            docLength = docToAdd.length;
+        }
+
+        if (currentBatch.length > 0 &&
+            (currentTokens + docLength > maxBatchSize || currentBatch.length >= 15)) {
             batches.push(currentBatch);
             currentBatch = [];
             currentTokens = 0;
         }
-        currentBatch.push(memory);
-        currentTokens += memory.length;
+
+        currentBatch.push(docToAdd);
+        currentTokens += docLength;
     }
     if (currentBatch.length > 0) {
         batches.push(currentBatch);
     }
 
-    if (batches.length === 0) {
-        console.error("[DEBUG] No memories to rerank after batching.");
-        return memories;
+    // 4. 防止无效递归 - 如果批次数过多，切换到锦标赛排序
+    if (batches.length >= documents.length * 0.8 && documents.length > 1) {
+        console.error(`[WARNING] Too many batches (${batches.length}) for ${documents.length} documents. Switching to tournament sort.`);
+        return tournamentSort(documents, query, config);
     }
     
-    console.error(`[DEBUG] Split memories into ${batches.length} batches for reranking.`);
+    if (batches.length <= 1 && level > 1) {
+         console.error(`[DEBUG] Level ${level}: Only one batch remains. Performing final rerank.`);
+         const finalRanked = await performRerankRequest(documents, query, config);
+         return finalRanked.map(item => item.document);
+    }
+
+
+    // 5. 继续原有的递归逻辑...
+    const rerankPromises = batches.map((batch, index) => {
+        console.error(`[DEBUG] Level ${level}: Sending batch ${index + 1}/${batches.length} with ${batch.length} docs for rerank.`);
+        return performRerankRequest(batch, query, config);
+    });
+
+    const responses = await Promise.all(rerankPromises);
+
+    // 6. 更激进的筛选策略
+    let candidatesForNextRound = [];
+    // 每轮至少减少一半的候选者，但不能少于最终需要的数量
+    const targetTotal = Math.max(config.RerankTopN + 2, Math.ceil(documents.length / 2));
+    const topKPerBatch = Math.max(1, Math.ceil(targetTotal / batches.length));
+
+
+    responses.forEach((rankedBatch, batchIndex) => {
+        const topK = rankedBatch.slice(0, topKPerBatch);
+        candidatesForNextRound.push(...topK.map(item => item.document));
+    });
+
+    // 7. 确保文档数量真的在减少
+    if (candidatesForNextRound.length >= documents.length && documents.length > 0) {
+        console.error(`[WARNING] Document reduction failed (${documents.length} -> ${candidatesForNextRound.length}). Forcing reduction.`);
+        candidatesForNextRound = candidatesForNextRound.slice(0, documents.length - 1);
+    }
+    
+    if (candidatesForNextRound.length === 0 && documents.length > 0) {
+        console.error(`[WARNING] All candidates were eliminated. Returning a subset of original documents.`);
+        return documents.slice(0, config.RerankTopN);
+    }
+
+
+    return recursiveRerank(candidatesForNextRound, query, config, level + 1, maxLevel);
+}
+
+// 新增：锦标赛排序，作为后备方案
+async function tournamentSort(documents, query, config) {
+    console.error(`[DEBUG] --- Starting Tournament Sort with ${documents.length} documents ---`);
+    let champions = [...documents];
+
+    while (champions.length > 1) {
+        let nextRound = [];
+        // 两两配对进行 rerank
+        for (let i = 0; i < champions.length; i += 2) {
+            if (i + 1 < champions.length) {
+                const pair = [champions[i], champions[i + 1]];
+                const rankedPair = await performRerankRequest(pair, query, config);
+                if (rankedPair.length > 0) {
+                    nextRound.push(rankedPair[0].document); // 胜者进入下一轮
+                } else {
+                    nextRound.push(champions[i]); // 如果 rerank 失败，保留第一个
+                }
+            } else {
+                nextRound.push(champions[i]); // 轮空，直接晋级
+            }
+        }
+        champions = nextRound;
+        console.error(`[DEBUG] Tournament: ${champions.length} champions advance to the next round.`);
+    }
+
+    // 对最终的少数胜者进行最后一次排名
+    const finalChampions = await performRerankRequest(champions, query, config);
+    return finalChampions.map(item => item.document);
+}
+
+async function performRerankRequest(documents, query, config) {
+    if (!documents || documents.length === 0) {
+        return [];
+    }
 
     const headers = {
         'Content-Type': 'application/json',
@@ -407,69 +558,33 @@ async function rerankMemories(memories, query, config) {
     const baseUrl = config.RerankUrl.endsWith('/') ? config.RerankUrl : config.RerankUrl + '/';
     const rerankEndpoint = baseUrl + 'v1/rerank';
 
+    const data = {
+        model: config.RerankModel,
+        query: query,
+        documents: documents,
+        return_documents: false,
+        top_n: documents.length
+    };
+
     try {
-        // 2. 并行发送所有批次的重排请求
-        const rerankPromises = batches.map((batch, index) => {
-            const data = {
-                model: config.RerankModel,
-                query: query,
-                documents: batch,
-                return_documents: false, // 我们只需要索引和分数
-                top_n: batch.length // 请求返回批次内所有文档的分数，以便全局排序
-            };
-            console.error(`[DEBUG] Sending batch ${index + 1}/${batches.length} with ${batch.length} memories for rerank.`);
-            return axios.post(rerankEndpoint, data, {
-                headers: headers,
-                timeout: 30000 // 增加超时时间以应对可能的并发压力
+        const response = await axios.post(rerankEndpoint, data, { headers: headers, timeout: 30000 });
+        if (response.data && Array.isArray(response.data.results)) {
+            return response.data.results.map(result => {
+                if (typeof result.relevance_score === 'undefined') {
+                    throw new Error("Rerank API response is missing 'relevance_score'.");
+                }
+                return {
+                    document: documents[result.index],
+                    score: result.relevance_score
+                };
             });
-        });
-
-        const responses = await Promise.all(rerankPromises);
-
-        // 3. 收集并整合所有批次的结果
-        let allRankedDocs = [];
-        responses.forEach((response, batchIndex) => {
-            if (response.data && Array.isArray(response.data.results)) {
-                const batch = batches[batchIndex];
-                const batchResults = response.data.results.map(result => {
-                    // API需要返回 relevance_score 用于全局排序
-                    if (typeof result.relevance_score === 'undefined') {
-                         throw new Error("Rerank API response is missing 'relevance_score'. Cannot perform global sorting.");
-                    }
-                    return {
-                        document: batch[result.index],
-                        score: result.relevance_score
-                    };
-                });
-                allRankedDocs.push(...batchResults);
-            } else {
-                 console.error(`[DEBUG] Rerank API response for batch ${batchIndex} is not in the expected format:`, response.data);
-            }
-        });
-
-        if (allRankedDocs.length === 0) {
-            console.error("[DEBUG] No valid results received from rerank API across all batches.");
-            return memories; // 如果所有批次都失败或返回空，则返回原始结果
         }
-
-        // 4. 全局排序
-        allRankedDocs.sort((a, b) => b.score - a.score);
-
-        // 5. 提取排序后的文档内容，并截取 top_n
-        const finalMemories = allRankedDocs.map(doc => doc.document).slice(0, config.RerankTopN);
-        
-        console.error(`[DEBUG] Rerank completed. Globally sorted ${allRankedDocs.length} results, returning top ${finalMemories.length}.`);
-        
-        return finalMemories;
-
+        console.error(`[DEBUG] Rerank API response is not in the expected format:`, response.data);
+        return [];
     } catch (error) {
-        let errorMessage = error.message;
-        if (error.response) {
-            errorMessage += ` - Status: ${error.response.status}, Data: ${JSON.stringify(error.response.data)}`;
-        }
-        console.error(`[DEBUG] Rerank API request failed during batch processing: ${errorMessage}`);
-        // 出现任何网络或API错误时，抛出异常，由上层逻辑决定是使用原始数据还是报错
-        throw new Error(`Rerank API request failed: ${errorMessage}`);
+        console.error(`[DEBUG] Rerank API request failed: ${error.message}`);
+        // 在单次请求失败时，可以选择返回空数组而不是让整个流程失败
+        return [];
     }
 }
 
