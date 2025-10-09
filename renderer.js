@@ -705,28 +705,12 @@ import * as interruptHandler from './modules/interruptHandler.js';
         }
 
        // Emoticon URL fixer is now initialized within messageRenderer
+    } catch (error) {
+        console.error('Error during DOMContentLoaded initialization:', error);
+        chatMessagesDiv.innerHTML = `<div class="message-item system">初始化失败: ${error.message}</div>`;
+    }
 
-       // Initialize Mailboxmodules
-       if (window.mailboxManager) {
-           const initResult = window.mailboxManager.init({
-               electronAPI: window.electronAPI,
-               chatManager: window.chatManager
-           });
-
-           if (initResult) {
-               console.log('[Renderer] Mailboxmodules 初始化成功');
-           } else {
-               console.error('[Renderer] Mailboxmodules 初始化失败');
-           }
-       } else {
-           console.error('[Renderer] mailboxManager 模块未找到');
-       }
-   } catch (error) {
-       console.error('Error during DOMContentLoaded initialization:', error);
-       chatMessagesDiv.innerHTML = `<div class="message-item system">初始化失败: ${error.message}</div>`;
-   }
-
-   console.log('[Renderer DOMContentLoaded END] createNewGroupBtn textContent:', document.getElementById('createNewGroupBtn')?.textContent);
+    console.log('[Renderer DOMContentLoaded END] createNewGroupBtn textContent:', document.getElementById('createNewGroupBtn')?.textContent);
     
     // --- TTS Audio Playback and Visuals ---
     setupTtsListeners();
@@ -1300,45 +1284,6 @@ function setupEventListeners() {
             uiHelperFunctions.showToastNotification("请先选择一个项目。", 'error');
             return;
         }
-
-        // 检查是否为Agent且有预设消息
-        if (currentSelectedItem.type === 'agent' && window.mailboxManager) {
-            try {
-                const presetCheck = await window.mailboxManager.checkAgentPresetMessages(currentSelectedItem.id);
-                if (presetCheck.hasPreset && presetCheck.enabled) {
-                    // 使用自动预设消息创建话题
-                    const topicName = `话题_${new Date().toLocaleString('zh-CN', {
-                        year: 'numeric',
-                        month: '2-digit',
-                        day: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                    }).replace(/[\/\s:]/g, '_')}`;
-
-                    const result = await window.mailboxManager.createTopicWithAutoPreset(
-                        currentSelectedItem.id,
-                        topicName,
-                        { autoSwitch: true }
-                    );
-
-                    if (result.success) {
-                        uiHelperFunctions.showToastNotification(
-                            `已创建话题"${topicName}"并自动加载了${presetCheck.messages.length}条预设消息`,
-                            'success'
-                        );
-                        return;
-                    } else {
-                        uiHelperFunctions.showToastNotification(`创建话题失败: ${result.error}`, 'error');
-                        return;
-                    }
-                }
-            } catch (error) {
-                console.error('[Renderer] 检查预设消息时出错:', error);
-                // 继续使用普通方式创建话题
-            }
-        }
-
-        // 使用普通方式创建话题
         await window.chatManager.createNewTopicForItem(currentSelectedItem.id, currentSelectedItem.type);
     });
 
@@ -1504,19 +1449,6 @@ function setupEventListeners() {
             // This will be handled by a function exposed on the electronAPI
             // which in turn sends an IPC message to the main process.
             window.electronAPI.minimizeToTray();
-        });
-    }
-
-    // Mailbox测试面板按钮
-    const openMailboxTestPanelBtn = document.getElementById('openMailboxTestPanelBtn');
-    if (openMailboxTestPanelBtn) {
-        openMailboxTestPanelBtn.addEventListener('click', () => {
-            if (window.mailboxManager && window.mailboxManager.showTestPanel) {
-                window.mailboxManager.showTestPanel();
-            } else {
-                console.error('[Renderer] mailboxManager 或 showTestPanel 方法未找到');
-                uiHelperFunctions.showToastNotification('Mailbox模块未初始化', 'error');
-            }
         });
     }
 }
