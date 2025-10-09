@@ -1300,6 +1300,45 @@ function setupEventListeners() {
             uiHelperFunctions.showToastNotification("请先选择一个项目。", 'error');
             return;
         }
+
+        // 检查是否为Agent且有预设消息
+        if (currentSelectedItem.type === 'agent' && window.mailboxManager) {
+            try {
+                const presetCheck = await window.mailboxManager.checkAgentPresetMessages(currentSelectedItem.id);
+                if (presetCheck.hasPreset && presetCheck.enabled) {
+                    // 使用自动预设消息创建话题
+                    const topicName = `话题_${new Date().toLocaleString('zh-CN', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    }).replace(/[\/\s:]/g, '_')}`;
+
+                    const result = await window.mailboxManager.createTopicWithAutoPreset(
+                        currentSelectedItem.id,
+                        topicName,
+                        { autoSwitch: true }
+                    );
+
+                    if (result.success) {
+                        uiHelperFunctions.showToastNotification(
+                            `已创建话题"${topicName}"并自动加载了${presetCheck.messages.length}条预设消息`,
+                            'success'
+                        );
+                        return;
+                    } else {
+                        uiHelperFunctions.showToastNotification(`创建话题失败: ${result.error}`, 'error');
+                        return;
+                    }
+                }
+            } catch (error) {
+                console.error('[Renderer] 检查预设消息时出错:', error);
+                // 继续使用普通方式创建话题
+            }
+        }
+
+        // 使用普通方式创建话题
         await window.chatManager.createNewTopicForItem(currentSelectedItem.id, currentSelectedItem.type);
     });
 

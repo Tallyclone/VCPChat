@@ -128,6 +128,36 @@ window.mailboxManager = (() => {
         }
     }
 
+    // --- 检查Agent是否有预设消息 ---
+    async function checkAgentPresetMessages(agentId) {
+        try {
+            if (!agentId) {
+                return { hasPreset: false, messages: [], enabled: false };
+            }
+
+            // 获取Agent配置
+            const agentConfig = await electronAPI.getAgentConfig(agentId);
+            if (!agentConfig || agentConfig.error) {
+                console.warn(`[MailboxManager] 获取Agent配置失败: ${agentConfig?.error}`);
+                return { hasPreset: false, messages: [], enabled: false };
+            }
+
+            // 检查是否有预设消息且启用
+            const hasPreset = agentConfig.presetMessageEnabled &&
+                             agentConfig.presetMessages &&
+                             agentConfig.presetMessages.length > 0;
+
+            return {
+                hasPreset,
+                messages: agentConfig.presetMessages || [],
+                enabled: agentConfig.presetMessageEnabled !== false
+            };
+        } catch (error) {
+            console.error('[MailboxManager] 检查Agent预设消息时出错:', error);
+            return { hasPreset: false, messages: [], enabled: false };
+        }
+    }
+
     // --- 创建带预制消息的新话题 ---
     async function createTopicWithPresetMessages(agentId, topicName, messages = [], options = {}) {
         try {
@@ -244,6 +274,38 @@ window.mailboxManager = (() => {
         }
     }
 
+    // --- 自动创建带预设消息的话题 ---
+    async function createTopicWithAutoPreset(agentId, topicName, options = {}) {
+        try {
+            if (!isInitialized) {
+                return { success: false, error: 'MailboxManager 未初始化' };
+            }
+
+            if (!agentId) {
+                return { success: false, error: '未提供Agent ID' };
+            }
+
+            if (!topicName || topicName.trim() === '') {
+                return { success: false, error: '话题名称不能为空' };
+            }
+
+            // 检查Agent是否有预设消息
+            const presetCheck = await checkAgentPresetMessages(agentId);
+            if (!presetCheck.hasPreset) {
+                // 如果没有预设消息，创建普通话题
+                return await createTopicWithPresetMessages(agentId, topicName, [], options);
+            }
+
+            // 使用预设消息创建话题
+            console.log(`[MailboxManager] 使用预设消息创建话题，包含 ${presetCheck.messages.length} 条消息`);
+            return await createTopicWithPresetMessages(agentId, topicName, presetCheck.messages, options);
+
+        } catch (error) {
+            console.error('[MailboxManager] 自动创建带预设消息的话题时出错:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
     // --- 获取当前状态 ---
     function getCurrentState() {
         return {
@@ -312,7 +374,8 @@ window.mailboxManager = (() => {
                     <div>
                         <h4 style="margin: 0 0 10px 0; font-size: 14px; color: var(--primary-text);">4. 测试操作</h4>
                         <button id="refreshAgentsBtn" style="width: 100%; margin-bottom: 8px; padding: 8px; background: var(--button-bg); color: var(--button-text); border: none; border-radius: 4px; cursor: pointer;">刷新Agent列表</button>
-                        <button id="testFileWatcherBtn" style="width: 100%; padding: 8px; background: var(--button-bg); color: var(--button-text); border: none; border-radius: 4px; cursor: pointer;">测试FileWatcher</button>
+                        <button id="testFileWatcherBtn" style="width: 100%; margin-bottom: 8px; padding: 8px; background: var(--button-bg); color: var(--button-text); border: none; border-radius: 4px; cursor: pointer;">测试FileWatcher</button>
+                        <button id="testPresetMessageBtn" style="width: 100%; padding: 8px; background: var(--user-bubble-bg); color: white; border: none; border-radius: 4px; cursor: pointer;">测试预设消息功能</button>
                     </div>
                 </div>
             </div>
@@ -323,6 +386,9 @@ window.mailboxManager = (() => {
 
         // 绑定事件
         bindTestPanelEvents();
+
+        // 添加预设消息测试按钮
+        addPresetMessageTestButton();
 
         return true;
     }
@@ -444,6 +510,33 @@ window.mailboxManager = (() => {
             }
         });
 
+        // 测试预设消息功能
+        const testPresetMessageBtn = document.getElementById('testPresetMessageBtn');
+        testPresetMessageBtn?.addEventListener('click', async () => {
+            try {
+                uiHelperFunctions.showToastNotification('开始测试预设消息功能...', 'info');
+
+                const result = await testPresetMessageWorkflow();
+
+                if (result.success) {
+                    const message = `✅ 预设消息功能测试成功！
+• 测试Agent: ${result.agentName}
+• 创建话题: ${result.topicId}
+• 预设消息数量: ${result.messageCount}
+${result.warning ? `\n⚠️ 警告: ${result.warning}` : ''}`;
+
+                    alert(message);
+                    uiHelperFunctions.showToastNotification('预设消息功能测试完成！', 'success');
+                } else {
+                    alert(`❌ 预设消息功能测试失败: ${result.error}`);
+                    uiHelperFunctions.showToastNotification(`测试失败: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                alert(`测试过程中出错: ${error.message}`);
+                uiHelperFunctions.showToastNotification(`测试出错: ${error.message}`, 'error');
+            }
+        });
+
         // 加载Agent列表
         loadAgentsToSelect();
 
@@ -518,6 +611,91 @@ window.mailboxManager = (() => {
         `;
     }
 
+    // --- 测试预设消息功能 ---
+    async function testPresetMessageWorkflow() {
+        console.log('[MailboxManager] 开始测试预设消息工作流程...');
+
+        try {
+            // 1. 获取所有Agent
+            const agents = await getAvailableAgents();
+            if (agents.length === 0) {
+                console.error('[MailboxManager] 没有找到任何Agent');
+                return { success: false, error: '没有找到任何Agent' };
+            }
+
+            const testAgent = agents[0];
+            console.log(`[MailboxManager] 使用测试Agent: ${testAgent.name} (${testAgent.id})`);
+
+            // 2. 检查Agent是否有预设消息
+            const presetCheck = await checkAgentPresetMessages(testAgent.id);
+            console.log(`[MailboxManager] Agent预设消息检查结果:`, presetCheck);
+
+            if (presetCheck.hasPreset) {
+                console.log(`[MailboxManager] Agent已有${presetCheck.messages.length}条预设消息`);
+            } else {
+                console.log(`[MailboxManager] Agent没有预设消息，创建测试预设消息`);
+
+                // 3. 创建测试预设消息
+                const testMessages = [
+                    { role: 'system', content: '你是测试Agent，请友好地回应用户。' },
+                    { role: 'user', content: '你好，请介绍一下你自己。' },
+                    { role: 'assistant', content: '你好！我是一个测试Agent，很高兴见到你。请问有什么我可以帮助你的吗？' }
+                ];
+
+                // 保存预设消息到Agent配置
+                const saveResult = await electronAPI.saveAgentConfig(testAgent.id, {
+                    presetMessages: testMessages,
+                    presetMessageEnabled: true
+                });
+
+                if (!saveResult.success) {
+                    console.error('[MailboxManager] 保存预设消息失败:', saveResult.error);
+                    return { success: false, error: saveResult.error };
+                }
+
+                console.log('[MailboxManager] 测试预设消息已创建并保存');
+            }
+
+            // 4. 使用自动预设消息创建话题
+            const topicName = `预设消息测试话题_${Date.now()}`;
+            const createResult = await createTopicWithAutoPreset(testAgent.id, topicName);
+
+            if (createResult.success) {
+                console.log(`[MailboxManager] ✅ 预设消息工作流程测试成功！创建了话题: ${createResult.topicId}`);
+
+                // 5. 验证话题历史是否包含预设消息
+                const history = await electronAPI.getChatHistory(testAgent.id, createResult.topicId);
+                if (history && history.length > 0) {
+                    console.log(`[MailboxManager] ✅ 话题历史验证成功，包含 ${history.length} 条消息`);
+                    return {
+                        success: true,
+                        topicId: createResult.topicId,
+                        messageCount: history.length,
+                        agentId: testAgent.id,
+                        agentName: testAgent.name
+                    };
+                } else {
+                    console.warn('[MailboxManager] ⚠️ 话题创建成功但历史消息为空');
+                    return {
+                        success: true,
+                        topicId: createResult.topicId,
+                        messageCount: 0,
+                        agentId: testAgent.id,
+                        agentName: testAgent.name,
+                        warning: '话题历史消息为空'
+                    };
+                }
+            } else {
+                console.error('[MailboxManager] ❌ 预设消息工作流程测试失败:', createResult.error);
+                return { success: false, error: createResult.error };
+            }
+
+        } catch (error) {
+            console.error('[MailboxManager] 测试预设消息工作流程时出错:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
     // --- 显示测试面板 ---
     function showTestPanel() {
         let panel = document.getElementById('mailboxTestPanel');
@@ -542,10 +720,13 @@ window.mailboxManager = (() => {
         getAvailableAgents,
         selectAgent,
         createTopicWithPresetMessages,
+        createTopicWithAutoPreset,
+        checkAgentPresetMessages,
         switchToTopic,
         getCurrentState,
         showTestPanel,
         hideTestPanel,
-        createTestPanel
+        createTestPanel,
+        testPresetMessageWorkflow
     };
 })();
