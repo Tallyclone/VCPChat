@@ -5,6 +5,10 @@ class RAGObserverConfig {
     constructor() {
         this.settings = null;
         this.wsConnection = null;
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 10;
+        this.reconnectDelay = 3000; // 3秒
+        this.isConnecting = false;
     }
 
     // 读取settings（从全局变量）
@@ -33,10 +37,13 @@ class RAGObserverConfig {
     }
 
     // 自动连接WebSocket
-    autoConnect() {
+    autoConnect(isReconnect = false) {
+        if (this.isConnecting) return;
+        this.isConnecting = true;
+
         const settings = this.loadSettings();
         
-        // 应用主题
+        // 应用主题 (只在首次连接或设置变化时应用，但这里保持原样，因为它幂等)
         this.applyTheme(settings.currentThemeMode);
         
         // 获取连接信息
@@ -46,18 +53,26 @@ class RAGObserverConfig {
         if (!vcpKey) {
             console.warn('警告: VCP Key 未设置');
             updateStatus('error', '配置错误：VCP Key 未设置');
+            this.isConnecting = false;
             return;
         }
 
         // 连接WebSocket
         const wsUrlInfo = `${wsUrl}/vcpinfo/VCP_Key=${vcpKey}`;
-        updateStatus('connecting', `连接中: ${wsUrl}`);
+        
+        if (!isReconnect) {
+            updateStatus('connecting', `连接中: ${wsUrl}`);
+        } else {
+            updateStatus('connecting', `重连中 (${this.reconnectAttempts}/${this.maxReconnectAttempts}): ${wsUrl}`);
+        }
 
         this.wsConnection = new WebSocket(wsUrlInfo);
         
         this.wsConnection.onopen = (event) => {
             console.log('WebSocket 连接已建立:', event);
             updateStatus('open', 'VCPInfo 已连接！');
+            this.reconnectAttempts = 0; // 连接成功，重置重连计数
+            this.isConnecting = false;
         };
 
         this.wsConnection.onmessage = (event) => {
@@ -72,14 +87,32 @@ class RAGObserverConfig {
         };
 
         this.wsConnection.onclose = (event) => {
+            this.isConnecting = false;
             console.log('WebSocket 连接已关闭:', event);
-            updateStatus('closed', '连接已断开。刷新页面重新连接。');
+            updateStatus('closed', '连接已断开。尝试重连...');
+            this.reconnect(); // 尝试重连
         };
 
         this.wsConnection.onerror = (error) => {
+            this.isConnecting = false;
             console.error('WebSocket 错误:', error);
+            // 错误处理：在 onclose 中处理重连，这里只更新状态
             updateStatus('error', '连接发生错误！请检查服务器或配置。');
         };
+    }
+
+    // 尝试重新连接
+    reconnect() {
+        if (this.reconnectAttempts < this.maxReconnectAttempts) {
+            this.reconnectAttempts++;
+            console.log(`尝试在 ${this.reconnectDelay / 1000} 秒后重连 (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
+            setTimeout(() => {
+                this.autoConnect(true);
+            }, this.reconnectDelay);
+        } else {
+            updateStatus('error', '连接失败，已达到最大重连次数。请检查配置或服务器状态。');
+            console.error('已达到最大重连次数，停止重连。');
+        }
     }
 
     // 定期检查settings变化（可选功能）
