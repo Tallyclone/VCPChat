@@ -586,8 +586,12 @@
                                     log(`验证成功: 话题文件包含 ${verifyHistory.length} 条消息`);
                                     if (verifyHistory.length >= messages.length) {
                                         log('✅ 所有预制消息已正确保存到文件');
+                                        log('📁 消息详情:');
+                                        verifyHistory.forEach((msg, index) => {
+                                            log(`  ${index + 1}. [${msg.role}] ${msg.name}: ${msg.content.substring(0, 50)}${msg.content.length > 50 ? '...' : ''}`);
+                                        });
                                     } else {
-                                        log(`⚠️ 警告: 预期 ${messages.length} 条消息，实际保存 ${verifyHistory.length} 条`);
+                                        log(`❌ 保存不完整: 预期 ${messages.length} 条消息，实际保存 ${verifyHistory.length} 条`);
                                     }
                                 } else {
                                     log(`❌ 验证失败: 无法读取话题历史文件 - ${verifyHistory?.error || '未知错误'}`);
@@ -595,7 +599,7 @@
                             } catch (verifyError) {
                                 log(`❌ 验证过程出错: ${verifyError.message}`);
                             }
-                        }, 500);
+                        }, 1000); // 增加等待时间确保文件写入完成
 
                         updateStateDisplay();
                         alert(`成功创建话题 "${result.topicName}"，包含 ${result.messageCount} 条预制消息`);
@@ -734,20 +738,19 @@
                 if (history && !history.error) {
                     log(`验证成功: 话题包含 ${history.length} 条消息`);
 
-                    // 检查预制消息
-                    const presetMessages = history.filter(msg => msg.isPreset);
-                    log(`预制消息数量: ${presetMessages.length}`);
+                    // 检查消息内容（预制消息现在和普通消息完全一致）
+                    log(`消息总数: ${history.length}`);
 
-                    if (presetMessages.length > 0) {
-                        log('✅ 预制消息已正确保存');
-                        presetMessages.forEach((msg, index) => {
-                            log(`  ${index + 1}. [${msg.role}] ${msg.content.substring(0, 50)}${msg.content.length > 50 ? '...' : ''}`);
+                    if (history.length > 0) {
+                        log('✅ 消息已正确保存');
+                        history.forEach((msg, index) => {
+                            log(`  ${index + 1}. [${msg.role}] ${msg.name || '未命名'}: ${msg.content.substring(0, 50)}${msg.content.length > 50 ? '...' : ''}`);
                         });
                     } else {
-                        log('⚠️ 未找到预制消息标记');
+                        log('⚠️ 未找到任何消息');
                     }
 
-                    alert(`验证完成: 话题包含 ${history.length} 条消息，其中 ${presetMessages.length} 条为预制消息`);
+                    alert(`验证完成: 话题包含 ${history.length} 条消息`);
                 } else {
                     log(`❌ 验证失败: ${history?.error || '无法读取历史文件'}`);
                     alert(`验证失败: ${history?.error || '无法读取历史文件'}`);

@@ -376,6 +376,14 @@ window.chatManager = (() => {
         if (historyResult && historyResult.error) {
             if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `加载话题 "${topicId}" 的聊天记录失败: ${historyResult.error}`, timestamp: Date.now() });
         } else if (historyResult && historyResult.length > 0) {
+            console.log(`[LoadHistory] 从文件加载了 ${historyResult.length} 条历史消息`);
+            if (historyResult.length > 0) {
+                console.log(`[LoadHistory] 历史消息详情:`);
+                historyResult.forEach((msg, index) => {
+                    console.log(`  ${index + 1}. [${msg.role}] ${msg.name || '未命名'}: ${msg.content.substring(0, 50)}${msg.content.length > 50 ? '...' : ''}`);
+                });
+            }
+
             currentChatHistoryRef.set(historyResult);
             if (messageRenderer) {
                 // 使用优化的分批渲染策略
@@ -384,10 +392,10 @@ window.chatManager = (() => {
                     batchSize: 10,      // 后续每批10条消息
                     batchDelay: 80      // 批次间延迟80ms，平衡性能和用户体验
                 };
-                
-                console.log(`[ChatManager] 开始加载话题历史，共 ${historyResult.length} 条消息`);
+
+                console.log(`[ChatManager] 开始渲染话题历史，共 ${historyResult.length} 条消息`);
                 await messageRenderer.renderHistory(historyResult, renderOptions);
-                console.log(`[ChatManager] 话题历史加载完成`);
+                console.log(`[ChatManager] 话题历史渲染完成`);
             }
     
         } else if (historyResult) { // History is empty
@@ -640,7 +648,29 @@ window.chatManager = (() => {
 
         try {
             const agentConfig = currentSelectedItem.config || currentSelectedItem;
-            const currentChatHistory = currentChatHistoryRef.get();
+
+            // 🔧 关键修复：确保从文件中获取最新的历史记录，包含预制消息
+            console.log(`[SendMessage] 准备发送消息，当前话题: ${currentTopicId}`);
+
+            // 优先从内存获取历史记录
+            let currentChatHistory = currentChatHistoryRef.get();
+
+            // 如果内存历史记录为空或不完整，从文件重新加载
+            if (!currentChatHistory || currentChatHistory.length === 0) {
+                console.log(`[SendMessage] 内存历史记录为空，尝试从文件重新加载...`);
+                const fileHistory = await electronAPI.getChatHistory(currentSelectedItem.id, currentTopicId);
+                if (fileHistory && !fileHistory.error) {
+                    currentChatHistory = fileHistory;
+                    currentChatHistoryRef.set(currentChatHistory);
+                    console.log(`[SendMessage] 从文件加载了 ${currentChatHistory.length} 条历史消息`);
+                } else {
+                    console.warn(`[SendMessage] 文件历史记录也为空或读取失败`);
+                    currentChatHistory = [];
+                }
+            } else {
+                console.log(`[SendMessage] 使用内存中的 ${currentChatHistory.length} 条历史消息`);
+            }
+
             const historySnapshotForVCP = currentChatHistory.filter(msg => msg.id !== thinkingMessage.id && !msg.isThinking);
 
             const messagesForVCP = await Promise.all(historySnapshotForVCP.map(async msg => {
@@ -930,14 +960,33 @@ window.chatManager = (() => {
                     };
 
                     // Fetch the correct history from the file, update it, and save it back.
+                    console.log(`[LLM Response] 获取文件历史记录进行保存...`);
                     const historyForSave = await electronAPI.getChatHistory(context.agentId, context.topicId);
                     if (historyForSave && !historyForSave.error) {
+                        console.log(`[LLM Response] 文件历史记录包含 ${historyForSave.length} 条消息`);
+
+                        // 调试：显示前几条消息的内容
+                        if (historyForSave.length > 0) {
+                            console.log(`[LLM Response] 文件历史记录前3条消息:`);
+                            historyForSave.slice(0, 3).forEach((msg, index) => {
+                                console.log(`  ${index + 1}. [${msg.role}] ${msg.name}: ${msg.content.substring(0, 50)}${msg.content.length > 50 ? '...' : ''}`);
+                            });
+                        }
+
                         // Remove any lingering 'thinking' message and add the new one
                         const finalHistory = historyForSave.filter(msg => msg.id !== thinkingMessage.id && !msg.isThinking);
+                        console.log(`[LLM Response] 过滤后剩余 ${finalHistory.length} 条消息，准备添加新的助手消息`);
+
                         finalHistory.push(assistantMessage);
-                        
+                        console.log(`[LLM Response] 添加助手消息后，总共 ${finalHistory.length} 条消息`);
+
                         // Save the final, complete history to the correct file
-                        await electronAPI.saveChatHistory(context.agentId, context.topicId, finalHistory);
+                        const saveResult = await electronAPI.saveChatHistory(context.agentId, context.topicId, finalHistory);
+                        if (saveResult && saveResult.success) {
+                            console.log(`[LLM Response] ✅ 成功保存回复消息到文件`);
+                        } else {
+                            console.error(`[LLM Response] ❌ 保存回复消息失败: ${saveResult?.error || '未知错误'}`);
+                        }
 
                         if (isForActiveChat) {
                             // If it's the active chat, also update the UI and in-memory state
@@ -1020,111 +1069,93 @@ window.chatManager = (() => {
     }
 
     /**
-     * 创建带预制消息的新话题
+     * 创建带初始消息的新话题（真正的普通消息方式）
      * @param {string} agentId - Agent ID
      * @param {string} topicName - 话题名称
-     * @param {Array} messages - 预制消息数组，每个消息包含 content 和 role
-     * @param {Object} options - 其他选项（如是否自动跳转等）
+     * @param {Array} messages - 初始消息数组，就是普通的对话消息
+     * @param {Object} options - 其他选项
      * @returns {Object} 创建结果
      */
     async function createNewTopicWithMessages(agentId, topicName, messages = [], options = {}) {
         try {
-            // 1. 创建新话题
-            const result = await electronAPI.createNewTopicForAgent(agentId, topicName);
+            // 1. 获取配置信息用于设置正确的消息名字
+            const agentConfig = await electronAPI.getAgentConfig(agentId);
+            const globalSettings = await electronAPI.loadSettings();
 
-            if (!result || !result.success || !result.topicId) {
-                return { success: false, error: result ? result.error : '创建话题失败' };
-            }
+            // 2. 准备初始消息 - 就是普通的对话消息，和发送消息时完全一致
+            const initialMessages = messages.map((msg, index) => {
+                let messageName;
 
-            const topicId = result.topicId;
-            let historyMessages = [];
+                // 根据消息角色确定名字（和发送消息时的逻辑完全一致）
+                if (msg.role === 'assistant') {
+                    messageName = msg.name || agentConfig?.name || agentId || 'AI助手';
+                } else if (msg.role === 'system') {
+                    messageName = msg.name || '系统';
+                } else {
+                    messageName = msg.name || globalSettings?.userName || '用户';
+                }
 
-            // 2. 准备预制消息并保存到文件
-            if (messages && messages.length > 0) {
-                historyMessages = messages.map((msg, index) => ({
+                return {
                     role: msg.role || 'user',
-                    name: msg.role === 'assistant' ? 'AI助手' : (msg.role === 'system' ? '系统' : '用户'),
+                    name: messageName,
                     content: msg.content || '',
-                    timestamp: Date.now() + index, // 确保时间戳唯一且有序
-                    id: `preset_msg_${Date.now()}_${index}_${Math.random().toString(36).substring(2, 9)}`,
-                    isPreset: true // 标记为预制消息
-                }));
+                    timestamp: Date.now() + index,
+                    id: `msg_${Date.now()}_${index}_${Math.random().toString(36).substring(2, 9)}`
+                };
+            });
 
-                // 保存预制消息到历史文件 - 这是关键修复
-                const saveResult = await electronAPI.saveChatHistory(agentId, topicId, historyMessages);
-                if (!saveResult || !saveResult.success) {
-                    console.error(`保存预制消息失败: ${saveResult ? saveResult.error : '未知错误'}`);
-                    return { success: false, error: `保存预制消息失败: ${saveResult ? saveResult.error : '未知错误'}` };
+            // 3. 调用主进程API，一步到位创建话题和初始消息
+            if (electronAPI.createTopicWithInitialMessages) {
+                const result = await electronAPI.createTopicWithInitialMessages(agentId, topicName, initialMessages);
+
+                if (result && result.success && result.topicId) {
+                    // 4. 如果需要自动跳转，使用标准的selectTopic流程（和普通话题完全一致）
+                    if (options.autoSwitch !== false) {
+                        await selectTopic(result.topicId);
+                    }
+
+                    return {
+                        success: true,
+                        topicId: result.topicId,
+                        topicName: topicName,
+                        messageCount: initialMessages.length
+                    };
+                } else {
+                    return { success: false, error: result ? result.error : '创建话题失败' };
+                }
+            } else {
+                // 回退方案：如果主进程不支持，直接创建话题然后保存初始消息
+                const result = await electronAPI.createNewTopicForAgent(agentId, topicName);
+
+                if (!result || !result.success || !result.topicId) {
+                    return { success: false, error: result ? result.error : '创建话题失败' };
                 }
 
-                console.log(`成功保存 ${historyMessages.length} 条预制消息到话题 ${topicId}`);
-            }
+                const topicId = result.topicId;
 
-            // 3. 如果需要自动跳转到新话题
-            if (options.autoSwitch !== false) {
-                // 先设置引用，确保状态一致性
-                currentTopicIdRef.set(topicId);
-                currentChatHistoryRef.set([...historyMessages]);
-
-                // 先设置消息渲染器的当前话题ID，避免异步竞争
-                if (messageRenderer) {
-                    messageRenderer.setCurrentTopicId(topicId);
-                }
-
-                // 清除现有聊天内容
-                if (messageRenderer) {
-                    messageRenderer.clearChat();
-                }
-
-                // 渲染预制消息到UI - 确保UI显示正确
-                if (historyMessages && historyMessages.length > 0 && messageRenderer) {
-                    console.log(`渲染 ${historyMessages.length} 条预制消息到UI`);
-                    for (const msg of historyMessages) {
-                        await messageRenderer.renderMessage({
-                            role: msg.role,
-                            name: msg.name,
-                            content: msg.content,
-                            timestamp: msg.timestamp,
-                            id: msg.id,
-                            isPreset: true
-                        });
+                // 保存初始消息（就是普通消息）
+                if (initialMessages.length > 0) {
+                    const saveResult = await electronAPI.saveChatHistory(agentId, topicId, initialMessages);
+                    if (!saveResult || !saveResult.success) {
+                        return { success: false, error: `保存初始消息失败: ${saveResult ? saveResult.error : '未知错误'}` };
                     }
                 }
 
-                // 更新本地存储，记录最后活跃话题
-                localStorage.setItem(`lastActiveTopic_${agentId}_agent`, topicId);
-
-                // 刷新话题列表（如果话题面板激活）
-                if (document.getElementById('tabContentTopics').classList.contains('active')) {
-                    if (topicListManager) await topicListManager.loadTopicList();
+                // 如果需要自动跳转，使用标准流程
+                if (options.autoSwitch !== false) {
+                    await selectTopic(topicId);
                 }
 
-                // 显示话题时间戳气泡
-                await displayTopicTimestampBubble(agentId, 'agent', topicId);
-
-                // 启动FileWatcher监控新话题文件
-                const currentSelectedItem = currentSelectedItemRef.get();
-                if (currentSelectedItem && currentSelectedItem.config && currentSelectedItem.config.agentDataPath) {
-                    const historyFilePath = `${currentSelectedItem.config.agentDataPath}\\topics\\${topicId}\\history.json`;
-                    if (electronAPI.watcherStart) {
-                        await electronAPI.watcherStart(historyFilePath, agentId, topicId);
-                        console.log(`启动FileWatcher监控话题文件: ${historyFilePath}`);
-                    }
-                }
-
-                console.log(`[ChatManager] 新话题 ${topicId} 创建完成，已自动跳转`);
+                return {
+                    success: true,
+                    topicId: topicId,
+                    topicName: topicName,
+                    messageCount: initialMessages.length
+                };
             }
-
-            return {
-                success: true,
-                topicId: topicId,
-                topicName: topicName,
-                messageCount: messages ? messages.length : 0,
-                messages: historyMessages
-            };
 
         } catch (error) {
-            console.error('创建带预制消息的话题时出错:', error);
+            console.error('创建带初始消息的话题时出错:', error);
             return { success: false, error: error.message };
         }
     }

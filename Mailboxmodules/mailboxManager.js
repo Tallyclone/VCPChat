@@ -259,7 +259,7 @@ window.mailboxManager = (() => {
     function createTestPanel() {
         // 创建测试面板HTML
         const panelHTML = `
-            <div id="mailboxTestPanel" style="position: fixed; top: 100px; right: 20px; width: 400px; height: 600px; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; display: none; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+            <div id="mailboxTestPanel" style="position: fixed; top: 100px; right: 20px; width: 400px; height: 600px; background: #ffffff; border: 1px solid #e1e5e9; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; display: none; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
                 <div style="padding: 15px; border-bottom: 1px solid var(--border-color); background: var(--header-bg, #f5f5f5); border-radius: 8px 8px 0 0; display: flex; justify-content: between; align-items: center;">
                     <h3 style="margin: 0; font-size: 16px; color: var(--primary-text);">Mailbox模块测试面板</h3>
                     <button id="closeMailboxTestPanel" style="background: none; border: none; font-size: 18px; cursor: pointer; color: var(--secondary-text); padding: 5px;">×</button>
@@ -288,7 +288,8 @@ window.mailboxManager = (() => {
                                     <option value="assistant">助手</option>
                                     <option value="system">系统</option>
                                 </select>
-                                <textarea class="messageContent" placeholder="消息内容" style="width: calc(100% - 80px); min-height: 60px; padding: 4px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--input-bg); color: var(--primary-text); resize: vertical;"></textarea>
+                                <input type="text" class="messageName" placeholder="角色名字（可选）" style="margin-right: 8px; padding: 4px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--input-bg); color: var(--primary-text); width: 120px;" title="留空则使用默认名字">
+                                <textarea class="messageContent" placeholder="消息内容" style="width: calc(100% - 200px); min-height: 60px; padding: 4px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--input-bg); color: var(--primary-text); resize: vertical;"></textarea>
                                 <button class="removeMessageBtn" style="margin-left: 8px; padding: 4px 8px; background: #ff4444; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">删除</button>
                             </div>
                         </div>
@@ -391,13 +392,19 @@ window.mailboxManager = (() => {
 
             for (const item of messageItems) {
                 const roleSelect = item.querySelector('.messageRole');
+                const nameInput = item.querySelector('.messageName');
                 const contentTextarea = item.querySelector('.messageContent');
 
                 const role = roleSelect.value;
+                const name = nameInput.value.trim();
                 const content = contentTextarea.value.trim();
 
                 if (content) {
-                    messages.push({ role, content });
+                    const message = { role, content };
+                    if (name) {
+                        message.name = name;
+                    }
+                    messages.push(message);
                 }
             }
 
@@ -482,7 +489,8 @@ window.mailboxManager = (() => {
                 <option value="assistant" ${role === 'assistant' ? 'selected' : ''}>助手</option>
                 <option value="system" ${role === 'system' ? 'selected' : ''}>系统</option>
             </select>
-            <textarea class="messageContent" placeholder="消息内容" style="width: calc(100% - 80px); min-height: 60px; padding: 4px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--input-bg); color: var(--primary-text); resize: vertical;">${content}</textarea>
+            <input type="text" class="messageName" placeholder="角色名字（可选）" style="margin-right: 8px; padding: 4px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--input-bg); color: var(--primary-text); width: 120px;" title="留空则使用默认名字">
+            <textarea class="messageContent" placeholder="消息内容" style="width: calc(100% - 200px); min-height: 60px; padding: 4px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--input-bg); color: var(--primary-text); resize: vertical;">${content}</textarea>
             <button class="removeMessageBtn" style="margin-left: 8px; padding: 4px 8px; background: #ff4444; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">删除</button>
         `;
 
