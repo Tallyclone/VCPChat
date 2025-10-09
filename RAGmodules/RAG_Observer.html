@@ -272,13 +272,22 @@
 
             const header = document.createElement('div');
             header.className = 'rag-block-header';
+            const queryText = data.query;
+            const needsToggle = queryText.length > 150;
+            const queryDisplay = needsToggle
+                ? `<span class="snippet">${queryText.substring(0, 150)}...</span><span class="full-text" style="display:none;">${queryText}</span>`
+                : `<span>${queryText}</span>`;
+            const toggleButtonHTML = needsToggle
+                ? `<button class="toggle-button" style="margin-left: 10px;" onclick="toggleQueryText(this)">展开</button>`
+                : '';
+
             header.innerHTML = `
                 <h3>知识库: <strong>${data.dbName}</strong></h3>
-                <p>查询: <em>${data.query}</em></p>
+                <p>查询: <em class="query-content">${queryDisplay}</em> ${toggleButtonHTML}</p>
                 <p>
-                    <strong>K:</strong> ${data.k} | 
-                    <strong>Time:</strong> ${data.useTime} | 
-                    <strong>Group:</strong> ${data.useGroup} | 
+                    <strong>K:</strong> ${data.k} |
+                    <strong>Time:</strong> ${data.useTime} |
+                    <strong>Group:</strong> ${data.useGroup} |
                     <strong>Rerank:</strong> ${data.useRerank} |
                     <strong>召回数量:</strong> ${data.results.length}
                 </p>
@@ -328,6 +337,25 @@
             });
 
             infoContainer.prepend(block);
+        }
+
+        function toggleQueryText(button) {
+            const queryContent = button.parentElement.querySelector('.query-content');
+            const snippet = queryContent.querySelector('.snippet');
+            const fullText = queryContent.querySelector('.full-text');
+            
+            if (!snippet || !fullText) return;
+
+            const isCollapsed = fullText.style.display === 'none';
+            if (isCollapsed) {
+                fullText.style.display = 'inline';
+                snippet.style.display = 'none';
+                button.textContent = '收起';
+            } else {
+                fullText.style.display = 'none';
+                snippet.style.display = 'inline';
+                button.textContent = '展开';
+            }
         }
 
         function toggleFullText(button) {
