@@ -4,8 +4,10 @@ const fs = require('fs-extra');
 const path = require('path');
 const { ipcMain } = require('electron');
 const fileManager = require('../modules/fileManager'); // Import fileManager
+const canvasHandlers = require('../modules/ipc/canvasHandlers'); // 新增：直接引用canvas处理器
 // const { v4: uuidv4 } = require('uuid'); // 如果需要唯一ID生成
 
+const activeRequestControllers = new Map();
 const CANVAS_PLACEHOLDER = '{{VCPChatCanvas}}';
 const GROUP_SESSION_WATCHER_PLACEHOLDER = '{{VCPChatGroupSessionWatcher}}';
 
@@ -451,7 +453,7 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
                 
                 if (textForAIContext.includes(CANVAS_PLACEHOLDER)) {
                     try {
-                        const canvasData = await ipcMain.invoke('get-latest-canvas-content');
+                        const canvasData = await canvasHandlers.handleGetLatestCanvasContent();
                         if (canvasData && !canvasData.error) {
                             const formattedCanvasContent = `
 [Canvas Content]
@@ -467,8 +469,9 @@ ${canvasData.errors || 'No errors'}
                             textForAIContext = textForAIContext.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), '\n[Canvas content could not be loaded]\n');
                         }
                     } catch (error) {
-                        console.error("[GroupChat] Error fetching canvas content:", error);
-                        textForAIContext = textForAIContext.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), '\n[Error loading canvas content]\n');
+                        // 这个catch块现在理论上不会因为handleGetLatestCanvasContent本身被触发，但保留以防万一
+                        console.error("[GroupChat] Error processing canvas content:", error);
+                        textForAIContext = textForAIContext.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), '\n[Error processing canvas content]\n');
                     }
                 }
             } else {
@@ -599,7 +602,8 @@ ${att._fileManagerData.extractedText}
 
             // 添加超时控制
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超时
+            const timeoutId = setTimeout(() => controller.abort(), 60000); // 60秒超时
+            activeRequestControllers.set(messageIdForAgentResponse, controller);
             
             let response;
             try {
@@ -620,13 +624,14 @@ ${att._fileManagerData.extractedText}
             } catch (fetchError) {
                 clearTimeout(timeoutId);
                 if (fetchError.name === 'AbortError') {
-                    console.error(`[GroupChat] VCP request timeout for ${agentName} after 30 seconds`);
-                    const timeoutMsg = `[系统消息] ${agentName} 响应超时（30秒）`;
-                    const timeoutResponse = { role: 'assistant', name: agentName, agentId: agentId, content: timeoutMsg, timestamp: Date.now(), id: messageIdForAgentResponse };
-                    groupHistory.push(timeoutResponse);
-                    await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
-                    if (typeof sendStreamChunkToRenderer === 'function') {
-                        sendStreamChunkToRenderer({ type: 'end', error: '请求超时', fullResponse: timeoutMsg, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true } });
+                    // This case handles when the request is aborted BEFORE the stream starts.
+                    // The stream's own catch block will handle abortions DURING streaming.
+                    console.log(`[GroupChat] VCP fetch for ${agentName} was aborted before stream began.`);
+                    // We don't need to save history here as no response was generated.
+                    // The 'thinking' bubble will just disappear without a message, which is acceptable.
+                    // We send an 'end' event to make sure the UI cleans up the thinking bubble.
+                     if (typeof sendStreamChunkToRenderer === 'function') {
+                        sendStreamChunkToRenderer({ type: 'end', error: '用户中止', fullResponse: '', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true }, interrupted: true });
                     }
                     continue;
                 }
@@ -763,16 +768,30 @@ ${att._fileManagerData.extractedText}
                             }
                         }
                     } catch (streamError) {
-                        console.error(`[GroupChat] VCP stream reading error for ${agentName}:`, streamError);
-                        const errorText = `[System Message] ${agentName} stream processing error: ${streamError.message}`;
-                        const streamErrorResponseEntry = { role: 'assistant', name: agentName, agentId: agentId, content: errorText, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId };
-                        groupHistory.push(streamErrorResponseEntry);
-                        await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
-                        if (typeof sendStreamChunkToRenderer === 'function') {
-                            sendStreamChunkToRenderer({ type: 'error', error: `VCP stream reading error: ${streamError.message}`, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true } });
+                        if (streamError.name === 'AbortError') {
+                            console.log(`[GroupChat] VCP stream for ${agentName} (msgId: ${messageIdForAgentResponse}) was aborted by user.`);
+                            // Even though it was aborted, we save the content received so far.
+                            const finalAiResponseEntry = { role: 'assistant', name: agentName, agentId: agentId, content: accumulatedResponse, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor, interrupted: true };
+                            groupHistory.push(finalAiResponseEntry);
+                            await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
+                            if (typeof sendStreamChunkToRenderer === 'function') {
+                                // Send 'end' event to finalize the UI with the partial content.
+                                sendStreamChunkToRenderer({ type: 'end', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true }, fullResponse: accumulatedResponse, interrupted: true });
+                            }
+                        } else {
+                            console.error(`[GroupChat] VCP stream reading error for ${agentName}:`, streamError);
+                            const errorText = `[System Message] ${agentName} stream processing error: ${streamError.message}`;
+                            const streamErrorResponseEntry = { role: 'assistant', name: agentName, agentId: agentId, content: errorText, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId };
+                            groupHistory.push(streamErrorResponseEntry);
+                            await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
+                            if (typeof sendStreamChunkToRenderer === 'function') {
+                                sendStreamChunkToRenderer({ type: 'error', error: `VCP stream reading error: ${streamError.message}`, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true } });
+                            }
                         }
                     } finally {
                         reader.releaseLock();
+                        activeRequestControllers.delete(messageIdForAgentResponse);
+                        console.log(`[GroupChat] Active request controller removed for ${messageIdForAgentResponse}`);
                     }
                 }
                 await processStreamForGroupAndUpdateHistory();
@@ -800,8 +819,9 @@ ${att._fileManagerData.extractedText}
                             isGroupMessage: true
                         }
                     });
-                }
-            }
+               }
+               activeRequestControllers.delete(messageIdForAgentResponse);
+           }
         } catch (error) {
             console.error(`[GroupChat] Error during response for Agent ${agentName}:`, error);
             const errorText = `[System Message] ${agentName} failed to respond: ${error.message}`;
@@ -914,7 +934,7 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
         // 仅当是最后一条用户消息时，才解析Canvas占位符
         if (isLastUserMessageInContext && textForAIContext.includes(CANVAS_PLACEHOLDER)) {
             try {
-                const canvasData = await ipcMain.invoke('get-latest-canvas-content');
+                const canvasData = await canvasHandlers.handleGetLatestCanvasContent();
                 if (canvasData && !canvasData.error) {
                     const formattedCanvasContent = `
 [Canvas Content]
@@ -930,8 +950,8 @@ ${canvasData.errors || 'No errors'}
                     textForAIContext = textForAIContext.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), '\n[Canvas content could not be loaded]\n');
                 }
             } catch (error) {
-                console.error("[GroupChat Invite] Error fetching canvas content:", error);
-                textForAIContext = textForAIContext.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), '\n[Error loading canvas content]\n');
+                console.error("[GroupChat Invite] Error processing canvas content:", error);
+                textForAIContext = textForAIContext.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), '\n[Error processing canvas content]\n');
             }
         }
 
@@ -1049,7 +1069,8 @@ ${att._fileManagerData.extractedText}
 
         // 添加超时控制
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超时
+        const timeoutId = setTimeout(() => controller.abort(), 60000); // 60秒超时
+        activeRequestControllers.set(messageIdForAgentResponse, controller);
         
         let response;
         try {
@@ -1071,13 +1092,9 @@ ${att._fileManagerData.extractedText}
         } catch (fetchError) {
             clearTimeout(timeoutId);
             if (fetchError.name === 'AbortError') {
-                console.error(`[GroupChat Invite] VCP request timeout for ${agentName} after 30 seconds`);
-                const timeoutMsg = `[系统消息] ${agentName} 响应超时（30秒）`;
-                const timeoutResponse = { role: 'assistant', name: agentName, agentId: invitedAgentId, content: timeoutMsg, timestamp: Date.now(), id: messageIdForAgentResponse };
-                groupHistory.push(timeoutResponse);
-                await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
+                console.log(`[GroupChat Invite] VCP fetch for ${agentName} was aborted before stream began.`);
                 if (typeof sendStreamChunkToRenderer === 'function') {
-                    sendStreamChunkToRenderer({ type: 'end', error: '请求超时', fullResponse: timeoutMsg, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true } });
+                    sendStreamChunkToRenderer({ type: 'end', error: '用户中止', fullResponse: '', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true }, interrupted: true });
                 }
                 return;
             }
@@ -1210,16 +1227,29 @@ ${att._fileManagerData.extractedText}
                         }
                     }
                 } catch (streamError) {
-                    console.error(`[GroupChat Invite] VCP stream reading error for ${agentName}:`, streamError);
-                    const errorText = `[System Message] ${agentName} stream processing error (invite): ${streamError.message}`;
-                    const streamErrorResponseEntry = { role: 'assistant', name: agentName, agentId: invitedAgentId, content: errorText, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId };
-                    groupHistory.push(streamErrorResponseEntry);
-                    await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
-                    if (typeof sendStreamChunkToRenderer === 'function') {
-                        sendStreamChunkToRenderer({ type: 'error', error: `VCP stream reading error (invite): ${streamError.message}`, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true } });
+                    if (streamError.name === 'AbortError') {
+                        console.log(`[GroupChat Invite] VCP stream for ${agentName} (msgId: ${messageIdForAgentResponse}) was aborted by user.`);
+                        // Save the content received so far upon abortion.
+                        const finalAiResponseEntry = { role: 'assistant', name: agentName, agentId: invitedAgentId, content: accumulatedResponse, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor, interrupted: true };
+                        groupHistory.push(finalAiResponseEntry);
+                        await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
+                        if (typeof sendStreamChunkToRenderer === 'function') {
+                            sendStreamChunkToRenderer({ type: 'end', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true }, fullResponse: accumulatedResponse, interrupted: true });
+                        }
+                    } else {
+                        console.error(`[GroupChat Invite] VCP stream reading error for ${agentName}:`, streamError);
+                        const errorText = `[System Message] ${agentName} stream processing error (invite): ${streamError.message}`;
+                        const streamErrorResponseEntry = { role: 'assistant', name: agentName, agentId: invitedAgentId, content: errorText, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId };
+                        groupHistory.push(streamErrorResponseEntry);
+                        await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
+                        if (typeof sendStreamChunkToRenderer === 'function') {
+                            sendStreamChunkToRenderer({ type: 'error', error: `VCP stream reading error (invite): ${streamError.message}`, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true } });
+                        }
                     }
                 } finally {
                     reader.releaseLock();
+                    activeRequestControllers.delete(messageIdForAgentResponse);
+                    console.log(`[GroupChat Invite] Active request controller removed for ${messageIdForAgentResponse}`);
                 }
             }
             await processStreamForInvitedAgent();
@@ -1245,6 +1275,7 @@ ${att._fileManagerData.extractedText}
                     }
                 });
             }
+            activeRequestControllers.delete(messageIdForAgentResponse);
         }
 
     } catch (error) {
@@ -1819,6 +1850,25 @@ async function redoGroupChatMessage(groupId, topicId, messageIdToDelete, agentId
 }
 
 
+/**
+ * 中断一个正在进行的群聊 VCP 请求
+ * @param {string} messageId - 要中断的消息的 ID
+ * @returns {{success: boolean, error?: string}}
+ */
+function interruptGroupRequest(messageId) {
+    const controller = activeRequestControllers.get(messageId);
+    if (controller) {
+        console.log(`[GroupChat] Interrupting request for messageId: ${messageId}`);
+        controller.abort();
+        // The controller is removed from the map in the finally block of the fetch call
+        return { success: true, message: 'Interrupt signal sent.' };
+    } else {
+        console.warn(`[GroupChat] Could not find active request controller for messageId to interrupt: ${messageId}`);
+        return { success: false, error: 'Request not found or already completed.' };
+    }
+}
+
+
 module.exports = {
     initializePaths,
     createAgentGroup,
@@ -1829,6 +1879,7 @@ module.exports = {
     handleGroupChatMessage,
     handleInviteAgentToSpeak, // 新增导出
     redoGroupChatMessage, // 新增导出
+    interruptGroupRequest,
     saveAgentGroupAvatar,
     getGroupTopics,
     createNewTopicForGroup,

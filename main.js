@@ -908,3 +908,14 @@ async function handleCanvasControl(filePath) {
         return { status: 'error', message: error.message };
     }
 }
+
+// --- Group Chat Interrupt Handler ---
+ipcMain.handle('interrupt-group-request', (event, messageId) => {
+    console.log(`[Main] Received interrupt-group-request for messageId: ${messageId}`);
+    if (groupChat && typeof groupChat.interruptGroupRequest === 'function') {
+        return groupChat.interruptGroupRequest(messageId);
+    } else {
+        console.error('[Main] groupChat module or interruptGroupRequest function is not available.');
+        return { success: false, error: 'Group chat module not initialized correctly.' };
+    }
+});
