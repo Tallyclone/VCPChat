@@ -523,6 +523,27 @@ function initialize(context) {
         }
     });
 
+    // --- JSON File Reading Handler ---
+
+    ipcMain.handle('read-json-file', async (event, filePath) => {
+        try {
+            if (!filePath) {
+                return { success: false, error: '未提供文件路径' };
+            }
+
+            if (!require('fs').existsSync(filePath)) {
+                return { success: false, error: '文件不存在' };
+            }
+
+            const jsonData = await fs.readJson(filePath);
+            return { success: true, data: jsonData };
+
+        } catch (error) {
+            console.error(`读取JSON文件失败 ${filePath}:`, error);
+            return { success: false, error: error.message };
+        }
+    });
+
     ipcMain.handle('export-preset-messages', async (event, agentId) => {
         try {
             if (!agentId) {

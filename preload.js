@@ -74,6 +74,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getAllItems: () => ipcRenderer.invoke('get-all-items'),
     importRegexRules: (agentId) => ipcRenderer.invoke('import-regex-rules', agentId),
     importPresetMessages: (agentId) => ipcRenderer.invoke('import-preset-messages', agentId),
+    readJsonFile: (filePath) => ipcRenderer.invoke('read-json-file', filePath),
 
     // Topic related
     getAgentTopics: (agentId) => ipcRenderer.invoke('get-agent-topics', agentId),

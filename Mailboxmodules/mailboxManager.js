@@ -274,6 +274,56 @@ window.mailboxManager = (() => {
         }
     }
 
+    // --- 从JSON文件创建话题 ---
+    async function createTopicFromJsonFile(jsonFilePath, agentId, topicName, options = {}) {
+        try {
+            if (!isInitialized) {
+                return { success: false, error: 'MailboxManager 未初始化' };
+            }
+
+            if (!jsonFilePath) {
+                return { success: false, error: '未提供JSON文件路径' };
+            }
+
+            if (!agentId) {
+                return { success: false, error: '未提供Agent ID' };
+            }
+
+            if (!topicName || topicName.trim() === '') {
+                return { success: false, error: '话题名称不能为空' };
+            }
+
+            // 读取JSON文件
+            const jsonData = await electronAPI.readJsonFile(jsonFilePath);
+            if (!jsonData) {
+                return { success: false, error: '无法读取JSON文件或文件格式无效' };
+            }
+
+            // 验证JSON格式
+            if (!jsonData.presetMessages || !Array.isArray(jsonData.presetMessages)) {
+                return { success: false, error: 'JSON文件缺少presetMessages数组' };
+            }
+
+            // 验证消息格式
+            const messages = jsonData.presetMessages;
+            for (const msg of messages) {
+                if (!msg.content || typeof msg.content !== 'string') {
+                    return { success: false, error: '消息内容无效' };
+                }
+                if (msg.role && !['user', 'assistant', 'system'].includes(msg.role)) {
+                    return { success: false, error: '消息角色必须是 user、assistant 或 system' };
+                }
+            }
+
+            console.log(`[MailboxManager] 从JSON文件读取到 ${messages.length} 条消息`);
+            return await createTopicWithPresetMessages(agentId, topicName, messages, options);
+
+        } catch (error) {
+            console.error('[MailboxManager] 从JSON文件创建话题时出错:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
     // --- 自动创建带预设消息的话题 ---
     async function createTopicWithAutoPreset(agentId, topicName, options = {}) {
         try {
@@ -321,51 +371,66 @@ window.mailboxManager = (() => {
     function createTestPanel() {
         // 创建测试面板HTML
         const panelHTML = `
-            <div id="mailboxTestPanel" style="position: fixed; top: 100px; right: 20px; width: 400px; height: 600px; background: #ffffff; border: 1px solid #e1e5e9; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; display: none; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
-                <div style="padding: 15px; border-bottom: 1px solid var(--border-color); background: var(--header-bg, #f5f5f5); border-radius: 8px 8px 0 0; display: flex; justify-content: between; align-items: center;">
+            <div id="mailboxTestPanel" style="position: fixed; top: 100px; right: 20px; width: 400px; height: 600px; background: var(--panel-bg); backdrop-filter: blur(12px) saturate(120%); -webkit-backdrop-filter: blur(12px) saturate(120%); border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,0.1); z-index: 1000; display: none; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: var(--primary-text);">
+                <div style="padding: 15px; border-bottom: 1px solid var(--border-color); background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(8px); border-radius: 8px 8px 0 0; display: flex; justify-content: space-between; align-items: center;">
                     <h3 style="margin: 0; font-size: 16px; color: var(--primary-text);">Mailbox模块测试面板</h3>
-                    <button id="closeMailboxTestPanel" style="background: none; border: none; font-size: 18px; cursor: pointer; color: var(--secondary-text); padding: 5px;">×</button>
+                    <button id="closeMailboxTestPanel" style="background: none; border: none; font-size: 18px; cursor: pointer; color: var(--secondary-text); padding: 5px; border-radius: 4px; transition: background-color 0.2s;">×</button>
                 </div>
 
                 <div style="padding: 15px; max-height: 535px; overflow-y: auto;">
                     <!-- Agent选择区域 -->
                     <div style="margin-bottom: 20px;">
                         <h4 style="margin: 0 0 10px 0; font-size: 14px; color: var(--primary-text);">1. 选择Agent</h4>
-                        <select id="agentSelect" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--input-bg); color: var(--primary-text);">
+                        <select id="agentSelect" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--input-bg); color: var(--primary-text); font-size: 0.95em;">
                             <option value="">请选择Agent...</option>
                         </select>
-                        <button id="selectAgentBtn" style="width: 100%; margin-top: 8px; padding: 8px; background: var(--button-bg); color: var(--button-text); border: none; border-radius: 4px; cursor: pointer;">选择Agent</button>
+                        <button id="selectAgentBtn" style="width: 100%; margin-top: 8px; padding: 8px; background: var(--button-bg); color: var(--primary-text); border: 1px solid var(--button-bg); border-radius: 4px; cursor: pointer; transition: background-color 0.2s;">选择Agent</button>
                     </div>
 
                     <!-- 话题创建区域 -->
                     <div style="margin-bottom: 20px;">
                         <h4 style="margin: 0 0 10px 0; font-size: 14px; color: var(--primary-text);">2. 创建带预制消息的话题</h4>
-                        <input type="text" id="topicNameInput" placeholder="话题名称" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--input-bg); color: var(--primary-text); margin-bottom: 8px;">
+                        <input type="text" id="topicNameInput" placeholder="话题名称" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--input-bg); color: var(--primary-text); margin-bottom: 8px; font-size: 0.95em;">
 
                         <!-- 预制消息编辑器 -->
                         <div id="presetMessagesContainer" style="margin-bottom: 8px;">
-                            <div class="message-item" style="margin-bottom: 8px; padding: 10px; border: 1px solid var(--border-color); border-radius: 4px;">
-                                <select class="messageRole" style="margin-right: 8px; padding: 4px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--input-bg);">
-                                    <option value="user">用户</option>
-                                    <option value="assistant">助手</option>
-                                    <option value="system">系统</option>
-                                </select>
-                                <input type="text" class="messageName" placeholder="角色名字（可选）" style="margin-right: 8px; padding: 4px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--input-bg); color: var(--primary-text); width: 120px;" title="留空则使用默认名字">
-                                <textarea class="messageContent" placeholder="消息内容" style="width: calc(100% - 200px); min-height: 60px; padding: 4px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--input-bg); color: var(--primary-text); resize: vertical;"></textarea>
-                                <button class="removeMessageBtn" style="margin-left: 8px; padding: 4px 8px; background: #ff4444; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">删除</button>
+                            <div class="message-item" style="margin-bottom: 8px; padding: 10px; border: 1px solid var(--border-color); border-radius: 4px; background: rgba(255, 255, 255, 0.05); display: flex; gap: 10px;">
+                                <!-- 左边 1/4 区域：角色选择、名字设定、删除按钮 -->
+                                <div style="flex: 1; display: flex; flex-direction: column; gap: 8px;">
+                                    <!-- 角色选择 -->
+                                    <div>
+                                        <select class="messageRole" style="width: 100%; padding: 6px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--input-bg); color: var(--primary-text); font-size: 0.9em;">
+                                            <option value="user">用户</option>
+                                            <option value="assistant">助手</option>
+                                            <option value="system">系统</option>
+                                        </select>
+                                    </div>
+                                    <!-- 名字设定 -->
+                                    <div>
+                                        <input type="text" class="messageName" placeholder="角色名字（可选）" style="width: 100%; padding: 6px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--input-bg); color: var(--primary-text); font-size: 0.9em; box-sizing: border-box;" title="留空则使用默认名字">
+                                    </div>
+                                    <!-- 删除按钮 -->
+                                    <div>
+                                        <button class="removeMessageBtn" style="width: 100%; padding: 6px; background: var(--danger-color); color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 0.85em; transition: background-color 0.2s;">删除</button>
+                                    </div>
+                                </div>
+                                <!-- 右边 3/4 区域：消息内容 -->
+                                <div style="flex: 3;">
+                                    <textarea class="messageContent" placeholder="消息内容" style="width: 100%; min-height: 120px; padding: 8px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--input-bg); color: var(--primary-text); resize: vertical; font-size: 0.9em; font-family: inherit;"></textarea>
+                                </div>
                             </div>
                         </div>
 
                         <div style="margin-bottom: 8px;">
-                            <button id="addMessageBtn" style="padding: 6px 12px; background: var(--button-bg); color: var(--button-text); border: none; border-radius: 4px; cursor: pointer; margin-right: 8px;">添加消息</button>
-                            <button id="createTopicBtn" style="padding: 6px 12px; background: var(--user-bubble-bg); color: white; border: none; border-radius: 4px; cursor: pointer;">创建话题</button>
+                            <button id="addMessageBtn" style="padding: 6px 12px; background: var(--button-bg); color: var(--primary-text); border: 1px solid var(--button-bg); border-radius: 4px; cursor: pointer; margin-right: 8px; transition: background-color 0.2s;">添加消息</button>
+                            <button id="createTopicBtn" style="padding: 6px 12px; background: var(--user-bubble-bg); color: white; border: none; border-radius: 4px; cursor: pointer; transition: background-color 0.2s;">创建话题</button>
                         </div>
                     </div>
 
                     <!-- 状态显示区域 -->
                     <div style="margin-bottom: 20px;">
                         <h4 style="margin: 0 0 10px 0; font-size: 14px; color: var(--primary-text);">3. 当前状态</h4>
-                        <div id="currentState" style="padding: 10px; background: var(--input-bg); border-radius: 4px; font-family: monospace; font-size: 12px; color: var(--primary-text);">
+                        <div id="currentState" style="padding: 10px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-color); border-radius: 4px; font-family: monospace; font-size: 12px; color: var(--primary-text);">
                             未初始化
                         </div>
                     </div>
@@ -373,9 +438,9 @@ window.mailboxManager = (() => {
                     <!-- 测试操作区域 -->
                     <div>
                         <h4 style="margin: 0 0 10px 0; font-size: 14px; color: var(--primary-text);">4. 测试操作</h4>
-                        <button id="refreshAgentsBtn" style="width: 100%; margin-bottom: 8px; padding: 8px; background: var(--button-bg); color: var(--button-text); border: none; border-radius: 4px; cursor: pointer;">刷新Agent列表</button>
-                        <button id="testFileWatcherBtn" style="width: 100%; margin-bottom: 8px; padding: 8px; background: var(--button-bg); color: var(--button-text); border: none; border-radius: 4px; cursor: pointer;">测试FileWatcher</button>
-                        <button id="testPresetMessageBtn" style="width: 100%; padding: 8px; background: var(--user-bubble-bg); color: white; border: none; border-radius: 4px; cursor: pointer;">测试预设消息功能</button>
+                        <button id="refreshAgentsBtn" style="width: 100%; margin-bottom: 8px; padding: 8px; background: var(--button-bg); color: var(--primary-text); border: 1px solid var(--button-bg); border-radius: 4px; cursor: pointer; transition: background-color 0.2s;">刷新Agent列表</button>
+                        <button id="testFileWatcherBtn" style="width: 100%; margin-bottom: 8px; padding: 8px; background: var(--button-bg); color: var(--primary-text); border: 1px solid var(--button-bg); border-radius: 4px; cursor: pointer; transition: background-color 0.2s;">测试FileWatcher</button>
+                        <button id="importPresetMessageBtn" style="width: 100%; padding: 8px; background: var(--user-bubble-bg); color: white; border: none; border-radius: 4px; cursor: pointer; transition: background-color 0.2s;">导入预设信息</button>
                     </div>
                 </div>
             </div>
@@ -510,30 +575,68 @@ window.mailboxManager = (() => {
             }
         });
 
-        // 测试预设消息功能
-        const testPresetMessageBtn = document.getElementById('testPresetMessageBtn');
-        testPresetMessageBtn?.addEventListener('click', async () => {
+        // 导入预设信息功能
+        const importPresetMessageBtn = document.getElementById('importPresetMessageBtn');
+        importPresetMessageBtn?.addEventListener('click', async () => {
             try {
-                uiHelperFunctions.showToastNotification('开始测试预设消息功能...', 'info');
-
-                const result = await testPresetMessageWorkflow();
-
-                if (result.success) {
-                    const message = `✅ 预设消息功能测试成功！
-• 测试Agent: ${result.agentName}
-• 创建话题: ${result.topicId}
-• 预设消息数量: ${result.messageCount}
-${result.warning ? `\n⚠️ 警告: ${result.warning}` : ''}`;
-
-                    alert(message);
-                    uiHelperFunctions.showToastNotification('预设消息功能测试完成！', 'success');
-                } else {
-                    alert(`❌ 预设消息功能测试失败: ${result.error}`);
-                    uiHelperFunctions.showToastNotification(`测试失败: ${result.error}`, 'error');
+                if (!currentAgentId) {
+                    alert('请先选择一个Agent');
+                    return;
                 }
+
+                uiHelperFunctions.showToastNotification('正在打开文件选择对话框...', 'info');
+
+                // 使用现有的API导入预设消息文件
+                const importResult = await electronAPI.importPresetMessages(currentAgentId);
+
+                if (!importResult || !importResult.success) {
+                    if (importResult && importResult.canceled) {
+                        uiHelperFunctions.showToastNotification('已取消文件选择', 'info');
+                        return;
+                    }
+                    throw new Error(importResult?.error || '导入失败');
+                }
+
+                // 获取导入的数据
+                const jsonData = {
+                    presetMessages: importResult.messages,
+                    enabled: importResult.enabled
+                };
+
+                // 验证JSON格式
+                if (!jsonData.presetMessages || !Array.isArray(jsonData.presetMessages)) {
+                    throw new Error('JSON文件缺少presetMessages数组');
+                }
+
+                // 验证消息格式
+                const messages = jsonData.presetMessages;
+                for (const msg of messages) {
+                    if (!msg.content || typeof msg.content !== 'string') {
+                        throw new Error('消息内容无效');
+                    }
+                    if (msg.role && !['user', 'assistant', 'system'].includes(msg.role)) {
+                        throw new Error('消息角色必须是 user、assistant 或 system');
+                    }
+                }
+
+                // 清空现有的预制消息输入框
+                const messagesContainer = document.getElementById('presetMessagesContainer');
+                messagesContainer.innerHTML = '';
+
+                // 导入消息到输入框
+                messages.forEach(msg => {
+                    addPresetMessageInput(msg.content, msg.role || 'user');
+                });
+
+                uiHelperFunctions.showToastNotification(`✅ 成功导入 ${messages.length} 条预设消息！`, 'success');
+
+                // 提示用户可以通过手动输入话题名称并点击"创建话题"按钮来创建话题
+                uiHelperFunctions.showToastNotification('导入完成！您可以在上方输入话题名称后点击"创建话题"按钮来创建带预制消息的话题。', 'info');
+
             } catch (error) {
-                alert(`测试过程中出错: ${error.message}`);
-                uiHelperFunctions.showToastNotification(`测试出错: ${error.message}`, 'error');
+                console.error('[MailboxManager] 导入预设信息时出错:', error);
+                alert(`❌ 导入失败: ${error.message}`);
+                uiHelperFunctions.showToastNotification(`导入失败: ${error.message}`, 'error');
             }
         });
 
@@ -577,14 +680,31 @@ ${result.warning ? `\n⚠️ 警告: ${result.warning}` : ''}`;
         messageDiv.style.cssText = 'margin-bottom: 8px; padding: 10px; border: 1px solid var(--border-color); border-radius: 4px;';
 
         messageDiv.innerHTML = `
-            <select class="messageRole" style="margin-right: 8px; padding: 4px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--input-bg);">
-                <option value="user" ${role === 'user' ? 'selected' : ''}>用户</option>
-                <option value="assistant" ${role === 'assistant' ? 'selected' : ''}>助手</option>
-                <option value="system" ${role === 'system' ? 'selected' : ''}>系统</option>
-            </select>
-            <input type="text" class="messageName" placeholder="角色名字（可选）" style="margin-right: 8px; padding: 4px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--input-bg); color: var(--primary-text); width: 120px;" title="留空则使用默认名字">
-            <textarea class="messageContent" placeholder="消息内容" style="width: calc(100% - 200px); min-height: 60px; padding: 4px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--input-bg); color: var(--primary-text); resize: vertical;">${content}</textarea>
-            <button class="removeMessageBtn" style="margin-left: 8px; padding: 4px 8px; background: #ff4444; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">删除</button>
+            <div style="display: flex; gap: 10px;">
+                <!-- 左边 1/4 区域：角色选择、名字设定、删除按钮 -->
+                <div style="flex: 1; display: flex; flex-direction: column; gap: 8px;">
+                    <!-- 角色选择 -->
+                    <div>
+                        <select class="messageRole" style="width: 100%; padding: 6px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--input-bg); color: var(--primary-text); font-size: 0.9em;">
+                            <option value="user" ${role === 'user' ? 'selected' : ''}>用户</option>
+                            <option value="assistant" ${role === 'assistant' ? 'selected' : ''}>助手</option>
+                            <option value="system" ${role === 'system' ? 'selected' : ''}>系统</option>
+                        </select>
+                    </div>
+                    <!-- 名字设定 -->
+                    <div>
+                        <input type="text" class="messageName" placeholder="角色名字（可选）" style="width: 100%; padding: 6px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--input-bg); color: var(--primary-text); font-size: 0.9em; box-sizing: border-box;" title="留空则使用默认名字">
+                    </div>
+                    <!-- 删除按钮 -->
+                    <div>
+                        <button class="removeMessageBtn" style="width: 100%; padding: 6px; background: var(--danger-color); color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 0.85em; transition: background-color 0.2s;">删除</button>
+                    </div>
+                </div>
+                <!-- 右边 3/4 区域：消息内容 -->
+                <div style="flex: 3;">
+                    <textarea class="messageContent" placeholder="消息内容" style="width: 100%; min-height: 120px; padding: 8px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--input-bg); color: var(--primary-text); resize: vertical; font-size: 0.9em; font-family: inherit;">${content}</textarea>
+                </div>
+            </div>
         `;
 
         // 绑定删除事件
@@ -721,6 +841,7 @@ ${result.warning ? `\n⚠️ 警告: ${result.warning}` : ''}`;
         selectAgent,
         createTopicWithPresetMessages,
         createTopicWithAutoPreset,
+        createTopicFromJsonFile,
         checkAgentPresetMessages,
         switchToTopic,
         getCurrentState,

@@ -9,6 +9,7 @@ Mailboxmodules 是 VCPChat 的一个扩展模块，提供了带预制消息的�
 - 支持多种消息角色：`user`、`assistant`、`system`
 - 支持多条预制消息
 - 自动跳转到新创建的话题
+- 支持从外部JSON文件读取消息并创建话题
 
 ### 2. Agent 管理系统
 - 获取可用 Agent 列表
@@ -212,6 +213,19 @@ const result = await window.mailboxManager.createTopicWithAutoPreset(
 
 **返回值:** `Promise<Object>` - 创建结果
 
+### mailboxManager.createTopicFromJsonFile(jsonFilePath, agentId, topicName, options)
+
+从JSON文件创建带预设消息的话题。
+
+**参数:**
+- `jsonFilePath` (string) - JSON文件路径
+- `agentId` (string) - Agent ID
+- `topicName` (string) - 话题名称
+- `options` (Object) - 选项
+  - `autoSwitch` (boolean) - 是否自动跳转到新话题
+
+**返回值:** `Promise<Object>` - 创建结果
+
 ### mailboxManager.testPresetMessageWorkflow()
 
 测试预设消息完整工作流程。
@@ -353,6 +367,18 @@ async function createNewTopicWithMessages(agentId, topicName, messages = [], opt
    - 验证预设消息是否正确保存到话题历史中
 
 ## 更新日志
+
+### v1.2.0
+- 新增：外部JSON文件支持
+  - `createTopicFromJsonFile()` 方法支持从任意JSON文件读取消息并创建话题
+  - 新增 `read-json-file` IPC处理器，支持读取和解析JSON文件
+  - 增强了模块的外部文件输入能力
+- 修复：导入预设消息功能
+  - 添加了完整的文件选择对话框支持
+  - 与正则设置的导入功能保持一致的用户体验
+- 修复：样式和交互问题
+  - 调整了分隔线位置，确保视觉层次清晰
+  - 修复了启用开关与presetMessage.json的关联问题
 
 ### v1.1.0
 - 新增：预设消息系统
