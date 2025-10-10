@@ -626,6 +626,12 @@ function initializeMessageRenderer(refs) {
        interruptHandler: mainRendererReferences.interruptHandler, // Pass the interrupt handler
    });
 
+   // Make toggleEditMode available globally for middle click functionality
+   if (typeof contextMenu.toggleEditMode === 'function') {
+       window.toggleEditMode = contextMenu.toggleEditMode;
+       window.messageContextMenu = contextMenu; // Also expose the entire module for fallback
+   }
+
    streamManager.initStreamManager({
        // Core Refs
        globalSettingsRef: mainRendererReferences.globalSettingsRef,
@@ -785,6 +791,35 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
         messageItem.addEventListener('contextmenu', (e) => {
             e.preventDefault();
             contextMenu.showContextMenu(e, messageItem, message);
+        });
+
+        // Add middle click quick action functionality with advanced grid selection
+        messageItem.addEventListener('mousedown', (e) => {
+            if (e.button === 1) { // Middle mouse button
+                e.preventDefault();
+                e.stopPropagation();
+
+                const globalSettings = mainRendererReferences.globalSettingsRef.get();
+                if (globalSettings.enableMiddleClickQuickAction) {
+                    // Always start basic 1-second quick action timer if configured
+                    if (globalSettings.middleClickQuickAction && globalSettings.middleClickQuickAction.trim() !== '') {
+                        startMiddleClickTimer(e, messageItem, message, globalSettings.middleClickQuickAction);
+                    }
+
+                    // Start advanced mode timer if enabled and delay >= 1000ms
+                    if (globalSettings.enableMiddleClickAdvanced) {
+                        const delay = globalSettings.middleClickAdvancedDelay || 1000;
+                        if (delay >= 1000) {
+                            startAdvancedMiddleClickTimer(e, messageItem, message, globalSettings);
+                        } else {
+                            console.warn('[MiddleClick] Advanced mode delay must be >= 1000ms for compatibility. Current delay:', delay);
+                            // Force delay to minimum 1000ms for compatibility
+                            globalSettings.middleClickAdvancedDelay = 1000;
+                            startAdvancedMiddleClickTimer(e, messageItem, message, globalSettings);
+                        }
+                    }
+                }
+            }
         });
     }
 
@@ -1393,6 +1428,699 @@ async function renderHistoryLegacy(history) {
 }
 
 
+// Store active middle click timers for cleanup
+let activeMiddleClickTimers = new Map();
+
+// Middle click grid state
+let middleClickGrid = null;
+let currentGridSelection = '';
+let isAdvancedModeActive = false;
+
+/**
+ * Starts the advanced middle click timer mechanism with grid selection
+ * @param {MouseEvent} event - The mouse event
+ * @param {HTMLElement} messageItem - The message DOM element
+ * @param {Object} message - The message object
+ * @param {Object} globalSettings - The global settings object
+ */
+function startAdvancedMiddleClickTimer(event, messageItem, message, globalSettings) {
+    const timerId = `advanced_middle_click_${message.id}_${Date.now()}`;
+
+    // Add visual feedback - change cursor and add a subtle highlight
+    messageItem.style.cursor = 'grabbing';
+    messageItem.style.backgroundColor = 'rgba(128, 128, 128, 0.1)';
+
+    const startTime = Date.now();
+    const delay = globalSettings.middleClickAdvancedDelay || 1000;
+
+    // Create cleanup function
+    const cleanup = () => {
+        messageItem.style.cursor = '';
+        messageItem.style.backgroundColor = '';
+        if (middleClickGrid) {
+            middleClickGrid.remove();
+            middleClickGrid = null;
+        }
+        currentGridSelection = '';
+        isAdvancedModeActive = false;
+        activeMiddleClickTimers.delete(timerId);
+    };
+
+    // Set up event listeners for mouseup and mouseleave
+    const handleMouseUp = (e) => {
+        if (e.button === 1) { // Middle mouse button
+            e.preventDefault();
+            e.stopPropagation();
+
+            const holdTime = Date.now() - startTime;
+
+            if (holdTime <= delay) {
+                // Within delay time - let basic mode handle this (don't interfere)
+                console.log(`[AdvancedMiddleClick] Within delay (${holdTime}ms < ${delay}ms) - letting basic mode handle`);
+            } else {
+                // After delay time - check if a valid selection was made
+                if (currentGridSelection && currentGridSelection !== '' && currentGridSelection !== 'none') {
+                    console.log(`[AdvancedMiddleClick] Setting quick action to: ${currentGridSelection}`);
+                    // Update the global setting only if a valid function was selected
+                    updateMiddleClickQuickAction(currentGridSelection);
+                } else if (currentGridSelection === 'none') {
+                    console.log('[AdvancedMiddleClick] Setting quick action to none (empty)');
+                    // Update the global setting to empty only if "none" was explicitly selected
+                    updateMiddleClickQuickAction('');
+                } else {
+                    console.log('[AdvancedMiddleClick] No valid selection made - keeping current setting');
+                    // Don't change the setting if no valid selection was made
+                    // Show a brief message to indicate cancellation
+                    const globalSettings = mainRendererReferences.globalSettingsRef.get();
+                    if (globalSettings.middleClickQuickAction && globalSettings.middleClickQuickAction.trim() !== '') {
+                        const actionNames = {
+                            'edit': '编辑消息',
+                            'copy': '复制文本',
+                            'createBranch': '创建分支',
+                            'readAloud': '朗读气泡',
+                            'readMode': '阅读模式',
+                            'regenerate': '重新回复',
+                            'forward': '转发消息',
+                            'delete': '删除消息'
+                        };
+                        mainRendererReferences.uiHelper.showToastNotification(`九宫格操作已取消，当前中键功能保持为: ${actionNames[globalSettings.middleClickQuickAction] || globalSettings.middleClickQuickAction}`, 'info');
+                    } else {
+                        mainRendererReferences.uiHelper.showToastNotification('九宫格操作已取消，中键快速功能未设置', 'info');
+                    }
+                }
+            }
+
+            cleanup();
+            document.removeEventListener('mouseup', handleMouseUp);
+            document.removeEventListener('mouseleave', handleMouseLeave);
+            document.removeEventListener('mousemove', handleMouseMove);
+        }
+    };
+
+    const handleMouseLeave = () => {
+        console.log('[AdvancedMiddleClick] Mouse left element - cancelling');
+        cleanup();
+        document.removeEventListener('mouseup', handleMouseUp);
+        document.removeEventListener('mouseleave', handleMouseLeave);
+        document.removeEventListener('mousemove', handleMouseMove);
+    };
+
+    const handleMouseMove = (e) => {
+        if (middleClickGrid) {
+            updateGridSelection(e.clientX, e.clientY);
+        }
+    };
+
+    // Set timeout to show grid after delay
+    const timeoutId = setTimeout(() => {
+        // Only show grid if advanced mode is still active and no cleanup happened
+        if (activeMiddleClickTimers.has(timerId) && !isAdvancedModeActive) {
+            console.log(`[AdvancedMiddleClick] Showing grid after ${delay}ms delay`);
+            isAdvancedModeActive = true;
+            showMiddleClickGrid(event.clientX, event.clientY, messageItem, message);
+            document.addEventListener('mousemove', handleMouseMove);
+
+            // Set initial selection to center (none)
+            currentGridSelection = 'none';
+
+            // Ensure grid background persists by adding a CSS class
+            if (middleClickGrid) {
+                middleClickGrid.classList.add('persistent-background');
+            }
+        }
+    }, delay);
+
+    // Add immediate mouseup listener for quick release
+    document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('mouseleave', handleMouseLeave);
+
+    // Store the timer for potential cleanup
+    activeMiddleClickTimers.set(timerId, {
+        cleanup,
+        handleMouseUp,
+        handleMouseLeave,
+        handleMouseMove,
+        timeoutId
+    });
+}
+
+/**
+ * Starts the middle click timer mechanism
+ * @param {MouseEvent} event - The mouse event
+ * @param {HTMLElement} messageItem - The message DOM element
+ * @param {Object} message - The message object
+ * @param {string} quickAction - The quick action to perform
+ */
+function startMiddleClickTimer(event, messageItem, message, quickAction) {
+    const timerId = `middle_click_${message.id}_${Date.now()}`;
+
+    // Add visual feedback - change cursor and add a subtle highlight
+    messageItem.style.cursor = 'grabbing';
+    messageItem.style.backgroundColor = 'rgba(128, 128, 128, 0.1)';
+
+    const startTime = Date.now();
+
+    // Create cleanup function
+    const cleanup = () => {
+        messageItem.style.cursor = '';
+        messageItem.style.backgroundColor = '';
+        activeMiddleClickTimers.delete(timerId);
+    };
+
+    // Set up event listeners for mouseup and mouseleave
+    const handleMouseUp = (e) => {
+        if (e.button === 1) { // Middle mouse button
+            e.preventDefault();
+            e.stopPropagation();
+
+            const holdTime = Date.now() - startTime;
+
+            if (holdTime <= 1000) { // Within 1 second
+                console.log(`[MiddleClick] Executing quick action after ${holdTime}ms: ${quickAction}`);
+                handleMiddleClickQuickAction(event, messageItem, message, quickAction);
+            } else {
+                console.log(`[MiddleClick] Cancelled - held for ${holdTime}ms (> 1s)`);
+            }
+
+            cleanup();
+            document.removeEventListener('mouseup', handleMouseUp);
+            document.removeEventListener('mouseleave', handleMouseLeave);
+        }
+    };
+
+    const handleMouseLeave = () => {
+        console.log('[MiddleClick] Cancelled - mouse left element');
+        cleanup();
+        document.removeEventListener('mouseup', handleMouseUp);
+        document.removeEventListener('mouseleave', handleMouseLeave);
+    };
+
+    // Add event listeners to document to catch mouseup even if mouse moves away
+    document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('mouseleave', handleMouseLeave);
+
+    // Store the timer for potential cleanup
+    activeMiddleClickTimers.set(timerId, {
+        cleanup,
+        handleMouseUp,
+        handleMouseLeave,
+        timeoutId: setTimeout(() => {
+            console.log('[MiddleClick] Cancelled - 1 second timeout reached');
+            cleanup();
+            document.removeEventListener('mouseup', handleMouseUp);
+            document.removeEventListener('mouseleave', handleMouseLeave);
+        }, 1000)
+    });
+}
+
+/**
+ * Handles middle click quick action based on user settings
+ * @param {MouseEvent} event - The mouse event
+ * @param {HTMLElement} messageItem - The message DOM element
+ * @param {Object} message - The message object
+ * @param {string} quickAction - The quick action to perform
+ */
+function handleMiddleClickQuickAction(event, messageItem, message, quickAction) {
+    const { electronAPI, uiHelper } = mainRendererReferences;
+    const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
+    const currentSelectedItemVal = mainRendererReferences.currentSelectedItemRef.get();
+    const currentTopicIdVal = mainRendererReferences.currentTopicIdRef.get();
+
+    console.log(`[MiddleClick] Executing quick action: ${quickAction} for message: ${message.id}`);
+
+    switch (quickAction) {
+        case 'edit':
+            // 编辑消息（带智能保存功能）
+            // Check if message is currently in edit mode
+            const isEditing = messageItem.classList.contains('message-item-editing');
+            const textarea = messageItem.querySelector('.message-edit-textarea');
+
+            if (isEditing && textarea) {
+                // Currently in edit mode - perform save operation
+                console.log(`[MiddleClick] Message ${message.id} is in edit mode, performing save`);
+
+                // Find the save button and click it
+                const saveButton = messageItem.querySelector('.message-edit-controls button:first-child');
+                if (saveButton) {
+                    saveButton.click();
+                    uiHelper.showToastNotification("中键保存完成", "success");
+                } else {
+                    uiHelper.showToastNotification("保存按钮未找到", "warning");
+                }
+            } else {
+                // Not in edit mode - enter edit mode
+                console.log(`[MiddleClick] Entering edit mode for message ${message.id}`);
+
+                // Try to call toggleEditMode function if it's available globally
+                if (typeof window.toggleEditMode === 'function') {
+                    window.toggleEditMode(messageItem, message);
+                } else {
+                    // Fallback: try to access it through contextMenu module
+                    try {
+                        // Check if contextMenu module is available and has the function
+                        if (contextMenu && typeof contextMenu.toggleEditMode === 'function') {
+                            contextMenu.toggleEditMode(messageItem, message);
+                        } else {
+                            uiHelper.showToastNotification("编辑功能暂时不可用", "warning");
+                        }
+                    } catch (error) {
+                        console.error('Failed to call toggleEditMode:', error);
+                        uiHelper.showToastNotification("编辑功能暂时不可用", "warning");
+                    }
+                }
+            }
+            break;
+
+        case 'copy':
+            // 复制文本
+            const contentDiv = messageItem.querySelector('.md-content');
+            let textToCopy = '';
+
+            if (contentDiv) {
+                const contentClone = contentDiv.cloneNode(true);
+                contentClone.querySelectorAll('.vcp-tool-use-bubble, .vcp-tool-result-bubble').forEach(el => el.remove());
+                textToCopy = contentClone.innerText.trim();
+            } else {
+                let contentToProcess = message.content;
+                if (typeof message.content === 'object' && message.content !== null && typeof message.content.text === 'string') {
+                    contentToProcess = message.content.text;
+                } else if (typeof message.content !== 'string') {
+                    contentToProcess = '';
+                }
+                textToCopy = contentToProcess.replace(/<img[^>]*>/g, '').trim();
+            }
+
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                uiHelper.showToastNotification("已复制渲染后的文本。", "success");
+            }).catch(err => {
+                console.error('Failed to copy text:', err);
+                uiHelper.showToastNotification("复制失败", "error");
+            });
+            break;
+
+        case 'createBranch':
+            // 创建分支
+            if (typeof mainRendererReferences.handleCreateBranch === 'function') {
+                mainRendererReferences.handleCreateBranch(message);
+            } else {
+                uiHelper.showToastNotification("创建分支功能暂时不可用", "warning");
+            }
+            break;
+
+        case 'forward':
+            // 转发消息 - 执行与右键菜单完全相同的功能
+            if (typeof window.showForwardModal === 'function') {
+                window.showForwardModal(message);
+            } else {
+                uiHelper.showToastNotification("转发功能暂时不可用", "warning");
+            }
+            break;
+
+        case 'readAloud':
+            // 朗读气泡
+            if (message.role === 'assistant') {
+                // Ensure audio context is activated
+                if (typeof window.ensureAudioContext === 'function') {
+                    window.ensureAudioContext();
+                }
+
+                const agentId = message.agentId || currentSelectedItemVal.id;
+                if (!agentId) {
+                    uiHelper.showToastNotification("无法确定Agent身份，无法朗读。", "error");
+                    return;
+                }
+
+                electronAPI.getAgentConfig(agentId).then(agentConfig => {
+                    if (agentConfig && agentConfig.ttsVoicePrimary) {
+                        const contentDiv = messageItem.querySelector('.md-content');
+                        let textToRead = '';
+                        if (contentDiv) {
+                            const contentClone = contentDiv.cloneNode(true);
+                            contentClone.querySelectorAll('.vcp-tool-use-bubble').forEach(el => el.remove());
+                            contentClone.querySelectorAll('.vcp-tool-result-bubble').forEach(el => el.remove());
+                            textToRead = contentClone.innerText || '';
+                        }
+
+                        if (textToRead.trim()) {
+                            electronAPI.sovitsSpeak({
+                                text: textToRead,
+                                voice: agentConfig.ttsVoicePrimary,
+                                speed: agentConfig.ttsSpeed || 1.0,
+                                msgId: message.id,
+                                ttsRegex: agentConfig.ttsRegexPrimary,
+                                voiceSecondary: agentConfig.ttsVoiceSecondary,
+                                ttsRegexSecondary: agentConfig.ttsRegexSecondary
+                            });
+                        } else {
+                            uiHelper.showToastNotification("此消息没有可朗读的文本内容。", "info");
+                        }
+                    } else {
+                        uiHelper.showToastNotification("此Agent未配置语音模型。", "warning");
+                    }
+                }).catch(error => {
+                    console.error("获取Agent配置以进行朗读时出错:", error);
+                    uiHelper.showToastNotification("获取Agent配置失败。", "error");
+                });
+            } else {
+                uiHelper.showToastNotification("朗读功能仅适用于助手消息。", "warning");
+            }
+            break;
+
+        case 'readMode':
+            // 阅读模式
+            if (!currentSelectedItemVal.id || !currentTopicIdVal || !message.id) {
+                uiHelper.showToastNotification("无法打开阅读模式: 上下文信息不完整。", "error");
+                return;
+            }
+
+            electronAPI.getOriginalMessageContent(
+                currentSelectedItemVal.id,
+                currentSelectedItemVal.type,
+                currentTopicIdVal,
+                message.id
+            ).then(result => {
+                if (result.success && result.content !== undefined) {
+                    const rawContent = result.content;
+                    const contentString = (typeof rawContent === 'string') ? rawContent : (rawContent?.text || '');
+
+                    const windowTitle = `阅读: ${message.id.substring(0, 10)}...`;
+                    const currentTheme = document.body.classList.contains('light-theme') ? 'light' : 'dark';
+
+                    if (electronAPI && typeof electronAPI.openTextInNewWindow === 'function') {
+                        electronAPI.openTextInNewWindow(contentString, windowTitle, currentTheme);
+                    }
+                } else {
+                    uiHelper.showToastNotification(`无法加载原始消息: ${result.error || '未知错误'}`, "error");
+                }
+            }).catch(error => {
+                console.error("调用 getOriginalMessageContent 时出错:", error);
+                uiHelper.showToastNotification("加载阅读模式时发生错误。", "error");
+            });
+            break;
+
+        case 'regenerate':
+            // 重新回复
+            if (message.role === 'assistant') {
+                if (contextMenu && typeof contextMenu.handleRegenerateResponse === 'function') {
+                    contextMenu.handleRegenerateResponse(message);
+                } else {
+                    uiHelper.showToastNotification("重新回复功能暂时不可用", "warning");
+                }
+            } else {
+                uiHelper.showToastNotification("重新回复功能仅适用于助手消息。", "warning");
+            }
+            break;
+
+        case 'delete':
+            // 删除消息
+            let textForConfirm = "";
+            if (typeof message.content === 'string') {
+                textForConfirm = message.content;
+            } else if (message.content && typeof message.content.text === 'string') {
+                textForConfirm = message.content.text;
+            } else {
+                textForConfirm = '[消息内容无法预览]';
+            }
+
+            if (confirm(`确定要删除此消息吗？\n"${textForConfirm.substring(0, 50)}${textForConfirm.length > 50 ? '...' : ''}"`)) {
+                if (contextMenuDependencies.removeMessageById && typeof contextMenuDependencies.removeMessageById === 'function') {
+                    contextMenuDependencies.removeMessageById(message.id, true);
+                } else {
+                    uiHelper.showToastNotification("删除功能暂时不可用", "warning");
+                }
+            }
+            break;
+
+        default:
+            // 如果是空值或其他未知值，不执行任何操作，也不显示任何消息
+            if (quickAction && quickAction.trim() !== '') {
+                uiHelper.showToastNotification(`未知的快速操作: ${quickAction}`, "warning");
+            }
+            // 如果是空值，静默忽略，不做任何操作
+    }
+}
+
+/**
+ * Shows the middle click function selection grid
+ * @param {number} x - Mouse X position
+ * @param {number} y - Mouse Y position
+ * @param {HTMLElement} messageItem - The message DOM element
+ * @param {Object} message - The message object
+ */
+function showMiddleClickGrid(x, y, messageItem, message) {
+    // Remove existing grid if any
+    if (middleClickGrid) {
+        middleClickGrid.remove();
+    }
+
+    // Create grid container
+    middleClickGrid = document.createElement('div');
+    middleClickGrid.id = 'middleClickGrid';
+    middleClickGrid.className = 'middle-click-grid persistent-background';
+    middleClickGrid.style.position = 'fixed';
+    middleClickGrid.style.left = `${x - 100}px`;
+    middleClickGrid.style.top = `${y - 100}px`;
+    middleClickGrid.style.width = '200px';
+    middleClickGrid.style.height = '200px';
+    middleClickGrid.style.zIndex = '10000';
+    middleClickGrid.style.backgroundColor = 'var(--modal-bg)';
+    middleClickGrid.style.border = '2px solid var(--accent-color)';
+    middleClickGrid.style.borderRadius = '10px';
+    middleClickGrid.style.boxShadow = '0 4px 20px rgba(0, 0, 0, 0.3)';
+    middleClickGrid.style.display = 'grid';
+    middleClickGrid.style.gridTemplateColumns = 'repeat(3, 1fr)';
+    middleClickGrid.style.gridTemplateRows = 'repeat(3, 1fr)';
+    middleClickGrid.style.gap = '2px';
+    middleClickGrid.style.padding = '5px';
+
+    // Grid layout: 8 functions + center "none"
+    const gridFunctions = [
+        'edit', 'copy', 'createBranch',
+        'readAloud', 'none', 'readMode',
+        'regenerate', 'forward', 'delete'
+    ];
+
+    const functionLabels = {
+        'edit': '编辑',
+        'copy': '复制',
+        'createBranch': '分支',
+        'readAloud': '朗读',
+        'none': '无',
+        'readMode': '阅读',
+        'regenerate': '重回',
+        'forward': '转发',
+        'delete': '删除'
+    };
+
+    gridFunctions.forEach((func, index) => {
+        const cell = document.createElement('div');
+        cell.className = 'grid-cell';
+        cell.dataset.function = func;
+        cell.textContent = functionLabels[func];
+        cell.style.display = 'flex';
+        cell.style.alignItems = 'center';
+        cell.style.justifyContent = 'center';
+        cell.style.backgroundColor = 'var(--button-bg)';
+        cell.style.borderRadius = '5px';
+        cell.style.cursor = 'pointer';
+        cell.style.fontSize = '12px';
+        cell.style.fontWeight = 'bold';
+        cell.style.transition = 'all 0.1s ease';
+
+        cell.addEventListener('mouseenter', () => {
+            cell.style.backgroundColor = 'var(--accent-color)';
+            cell.style.color = 'white';
+            currentGridSelection = func;
+        });
+
+        cell.addEventListener('mouseleave', () => {
+            cell.style.backgroundColor = 'var(--button-bg)';
+            cell.style.color = 'var(--primary-text)';
+        });
+
+        middleClickGrid.appendChild(cell);
+    });
+
+    // Add to body
+    document.body.appendChild(middleClickGrid);
+
+    // Ensure grid is within viewport
+    const rect = middleClickGrid.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    if (rect.right > viewportWidth) {
+        middleClickGrid.style.left = `${viewportWidth - rect.width - 10}px`;
+    }
+    if (rect.bottom > viewportHeight) {
+        middleClickGrid.style.top = `${viewportHeight - rect.height - 10}px`;
+    }
+    if (rect.left < 0) {
+        middleClickGrid.style.left = '10px';
+    }
+    if (rect.top < 0) {
+        middleClickGrid.style.top = '10px';
+    }
+
+    // Initialize current selection to center (none)
+    currentGridSelection = 'none';
+}
+
+/**
+ * Updates the grid selection based on mouse position
+ * @param {number} mouseX - Mouse X position
+ * @param {number} mouseY - Mouse Y position
+ */
+function updateGridSelection(mouseX, mouseY) {
+    if (!middleClickGrid) return;
+
+    const rect = middleClickGrid.getBoundingClientRect();
+    const relativeX = mouseX - rect.left;
+    const relativeY = mouseY - rect.top;
+
+    // Calculate which cell the mouse is over (3x3 grid)
+    const cellWidth = rect.width / 3;
+    const cellHeight = rect.height / 3;
+
+    const col = Math.floor(relativeX / cellWidth);
+    const row = Math.floor(relativeY / cellHeight);
+
+    // Ensure within bounds
+    if (col >= 0 && col < 3 && row >= 0 && row < 3) {
+        const cellIndex = row * 3 + col;
+        const cells = middleClickGrid.querySelectorAll('.grid-cell');
+        const targetCell = cells[cellIndex];
+
+        if (targetCell) {
+            // Reset all cells to default state
+            cells.forEach(cell => {
+                const func = cell.dataset.function;
+                if (func === 'none') {
+                    cell.style.backgroundColor = 'var(--button-bg)';
+                    cell.style.color = 'var(--primary-text)';
+                } else {
+                    cell.style.backgroundColor = 'var(--bg-color)';
+                    cell.style.color = 'var(--primary-text)';
+                }
+            });
+
+            // Highlight target cell
+            targetCell.style.backgroundColor = 'var(--accent-color)';
+            targetCell.style.color = 'white';
+
+            currentGridSelection = func;
+        }
+    } else {
+        // Mouse is outside grid - reset selection
+        currentGridSelection = '';
+    }
+}
+
+/**
+ * Updates the global middle click quick action setting
+ * @param {string} newAction - The new action to set
+ */
+function updateMiddleClickQuickAction(newAction) {
+    const globalSettings = mainRendererReferences.globalSettingsRef.get();
+
+    // Update the setting
+    mainRendererReferences.globalSettingsRef.set({
+        ...globalSettings,
+        middleClickQuickAction: newAction
+    });
+
+    // Update the UI select element
+    const selectElement = document.getElementById('middleClickQuickAction');
+    if (selectElement) {
+        selectElement.value = newAction;
+    }
+
+    // Save settings
+    if (mainRendererReferences.electronAPI && mainRendererReferences.electronAPI.saveSettings) {
+        mainRendererReferences.electronAPI.saveSettings({
+            ...globalSettings,
+            middleClickQuickAction: newAction
+        }).then(result => {
+            if (result.success) {
+                const actionNames = {
+                    'edit': '编辑消息',
+                    'copy': '复制文本',
+                    'createBranch': '创建分支',
+                    'readAloud': '朗读气泡',
+                    'none': '无',
+                    'readMode': '阅读模式',
+                    'regenerate': '重新回复',
+                    'forward': '转发消息',
+                    'delete': '删除消息'
+                };
+
+                const actionName = actionNames[newAction] || newAction;
+                if (newAction && newAction.trim() !== '') {
+                    mainRendererReferences.uiHelper.showToastNotification(`中键快速功能已设置为: ${actionName}`, 'success');
+                } else {
+                    mainRendererReferences.uiHelper.showToastNotification('中键快速功能已清空', 'info');
+                }
+            } else {
+                mainRendererReferences.uiHelper.showToastNotification('设置保存失败', 'error');
+            }
+        });
+    }
+}
+
+/**
+ * Test function to show the middle click grid (for testing purposes)
+ */
+function showTestMiddleClickGrid() {
+    showMiddleClickGrid(400, 300, null, null);
+
+    // Auto-remove after 5 seconds for testing
+    setTimeout(() => {
+        if (middleClickGrid) {
+            middleClickGrid.remove();
+            middleClickGrid = null;
+        }
+    }, 5000);
+}
+
+/**
+ * Cleans up all active middle click timers
+ */
+function cleanupAllMiddleClickTimers() {
+    console.log(`[MiddleClick] Cleaning up ${activeMiddleClickTimers.size} active timers`);
+    for (const [timerId, timerData] of activeMiddleClickTimers.entries()) {
+        if (timerData.timeoutId) {
+            clearTimeout(timerData.timeoutId);
+        }
+        if (timerData.cleanup) {
+            timerData.cleanup();
+        }
+    }
+    activeMiddleClickTimers.clear();
+
+    // Reset global state
+    if (middleClickGrid) {
+        middleClickGrid.remove();
+        middleClickGrid = null;
+    }
+    currentGridSelection = '';
+    isAdvancedModeActive = false;
+}
+
+// Add cleanup on page unload
+window.addEventListener('beforeunload', cleanupAllMiddleClickTimers);
+
+// Also expose cleanup function for manual cleanup if needed
+window.cleanupMiddleClickTimers = cleanupAllMiddleClickTimers;
+window.showMiddleClickGrid = showTestMiddleClickGrid;
+
+// Expose state for debugging
+window.getMiddleClickState = () => ({
+    activeTimers: activeMiddleClickTimers.size,
+    gridVisible: !!middleClickGrid,
+    currentSelection: currentGridSelection,
+    advancedModeActive: isAdvancedModeActive
+});
+
 window.messageRenderer = {
     initializeMessageRenderer,
     setCurrentSelectedItem, // Keep for renderer.js to call
@@ -1416,12 +2144,12 @@ window.messageRenderer = {
         // Check if message exists in DOM or is being tracked by streamManager
         const messageInDom = mainRendererReferences.chatMessagesDiv?.querySelector(`.message-item[data-message-id="${messageId}"]`);
         if (messageInDom) return true;
-        
+
         // Also check if streamManager is tracking this message
         if (streamManager && typeof streamManager.isMessageInitialized === 'function') {
             return streamManager.isMessageInitialized(messageId);
         }
-        
+
         return false;
     },
     summarizeTopicFromMessages: async (history, agentName) => { // Example: Keep this if it's generic enough
