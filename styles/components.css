@@ -556,3 +556,71 @@ input:checked + .slider:before {
 aside.sidebar .sidebar-tab-content h2 {
     margin-bottom: 2px;
 }
+
+/* --- Middle Click Grid --- */
+.middle-click-grid {
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+}
+
+/* Ensure persistent background for middle click grid */
+.middle-click-grid.persistent-background {
+    background-color: var(--modal-bg) !important;
+}
+
+.middle-click-grid.persistent-background .grid-cell {
+    background-color: var(--button-bg) !important;
+}
+
+.grid-cell {
+    border: 1px solid var(--border-color);
+    font-weight: bold;
+    text-align: center;
+    transition: all 0.1s ease;
+}
+
+.grid-cell:hover {
+    transform: scale(1.05);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.grid-cell[data-function="none"] {
+    background-color: var(--accent-bg) !important;
+    color: var(--text-on-accent);
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.grid-cell[data-function="none"]:hover {
+    background-color: var(--accent-color) !important;
+    color: white !important;
+}
+
+/* Light theme adjustments for middle click grid */
+body.light-theme .middle-click-grid {
+    background-color: #ffffff;
+    border-color: #cccccc;
+}
+
+body.light-theme .grid-cell {
+    border-color: #dddddd;
+    background-color: #f8f9fa;
+    color: #333333;
+}
+
+body.light-theme .grid-cell:hover {
+    background-color: #007bff;
+    color: white;
+}
+
+body.light-theme .grid-cell[data-function="none"] {
+    background-color: #6c757d !important;
+    color: white !important;
+}
+
+body.light-theme .grid-cell[data-function="none"]:hover {
+    background-color: #5a6268 !important;
+    color: white !important;
+}

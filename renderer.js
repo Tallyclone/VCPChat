@@ -1,6 +1,10 @@
 // --- Globals ---
 let globalSettings = {
     sidebarWidth: 260,
+    enableMiddleClickQuickAction: false,
+    middleClickQuickAction: '',
+    enableMiddleClickAdvanced: false,
+    middleClickAdvancedDelay: 1000,
     notificationsSidebarWidth: 300,
     userName: '用户', // Default username
     doNotDisturbLogMode: false, // 勿扰模式状态
@@ -1011,6 +1015,31 @@ async function loadAndApplyGlobalSettings() {
             globalSettings.doNotDisturbLogMode = false;
         }
 
+        // Load middle click quick action settings
+        document.getElementById('enableMiddleClickQuickAction').checked = globalSettings.enableMiddleClickQuickAction === true;
+        document.getElementById('middleClickQuickAction').value = globalSettings.middleClickQuickAction || '';
+
+        // Load advanced middle click settings
+        document.getElementById('enableMiddleClickAdvanced').checked = globalSettings.enableMiddleClickAdvanced === true;
+        const advancedDelayInput = document.getElementById('middleClickAdvancedDelay');
+        const delayValue = globalSettings.middleClickAdvancedDelay || 1000;
+        advancedDelayInput.value = delayValue >= 1000 ? delayValue : 1000; // Ensure minimum 1000ms
+
+        // Show/hide containers based on enable settings
+        const middleClickContainer = document.getElementById('middleClickQuickActionContainer');
+        const middleClickAdvancedContainer = document.getElementById('middleClickAdvancedContainer');
+        const middleClickAdvancedSettings = document.getElementById('middleClickAdvancedSettings');
+
+        if (middleClickContainer) {
+            middleClickContainer.style.display = globalSettings.enableMiddleClickQuickAction === true ? 'block' : 'none';
+        }
+        if (middleClickAdvancedContainer) {
+            middleClickAdvancedContainer.style.display = globalSettings.enableMiddleClickQuickAction === true ? 'block' : 'none';
+        }
+        if (middleClickAdvancedSettings) {
+            middleClickAdvancedSettings.style.display = globalSettings.enableMiddleClickAdvanced === true ? 'block' : 'none';
+        }
+
         // Apply the theme mode from settings on startup
         if (globalSettings.currentThemeMode && window.electronAPI) {
             console.log(`[Renderer] Applying initial theme mode from settings: ${globalSettings.currentThemeMode}`);
@@ -1148,6 +1177,10 @@ function setupEventListeners() {
 
         const newSettings = { // Read directly from globalSettings for widths
             userName: document.getElementById('userName').value.trim() || '用户',
+            enableMiddleClickQuickAction: document.getElementById('enableMiddleClickQuickAction').checked,
+            middleClickQuickAction: document.getElementById('middleClickQuickAction').value,
+            enableMiddleClickAdvanced: document.getElementById('enableMiddleClickAdvanced').checked,
+            middleClickAdvancedDelay: Math.max(1000, parseInt(document.getElementById('middleClickAdvancedDelay').value, 10) || 1000),
             vcpServerUrl: window.settingsManager.completeVcpUrl(document.getElementById('vcpServerUrl').value.trim()),
             vcpApiKey: document.getElementById('vcpApiKey').value,
             vcpLogUrl: document.getElementById('vcpLogUrl').value.trim(),
@@ -1323,6 +1356,51 @@ function setupEventListeners() {
     const openNotesBtn = document.getElementById('openNotesBtn');
     if (openAdminPanelBtn) {
         openAdminPanelBtn.style.display = 'inline-block'; // Should be visible by default
+        // Add event listener for middle click quick action enable toggle
+        const enableMiddleClickCheckbox = document.getElementById('enableMiddleClickQuickAction');
+        const middleClickContainer = document.getElementById('middleClickQuickActionContainer');
+        const middleClickAdvancedContainer = document.getElementById('middleClickAdvancedContainer');
+
+        if (enableMiddleClickCheckbox && middleClickContainer && middleClickAdvancedContainer) {
+            enableMiddleClickCheckbox.addEventListener('change', () => {
+                const isEnabled = enableMiddleClickCheckbox.checked;
+                middleClickContainer.style.display = isEnabled ? 'block' : 'none';
+                middleClickAdvancedContainer.style.display = isEnabled ? 'block' : 'none';
+            });
+        }
+
+        // Add event listener for advanced middle click enable toggle
+        const enableMiddleClickAdvancedCheckbox = document.getElementById('enableMiddleClickAdvanced');
+        const middleClickAdvancedSettings = document.getElementById('middleClickAdvancedSettings');
+
+        if (enableMiddleClickAdvancedCheckbox && middleClickAdvancedSettings) {
+            enableMiddleClickAdvancedCheckbox.addEventListener('change', () => {
+                middleClickAdvancedSettings.style.display = enableMiddleClickAdvancedCheckbox.checked ? 'block' : 'none';
+            });
+        }
+
+        // Add validation for middle click advanced delay input
+        const middleClickAdvancedDelayInput = document.getElementById('middleClickAdvancedDelay');
+        if (middleClickAdvancedDelayInput) {
+            middleClickAdvancedDelayInput.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value, 10);
+                if (value < 1000) {
+                    e.target.value = 1000;
+                    uiHelperFunctions.showToastNotification('九宫格出现延迟不能小于1000ms，已自动调整', 'info');
+                }
+            });
+
+            middleClickAdvancedDelayInput.addEventListener('blur', (e) => {
+                const value = parseInt(e.target.value, 10);
+                if (isNaN(value) || value < 1000) {
+                    e.target.value = 1000;
+                    uiHelperFunctions.showToastNotification('九宫格出现延迟不能小于1000ms，已自动调整', 'info');
+                }
+            });
+        }
+
+        // Test middle click grid button has been removed as requested
+
         openAdminPanelBtn.addEventListener('click', async () => {
             if (globalSettings.vcpServerUrl) {
                 if (window.electronAPI && window.electronAPI.sendOpenExternalLink) {
@@ -1737,6 +1815,7 @@ async function handleConfirmForward() {
 window.getCroppedFile = getCroppedFile;
 window.setCroppedFile = setCroppedFile;
 window.ensureAudioContext = () => { /* Placeholder, will be defined in setupTtsListeners */ };
+window.showForwardModal = showForwardModal;
 
 // Make globalSettings accessible for notification renderer
 window.globalSettings = globalSettings;
