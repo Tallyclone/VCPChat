@@ -1435,6 +1435,55 @@ let activeMiddleClickTimers = new Map();
 let middleClickGrid = null;
 let currentGridSelection = '';
 let isAdvancedModeActive = false;
+let isDeletingMessage = false; // Flag to suppress grid cancellation messages during delete
+let freezeGridCancellation = false; // Flag to completely freeze grid cancellation logic
+
+/**
+ * 检查气泡是否处于完成状态，可以进行中键操作
+ * @param {Object} message - 消息对象
+ * @param {HTMLElement} messageItem - 消息DOM元素
+ * @returns {boolean} - 是否可以进行中键操作
+ */
+function canPerformMiddleClickAction(message, messageItem) {
+    if (!message || !messageItem) {
+        return false;
+    }
+
+    const messageId = message.id;
+
+    // 多重状态检查，确保消息真正完成
+    const isThinking = message.isThinking;
+    const isStreaming = messageItem.classList.contains('streaming');
+    const hasStreamingIndicator = messageItem.querySelector('.streaming-indicator, .thinking-indicator');
+
+    // 检查消息是否在streamManager中被标记为已完成
+    let isStreamManagerFinalized = false;
+    if (window.streamManager && typeof window.streamManager.isMessageInitialized === 'function') {
+        // 如果消息不在streamManager中跟踪，说明已经完成
+        isStreamManagerFinalized = !window.streamManager.isMessageInitialized(messageId);
+    }
+
+    // 检查消息是否有完成理由（表示已完成）
+    const hasFinishReason = message.finishReason && message.finishReason !== 'null';
+
+    // 检查消息内容是否完整（非流式消息的标志）
+    const hasCompleteContent = message.content &&
+        (typeof message.content === 'string' ? message.content.length > 0 : true);
+
+    // 增强的状态判断逻辑 - 只要满足以下任一条件即可认为完成：
+    // 1. 传统检查：非思考且非流式
+    // 2. 有完成理由（表示已完成）
+    // 3. StreamManager确认已完成
+    // 4. 有完整内容且无流式指示器
+    const isCompleted = (!isThinking && !isStreaming) ||
+                       hasFinishReason ||
+                       isStreamManagerFinalized ||
+                       (hasCompleteContent && !hasStreamingIndicator && !isStreaming);
+
+    console.log(`[MiddleClick] Checking message ${messageId}: thinking=${isThinking}, streaming=${isStreaming}, hasIndicator=${!!hasStreamingIndicator}, streamFinalized=${isStreamManagerFinalized}, finishReason=${message.finishReason}, completed=${isCompleted}`);
+
+    return isCompleted;
+}
 
 /**
  * Starts the advanced middle click timer mechanism with grid selection
@@ -1444,6 +1493,12 @@ let isAdvancedModeActive = false;
  * @param {Object} globalSettings - The global settings object
  */
 function startAdvancedMiddleClickTimer(event, messageItem, message, globalSettings) {
+    // 首先检查气泡是否处于完成状态
+    if (!canPerformMiddleClickAction(message, messageItem)) {
+        console.log(`[AdvancedMiddleClick] Ignoring advanced middle click on incomplete message: ${message?.id}`);
+        return;
+    }
+
     const timerId = `advanced_middle_click_${message.id}_${Date.now()}`;
 
     // Add visual feedback - change cursor and add a subtle highlight
@@ -1463,6 +1518,14 @@ function startAdvancedMiddleClickTimer(event, messageItem, message, globalSettin
         }
         currentGridSelection = '';
         isAdvancedModeActive = false;
+        isDeletingMessage = false;
+        freezeGridCancellation = false;
+        // 恢复原始的 showToastNotification 函数
+        if (mainRendererReferences.uiHelper.showToastNotification &&
+            mainRendererReferences.uiHelper.showToastNotification.tempShowToast) {
+            mainRendererReferences.uiHelper.showToastNotification =
+                mainRendererReferences.uiHelper.showToastNotification.originalShowToast;
+        }
         activeMiddleClickTimers.delete(timerId);
     };
 
@@ -1490,22 +1553,24 @@ function startAdvancedMiddleClickTimer(event, messageItem, message, globalSettin
                 } else {
                     console.log('[AdvancedMiddleClick] No valid selection made - keeping current setting');
                     // Don't change the setting if no valid selection was made
-                    // Show a brief message to indicate cancellation
-                    const globalSettings = mainRendererReferences.globalSettingsRef.get();
-                    if (globalSettings.middleClickQuickAction && globalSettings.middleClickQuickAction.trim() !== '') {
-                        const actionNames = {
-                            'edit': '编辑消息',
-                            'copy': '复制文本',
-                            'createBranch': '创建分支',
-                            'readAloud': '朗读气泡',
-                            'readMode': '阅读模式',
-                            'regenerate': '重新回复',
-                            'forward': '转发消息',
-                            'delete': '删除消息'
-                        };
-                        mainRendererReferences.uiHelper.showToastNotification(`九宫格操作已取消，当前中键功能保持为: ${actionNames[globalSettings.middleClickQuickAction] || globalSettings.middleClickQuickAction}`, 'info');
-                    } else {
-                        mainRendererReferences.uiHelper.showToastNotification('九宫格操作已取消，中键快速功能未设置', 'info');
+                    // Show a brief message to indicate cancellation (unless we're deleting a message or cancellation is frozen)
+                    if (!isDeletingMessage && !freezeGridCancellation) {
+                        const globalSettings = mainRendererReferences.globalSettingsRef.get();
+                        if (globalSettings.middleClickQuickAction && globalSettings.middleClickQuickAction.trim() !== '') {
+                            const actionNames = {
+                                'edit': '编辑消息',
+                                'copy': '复制文本',
+                                'createBranch': '创建分支',
+                                'readAloud': '朗读气泡',
+                                'readMode': '阅读模式',
+                                'regenerate': '重新回复',
+                                'forward': '转发消息',
+                                'delete': '删除消息'
+                            };
+                            mainRendererReferences.uiHelper.showToastNotification(`九宫格操作已取消，当前中键功能保持为: ${actionNames[globalSettings.middleClickQuickAction] || globalSettings.middleClickQuickAction}`, 'info');
+                        } else {
+                            mainRendererReferences.uiHelper.showToastNotification('九宫格操作已取消，中键快速功能未设置', 'info');
+                        }
                     }
                 }
             }
@@ -1572,6 +1637,12 @@ function startAdvancedMiddleClickTimer(event, messageItem, message, globalSettin
  * @param {string} quickAction - The quick action to perform
  */
 function startMiddleClickTimer(event, messageItem, message, quickAction) {
+    // 首先检查气泡是否处于完成状态
+    if (!canPerformMiddleClickAction(message, messageItem)) {
+        console.log(`[MiddleClick] Ignoring middle click on incomplete message: ${message?.id}`);
+        return;
+    }
+
     const timerId = `middle_click_${message.id}_${Date.now()}`;
 
     // Add visual feedback - change cursor and add a subtle highlight
@@ -1584,6 +1655,14 @@ function startMiddleClickTimer(event, messageItem, message, quickAction) {
     const cleanup = () => {
         messageItem.style.cursor = '';
         messageItem.style.backgroundColor = '';
+        isDeletingMessage = false;
+        freezeGridCancellation = false;
+        // 恢复原始的 showToastNotification 函数
+        if (mainRendererReferences.uiHelper.showToastNotification &&
+            mainRendererReferences.uiHelper.showToastNotification.tempShowToast) {
+            mainRendererReferences.uiHelper.showToastNotification =
+                mainRendererReferences.uiHelper.showToastNotification.originalShowToast;
+        }
         activeMiddleClickTimers.delete(timerId);
     };
 
@@ -1645,6 +1724,13 @@ function handleMiddleClickQuickAction(event, messageItem, message, quickAction) 
     const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
     const currentSelectedItemVal = mainRendererReferences.currentSelectedItemRef.get();
     const currentTopicIdVal = mainRendererReferences.currentTopicIdRef.get();
+
+    // 在执行操作前再次检查气泡状态（使用与初始检查相同的逻辑）
+    if (!canPerformMiddleClickAction(message, messageItem)) {
+        console.log(`[MiddleClick] Cancelling action on message ${message?.id} - no longer in completed state`);
+        uiHelper.showToastNotification("操作已取消：气泡未完成", "warning");
+        return;
+    }
 
     console.log(`[MiddleClick] Executing quick action: ${quickAction} for message: ${message.id}`);
 
@@ -1722,6 +1808,7 @@ function handleMiddleClickQuickAction(event, messageItem, message, quickAction) 
             // 创建分支
             if (typeof mainRendererReferences.handleCreateBranch === 'function') {
                 mainRendererReferences.handleCreateBranch(message);
+                uiHelper.showToastNotification("已开始创建分支", "success");
             } else {
                 uiHelper.showToastNotification("创建分支功能暂时不可用", "warning");
             }
@@ -1731,6 +1818,7 @@ function handleMiddleClickQuickAction(event, messageItem, message, quickAction) 
             // 转发消息 - 执行与右键菜单完全相同的功能
             if (typeof window.showForwardModal === 'function') {
                 window.showForwardModal(message);
+                uiHelper.showToastNotification("已打开转发对话框", "success");
             } else {
                 uiHelper.showToastNotification("转发功能暂时不可用", "warning");
             }
@@ -1821,10 +1909,35 @@ function handleMiddleClickQuickAction(event, messageItem, message, quickAction) 
         case 'regenerate':
             // 重新回复
             if (message.role === 'assistant') {
-                if (contextMenu && typeof contextMenu.handleRegenerateResponse === 'function') {
-                    contextMenu.handleRegenerateResponse(message);
+                if (message.isGroupMessage) {
+                    // 群聊重新回复逻辑
+                    const currentSelectedItem = mainRendererReferences.currentSelectedItemRef.get();
+                    const currentTopicId = mainRendererReferences.currentTopicIdRef.get();
+
+                    if (currentSelectedItem.type === 'group' && currentTopicId && message.id && message.agentId) {
+                        // 调用群聊重新回复的IPC接口
+                        if (mainRendererReferences.electronAPI && mainRendererReferences.electronAPI.redoGroupChatMessage) {
+                            mainRendererReferences.electronAPI.redoGroupChatMessage(
+                                currentSelectedItem.id,
+                                currentTopicId,
+                                message.id,
+                                message.agentId
+                            );
+                            uiHelper.showToastNotification("已开始重新生成回复", "success");
+                        } else {
+                            uiHelper.showToastNotification("群聊重新回复功能暂时不可用", "warning");
+                        }
+                    } else {
+                        uiHelper.showToastNotification("无法重新回复：缺少群聊上下文信息。", "error");
+                    }
                 } else {
-                    uiHelper.showToastNotification("重新回复功能暂时不可用", "warning");
+                    // 非群聊重新回复逻辑（原有逻辑）
+                    if (contextMenu && typeof contextMenu.handleRegenerateResponse === 'function') {
+                        contextMenu.handleRegenerateResponse(message);
+                        uiHelper.showToastNotification("已开始重新生成回复", "success");
+                    } else {
+                        uiHelper.showToastNotification("重新回复功能暂时不可用", "warning");
+                    }
                 }
             } else {
                 uiHelper.showToastNotification("重新回复功能仅适用于助手消息。", "warning");
@@ -1832,7 +1945,7 @@ function handleMiddleClickQuickAction(event, messageItem, message, quickAction) 
             break;
 
         case 'delete':
-            // 删除消息
+            // 删除消息 - 完全阻止九宫格取消提示
             let textForConfirm = "";
             if (typeof message.content === 'string') {
                 textForConfirm = message.content;
@@ -1843,11 +1956,62 @@ function handleMiddleClickQuickAction(event, messageItem, message, quickAction) 
             }
 
             if (confirm(`确定要删除此消息吗？\n"${textForConfirm.substring(0, 50)}${textForConfirm.length > 50 ? '...' : ''}"`)) {
-                if (contextMenuDependencies.removeMessageById && typeof contextMenuDependencies.removeMessageById === 'function') {
-                    contextMenuDependencies.removeMessageById(message.id, true);
-                } else {
-                    uiHelper.showToastNotification("删除功能暂时不可用", "warning");
+                // 设置标志位阻止九宫格取消提示
+                isDeletingMessage = true;
+                freezeGridCancellation = true;
+
+                // 立即清理所有中键相关状态和定时器
+                cleanupAllMiddleClickTimers();
+
+                // 立即重置九宫格显示状态
+                if (middleClickGrid) {
+                    middleClickGrid.remove();
+                    middleClickGrid = null;
                 }
+                currentGridSelection = '';
+                isAdvancedModeActive = false;
+
+                // 创建临时的提示函数，过滤掉九宫格相关提示
+                const originalShowToast = uiHelper.showToastNotification;
+                let tempShowToast = function(message, type) {
+                    // 拦截所有九宫格相关的提示
+                    if (message.includes('九宫格操作已取消') ||
+                        message.includes('中键快速功能保持为') ||
+                        message.includes('中键快速功能未设置')) {
+                        console.log('[Delete] Blocked grid cancellation message:', message);
+                        return;
+                    }
+                    // 其他提示正常显示
+                    return originalShowToast.call(this, message, type);
+                };
+
+                // 保存原始函数引用并临时替换
+                tempShowToast.originalShowToast = originalShowToast;
+                uiHelper.showToastNotification = tempShowToast;
+
+                // 执行删除操作
+                if (typeof removeMessageById === 'function') {
+                    removeMessageById(message.id, true);
+                    // 显示删除成功提示
+                    setTimeout(() => {
+                        uiHelper.showToastNotification("消息已删除", "success");
+                    }, 10);
+                } else {
+                    setTimeout(() => {
+                        uiHelper.showToastNotification("删除功能暂时不可用", "warning");
+                    }, 10);
+                }
+
+                // 延迟恢复原始函数
+                setTimeout(() => {
+                    uiHelper.showToastNotification = originalShowToast;
+                }, 200);
+
+                // 延迟清理标志位，确保删除操作完全完成
+                setTimeout(() => {
+                    isDeletingMessage = false;
+                    freezeGridCancellation = false;
+                }, 300);
             }
             break;
 
@@ -2104,10 +2268,30 @@ function cleanupAllMiddleClickTimers() {
     }
     currentGridSelection = '';
     isAdvancedModeActive = false;
+    isDeletingMessage = false;
+    freezeGridCancellation = false;
+
+    // 恢复原始的 showToastNotification 函数
+    if (mainRendererReferences.uiHelper.showToastNotification &&
+        mainRendererReferences.uiHelper.showToastNotification.tempShowToast) {
+        mainRendererReferences.uiHelper.showToastNotification =
+            mainRendererReferences.uiHelper.showToastNotification.originalShowToast;
+    }
 }
 
 // Add cleanup on page unload
-window.addEventListener('beforeunload', cleanupAllMiddleClickTimers);
+window.addEventListener('beforeunload', () => {
+    cleanupAllMiddleClickTimers();
+    isDeletingMessage = false;
+    freezeGridCancellation = false;
+
+    // 恢复原始的 showToastNotification 函数
+    if (mainRendererReferences.uiHelper.showToastNotification &&
+        mainRendererReferences.uiHelper.showToastNotification.tempShowToast) {
+        mainRendererReferences.uiHelper.showToastNotification =
+            mainRendererReferences.uiHelper.showToastNotification.originalShowToast;
+    }
+});
 
 // Also expose cleanup function for manual cleanup if needed
 window.cleanupMiddleClickTimers = cleanupAllMiddleClickTimers;
@@ -2118,7 +2302,11 @@ window.getMiddleClickState = () => ({
     activeTimers: activeMiddleClickTimers.size,
     gridVisible: !!middleClickGrid,
     currentSelection: currentGridSelection,
-    advancedModeActive: isAdvancedModeActive
+    advancedModeActive: isAdvancedModeActive,
+    isDeletingMessage: isDeletingMessage,
+    freezeGridCancellation: freezeGridCancellation,
+    toastFunctionModified: !!(mainRendererReferences.uiHelper.showToastNotification &&
+                             mainRendererReferences.uiHelper.showToastNotification.tempShowToast)
 });
 
 window.messageRenderer = {
