@@ -1199,6 +1199,8 @@ function setupEventListeners() {
             enableDistributedServer: document.getElementById('enableDistributedServer').checked,
             agentMusicControl: document.getElementById('agentMusicControl').checked,
             enableVcpToolInjection: document.getElementById('enableVcpToolInjection').checked,
+            enableContextSanitizer: document.getElementById('enableContextSanitizer').checked,
+            contextSanitizerDepth: parseInt(document.getElementById('contextSanitizerDepth').value, 10) || 0,
         };
 
         const userAvatarCropped = getCroppedFile('user'); // Use central getter
@@ -1527,6 +1529,15 @@ function setupEventListeners() {
             // This will be handled by a function exposed on the electronAPI
             // which in turn sends an IPC message to the main process.
             window.electronAPI.minimizeToTray();
+        });
+    }
+
+    const enableContextSanitizerCheckbox = document.getElementById('enableContextSanitizer');
+    const contextSanitizerDepthContainer = document.getElementById('contextSanitizerDepthContainer');
+
+    if (enableContextSanitizerCheckbox && contextSanitizerDepthContainer) {
+        enableContextSanitizerCheckbox.addEventListener('change', () => {
+            contextSanitizerDepthContainer.style.display = enableContextSanitizerCheckbox.checked ? 'block' : 'none';
         });
     }
 }

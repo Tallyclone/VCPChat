@@ -3,6 +3,7 @@ const { ipcMain, dialog, BrowserWindow } = require('electron');
 const fs = require('fs-extra');
 const path = require('path');
 const fileManager = require('../fileManager');
+const contextSanitizer = require('../contextSanitizer');
 
 /**
  * Initializes chat and topic related IPC handlers.
@@ -674,7 +675,29 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
                 console.error('[Agent Bubble Theme] Failed to inject bubble theme info:', e);
             }
             // --- End of Injection ---
-            // --- End of Injection ---
+            // --- Context Sanitizer Integration ---
+            try {
+                if (settings.enableContextSanitizer === true) {
+                    const sanitizerDepth = settings.contextSanitizerDepth !== undefined ? settings.contextSanitizerDepth : 2;
+                    console.log(`[Context Sanitizer] Enabled with depth: ${sanitizerDepth}`);
+                    
+                    // 只处理非系统消息（排除 system role）
+                    const systemMessages = messages.filter(m => m.role === 'system');
+                    const nonSystemMessages = messages.filter(m => m.role !== 'system');
+                    
+                    // 对非系统消息应用净化
+                    const sanitizedNonSystemMessages = contextSanitizer.sanitizeMessages(nonSystemMessages, sanitizerDepth);
+                    
+                    // 重新组合消息数组（保持系统消息在最前面）
+                    messages = [...systemMessages, ...sanitizedNonSystemMessages];
+                    
+                    console.log(`[Context Sanitizer] Messages processed successfully`);
+                }
+            } catch (sanitizerError) {
+                console.error('[Context Sanitizer] Error during sanitization, proceeding with original messages:', sanitizerError);
+                // 出错时继续使用原始消息，不影响正常流程
+            }
+            // --- End of Context Sanitizer Integration ---
 
             console.log(`发送到VCP服务器: ${finalVcpUrl} for messageId: ${messageId}`);
             console.log('VCP API Key:', vcpApiKey ? '已设置' : '未设置');
