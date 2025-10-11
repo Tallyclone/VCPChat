@@ -78,11 +78,12 @@ class RAGObserverConfig {
         this.wsConnection.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);
-                if (data.type === 'RAG_RETRIEVAL_DETAILS') {
+                // 检查是否为RAG或元思考链的详细信息
+                if (data.type === 'RAG_RETRIEVAL_DETAILS' || data.type === 'META_THINKING_CHAIN') {
                     if (window.startSpectrumAnimation) {
                         window.startSpectrumAnimation(3000); // 动画持续3秒
                     }
-                    displayRagInfo(data);
+                    displayRagInfo(data); // displayRagInfo内部会处理这两种类型
                 }
             } catch (e) {
                 console.error('解析消息失败:', e);

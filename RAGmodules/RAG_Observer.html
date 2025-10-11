@@ -131,6 +131,136 @@
         .rag-meta .source-time { background-color: rgba(46, 204, 113, 0.2); color: #58d68d; border-color: #58d68d; }
         .rag-meta .date { background-color: rgba(142, 68, 173, 0.2); color: #af7ac5; border-color: #af7ac5; }
 
+        /* 元思考链专用样式 */
+        .meta-thinking-block {
+            background: linear-gradient(135deg, rgba(142, 68, 173, 0.1) 0%, rgba(52, 152, 219, 0.1) 100%);
+            border: 2px solid rgba(142, 68, 173, 0.3);
+            border-radius: 16px;
+            margin-bottom: 25px;
+            padding: 20px;
+            box-shadow: 0 6px 24px rgba(142, 68, 173, 0.2);
+        }
+        
+        .meta-thinking-header {
+            text-align: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px dashed rgba(142, 68, 173, 0.3);
+        }
+        
+        .meta-thinking-header h3 {
+            margin: 0 0 10px 0;
+            color: #af7ac5;
+            font-size: 1.5em;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        
+        .chain-path {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 15px 0;
+            font-size: 0.9em;
+        }
+        
+        .chain-node {
+            background: rgba(142, 68, 173, 0.2);
+            color: #af7ac5;
+            padding: 5px 12px;
+            border-radius: 20px;
+            border: 1px solid #af7ac5;
+            font-weight: 500;
+        }
+        
+        .chain-arrow {
+            color: #af7ac5;
+            font-size: 1.2em;
+        }
+        
+        .semantic-groups {
+            background: rgba(52, 152, 219, 0.1);
+            border: 1px solid rgba(52, 152, 219, 0.3);
+            border-radius: 8px;
+            padding: 10px 15px;
+            margin: 10px 0;
+        }
+        
+        .semantic-groups strong {
+            color: #5dade2;
+        }
+        
+        .semantic-group-tag {
+            background: rgba(52, 152, 219, 0.2);
+            color: #5dade2;
+            padding: 3px 10px;
+            border-radius: 12px;
+            margin: 0 5px;
+            font-size: 0.85em;
+            border: 1px solid #5dade2;
+        }
+        
+        .thinking-stage {
+            background: rgba(255, 255, 255, 0.03);
+            border-left: 4px solid #af7ac5;
+            border-radius: 8px;
+            margin: 15px 0;
+            padding: 15px;
+            transition: all 0.3s ease;
+        }
+        
+        .thinking-stage:hover {
+            background: rgba(255, 255, 255, 0.06);
+            transform: translateX(5px);
+        }
+        
+        .stage-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .stage-title {
+            font-size: 1.1em;
+            font-weight: 600;
+            color: #af7ac5;
+        }
+        
+        .stage-badge {
+            background: rgba(142, 68, 173, 0.2);
+            color: #af7ac5;
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-size: 0.85em;
+            border: 1px solid #af7ac5;
+        }
+        
+        .stage-results {
+            margin-top: 10px;
+        }
+        
+        .stage-result-item {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 10px;
+            margin: 8px 0;
+            font-size: 0.9em;
+        }
+        
+        .stage-result-meta {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 6px;
+            font-size: 0.85em;
+            color: var(--secondary-text);
+        }
+
         .toggle-button {
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid var(--border-color);
@@ -267,6 +397,12 @@
                 infoContainer.innerHTML = '';
             }
 
+            // 检查是否为元思考链数据
+            if (data.type === 'META_THINKING_CHAIN') {
+                displayMetaThinkingChain(data);
+                return;
+            }
+
             const block = document.createElement('div');
             block.className = 'rag-block';
 
@@ -362,6 +498,178 @@
             const contentDiv = button.closest('.rag-item').querySelector('.rag-content');
             const snippet = contentDiv.querySelector('.snippet');
             const fullText = contentDiv.querySelector('.full-text');
+
+            const isCollapsed = fullText.style.display === 'none';
+            if (isCollapsed) {
+                fullText.style.display = 'block';
+                snippet.style.display = 'none';
+                button.textContent = '收起';
+
+            } else {
+                fullText.style.display = 'none';
+                snippet.style.display = 'block';
+                button.textContent = '展开';
+            }
+        }
+
+        function displayMetaThinkingChain(data) {
+            const block = document.createElement('div');
+            block.className = 'meta-thinking-block';
+
+            // 头部
+            const header = document.createElement('div');
+            header.className = 'meta-thinking-header';
+            
+            const title = document.createElement('h3');
+            title.innerHTML = `
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="#af7ac5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="rgba(142, 68, 173, 0.2)"/>
+                    <path d="M2 17L12 22L22 17" stroke="#af7ac5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M2 12L12 17L22 12" stroke="#af7ac5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                VCP元思考链: ${data.chainName}
+            `;
+            header.appendChild(title);
+
+            // 查询信息
+            const queryInfo = document.createElement('p');
+            queryInfo.style.fontSize = '0.9em';
+            queryInfo.style.color = 'var(--secondary-text)';
+            const queryText = data.query || '';
+            const needsToggle = queryText.length > 100;
+            const queryDisplay = needsToggle
+                ? `<span class="snippet">${queryText.substring(0, 100)}...</span><span class="full-text" style="display:none;">${queryText}</span>`
+                : `<span>${queryText}</span>`;
+            const toggleButtonHTML = needsToggle
+                ? `<button class="toggle-button" style="margin-left: 8px;" onclick="toggleQueryText(this)">展开</button>`
+                : '';
+            queryInfo.innerHTML = `查询: <em class="query-content">${queryDisplay}</em> ${toggleButtonHTML}`;
+            header.appendChild(queryInfo);
+
+            // 思维链路径
+            const chainPath = document.createElement('div');
+            chainPath.className = 'chain-path';
+            if (data.stages && data.stages.length > 0) {
+                data.stages.forEach((stage, index) => {
+                    if (index > 0) {
+                        const arrow = document.createElement('span');
+                        arrow.className = 'chain-arrow';
+                        arrow.textContent = '→';
+                        chainPath.appendChild(arrow);
+                    }
+                    const node = document.createElement('span');
+                    node.className = 'chain-node';
+                    node.textContent = stage.clusterName;
+                    chainPath.appendChild(node);
+                });
+            }
+            header.appendChild(chainPath);
+
+            // 语义组信息
+            if (data.useGroup && data.activatedGroups && data.activatedGroups.length > 0) {
+                const groupsDiv = document.createElement('div');
+                groupsDiv.className = 'semantic-groups';
+                let groupsHTML = '<strong>激活的语义组:</strong> ';
+                data.activatedGroups.forEach(group => {
+                    groupsHTML += `<span class="semantic-group-tag">${group}</span>`;
+                });
+                groupsDiv.innerHTML = groupsHTML;
+                header.appendChild(groupsDiv);
+            }
+
+            // 统计信息
+            const statsDiv = document.createElement('p');
+            statsDiv.style.fontSize = '0.85em';
+            statsDiv.style.marginTop = '10px';
+            statsDiv.innerHTML = `
+                <strong>总阶段数:</strong> ${data.totalStages} |
+                <strong>使用语义组:</strong> ${data.useGroup ? '是' : '否'}
+            `;
+            header.appendChild(statsDiv);
+
+            block.appendChild(header);
+
+            // 各阶段详情
+            if (data.stages && data.stages.length > 0) {
+                data.stages.forEach(stage => {
+                    const stageDiv = document.createElement('div');
+                    stageDiv.className = 'thinking-stage';
+
+                    const stageHeader = document.createElement('div');
+                    stageHeader.className = 'stage-header';
+
+                    const stageTitle = document.createElement('div');
+                    stageTitle.className = 'stage-title';
+                    stageTitle.textContent = `阶段${stage.stage}: ${stage.clusterName}`;
+
+                    const stageBadge = document.createElement('div');
+                    stageBadge.className = 'stage-badge';
+                    stageBadge.textContent = `召回 ${stage.resultCount} 个`;
+
+                    stageHeader.appendChild(stageTitle);
+                    stageHeader.appendChild(stageBadge);
+                    stageDiv.appendChild(stageHeader);
+
+                    // 阶段结果
+                    if (stage.results && stage.results.length > 0) {
+                        const resultsDiv = document.createElement('div');
+                        resultsDiv.className = 'stage-results';
+
+                        stage.results.forEach((result, idx) => {
+                            const resultItem = document.createElement('div');
+                            resultItem.className = 'stage-result-item';
+
+                            const resultMeta = document.createElement('div');
+                            resultMeta.className = 'stage-result-meta';
+                            resultMeta.innerHTML = `
+                                <span>#${idx + 1}</span>
+                                ${result.score ? `<span>Score: ${result.score.toFixed(3)}</span>` : ''}
+                            `;
+
+                            const resultText = document.createElement('div');
+                            resultText.style.marginTop = '6px';
+                            resultText.style.fontSize = '0.9em';
+                            resultText.style.lineHeight = '1.5';
+                            
+                            const needsToggleResult = result.text && result.text.length > 120;
+                            if (needsToggleResult) {
+                                resultText.innerHTML = `
+                                    <div class="snippet">${result.text.substring(0, 120)}...</div>
+                                    <div class="full-text" style="display:none;">${result.text}</div>
+                                    <button class="toggle-button" style="margin-top: 6px;" onclick="toggleResultText(this)">展开</button>
+                                `;
+                            } else {
+                                resultText.textContent = result.text || '';
+                            }
+
+                            resultItem.appendChild(resultMeta);
+                            resultItem.appendChild(resultText);
+                            resultsDiv.appendChild(resultItem);
+                        });
+
+                        stageDiv.appendChild(resultsDiv);
+                    } else {
+                        const noResults = document.createElement('p');
+                        noResults.style.fontSize = '0.9em';
+                        noResults.style.color = 'var(--secondary-text)';
+                        noResults.style.fontStyle = 'italic';
+                        noResults.textContent = '本阶段未找到匹配的元逻辑模块';
+                        stageDiv.appendChild(noResults);
+                    }
+
+                    block.appendChild(stageDiv);
+                });
+            }
+
+            infoContainer.prepend(block);
+        }
+
+        function toggleResultText(button) {
+            const parent = button.parentElement;
+            const snippet = parent.querySelector('.snippet');
+            const fullText = parent.querySelector('.full-text');
+            
+            if (!snippet || !fullText) return;
 
             const isCollapsed = fullText.style.display === 'none';
             if (isCollapsed) {
