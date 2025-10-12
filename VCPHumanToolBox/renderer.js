@@ -1,27 +1,6 @@
 // VCPHumanToolBox/renderer.js
-const { ipcRenderer } = require('electron');
-const { marked } = require('marked');
 
-const canvasHandler = require('./renderer_modules/ui/canvas-handler.js');
-const dynamicImageHandler = require('./renderer_modules/ui/dynamic-image-handler.js');
-
-// 创建 electronAPI 对象以支持 ComfyUI 模块
-window.electronAPI = {
-    invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
-    send: (channel, ...args) => ipcRenderer.send(channel, ...args),
-    on: (channel, callback) => {
-        // 为了安全，只允许特定的通道
-        const validChannels = ['comfyui:config-changed', 'comfyui:workflows-changed'];
-        if (validChannels.includes(channel)) {
-            ipcRenderer.on(channel, callback);
-        }
-    },
-    removeListener: (channel, callback) => {
-        ipcRenderer.removeListener(channel, callback);
-    }
-};
-
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     // --- 元素获取 ---
     const toolGrid = document.getElementById('tool-grid');
     const toolDetailView = document.getElementById('tool-detail-view');
@@ -31,96 +10,66 @@ document.addEventListener('DOMContentLoaded', () => {
     const toolForm = document.getElementById('tool-form');
     const resultContainer = document.getElementById('result-container');
 
-    // --- 从主程序 settings.json 读取配置 ---
-    const fs = require('fs');
-    const fsPromises = require('fs').promises;
-    const path = require('path');
-
+    // --- 全局变量 ---
     let VCP_SERVER_URL = '';
     let VCP_API_KEY = '';
-    let USER_NAME = 'Human'; // Default value in case it's not found
-    let settings = {}; // Make settings available in a wider scope
-    let MAX_FILENAME_LENGTH = 400; // 默认最大文件名长度
-    const settingsPath = path.join(__dirname, '..', 'AppData', 'settings.json');
+    let USER_NAME = 'Human';
+    let settings = {};
+    let MAX_FILENAME_LENGTH = 400;
 
-    function loadSettings() {
+    // --- 设置加载与保存 ---
+    async function loadSettings() {
         try {
-            const settingsData = fs.readFileSync(settingsPath, 'utf8');
-            settings = JSON.parse(settingsData);
+            settings = await window.electronAPI.invoke('vcp-ht-get-settings');
         } catch (error) {
-            console.error('Failed to load settings.json:', error);
-            settings = {}; // Reset to empty object on error
+            console.error('Failed to load settings:', error);
+            settings = {};
         }
     }
 
-    // 修复：使用安全的异步文件写入方式
     async function saveSettings() {
         try {
-            // 使用安全的原子性写入
-            const tempFile = settingsPath + '.tmp';
-            const settingsJson = JSON.stringify(settings, null, 4);
-            
-            // 写入临时文件
-            await fsPromises.writeFile(tempFile, settingsJson, 'utf8');
-            
-            // 验证写入的文件是否正确
-            const verifyContent = await fsPromises.readFile(tempFile, 'utf8');
-            JSON.parse(verifyContent); // 检查JSON格式是否正确
-            
-            // 如果验证成功，再重命名为正式文件
-            await fsPromises.rename(tempFile, settingsPath);
-            
+            const result = await window.electronAPI.invoke('vcp-ht-save-settings', settings);
+            if (!result.success) {
+                throw new Error(result.error);
+            }
             console.log('[VCPHumanToolBox] Settings saved successfully');
         } catch (error) {
-            console.error('[VCPHumanToolBox] Failed to save settings.json:', error);
-            
-            // 清理可能存在的临时文件
-            try {
-                await fsPromises.unlink(settingsPath + '.tmp');
-            } catch (cleanupError) {
-                // 忽略清理错误
-            }
-            
-            throw error; // 重新抛出错误以便调用者处理
+            console.error('[VCPHumanToolBox] Failed to save settings:', error);
+            throw error;
         }
     }
 
-    // 修复：确保只读取时使用同步操作，写入时使用异步操作
-    function saveSettingsSync() {
-        console.warn('[VCPHumanToolBox] saveSettingsSync is deprecated, use saveSettings() instead');
-        // 如果必须同步保存，至少使用try-catch保护
-        try {
-            fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 4), 'utf8');
-        } catch (error) {
-            console.error('[VCPHumanToolBox] Failed to save settings.json synchronously:', error);
-        }
-    }
-
-    try {
-        loadSettings(); // Initial load
+    // --- 初始化应用程序 ---
+    async function initializeApp() {
+        await loadSettings();
 
         if (settings.vcpServerUrl) {
-            const url = new URL(settings.vcpServerUrl);
-            url.pathname = '/v1/human/tool';
-            VCP_SERVER_URL = url.toString();
+            try {
+                const url = new URL(settings.vcpServerUrl);
+                url.pathname = '/v1/human/tool';
+                VCP_SERVER_URL = url.toString();
+            } catch (e) {
+                console.error("Invalid vcpServerUrl in settings:", settings.vcpServerUrl);
+            }
         }
         VCP_API_KEY = settings.vcpApiKey || '';
         USER_NAME = settings.userName || 'Human';
         MAX_FILENAME_LENGTH = settings.maxFilenameLength || 400;
-        canvasHandler.setMaxFilenameLength(MAX_FILENAME_LENGTH); // Pass config to the module
+        
+        // 动态加载模块并传递配置
+        // 注意：由于移除了 require，模块需要重构为浏览器兼容的格式
+        // const canvasHandler = await import('./renderer_modules/ui/canvas-handler.js');
+        // canvasHandler.setMaxFilenameLength(MAX_FILENAME_LENGTH);
 
         if (!VCP_SERVER_URL || !VCP_API_KEY) {
-            throw new Error('未能从 settings.json 中找到 vcpServerUrl 或 vcpApiKey');
+            toolGrid.innerHTML = `<div class="error">错误：无法加载配置文件 (settings.json)。请确保文件存在且格式正确。<br>未能从 settings.json 中找到 vcpServerUrl 或 vcpApiKey</div>`;
+            return;
         }
 
-    } catch (error) {
-        console.error('加载配置文件失败:', error);
-        // 在界面上显示错误，阻止后续操作
-        toolGrid.innerHTML = `<div class="error">错误：无法加载配置文件 (settings.json)。请确保文件存在且格式正确。<br>${error.message}</div>`;
-        return; // 停止执行
+        initializeUI();
     }
-
-
+    
     // --- 工具定义 (基于 supertool.txt) ---
     const tools = {
         // 多媒体生成类
@@ -516,7 +465,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             } else if (param.type === 'dragdrop_image') {
                 // 创建拖拽上传图片输入框
-                input = canvasHandler.createDragDropImageInput(param);
+                // input = canvasHandler.createDragDropImageInput(param);
+                input = document.createElement('input');
+                input.type = 'text';
+                input.placeholder = 'Drag and drop is currently disabled.';
+
             } else if (param.type === 'checkbox') {
                 input = document.createElement('div');
                 input.className = 'checkbox-group';
@@ -596,7 +549,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 如果是 NanoBanana compose 模式，添加动态图片管理区域
         if (isNanoBananaCompose) {
-            dynamicImageHandler.createDynamicImageContainer(container);
+            // dynamicImageHandler.createDynamicImageContainer(container);
         }
 
         dependencyListeners.forEach(listener => listener());
@@ -835,13 +788,6 @@ document.addEventListener('DOMContentLoaded', () => {
             button.innerHTML = originalText;
             button.disabled = false;
         }
-    }
-
-    // 后备翻译方法（简单的关键词识别）
-    async function fallbackTranslate(text) {
-        // 这里可以实现一个简单的翻译逻辑或者调用其他翻译服务
-        // 目前直接返回原文，用户可以手动修改
-        return text;
     }
 
     // 全部清空功能
@@ -1083,7 +1029,49 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    async function executeTool(toolName) {
+        const formData = new FormData(toolForm);
+        const args = {};
+        let finalToolName = toolName;
 
+        const tool = tools[toolName];
+        if (tool.commands) {
+            const command = formData.get('command');
+            finalToolName = `${toolName}.${command}`;
+        }
+
+        for (let [key, value] of formData.entries()) {
+            if (key !== 'command') {
+                // Handle checkbox
+                const inputElement = toolForm.querySelector(`[name="${key}"]`);
+                if (inputElement && inputElement.type === 'checkbox') {
+                    args[key] = inputElement.checked;
+                } else if (value) {
+                    args[key] = value;
+                }
+            }
+        }
+
+        resultContainer.innerHTML = '<div class="loader"></div>';
+
+        try {
+            const result = await window.electronAPI.invoke('vcp-ht-execute-tool-proxy', {
+                url: VCP_SERVER_URL,
+                apiKey: VCP_API_KEY,
+                toolName: finalToolName,
+                userName: USER_NAME,
+                args: args
+            });
+
+            if (result.success) {
+                renderResult(result.data, toolName);
+            } else {
+                renderResult({ status: 'error', error: result.error }, toolName);
+            }
+        } catch (error) {
+            renderResult({ status: 'error', error: error.message }, toolName);
+        }
+    }
 
     function renderResult(data, toolName) {
         resultContainer.innerHTML = '';
@@ -1135,7 +1123,12 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (typeof content === 'string') { // Markdown/HTML string
             const div = document.createElement('div');
             // Use marked to render markdown, which will also render raw HTML like <img> tags
-            div.innerHTML = marked(content);
+            if (window.marked && typeof window.marked.parse === 'function') {
+                div.innerHTML = window.marked.parse(content);
+            } else {
+                console.error("'marked' library not loaded. Displaying content as plain text.");
+                div.textContent = content;
+            }
             resultContainer.appendChild(div);
         } else if (toolName === 'TavilySearch' && content && (content.results || content.images)) {
             const searchResultsWrapper = document.createElement('div');
@@ -1180,7 +1173,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     const snippet = document.createElement('div');
                     snippet.className = 'tavily-result-snippet';
-                    snippet.innerHTML = marked(result.content);
+                    if (window.marked && typeof window.marked.parse === 'function') {
+                        snippet.innerHTML = window.marked.parse(result.content);
+                    } else {
+                        console.error("'marked' library not loaded. Displaying content as plain text.");
+                        snippet.textContent = result.content;
+                    }
 
                     resultItem.appendChild(title);
                     resultItem.appendChild(url);
@@ -1201,7 +1199,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 imgElement.src = imageUrl;
                 resultContainer.appendChild(imgElement);
             } else if (typeof textResult === 'string') {
-                resultContainer.innerHTML = marked(textResult);
+                if (window.marked && typeof window.marked.parse === 'function') {
+                    resultContainer.innerHTML = window.marked.parse(textResult);
+                } else {
+                    console.error("'marked' library not loaded. Displaying content as plain text.");
+                    resultContainer.textContent = textResult;
+                }
             } else {
                 // Fallback for other objects: pretty-print the JSON
                 const pre = document.createElement('pre');
@@ -1215,7 +1218,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     
         // 4. Finally, ensure all rendered images (newly created or from HTML) have the context menu
-        attachEventListenersToImages(resultContainer);
+        // attachEventListenersToImages(resultContainer);
     }
 
     // --- Image Viewer Modal ---
@@ -1287,25 +1290,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- 初始化 ---
     async function loadAndProcessWallpaper() {
-        // Temporarily apply the body style to get the CSS variable value
         const bodyStyles = getComputedStyle(document.body);
         let wallpaperUrl = bodyStyles.backgroundImage;
 
         if (wallpaperUrl && wallpaperUrl !== 'none') {
-            // Extract the path from url("...")
             const match = wallpaperUrl.match(/url\("(.+)"\)/);
             if (match && match[1]) {
-                // The path in CSS is relative to the CSS file, so we need to resolve it
-                // from the main process perspective. We assume the path is like '../assets/wallpaper/...'
-                // and renderer.js is in 'VCPHumanToolBox', so we go up one level.
                 let imagePath = match[1];
-                // Decode URI and remove the 'file:///' prefix on Windows
                 if (imagePath.startsWith('file:///')) {
-                    imagePath = decodeURI(imagePath.substring(8)); // Remove 'file:///' and decode
+                    imagePath = decodeURI(imagePath.substring(8));
                 }
 
                 try {
-                    const processedImageBase64 = await ipcRenderer.invoke('vcp-ht-process-wallpaper', imagePath);
+                    const processedImageBase64 = await window.electronAPI.invoke('vcp-ht-process-wallpaper', imagePath);
                     if (processedImageBase64) {
                         document.body.style.backgroundImage = `url('${processedImageBase64}')`;
                     }
@@ -1316,16 +1313,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function initialize() {
+    function initializeUI() {
         // Window controls
         document.getElementById('minimize-btn').addEventListener('click', () => {
-            ipcRenderer.send('window-control', 'minimize');
+            window.electronAPI.send('window-control', 'minimize');
         });
         document.getElementById('maximize-btn').addEventListener('click', () => {
-            ipcRenderer.send('window-control', 'maximize');
+            window.electronAPI.send('window-control', 'maximize');
         });
         document.getElementById('close-btn').addEventListener('click', () => {
-            ipcRenderer.send('window-control', 'close');
+            window.electronAPI.send('window-control', 'close');
         });
 
         // Theme toggle
@@ -1354,7 +1351,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 await saveSettings();
             } catch (saveError) {
                 console.error('[VCPHumanToolBox] Failed to save theme setting:', saveError);
-                // 不阻断用户体验，只记录错误
             }
         });
 
@@ -1369,29 +1365,23 @@ document.addEventListener('DOMContentLoaded', () => {
         if (workflowBtn) {
             workflowBtn.addEventListener('click', openWorkflowEditor);
         }
-
-        // 移除全局设置按钮，改为工具内设置
-        // 设置按钮现在在 buildToolForm 函数中为 NanoBananaGenOR 工具单独添加
         
         renderToolGrid();
-        loadAndProcessWallpaper(); // Process the wallpaper on startup
+        loadAndProcessWallpaper();
         setupImageViewer();
     }
 
-    initialize();
+    initializeApp();
 
     // --- ComfyUI 集成功能 ---
     let comfyUIDrawer = null;
     let comfyUILoaded = false;
 
-    // 创建抽屉容器
     function createComfyUIDrawer() {
-        // 创建遮罩层
         const overlay = document.createElement('div');
         overlay.className = 'drawer-overlay hidden';
         overlay.addEventListener('click', closeComfyUISettings);
 
-        // 创建抽屉面板
         const drawer = document.createElement('div');
         drawer.className = 'drawer-panel';
         drawer.innerHTML = `
@@ -1408,28 +1398,22 @@ document.addEventListener('DOMContentLoaded', () => {
         return { overlay, drawer };
     }
 
-    // 打开 ComfyUI 设置
     async function openComfyUISettings() {
         if (!comfyUIDrawer) {
             comfyUIDrawer = createComfyUIDrawer();
         }
 
-        // 显示抽屉
         comfyUIDrawer.overlay.classList.remove('hidden');
         comfyUIDrawer.drawer.classList.add('open');
         document.body.classList.add('drawer-open');
 
-        // 动态加载 ComfyUI 模块
         if (!comfyUILoaded) {
             try {
-                // 加载 ComfyUILoader
                 await loadComfyUIModules();
                 
-                // 等待 ComfyUILoader 可用
                 if (window.ComfyUILoader) {
                     await window.ComfyUILoader.load();
                     
-                    // 创建配置 UI
                     const drawerContent = document.getElementById('comfyui-drawer-content');
                     if (window.comfyUI && drawerContent) {
                         window.comfyUI.createUI(drawerContent, {
@@ -1455,11 +1439,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // 绑定 ESC 键关闭
         document.addEventListener('keydown', handleEscKey);
     }
 
-    // 关闭 ComfyUI 设置
     function closeComfyUISettings() {
         if (comfyUIDrawer) {
             comfyUIDrawer.overlay.classList.add('hidden');
@@ -1469,16 +1451,13 @@ document.addEventListener('DOMContentLoaded', () => {
         document.removeEventListener('keydown', handleEscKey);
     }
 
-    // ESC 键处理
     function handleEscKey(e) {
         if (e.key === 'Escape') {
             closeComfyUISettings();
         }
     }
 
-    // 动态加载 ComfyUI 模块
     async function loadComfyUIModules() {
-        // 首先加载 ComfyUILoader 脚本
         const loaderScript = document.createElement('script');
         loaderScript.src = 'ComfyUImodules/ComfyUILoader.js';
         
@@ -1492,16 +1471,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- 工作流编排集成功能 ---
     let workflowEditorLoaded = false;
 
-    // 打开工作流编排器
     async function openWorkflowEditor() {
         try {
-            // 动态加载工作流编排模块
             if (!workflowEditorLoaded) {
                 await loadWorkflowEditorModules();
                 workflowEditorLoaded = true;
             }
 
-            // 显示工作流编排器
             if (window.workflowEditor) {
                 window.workflowEditor.show();
             } else {
@@ -1513,9 +1489,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // 动态加载工作流编排模块
     async function loadWorkflowEditorModules() {
-        // 首先加载 WorkflowEditorLoader 脚本
         const loaderScript = document.createElement('script');
         loaderScript.src = 'WorkflowEditormodules/WorkflowEditorLoader_Simplified.js';
         
@@ -1525,11 +1499,9 @@ document.addEventListener('DOMContentLoaded', () => {
             document.head.appendChild(loaderScript);
         });
 
-        // 等待 WorkflowEditorLoader 可用并加载所有模块
         if (window.WorkflowEditorLoader) {
             await window.WorkflowEditorLoader.load();
             
-            // 初始化工作流编排器
             if (window.workflowEditor) {
                 await window.workflowEditor.init();
                 console.log('工作流编排器初始化成功');

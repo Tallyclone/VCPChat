@@ -25,9 +25,9 @@ function createWindow() {
         webPreferences: {
             // 使用 preload 脚本来安全地暴露 API
             preload: path.join(__dirname, 'preload.js'),
-            // 保持 nodeIntegration 为 true 以兼容现有代码
-            nodeIntegration: true,
-            contextIsolation: false
+            // 禁用 nodeIntegration 以提高安全性
+            nodeIntegration: false,
+            contextIsolation: true // 启用上下文隔离
         }
     });
 
@@ -364,4 +364,32 @@ function registerFileSystemHandlers() {
         }
     });
 }
+
+// --- Settings IPC Handlers ---
+ipcMain.handle('vcp-ht-get-settings', async () => {
+    // 纠正路径以匹配原始应用程序结构
+    const settingsPath = path.join(app.getAppPath(), '..', 'AppData', 'settings.json');
+    try {
+        const settingsData = await fs.promises.readFile(settingsPath, 'utf8');
+        return JSON.parse(settingsData);
+    } catch (error) {
+        // 如果文件不存在或无效，则返回默认对象
+        console.warn(`[Main]无法从 ${settingsPath} 读取 settings.json，返回默认值。错误:`, error.code);
+        return {};
+    }
+});
+
+ipcMain.handle('vcp-ht-save-settings', async (event, settings) => {
+    // 纠正路径以匹配原始应用程序结构
+    const settingsPath = path.join(app.getAppPath(), '..', 'AppData', 'settings.json');
+    try {
+        // 确保目录存在
+        await fs.promises.mkdir(path.dirname(settingsPath), { recursive: true });
+        await fs.promises.writeFile(settingsPath, JSON.stringify(settings, null, 4), 'utf8');
+        return { success: true };
+    } catch (error) {
+        console.error(`[Main] 无法将 settings.json 保存到 ${settingsPath}:`, error);
+        return { success: false, error: error.message };
+    }
+});
 

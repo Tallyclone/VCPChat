@@ -43,13 +43,9 @@
         }
 
         // 从 settings.json 加载配置
-        loadSettings() {
+        async loadSettings() {
             try {
-                const fs = require('fs');
-                const path = require('path');
-                const settingsPath = path.join(__dirname, '..', 'AppData', 'settings.json');
-                const settingsData = fs.readFileSync(settingsPath, 'utf8');
-                const settings = JSON.parse(settingsData);
+                const settings = await window.electronAPI.invoke('vcp-ht-get-settings');
                 
                 if (settings.vcpServerUrl) {
                     const url = new URL(settings.vcpServerUrl);
@@ -59,7 +55,7 @@
                 this.VCP_API_KEY = settings.vcpApiKey || '';
                 this.USER_NAME = settings.userName || 'Human';
                 
-                console.log('[ExecutionEngine] Settings loaded');
+                console.log('[ExecutionEngine] Settings loaded successfully');
             } catch (error) {
                 console.error('[ExecutionEngine] Failed to load settings:', error);
             }

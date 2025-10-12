@@ -53,7 +53,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
             'comfyui:get-plugin-path',
             'import-and-convert-workflow',
             'validate-workflow-template',
-            'vcp-ht-execute-tool-proxy' // <-- 替换为新的网络请求代理通道
+            'vcp-ht-execute-tool-proxy', // <-- 替换为新的网络请求代理通道
+            'vcp-ht-get-settings',
+            'vcp-ht-save-settings',
+            'vcp-ht-process-wallpaper'
         ];
         
         if (allowedChannels.includes(channel)) {
@@ -62,6 +65,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
         
         console.warn(`[Preload] Blocked invoke on unauthorized channel: ${channel}`);
         return Promise.reject(new Error('Unauthorized channel'));
+    },
+
+    send: (channel, ...args) => {
+        const allowedChannels = [
+            'window-control'
+        ];
+        if (allowedChannels.includes(channel)) {
+            ipcRenderer.send(channel, ...args);
+        } else {
+            console.warn(`[Preload] Blocked send on unauthorized channel: ${channel}`);
+        }
     },
     
     on: (channel, callback) => {
