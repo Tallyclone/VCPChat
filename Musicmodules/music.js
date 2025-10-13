@@ -38,6 +38,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const lyricsContainer = document.getElementById('lyrics-container');
   const lyricsList = document.getElementById('lyrics-list');
 
+  const phantomAudio = document.getElementById('phantom-audio');
+ 
   // --- Custom Title Bar ---
   const minimizeBtn = document.getElementById('minimize-music-btn');
   const maximizeBtn = document.getElementById('maximize-music-btn');
@@ -56,6 +58,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let lyricSpeedFactor = 1.0; // Should be 1.0 for correctly timed LRC files.
     let lastKnownCurrentTime = 0;
     let lastStateUpdateTime = 0;
+    let lastKnownDuration = 0;
+    let wnpAdapter; // Rainmeter WebNowPlaying Adapter
     let visualizerColor = { r: 118, g: 106, b: 226 };
     let statePollInterval; // 用于轮询状态的定时器
    let currentDeviceId = null;
@@ -173,6 +177,95 @@ let isDraggingProgress = false;
         } : null;
     };
 
+// --- Rainmeter WebNowPlaying Adapter ---
+class WebNowPlayingAdapter {
+    constructor() {
+        this.ws = null;
+        this.reconnectInterval = 5000; // 5 seconds
+        this.connect();
+    }
+
+    connect() {
+        try {
+            // WebNowPlaying default port is 8974
+            this.ws = new WebSocket('ws://127.0.0.1:8974');
+
+            this.ws.onopen = () => {
+                console.log('[WebNowPlaying] Connected to Rainmeter.');
+                this.sendUpdate(); // Send initial state
+            };
+
+            this.ws.onerror = (err) => {
+                // This will fire on connection refusal, ignore silently
+                this.ws = null;
+            };
+
+            this.ws.onclose = () => {
+                // Automatically try to reconnect
+                this.ws = null;
+                setTimeout(() => this.connect(), this.reconnectInterval);
+            };
+        } catch (e) {
+            setTimeout(() => this.connect(), this.reconnectInterval);
+        }
+    }
+
+    sendUpdate() {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+
+        const track = playlist.length > 0 ? playlist[currentTrackIndex] : null;
+        const currentMode = playModes[currentPlayMode];
+
+        const data = {
+            player: 'VCP Music Player',
+            state: !track ? 0 : (isPlaying ? 1 : 2), // 0=stopped, 1=playing, 2=paused
+            title: track ? track.title || '' : 'No Track Loaded',
+            artist: track ? track.artist || '' : '',
+            album: track ? track.album || '' : '',
+            cover: track && track.albumArt ? 'file://' + track.albumArt.replace(/\\/g, '/') : '',
+            duration: lastKnownDuration || 0,
+            position: lastKnownCurrentTime || 0,
+            volume: Math.round(parseFloat(volumeSlider.value) * 100),
+            rating: 0, // Not implemented
+            // WebNowPlaying standard: 0=off, 1=repeat track, 2=repeat playlist
+            repeat: currentMode === 'repeat-one' ? 1 : (currentMode === 'repeat' ? 2 : 0),
+            shuffle: currentMode === 'shuffle' ? 1 : 0
+        };
+
+        try {
+            this.ws.send(JSON.stringify(data));
+        } catch (e) {
+            console.error('[WebNowPlaying] Failed to send update:', e);
+        }
+    }
+}
+
+    // --- Media Session API Integration ---
+    const setupMediaSessionHandlers = () => {
+        if (!('mediaSession' in navigator)) {
+            return;
+        }
+        navigator.mediaSession.setActionHandler('play', playTrack);
+        navigator.mediaSession.setActionHandler('pause', pauseTrack);
+        navigator.mediaSession.setActionHandler('previoustrack', prevTrack);
+        navigator.mediaSession.setActionHandler('nexttrack', nextTrack);
+    };
+
+    const updateMediaSessionMetadata = () => {
+        if (!('mediaSession' in navigator) || playlist.length === 0 || !playlist[currentTrackIndex]) {
+            return;
+        }
+        const track = playlist[currentTrackIndex];
+        const artworkSrc = track.albumArt ? `file://${track.albumArt.replace(/\\/g, '/')}` : '';
+
+        navigator.mediaSession.metadata = new MediaMetadata({
+            title: track.title || '未知标题',
+            artist: track.artist || '未知艺术家',
+            album: track.album || 'VCP Music Player', // Default album name
+            artwork: artworkSrc ? [{ src: artworkSrc }] : []
+        });
+    };
+
     // --- Core Player Logic ---
     const loadTrack = async (trackIndex, andPlay = true) => {
         if (playlist.length === 0) {
@@ -204,6 +297,8 @@ let isDraggingProgress = false;
         updateBlurredBackground(albumArtUrl);
         renderPlaylist();
         fetchAndDisplayLyrics(track.artist, track.title);
+        updateMediaSessionMetadata(); // Update OS media controls
+        if (wnpAdapter) wnpAdapter.sendUpdate();
 
         // 通过IPC让主进程通知Python引擎加载文件
         const result = await window.electron.invoke('music-load', track);
@@ -223,7 +318,9 @@ let isDraggingProgress = false;
         if (result.status === 'success') {
             isPlaying = true;
             playPauseBtn.classList.add('is-playing');
+            phantomAudio.play().catch(e => console.error("Phantom audio play failed:", e));
             startStatePolling();
+            if (wnpAdapter) wnpAdapter.sendUpdate();
         }
     };
 
@@ -232,13 +329,16 @@ let isDraggingProgress = false;
         if (result.status === 'success') {
             isPlaying = false;
             playPauseBtn.classList.remove('is-playing');
+            phantomAudio.pause();
             stopStatePolling();
+            if (wnpAdapter) wnpAdapter.sendUpdate();
         }
     };
 
     const prevTrack = () => {
         currentTrackIndex = (currentTrackIndex - 1 + playlist.length) % playlist.length;
         loadTrack(currentTrackIndex);
+        if (wnpAdapter) wnpAdapter.sendUpdate();
     };
 
     const nextTrack = () => {
@@ -263,16 +363,22 @@ let isDraggingProgress = false;
                 break;
         }
         loadTrack(currentTrackIndex);
+        if (wnpAdapter) wnpAdapter.sendUpdate();
     };
 
     // --- UI Update and State Management ---
     const updateUIWithState = (state) => {
         if (!state) return;
+
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = (state.is_playing && !state.is_paused) ? 'playing' : 'paused';
+        }
         
         isPlaying = state.is_playing && !state.is_paused;
         playPauseBtn.classList.toggle('is-playing', isPlaying);
 
         const duration = state.duration || 0;
+        lastKnownDuration = duration; // Store for WebNowPlaying
         const currentTime = state.current_time || 0;
         lastKnownCurrentTime = currentTime;
         lastStateUpdateTime = Date.now();
@@ -319,6 +425,7 @@ let isDraggingProgress = false;
       if (state.target_samplerate !== undefined && upsamplingSelect.value !== state.target_samplerate) {
           upsamplingSelect.value = state.target_samplerate || 0;
       }
+      if (wnpAdapter) wnpAdapter.sendUpdate();
   };
 
    const pollState = async () => {
@@ -568,6 +675,7 @@ let isDraggingProgress = false;
     modeBtn.addEventListener('click', () => {
         currentPlayMode = (currentPlayMode + 1) % playModes.length;
         updateModeButton();
+        if (wnpAdapter) wnpAdapter.sendUpdate();
     });
 
     const updateModeButton = () => {
@@ -1054,6 +1162,66 @@ let isDraggingProgress = false;
         }
     };
 
+    // --- Phantom Audio Generation ---
+    const createSilentAudio = () => {
+        const context = new (window.AudioContext || window.webkitAudioContext)();
+        const sampleRate = 44100;
+        const duration = 1; // 1 second
+        const frameCount = sampleRate * duration;
+        const buffer = context.createBuffer(1, frameCount, sampleRate);
+        // The buffer is already filled with zeros (silence)
+
+        // Convert buffer to WAV
+        const getWav = (buffer) => {
+            const numChannels = buffer.numberOfChannels;
+            const sampleRate = buffer.sampleRate;
+            const format = 1; // PCM
+            const bitDepth = 16;
+            const blockAlign = numChannels * bitDepth / 8;
+            const byteRate = sampleRate * blockAlign;
+            const dataSize = buffer.length * numChannels * bitDepth / 8;
+            const bufferSize = 44 + dataSize;
+            
+            const view = new DataView(new ArrayBuffer(bufferSize));
+            let offset = 0;
+
+            const writeString = (str) => {
+                for (let i = 0; i < str.length; i++) {
+                    view.setUint8(offset++, str.charCodeAt(i));
+                }
+            };
+
+            writeString('RIFF');
+            view.setUint32(offset, 36 + dataSize, true); offset += 4;
+            writeString('WAVE');
+            writeString('fmt ');
+            view.setUint32(offset, 16, true); offset += 4;
+            view.setUint16(offset, format, true); offset += 2;
+            view.setUint16(offset, numChannels, true); offset += 2;
+            view.setUint32(offset, sampleRate, true); offset += 4;
+            view.setUint32(offset, byteRate, true); offset += 4;
+            view.setUint16(offset, blockAlign, true); offset += 2;
+            view.setUint16(offset, bitDepth, true); offset += 2;
+            writeString('data');
+            view.setUint32(offset, dataSize, true); offset += 4;
+
+            const pcm = new Int16Array(buffer.length);
+            const channelData = buffer.getChannelData(0);
+            for (let i = 0; i < buffer.length; i++) {
+                pcm[i] = Math.max(-1, Math.min(1, channelData[i])) * 32767;
+            }
+            for (let i = 0; i < pcm.length; i++, offset += 2) {
+                view.setInt16(offset, pcm[i], true);
+            }
+
+            return view.buffer;
+        };
+
+        const wavBuffer = getWav(buffer);
+        const blob = new Blob([wavBuffer], { type: 'audio/wav' });
+        return URL.createObjectURL(blob);
+    };
+
     // --- App Initialization ---
     const init = async () => {
         visualizerCanvas.width = visualizerCanvas.clientWidth;
@@ -1064,8 +1232,19 @@ let isDraggingProgress = false;
 
 
         setupElectronHandlers();
+        setupMediaSessionHandlers(); // Setup OS media controls
         updateModeButton();
         await initializeTheme();
+        
+        // Setup phantom audio
+        try {
+            phantomAudio.src = createSilentAudio();
+        } catch (e) {
+            console.error("Failed to create silent audio:", e);
+        }
+
+        // Initialize WebNowPlaying Adapter for Rainmeter
+        wnpAdapter = new WebNowPlayingAdapter();
     
         if (window.electron) {
             const savedPlaylist = await window.electron.invoke('get-music-playlist');
