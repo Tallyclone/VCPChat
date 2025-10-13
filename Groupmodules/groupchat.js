@@ -5,7 +5,6 @@ const path = require('path');
 const { ipcMain } = require('electron');
 const fileManager = require('../modules/fileManager'); // Import fileManager
 const canvasHandlers = require('../modules/ipc/canvasHandlers'); // 新增：直接引用canvas处理器
-const contextSanitizer = require('../modules/contextSanitizer');
 // const { v4: uuidv4 } = require('uuid'); // 如果需要唯一ID生成
 
 const activeRequestControllers = new Map();
@@ -103,31 +102,18 @@ async function getVcpGlobalSettings() {
         try {
             const settings = await fs.readJson(mainAppPaths.SETTINGS_FILE);
             return {
-                vcpUrl: settings.vcpServerUrl,
+                vcpUrl: settings.vcpServerUrl, // 注意settings中的字段名
                 vcpApiKey: settings.vcpApiKey,
                 userName: settings.userName || '用户',
                 topicSummaryModel: settings.topicSummaryModel,
-                enableAgentBubbleTheme: settings.enableAgentBubbleTheme === true,
-                // 添加净化器相关配置
-                enableContextSanitizer: settings.enableContextSanitizer === true,
-                contextSanitizerDepth: settings.contextSanitizerDepth
+                enableAgentBubbleTheme: settings.enableAgentBubbleTheme === true
             };
         } catch (e) {
             console.error("[GroupChat] Error reading VCP settings from settings.json", e);
         }
     }
-    return { 
-        vcpUrl: null, 
-        vcpApiKey: null, 
-        userName: '用户', 
-        topicSummaryModel: null, 
-        enableAgentBubbleTheme: false,
-        // 添加净化器默认值
-        enableContextSanitizer: false,
-        contextSanitizerDepth: 2
-    };
+    return { vcpUrl: null, vcpApiKey: null, userName: '用户', topicSummaryModel: null, enableAgentBubbleTheme: false };
 }
-
 
 
 /**
@@ -548,28 +534,14 @@ ${att._fileManagerData.extractedText}
         // 3. 构建 InvitePrompt
         let invitePromptContent = (groupConfig.invitePrompt || `现在轮到你 {{VCPChatAgentName}} 发言了。`).replace(/{{VCPChatAgentName}}/g, agentName);
 
-        let messagesForAI = [];
+        const messagesForAI = [];
         if (combinedSystemPrompt.trim()) {
             messagesForAI.push({ role: 'system', content: combinedSystemPrompt });
         }
         messagesForAI.push(...contextForAgent);
         // 添加触发AI发言的模拟用户输入 (as text part of a content array)
         messagesForAI.push({ role: 'user', content: [{ type: 'text', text: invitePromptContent }], name: userNameForMessage });
-        // 添加净化器处理  
-        if (globalVcpSettings.enableContextSanitizer === true) {    
-            const sanitizerDepth = globalVcpSettings.contextSanitizerDepth !== undefined ? globalVcpSettings.contextSanitizerDepth : 2;    
-            console.log(`[GroupChat Context Sanitizer] Enabled with depth: ${sanitizerDepth}`);    
-              
-            const systemMessages = messagesForAI.filter(m => m.role === 'system');    
-            const nonSystemMessages = messagesForAI.filter(m => m.role !== 'system');    
-              
-            // 直接使用已引入的 contextSanitizer  
-            const sanitizedNonSystemMessages = contextSanitizer.sanitizeMessages(nonSystemMessages, sanitizerDepth);    
-              
-            messagesForAI = [...systemMessages, ...sanitizedNonSystemMessages];    
-              
-            console.log(`[GroupChat Context Sanitizer] Messages processed successfully`);    
-        }
+
         // --- Agent Bubble Theme Injection ---
         if (globalVcpSettings.enableAgentBubbleTheme) {
             let systemMsgIndex = messagesForAI.findIndex(m => m.role === 'system');
@@ -1034,27 +1006,13 @@ ${att._fileManagerData.extractedText}
     // 3. 构建 InvitePrompt
     let invitePromptContent = (groupConfig.invitePrompt || `现在轮到你 {{VCPChatAgentName}} 发言了。`).replace(/{{VCPChatAgentName}}/g, agentName);
 
-    let messagesForAI = [];
+    const messagesForAI = [];
     if (combinedSystemPrompt.trim()) {
         messagesForAI.push({ role: 'system', content: combinedSystemPrompt });
     }
     messagesForAI.push(...contextForAgent);
     messagesForAI.push({ role: 'user', content: [{ type: 'text', text: invitePromptContent }], name: (globalVcpSettings.userName || '用户') }); // 模拟用户触发
-    // 添加净化器处理  
-    if (globalVcpSettings.enableContextSanitizer === true) {    
-        const sanitizerDepth = globalVcpSettings.contextSanitizerDepth !== undefined ? globalVcpSettings.contextSanitizerDepth : 2;    
-        console.log(`[GroupChat Context Sanitizer] Enabled with depth: ${sanitizerDepth}`);    
-          
-        const systemMessages = messagesForAI.filter(m => m.role === 'system');    
-        const nonSystemMessages = messagesForAI.filter(m => m.role !== 'system');    
-          
-        // 直接使用已引入的 contextSanitizer  
-        const sanitizedNonSystemMessages = contextSanitizer.sanitizeMessages(nonSystemMessages, sanitizerDepth);    
-          
-        messagesForAI = [...systemMessages, ...sanitizedNonSystemMessages];    
-          
-        console.log(`[GroupChat Context Sanitizer] Messages processed successfully`);    
-    }
+
     // --- Agent Bubble Theme Injection ---
     if (globalVcpSettings.enableAgentBubbleTheme) {
         let systemMsgIndex = messagesForAI.findIndex(m => m.role === 'system');
