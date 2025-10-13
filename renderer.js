@@ -1004,7 +1004,13 @@ async function loadAndApplyGlobalSettings() {
         document.getElementById('enableDistributedServer').checked = globalSettings.enableDistributedServer === true;
         document.getElementById('agentMusicControl').checked = globalSettings.agentMusicControl === true;
         document.getElementById('enableVcpToolInjection').checked = globalSettings.enableVcpToolInjection === true;
-
+        document.getElementById('enableContextSanitizer').checked = globalSettings.enableContextSanitizer === true;  
+        document.getElementById('contextSanitizerDepth').value = globalSettings.contextSanitizerDepth !== undefined ? globalSettings.contextSanitizerDepth : 2;  
+        // 同时更新深度容器的显示状态  
+        const contextSanitizerDepthContainer = document.getElementById('contextSanitizerDepthContainer');  
+        if (contextSanitizerDepthContainer) {  
+            contextSanitizerDepthContainer.style.display = globalSettings.enableContextSanitizer === true ? 'block' : 'none';  
+        }
         // Load do not disturb mode setting (check both globalSettings and localStorage)
         const doNotDisturbLogMode = globalSettings.doNotDisturbLogMode || (localStorage.getItem('doNotDisturbLogMode') === 'true');
         if (doNotDisturbLogMode) {
