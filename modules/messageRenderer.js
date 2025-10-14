@@ -58,6 +58,50 @@ function escapeHtml(text) {
 }
 
 /**
+ * Renders Mermaid diagrams found within a given container.
+ * Finds placeholders, replaces them with the actual Mermaid code,
+ * and then calls the Mermaid API to render them.
+ * @param {HTMLElement} container The container element to search within.
+ */
+async function renderMermaidDiagrams(container) {
+    const placeholders = Array.from(container.querySelectorAll('.mermaid-placeholder'));
+    if (placeholders.length === 0) return;
+
+    // Prepare elements for rendering
+    placeholders.forEach(placeholder => {
+        const code = placeholder.dataset.mermaidCode;
+        if (code) {
+            try {
+                // The placeholder div itself will become the mermaid container
+                placeholder.textContent = decodeURIComponent(code);
+                placeholder.classList.remove('mermaid-placeholder');
+                placeholder.classList.add('mermaid');
+            } catch (e) {
+                console.error('Failed to decode mermaid code', e);
+                placeholder.textContent = '[Mermaid code decoding error]';
+            }
+        }
+    });
+
+    // Get the list of actual .mermaid elements to render
+    const elementsToRender = placeholders.filter(el => el.classList.contains('mermaid'));
+
+    if (elementsToRender.length > 0 && typeof mermaid !== 'undefined') {
+        try {
+            // Initialize mermaid if it hasn't been already
+            mermaid.initialize({ startOnLoad: false });
+            await mermaid.run({ nodes: elementsToRender });
+        } catch (error) {
+            console.error("Error rendering Mermaid diagrams:", error);
+            elementsToRender.forEach(el => {
+                const originalCode = el.textContent;
+                el.innerHTML = `<div class="mermaid-error">Mermaid render error: ${error.message}</div><pre>${escapeHtml(originalCode)}</pre>`;
+            });
+        }
+    }
+}
+
+/**
  * 应用单个正则规则到文本
  * @param {string} text - 输入文本
  * @param {Object} rule - 正则规则对象
@@ -453,9 +497,26 @@ function preprocessFullContent(text, settings = {}, messageRole = 'assistant', d
     const codeBlockMap = new Map();
     let placeholderId = 0;
 
-    // Step 1: Find and protect all fenced code blocks.
+    // Step 1: Handle Mermaid blocks, both in `<code>` tags and fenced blocks.
+    // Case 1: AI wraps it in `<code>flowchart ...</code>`
+    let processed = text.replace(/<code.*?>\s*(flowchart|graph|mermaid)\s+([\s\S]*?)<\/code>/gi, (match, lang, code) => {
+        // Decode potential HTML entities like >
+        const tempEl = document.createElement('textarea');
+        tempEl.innerHTML = code;
+        const decodedCode = tempEl.value;
+        const encodedCode = encodeURIComponent(decodedCode.trim());
+        return `<div class="mermaid-placeholder" data-mermaid-code="${encodedCode}"></div>`;
+    });
+
+    // Case 2: Standard fenced code blocks
+    processed = processed.replace(/```(mermaid|flowchart|graph)\n([\s\S]*?)```/g, (match, lang, code) => {
+        const encodedCode = encodeURIComponent(code.trim());
+        return `<div class="mermaid-placeholder" data-mermaid-code="${encodedCode}"></div>`;
+    });
+
+    // Step 2: Find and protect all remaining fenced code blocks.
     // The regex looks for ``` followed by an optional language identifier, then anything until the next ```
-    let processed = text.replace(/```\w*([\s\S]*?)```/g, (match) => {
+    processed = processed.replace(/```\w*([\s\S]*?)```/g, (match) => {
         const placeholder = `__VCP_CODE_BLOCK_PLACEHOLDER_${placeholderId}__`;
         codeBlockMap.set(placeholder, match);
         placeholderId++;
@@ -463,7 +524,7 @@ function preprocessFullContent(text, settings = {}, messageRole = 'assistant', d
     });
 
     // The order of the remaining operations is critical.
-    // Step 2. Fix indented HTML that markdown might misinterpret as code blocks.
+    // Step 3. Fix indented HTML that markdown might misinterpret as code blocks.
     processed = deIndentHtml(processed);
 
     // Step 3. Directly transform special blocks (Tool/Diary) into styled HTML divs.
@@ -914,13 +975,14 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
 
             // Define the post-processing logic as a function.
             // This allows us to control WHEN it gets executed.
-            const runPostRenderProcessing = () => {
+            const runPostRenderProcessing = async () => {
                 // This function should only be called when messageItem is connected to the DOM.
                 
                 // Process images, attachments, and synchronous content first.
                 setContentAndProcessImages(contentDiv, finalHtml, message.id);
                 renderAttachments(message, contentDiv);
                 contentProcessor.processRenderedContent(contentDiv);
+                await renderMermaidDiagrams(contentDiv); // Render mermaid diagrams
 
                 // Defer TreeWalker-based highlighters with a hardcoded delay to ensure the DOM is stable.
                 setTimeout(() => {
@@ -938,12 +1000,12 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
             // If we are appending directly to the DOM, schedule the processing immediately.
             if (appendToDom) {
                 // We still use requestAnimationFrame to ensure the element is painted before we process it.
-                requestAnimationFrame(runPostRenderProcessing);
+                requestAnimationFrame(() => runPostRenderProcessing());
             } else {
                 // If not, attach the processing function to the element itself.
                 // The caller (e.g., a batch renderer) will be responsible for executing it
                 // AFTER the element has been attached to the DOM.
-                messageItem._vcp_process = runPostRenderProcessing;
+                messageItem._vcp_process = () => runPostRenderProcessing();
             }
         }
     
@@ -1063,6 +1125,15 @@ async function finalizeStreamedMessage(messageId, finishReason, context) {
     // 责任完全在 streamManager 内部，它应该使用自己拼接好的文本。
     // 我们现在只传递必要的元数据。
     await streamManager.finalizeStreamedMessage(messageId, finishReason, context);
+
+    // After the stream is finalized in the DOM, find the message and render any mermaid blocks.
+    const messageItem = mainRendererReferences.chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
+    if (messageItem) {
+        const contentDiv = messageItem.querySelector('.md-content');
+        if (contentDiv) {
+            await renderMermaidDiagrams(contentDiv);
+        }
+    }
 }
 
 
@@ -1155,6 +1226,7 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId) {
     // Apply post-processing in two steps
     // Step 1: Synchronous processing
     contentProcessor.processRenderedContent(contentDiv);
+    await renderMermaidDiagrams(contentDiv);
 
     // Step 2: Asynchronous, deferred highlighting for DOM stability with a hardcoded delay
     setTimeout(() => {
@@ -1219,6 +1291,7 @@ function updateMessageContent(messageId, newContent) {
 
     // 3. Synchronous processing (KaTeX, buttons, etc.)
     contentProcessor.processRenderedContent(contentDiv);
+    renderMermaidDiagrams(contentDiv); // Fire-and-forget async rendering
 
     // 4. Asynchronous, deferred highlighting for DOM stability
     setTimeout(() => {
