@@ -32,3 +32,16 @@ body {
 body.light-theme .main-content {
     /* background-image: var(--chat-wallpaper-light); */ /* <-- 移除或注释掉这一行 */
 }
+
+/* =======================================================
+ * 全局主题切换平滑过渡
+ * ======================================================= */
+*,
+*::before,
+*::after {
+    transition: background-color 0.3s ease-in-out,
+                color 0.3s ease-in-out,
+                border-color 0.3s ease-in-out,
+                fill 0.3s ease-in-out, /* For SVG icons */
+                stroke 0.3s ease-in-out; /* For SVG icons */
+}
