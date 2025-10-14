@@ -22,14 +22,17 @@ function ensureNewlineAfterCodeBlock(text) {
 }
 
 /**
- * Ensures that a tilde (~) is followed by a space.
+ * Ensures that a tilde (~) is followed by a space, to prevent accidental strikethrough.
+ * It avoids doing this for tildes inside URLs or file paths.
  * @param {string} text The input string.
  * @returns {string} The processed string with spaces after tildes where they were missing.
  */
 function ensureSpaceAfterTilde(text) {
     if (typeof text !== 'string') return text;
-    // Replace ~ not followed by a space with ~ followed by a space
-    return text.replace(/~(?![\s~])/g, '~ ');
+    // Replace ~ not followed by a space with ~ followed by a space,
+    // but only if the ~ is not preceded by a non-whitespace character (i.e., it's at the start of a word).
+    // This prevents modification of ~ inside URLs.
+    return text.replace(/(?<!\S)~(?![\s~])/g, '~ ');
 }
 
 /**
