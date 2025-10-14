@@ -666,6 +666,52 @@ function runTextHighlights(contentDiv) {
 }
 
 
+/**
+ * 为 CSS 字符串中的所有选择器添加作用域 ID 前缀。
+ * @param {string} cssString - 原始 CSS 文本。
+ * @param {string} scopeId - 唯一的作用域 ID (不带 #)。
+ * @returns {string} 处理后的 CSS 文本。
+ */
+function scopeCss(cssString, scopeId) {
+    // 相对健壮的正则表达式，用于捕获选择器列表，同时跳过 @规则内部的选择器
+    // 捕获组 1: 选择器列表 (e.g., .card, h1)
+    // 捕获组 2: 逗号后紧跟 { 或空格后紧跟 { (用于确定选择器列表的结束)
+    return cssString.replace(/([^\r\n,{}]+)(,(?=[^}]*{)|\s*{)/g, (match, selector, separator) => {
+        const trimmedSelector = selector.trim();
+        
+        // 跳过 @规则内部的选择器 (如 @keyframes, @media)
+        if (trimmedSelector.includes('@') || trimmedSelector === 'from' || trimmedSelector === 'to' || /^\d+%$/.test(trimmedSelector)) {
+            return match;
+        }
+        
+        // 跳过全局选择器，防止意外覆盖客户端样式
+        if (trimmedSelector === 'html' || trimmedSelector === 'body' || trimmedSelector === ':root') {
+            return match;
+        }
+
+        // 为每个选择器部分添加前缀
+        const scopedSelector = trimmedSelector
+            .split(',')
+            .map(part => {
+                const p = part.trim();
+                
+                // 检查是否是针对气泡根元素自身的伪类/伪元素 (例如 :hover, ::before)
+                // 如果选择器不包含空格，且以 : 或 :: 开头，则将其附加到 scopeId 上，而不是作为后代选择器。
+                if ((p.startsWith(':') || p.startsWith('::')) && !p.includes(' ')) {
+                    return `#${scopeId}${p}`;
+                }
+                
+                // 否则，作为后代选择器处理
+                return `#${scopeId} ${p}`;
+            })
+            .join(', ');
+        
+        // 恢复原始的分隔符 ({ 或 ,{)
+        return `${scopedSelector}${separator}`;
+    });
+}
+
+
 export {
     initializeContentProcessor,
     ensureNewlineAfterCodeBlock,
@@ -681,6 +727,6 @@ export {
     handleAIButtonClick,
     highlightBoldTextInMessage,
     runTextHighlights, // Export the new async highlighter
-    sendButtonMessage
-
+    sendButtonMessage,
+    scopeCss // Export the new CSS scoping function
 };

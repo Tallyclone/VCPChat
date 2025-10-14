@@ -58,6 +58,17 @@ function escapeHtml(text) {
 }
 
 /**
+ * Generates a unique ID for scoping CSS.
+ * @returns {string} A unique ID string (e.g., 'vcp-bubble-1a2b3c4d').
+ */
+function generateUniqueId() {
+    // Use a combination of timestamp and random string for uniqueness
+    const timestampPart = Date.now().toString(36);
+    const randomPart = Math.random().toString(36).substring(2, 9);
+    return `vcp-bubble-${timestampPart}${randomPart}`;
+}
+
+/**
  * Renders Mermaid diagrams found within a given container.
  * Finds placeholders, replaces them with the actual Mermaid code,
  * and then calls the Mermaid API to render them.
@@ -354,6 +365,42 @@ function transformVCPChatCanvas(text) {
         // Use a div for better block-level layout and margin behavior
         return `<div class="vcp-chat-canvas-placeholder">Canvas协同中<span class="thinking-indicator-dots">...</span></div>`;
     });
+}
+
+/**
+ * Extracts <style> tags from content, scopes the CSS, and injects it into the document head.
+ * @param {string} content - The raw message content string.
+ * @param {string} scopeId - The unique ID for scoping.
+ * @returns {{processedContent: string, styleInjected: boolean}} The content with <style> tags removed, and a flag indicating if styles were injected.
+ */
+function processAndInjectScopedCss(content, scopeId) {
+    const styleRegex = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
+    let cssContent = '';
+    let styleInjected = false;
+
+    const processedContent = content.replace(styleRegex, (match, css) => {
+        cssContent += css.trim() + '\n';
+        return ''; // Remove style tags from the content
+    });
+
+    if (cssContent.length > 0) {
+        try {
+            const scopedCss = contentProcessor.scopeCss(cssContent, scopeId);
+            
+            const styleElement = document.createElement('style');
+            styleElement.type = 'text/css';
+            styleElement.setAttribute('data-vcp-scope-id', scopeId);
+            styleElement.textContent = scopedCss;
+            document.head.appendChild(styleElement);
+            styleInjected = true;
+            
+            console.log(`[ScopedCSS] Injected scoped styles for ID: #${scopeId}`);
+        } catch (error) {
+            console.error(`[ScopedCSS] Failed to scope or inject CSS for ID: ${scopeId}`, error);
+        }
+    }
+
+    return { processedContent, styleInjected };
 }
 
 
@@ -846,6 +893,14 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
 
     const { messageItem, contentDiv, avatarImg, senderNameDiv } = createMessageSkeleton(message, globalSettings, currentSelectedItem);
 
+    // --- NEW: Scoped CSS Implementation ---
+    let scopeId = null;
+    if (message.role === 'assistant') {
+        scopeId = generateUniqueId();
+        messageItem.id = scopeId; // Assign the unique ID to the message container
+    }
+    // --- END Scoped CSS Implementation ---
+
     // Attach context menu to all assistant and user messages, regardless of state.
     // The context menu itself will decide which options to show.
     if (message.role === 'assistant' || message.role === 'user') {
@@ -942,6 +997,11 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
         if (message.role === 'user') {
             textToRender = transformUserButtonClick(textToRender);
             textToRender = transformVCPChatCanvas(textToRender);
+        } else if (message.role === 'assistant' && scopeId) {
+            // --- Scoped CSS: Extract, scope, and inject styles from AI content ---
+            const { processedContent: contentWithoutStyles } = processAndInjectScopedCss(textToRender, scopeId);
+            textToRender = contentWithoutStyles;
+            // --- END Scoped CSS ---
         }
         
         // --- 按“对话轮次”计算深度 ---
