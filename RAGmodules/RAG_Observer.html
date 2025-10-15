@@ -284,7 +284,57 @@
             white-space: pre-wrap;
             word-wrap: break-word;
         }
+        .agent-chat-query .rag-content p,
+        .agent-chat-response .rag-content p {
+            margin-top: 0;
+            margin-bottom: 1em;
+        }
+        .agent-chat-query .rag-content p:last-child,
+        .agent-chat-response .rag-content p:last-child {
+            margin-bottom: 0;
+        }
+        .rag-content img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
         .full-text { display: none; }
+        
+        /* Agent Private Chat Preview Styles */
+        .agent-chat-block {
+            background: rgba(255, 193, 7, 0.05);
+            backdrop-filter: blur(12px) saturate(120%);
+            -webkit-backdrop-filter: blur(12px) saturate(120%);
+            border: 1px solid rgba(255, 193, 7, 0.3);
+            border-radius: 12px;
+            margin-bottom: 20px;
+            padding: 15px 20px;
+            box-shadow: 0 4px 16px rgba(255, 193, 7, 0.1);
+            transition: all 0.3s ease;
+        }
+        .agent-chat-block:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(255, 193, 7, 0.2);
+        }
+        .agent-chat-header h3 { margin: 0 0 8px 0; color: #ffc107; }
+        .agent-chat-header p { margin: 2px 0; font-size: 0.9em; color: var(--secondary-text); }
+        .agent-chat-header strong { color: var(--primary-text); }
+        .agent-chat-content {
+            margin-top: 15px;
+            padding-top: 10px;
+            border-top: 1px dashed rgba(255, 193, 7, 0.2);
+        }
+        .agent-chat-query strong, .agent-chat-response strong {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 1em;
+            color: var(--highlight-text);
+        }
+        .agent-chat-query .rag-content, .agent-chat-response .rag-content {
+            padding-left: 15px;
+            border-left: 3px solid rgba(255, 193, 7, 0.5);
+        }
         
         #spectrum-canvas {
             display: none;
@@ -301,6 +351,14 @@
             color: var(--secondary-text);
         }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+        // Configure marked.js to allow raw HTML and handle line breaks
+        marked.setOptions({
+            gfm: true, // Enable GitHub Flavored Markdown
+            breaks: true, // Interpret carriage returns as <br>
+        });
+    </script>
     <script src="./settings.js"></script>
     <script src="./rag-observer-config.js"></script>
 </head>
@@ -397,6 +455,12 @@
                 infoContainer.innerHTML = '';
             }
 
+            // 检查是否为 Agent 私聊预览数据
+            if (data.type === 'AGENT_PRIVATE_CHAT_PREVIEW') {
+                displayAgentChatPreview(data);
+                return;
+            }
+
             // 检查是否为元思考链数据
             if (data.type === 'META_THINKING_CHAIN') {
                 displayMetaThinkingChain(data);
@@ -410,9 +474,10 @@
             header.className = 'rag-block-header';
             const queryText = data.query;
             const needsToggle = queryText.length > 150;
+            const renderedQuery = marked.parse(queryText);
             const queryDisplay = needsToggle
-                ? `<span class="snippet">${queryText.substring(0, 150)}...</span><span class="full-text" style="display:none;">${queryText}</span>`
-                : `<span>${queryText}</span>`;
+                ? `<span class="snippet">${queryText.substring(0, 150)}...</span><div class="full-text" style="display:none;">${renderedQuery}</div>`
+                : `<div>${renderedQuery}</div>`;
             const toggleButtonHTML = needsToggle
                 ? `<button class="toggle-button" style="margin-left: 10px;" onclick="toggleQueryText(this)">展开</button>`
                 : '';
@@ -462,7 +527,7 @@
 
                 const fullText = document.createElement('div');
                 fullText.className = 'full-text';
-                fullText.textContent = r.text;
+                fullText.innerHTML = marked.parse(r.text);
 
                 content.appendChild(snippet);
                 content.appendChild(fullText);
@@ -484,12 +549,12 @@
 
             const isCollapsed = fullText.style.display === 'none';
             if (isCollapsed) {
-                fullText.style.display = 'inline';
+                fullText.style.display = 'block';
                 snippet.style.display = 'none';
                 button.textContent = '收起';
             } else {
                 fullText.style.display = 'none';
-                snippet.style.display = 'inline';
+                snippet.style.display = 'block';
                 button.textContent = '展开';
             }
         }
@@ -537,9 +602,10 @@
             queryInfo.style.color = 'var(--secondary-text)';
             const queryText = data.query || '';
             const needsToggle = queryText.length > 100;
+            const renderedQuery = marked.parse(queryText || '');
             const queryDisplay = needsToggle
-                ? `<span class="snippet">${queryText.substring(0, 100)}...</span><span class="full-text" style="display:none;">${queryText}</span>`
-                : `<span>${queryText}</span>`;
+                ? `<span class="snippet">${(queryText || '').substring(0, 100)}...</span><div class="full-text" style="display:none;">${renderedQuery}</div>`
+                : `<div>${renderedQuery}</div>`;
             const toggleButtonHTML = needsToggle
                 ? `<button class="toggle-button" style="margin-left: 8px;" onclick="toggleQueryText(this)">展开</button>`
                 : '';
@@ -632,14 +698,16 @@
                             resultText.style.lineHeight = '1.5';
                             
                             const needsToggleResult = result.text && result.text.length > 120;
+                            const renderedText = marked.parse(result.text || '');
                             if (needsToggleResult) {
+                                const snippetText = (result.text || '').substring(0, 120) + '...';
                                 resultText.innerHTML = `
-                                    <div class="snippet">${result.text.substring(0, 120)}...</div>
-                                    <div class="full-text" style="display:none;">${result.text}</div>
+                                    <div class="snippet">${snippetText}</div>
+                                    <div class="full-text" style="display:none;">${renderedText}</div>
                                     <button class="toggle-button" style="margin-top: 6px;" onclick="toggleResultText(this)">展开</button>
                                 `;
                             } else {
-                                resultText.textContent = result.text || '';
+                                resultText.innerHTML = renderedText;
                             }
 
                             resultItem.appendChild(resultMeta);
@@ -681,6 +749,95 @@
                 snippet.style.display = 'block';
                 button.textContent = '展开';
             }
+        }
+
+        function toggleAgentChatText(button) {
+            const contentDiv = button.parentElement;
+            const snippet = contentDiv.querySelector('.snippet');
+            const fullText = contentDiv.querySelector('.full-text');
+            
+            if (!snippet || !fullText) return;
+
+            const isCollapsed = fullText.style.display === 'none';
+            if (isCollapsed) {
+                fullText.style.display = 'block';
+                snippet.style.display = 'none';
+                button.textContent = '收起';
+            } else {
+                fullText.style.display = 'none';
+                snippet.style.display = 'block';
+                button.textContent = '展开';
+            }
+        }
+
+        function displayAgentChatPreview(data) {
+            const block = document.createElement('div');
+            block.className = 'agent-chat-block';
+
+            const header = document.createElement('div');
+            header.className = 'agent-chat-header';
+            
+            const time = new Date(data.timestamp).toLocaleTimeString();
+
+            header.innerHTML = `
+                <h3>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle;">
+                        <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C7.59 20 4 16.41 4 12C4 7.59 7.59 4 12 4C16.41 4 20 7.59 20 12C20 16.41 16.41 20 12 20Z" fill="#ffc107"/>
+                        <path d="M12 7C9.24 7 7 9.24 7 12C7 14.76 9.24 17 12 17C14.76 17 17 14.76 17 12C17 9.24 14.76 7 12 7Z" fill="#ffc107"/>
+                    </svg>
+                    Agent 私聊预览: <strong>${data.agentName}</strong> (${time})
+                </h3>
+                <p>会话ID: ${data.sessionId}</p>
+            `;
+            block.appendChild(header);
+
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'agent-chat-content';
+
+            // User Query
+            const queryText = data.query || '';
+            const needsToggleQuery = queryText.length > 150;
+            const renderedQuery = marked.parse(queryText);
+            const queryDisplay = needsToggleQuery
+                ? `<span class="snippet">${queryText.substring(0, 150)}...</span><div class="full-text" style="display:none;">${renderedQuery}</div>`
+                : `<div>${renderedQuery}</div>`;
+            const toggleButtonQueryHTML = needsToggleQuery
+                ? `<button class="toggle-button" style="margin-left: 10px;" onclick="toggleAgentChatText(this)">展开</button>`
+                : '';
+            
+            const queryDiv = document.createElement('div');
+            queryDiv.className = 'agent-chat-query';
+            queryDiv.innerHTML = `
+                <strong>用户输入:</strong>
+                <div class="rag-content">
+                    ${queryDisplay} ${toggleButtonQueryHTML}
+                </div>
+            `;
+            contentDiv.appendChild(queryDiv);
+
+            // Agent Response
+            const responseText = data.response || '';
+            const needsToggleResponse = responseText.length > 150;
+            const renderedResponse = marked.parse(responseText);
+            const responseDisplay = needsToggleResponse
+                ? `<span class="snippet">${responseText.substring(0, 150)}...</span><div class="full-text" style="display:none;">${renderedResponse}</div>`
+                : `<div>${renderedResponse}</div>`;
+            const toggleButtonResponseHTML = needsToggleResponse
+                ? `<button class="toggle-button" style="margin-left: 10px;" onclick="toggleAgentChatText(this)">展开</button>`
+                : '';
+
+            const responseDiv = document.createElement('div');
+            responseDiv.className = 'agent-chat-response';
+            responseDiv.innerHTML = `
+                <strong>Agent 回复:</strong>
+                <div class="rag-content">
+                    ${responseDisplay} ${toggleButtonResponseHTML}
+                </div>
+            `;
+            contentDiv.appendChild(responseDiv);
+
+            block.appendChild(contentDiv);
+            infoContainer.prepend(block);
         }
 
         function clearLogs() {
