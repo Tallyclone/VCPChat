@@ -7,7 +7,9 @@ let globalSettings = {
     middleClickAdvancedDelay: 1000,
     notificationsSidebarWidth: 300,
     userName: '用户', // Default username
-    doNotDisturbLogMode: false, // 勿扰模式状态
+    doNotDisturbLogMode: false, // 勿扰模式状态（已废弃，保留兼容性）
+    filterEnabled: false, // 过滤总开关状态
+    filterRules: [], // 过滤规则列表
 };
 // Unified selected item state
 let currentSelectedItem = {
@@ -1011,14 +1013,28 @@ async function loadAndApplyGlobalSettings() {
         if (contextSanitizerDepthContainer) {  
             contextSanitizerDepthContainer.style.display = globalSettings.enableContextSanitizer === true ? 'block' : 'none';  
         }
-        // Load do not disturb mode setting (check both globalSettings and localStorage)
-        const doNotDisturbLogMode = globalSettings.doNotDisturbLogMode || (localStorage.getItem('doNotDisturbLogMode') === 'true');
-        if (doNotDisturbLogMode) {
+        // Load filter mode setting (migrate from old doNotDisturbLogMode if exists)
+        let filterEnabled = globalSettings.filterEnabled;
+        if (filterEnabled === undefined) {
+            // Migrate from old doNotDisturbLogMode setting for backward compatibility
+            const oldDoNotDisturbMode = globalSettings.doNotDisturbLogMode || (localStorage.getItem('doNotDisturbLogMode') === 'true');
+            filterEnabled = oldDoNotDisturbMode;
+            globalSettings.filterEnabled = filterEnabled;
+            // Also migrate to new setting name for consistency
+            globalSettings.doNotDisturbLogMode = filterEnabled;
+        }
+
+        if (filterEnabled) {
             doNotDisturbBtn.classList.add('active');
-            globalSettings.doNotDisturbLogMode = true;
+            globalSettings.filterEnabled = true;
         } else {
             doNotDisturbBtn.classList.remove('active');
-            globalSettings.doNotDisturbLogMode = false;
+            globalSettings.filterEnabled = false;
+        }
+
+        // Load filter rules
+        if (!Array.isArray(globalSettings.filterRules)) {
+            globalSettings.filterRules = [];
         }
 
         // Load middle click quick action settings
@@ -1330,32 +1346,148 @@ function setupEventListeners() {
 
 
     clearNotificationsBtn.addEventListener('click', () => {
-        notificationsListUl.innerHTML = '';
+        clearNotificationsWithFilter();
     });
 
+    /**
+     * 清空通知时跳过匹配过滤规则的消息，并显示MISS～效果
+     */
+    function clearNotificationsWithFilter() {
+        const notificationItems = notificationsListUl.querySelectorAll('.notification-item');
+
+        if (notificationItems.length === 0) {
+            return; // 没有通知，直接返回
+        }
+
+        let hasSkippedItems = false;
+
+        // 遍历所有通知项，倒序处理以避免DOM变化影响索引
+        const itemsArray = Array.from(notificationItems);
+        itemsArray.reverse().forEach(item => {
+            // 获取通知标题
+            const titleElement = item.querySelector('strong');
+            if (!titleElement) return;
+
+            const titleText = titleElement.textContent;
+
+            // 检查是否匹配过滤规则
+            const filterResult = checkMessageFilter(titleText);
+
+            if (filterResult && filterResult.rule && filterResult.rule.skipOnClear) {
+                // 规则明确设置了清空时跳过，显示MISS效果
+                showMissEffect(item);
+                hasSkippedItems = true;
+            } else if (filterResult && filterResult.action === 'hide') {
+                // 匹配黑名单规则或默认黑名单行为，跳过并显示MISS效果
+                showMissEffect(item);
+                hasSkippedItems = true;
+            } else {
+                // 不匹配过滤规则或匹配白名单规则，正常清空
+                item.style.opacity = '0';
+                item.style.transform = 'translateX(100%)';
+                setTimeout(() => {
+                    if (item.parentNode) {
+                        item.parentNode.removeChild(item);
+                    }
+                }, 500);
+            }
+        });
+
+        // 如果有跳过的项目，显示提示信息
+        if (hasSkippedItems) {
+            uiHelperFunctions.showToastNotification('部分消息因过滤规则被保留', 'info');
+        }
+    }
+
+    /**
+     * 为跳过的通知项显示MISS～气泡效果
+     * @param {HTMLElement} notificationItem - 通知项元素
+     */
+    function showMissEffect(notificationItem) {
+        // 创建MISS气泡元素
+        const missBubble = document.createElement('div');
+        missBubble.className = 'miss-effect-bubble';
+        missBubble.textContent = 'MISS～';
+
+        // 获取通知内容区域
+        const contentDiv = notificationItem.querySelector('.notification-content');
+        if (!contentDiv) {
+            console.warn('未找到通知内容区域，使用整个通知项中央');
+            return;
+        }
+
+        // 获取内容区域的位置（相对于视口）
+        const contentRect = contentDiv.getBoundingClientRect();
+
+        // 计算内容区域的3/4位置（水平偏右，垂直居中）
+        const centerX = contentRect.left + contentRect.width * 0.75;
+        const centerY = contentRect.top + contentRect.height / 2;
+
+        // 设置气泡的初始位置（相对于文档的绝对定位）
+        missBubble.style.position = 'fixed';
+        missBubble.style.left = centerX + 'px';
+        missBubble.style.top = centerY + 'px';
+        missBubble.style.transform = 'translate(-50%, -50%) scale(0)';
+        missBubble.style.zIndex = '10000';
+
+        // 添加到文档body中（使用fixed定位）
+        document.body.appendChild(missBubble);
+
+        // 为通知项添加高亮效果
+        notificationItem.classList.add('miss-highlight');
+
+        // 触发动画
+        setTimeout(() => {
+            missBubble.style.transform = 'translate(-50%, -50%) scale(1)';
+            missBubble.style.opacity = '1';
+        }, 50);
+
+        // 动画完成后清理
+        setTimeout(() => {
+            missBubble.style.transform = 'translate(-50%, -150%) scale(0.8)';
+            missBubble.style.opacity = '0';
+
+            setTimeout(() => {
+                if (missBubble.parentNode) {
+                    missBubble.parentNode.removeChild(missBubble);
+                }
+                notificationItem.classList.remove('miss-highlight');
+            }, 300);
+        }, 800);
+    }
+
     if (doNotDisturbBtn) {
-        doNotDisturbBtn.addEventListener('click', async () => {
+        // 左键点击：切换过滤总开关
+        doNotDisturbBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
             const isActive = doNotDisturbBtn.classList.toggle('active');
-            globalSettings.doNotDisturbLogMode = isActive;
+            globalSettings.filterEnabled = isActive;
 
             // Also save to localStorage as backup
-            localStorage.setItem('doNotDisturbLogMode', isActive.toString());
+            localStorage.setItem('filterEnabled', isActive.toString());
 
             // Save the setting immediately
             const result = await window.electronAPI.saveSettings({
                 ...globalSettings, // Send all settings to avoid overwriting
-                doNotDisturbLogMode: isActive
+                filterEnabled: isActive
             });
 
             if (result.success) {
-                uiHelperFunctions.showToastNotification(`勿扰模式已${isActive ? '开启' : '关闭'}`, 'info');
+                updateFilterStatusDisplay();
+                uiHelperFunctions.showToastNotification(`过滤模式已${isActive ? '开启' : '关闭'}`, 'info');
             } else {
-                uiHelperFunctions.showToastNotification(`设置勿扰模式失败: ${result.error}`, 'error');
+                uiHelperFunctions.showToastNotification(`设置过滤模式失败: ${result.error}`, 'error');
                 // Revert UI on failure
                 doNotDisturbBtn.classList.toggle('active', !isActive);
-                globalSettings.doNotDisturbLogMode = !isActive;
-                localStorage.setItem('doNotDisturbLogMode', (!isActive).toString());
+                globalSettings.filterEnabled = !isActive;
+                localStorage.setItem('filterEnabled', (!isActive).toString());
             }
+        });
+
+        // 右键点击：打开过滤规则设置页面
+        doNotDisturbBtn.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            openFilterRulesModal();
         });
     }
 
@@ -1836,3 +1968,388 @@ window.showForwardModal = showForwardModal;
 
 // Make globalSettings accessible for notification renderer
 window.globalSettings = globalSettings;
+
+// Make filter functions globally accessible for notification renderer
+window.checkMessageFilter = checkMessageFilter;
+
+// --- Filter Rules Management Functions ---
+
+/**
+ * 过滤规则数据结构
+ * @typedef {Object} FilterRule
+ * @property {string} id - 规则唯一标识符
+ * @property {string} name - 规则名称
+ * @property {string} type - 规则类型：'blacklist' 或 'whitelist'
+ * @property {string} pattern - 匹配模式（正则表达式字符串）
+ * @property {string[]} matchPositions - 匹配位置：['start', 'end', 'contain']
+ * @property {number} duration - 消息停留时间（秒），0表示立即消失
+ * @property {boolean} durationInfinite - 是否永久显示
+ * @property {boolean} enabled - 是否启用此规则
+ * @property {number} order - 规则顺序（数字越小优先级越高）
+ * @property {boolean} skipOnClear - 清空时是否跳过该消息（不被清空）
+ */
+
+/**
+ * 打开过滤规则设置模态框
+ */
+function openFilterRulesModal() {
+    const modal = document.getElementById('filterRulesModal');
+    const globalFilterCheckbox = document.getElementById('globalFilterEnabled');
+    const filterStatus = document.getElementById('filterStatus');
+
+    // 更新总开关状态
+    globalFilterCheckbox.checked = globalSettings.filterEnabled;
+    updateFilterStatusDisplay();
+
+    // 渲染规则列表
+    renderFilterRulesList();
+
+    uiHelperFunctions.openModal('filterRulesModal');
+}
+
+/**
+ * 更新过滤状态显示
+ */
+function updateFilterStatusDisplay() {
+    const statusElement = document.getElementById('filterStatus');
+    const isEnabled = globalSettings.filterEnabled;
+    const ruleCount = globalSettings.filterRules.filter(rule => rule.enabled).length;
+
+    if (isEnabled) {
+        statusElement.textContent = `已启用 - ${ruleCount}条活跃规则`;
+        statusElement.style.color = 'var(--success-color, #28a745)';
+    } else {
+        statusElement.textContent = '已禁用';
+        statusElement.style.color = 'var(--text-secondary)';
+    }
+}
+
+/**
+ * 渲染过滤规则列表
+ */
+function renderFilterRulesList() {
+    const rulesList = document.getElementById('filterRulesList');
+    rulesList.innerHTML = '';
+
+    if (globalSettings.filterRules.length === 0) {
+        rulesList.innerHTML = '<div style="text-align: center; color: var(--text-secondary); padding: 20px;">暂无过滤规则，点击上方按钮添加规则</div>';
+        return;
+    }
+
+    // 按顺序排序规则
+    const sortedRules = [...globalSettings.filterRules].sort((a, b) => a.order - b.order);
+
+    sortedRules.forEach(rule => {
+        const ruleElement = createFilterRuleElement(rule);
+        rulesList.appendChild(ruleElement);
+    });
+}
+
+/**
+ * 创建过滤规则元素
+ * @param {FilterRule} rule
+ */
+function createFilterRuleElement(rule) {
+    const ruleDiv = document.createElement('div');
+    ruleDiv.className = `filter-rule-item ${rule.enabled ? 'enabled' : 'disabled'}`;
+    ruleDiv.dataset.ruleId = rule.id;
+
+    const ruleHeader = document.createElement('div');
+    ruleHeader.className = 'filter-rule-header';
+
+    const ruleTitle = document.createElement('div');
+    ruleTitle.className = 'filter-rule-title';
+    ruleTitle.innerHTML = `
+        <strong>${rule.name}</strong>
+        <span class="rule-type ${rule.type}">${rule.type === 'whitelist' ? '白名单' : '黑名单'}</span>
+    `;
+
+    const ruleActions = document.createElement('div');
+    ruleActions.className = 'filter-rule-actions';
+
+    const editBtn = document.createElement('button');
+    editBtn.className = 'small-button';
+    editBtn.textContent = '编辑';
+    editBtn.onclick = () => editFilterRule(rule.id);
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'small-button danger-button';
+    deleteBtn.textContent = '删除';
+    deleteBtn.onclick = () => deleteFilterRule(rule.id);
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.className = `small-button ${rule.enabled ? 'success-button' : 'secondary-button'}`;
+    toggleBtn.textContent = rule.enabled ? '启用' : '禁用';
+    toggleBtn.onclick = () => toggleFilterRule(rule.id);
+
+    ruleActions.appendChild(editBtn);
+    ruleActions.appendChild(deleteBtn);
+    ruleActions.appendChild(toggleBtn);
+
+    ruleHeader.appendChild(ruleTitle);
+    ruleHeader.appendChild(ruleActions);
+
+    const ruleDetails = document.createElement('div');
+    ruleDetails.className = 'filter-rule-details';
+    ruleDetails.innerHTML = `
+        <div class="rule-pattern">匹配模式: ${rule.pattern}</div>
+        <div class="rule-positions">匹配位置: ${rule.matchPositions.join(', ')}</div>
+        <div class="rule-duration">停留时间: ${rule.durationInfinite ? '永久' : rule.duration + '秒'}</div>
+        <div class="rule-skip-on-clear">清空跳过: ${rule.skipOnClear ? '是' : '否'}</div>
+    `;
+
+    ruleDiv.appendChild(ruleHeader);
+    ruleDiv.appendChild(ruleDetails);
+
+    return ruleDiv;
+}
+
+/**
+ * 添加新的过滤规则
+ */
+function addFilterRule() {
+    openFilterRuleEditor();
+}
+
+/**
+ * 编辑过滤规则
+ * @param {string} ruleId
+ */
+function editFilterRule(ruleId) {
+    const rule = globalSettings.filterRules.find(r => r.id === ruleId);
+    if (rule) {
+        openFilterRuleEditor(rule);
+    }
+}
+
+/**
+ * 删除过滤规则
+ * @param {string} ruleId
+ */
+async function deleteFilterRule(ruleId) {
+    if (confirm('确定要删除这条过滤规则吗？')) {
+        globalSettings.filterRules = globalSettings.filterRules.filter(r => r.id !== ruleId);
+        await saveFilterSettings();
+        renderFilterRulesList();
+        updateFilterStatusDisplay();
+    }
+}
+
+/**
+ * 切换过滤规则启用状态
+ * @param {string} ruleId
+ */
+async function toggleFilterRule(ruleId) {
+    const rule = globalSettings.filterRules.find(r => r.id === ruleId);
+    if (rule) {
+        rule.enabled = !rule.enabled;
+        await saveFilterSettings();
+        renderFilterRulesList();
+        updateFilterStatusDisplay();
+    }
+}
+
+/**
+ * 打开过滤规则编辑器
+ * @param {FilterRule|null} ruleToEdit
+ */
+function openFilterRuleEditor(ruleToEdit = null) {
+    const modal = document.getElementById('filterRuleEditorModal');
+    const form = document.getElementById('filterRuleEditorForm');
+    const title = document.getElementById('filterRuleEditorTitle');
+
+    if (ruleToEdit) {
+        title.textContent = '编辑过滤规则';
+        document.getElementById('editingFilterRuleId').value = ruleToEdit.id;
+        document.getElementById('filterRuleName').value = ruleToEdit.name;
+        document.querySelector(`input[name="ruleType"][value="${ruleToEdit.type}"]`).checked = true;
+        document.getElementById('filterRulePattern').value = ruleToEdit.pattern;
+
+        // 设置匹配位置复选框
+        document.querySelectorAll('input[name="matchPosition"]').forEach(checkbox => {
+            checkbox.checked = ruleToEdit.matchPositions.includes(checkbox.value);
+        });
+
+        document.getElementById('filterRuleDuration').value = ruleToEdit.duration;
+        document.getElementById('filterRuleDurationInfinite').checked = ruleToEdit.durationInfinite;
+        document.getElementById('filterRuleEnabled').checked = ruleToEdit.enabled;
+        document.getElementById('filterRuleSkipOnClear').checked = ruleToEdit.skipOnClear || false;
+    } else {
+        title.textContent = '添加过滤规则';
+        document.getElementById('editingFilterRuleId').value = '';
+        form.reset();
+        // 设置默认值
+        document.querySelector('input[name="ruleType"][value="blacklist"]').checked = true;
+        document.querySelector('input[name="matchPosition"][value="contain"]').checked = true;
+        document.getElementById('filterRuleDuration').value = 7;
+        document.getElementById('filterRuleDurationInfinite').checked = false;
+        document.getElementById('filterRuleEnabled').checked = true;
+        document.getElementById('filterRuleSkipOnClear').checked = false;
+    }
+
+    uiHelperFunctions.openModal('filterRuleEditorModal');
+}
+
+/**
+ * 保存过滤规则
+ */
+async function saveFilterRule() {
+    const form = document.getElementById('filterRuleEditorForm');
+    const ruleId = document.getElementById('editingFilterRuleId').value;
+
+    const ruleData = {
+        name: document.getElementById('filterRuleName').value.trim(),
+        type: document.querySelector('input[name="ruleType"]:checked').value,
+        pattern: document.getElementById('filterRulePattern').value.trim(),
+        matchPositions: Array.from(document.querySelectorAll('input[name="matchPosition"]:checked')).map(cb => cb.value),
+        duration: parseInt(document.getElementById('filterRuleDuration').value) || 0,
+        durationInfinite: document.getElementById('filterRuleDurationInfinite').checked,
+        enabled: document.getElementById('filterRuleEnabled').checked,
+        skipOnClear: document.getElementById('filterRuleSkipOnClear').checked,
+        order: ruleId ? globalSettings.filterRules.find(r => r.id === ruleId)?.order : Date.now()
+    };
+
+    // 验证必填字段
+    if (!ruleData.name || !ruleData.pattern || ruleData.matchPositions.length === 0) {
+        uiHelperFunctions.showToastNotification('请填写所有必填字段', 'error');
+        return;
+    }
+
+    // 验证停留时间
+    if (ruleData.duration < 0) {
+        uiHelperFunctions.showToastNotification('停留时间不能为负数', 'error');
+        return;
+    }
+
+    if (ruleData.duration > 300) {
+        uiHelperFunctions.showToastNotification('停留时间不能超过300秒', 'error');
+        return;
+    }
+
+    if (ruleId) {
+        // 编辑现有规则
+        const ruleIndex = globalSettings.filterRules.findIndex(r => r.id === ruleId);
+        if (ruleIndex !== -1) {
+            globalSettings.filterRules[ruleIndex] = { ...globalSettings.filterRules[ruleIndex], ...ruleData };
+        }
+    } else {
+        // 添加新规则
+        const newRule = {
+            id: `rule_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            ...ruleData
+        };
+        globalSettings.filterRules.push(newRule);
+    }
+
+    await saveFilterSettings();
+    uiHelperFunctions.closeModal('filterRuleEditorModal');
+    renderFilterRulesList();
+    updateFilterStatusDisplay();
+}
+
+/**
+ * 保存过滤设置到文件
+ */
+async function saveFilterSettings() {
+    const result = await window.electronAPI.saveSettings({
+        ...globalSettings,
+        filterRules: globalSettings.filterRules
+    });
+
+    if (!result.success) {
+        uiHelperFunctions.showToastNotification(`保存过滤设置失败: ${result.error}`, 'error');
+    }
+}
+
+/**
+ * 检查消息是否匹配过滤规则
+ * @param {string} messageTitle - 消息标题
+ * @returns {Object|null} 匹配的规则，如果过滤未启用则返回null，如果匹配白名单则返回show，否则返回hide
+ */
+function checkMessageFilter(messageTitle) {
+    if (!globalSettings.filterEnabled) {
+        return null;
+    }
+
+    for (const rule of globalSettings.filterRules) {
+        if (!rule.enabled) continue;
+
+        let matches = false;
+
+        // 检查是否匹配模式
+        if (rule.matchPositions.includes('contain') && messageTitle.includes(rule.pattern)) {
+            matches = true;
+        } else if (rule.matchPositions.includes('start') && messageTitle.startsWith(rule.pattern)) {
+            matches = true;
+        } else if (rule.matchPositions.includes('end') && messageTitle.endsWith(rule.pattern)) {
+            matches = true;
+        }
+
+        if (matches) {
+            return {
+                rule: rule,
+                action: rule.type === 'whitelist' ? 'show' : 'hide',
+                duration: rule.durationInfinite ? 0 : rule.duration // 0表示永久显示
+            };
+        }
+    }
+
+    // 如果过滤总开关开启但没有匹配任何规则，默认隐藏（相当于黑名单行为）
+    return {
+        rule: null,
+        action: 'hide',
+        duration: 0
+    };
+}
+
+// 设置事件监听器
+document.addEventListener('DOMContentLoaded', () => {
+    // 添加过滤规则按钮事件
+    const addFilterRuleBtn = document.getElementById('addFilterRuleBtn');
+    if (addFilterRuleBtn) {
+        addFilterRuleBtn.addEventListener('click', addFilterRule);
+    }
+
+    // 过滤规则编辑器表单提交
+    const filterRuleEditorForm = document.getElementById('filterRuleEditorForm');
+    if (filterRuleEditorForm) {
+        filterRuleEditorForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            saveFilterRule();
+        });
+    }
+
+    // 取消按钮
+    const cancelFilterRuleEditorBtn = document.getElementById('cancelFilterRuleEditor');
+    if (cancelFilterRuleEditorBtn) {
+        cancelFilterRuleEditorBtn.addEventListener('click', () => {
+            uiHelperFunctions.closeModal('filterRuleEditorModal');
+        });
+    }
+
+    // 关闭按钮
+    const closeFilterRuleEditorBtn = document.getElementById('closeFilterRuleEditorModal');
+    if (closeFilterRuleEditorBtn) {
+        closeFilterRuleEditorBtn.addEventListener('click', () => {
+            uiHelperFunctions.closeModal('filterRuleEditorModal');
+        });
+    }
+
+    // 过滤规则模态框关闭按钮
+    const closeFilterRulesBtn = document.getElementById('closeFilterRulesModal');
+    if (closeFilterRulesBtn) {
+        closeFilterRulesBtn.addEventListener('click', () => {
+            uiHelperFunctions.closeModal('filterRulesModal');
+        });
+    }
+
+    // 总开关变化事件
+    const globalFilterCheckbox = document.getElementById('globalFilterEnabled');
+    if (globalFilterCheckbox) {
+        globalFilterCheckbox.addEventListener('change', async () => {
+            globalSettings.filterEnabled = globalFilterCheckbox.checked;
+            await saveFilterSettings();
+            updateFilterStatusDisplay();
+        });
+    }
+});

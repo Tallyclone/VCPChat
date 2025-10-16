@@ -426,3 +426,284 @@ body.light-theme .floating-toast-notification {
     text-align: right;
     margin-top: 8px;
 }
+
+/* Filter Rules Management Styles */
+.filter-rules-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.filter-rules-list {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.filter-rule-item {
+    background-color: var(--tertiary-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-bottom: 10px;
+    padding: 12px;
+    transition: all 0.2s ease;
+}
+
+.filter-rule-item.enabled {
+    border-left: 4px solid var(--success-color, #28a745);
+    background-color: rgba(40, 167, 69, 0.05);
+}
+
+.filter-rule-item.disabled {
+    border-left: 4px solid var(--danger-color, #dc3545);
+    opacity: 0.6;
+}
+
+.filter-rule-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+}
+
+.filter-rule-title {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.filter-rule-title strong {
+    color: var(--primary-text);
+    font-size: 1em;
+}
+
+.rule-type {
+    font-size: 0.8em;
+    padding: 2px 6px;
+    border-radius: 12px;
+    background-color: var(--secondary-bg);
+    color: var(--secondary-text);
+    align-self: flex-start;
+}
+
+.rule-type.whitelist {
+    background-color: rgba(40, 167, 69, 0.2);
+    color: var(--success-color, #28a745);
+}
+
+.rule-type.blacklist {
+    background-color: rgba(220, 53, 69, 0.2);
+    color: var(--danger-color, #dc3545);
+}
+
+.filter-rule-actions {
+    display: flex;
+    gap: 5px;
+    flex-shrink: 0;
+}
+
+.filter-rule-actions .small-button {
+    padding: 4px 8px;
+    font-size: 0.8em;
+    min-width: auto;
+}
+
+.filter-rule-details {
+    font-size: 0.85em;
+    color: var(--secondary-text);
+    line-height: 1.4;
+}
+
+.rule-pattern, .rule-positions, .rule-duration, .rule-skip-on-clear {
+    margin: 2px 0;
+}
+
+.rule-pattern {
+    font-weight: 500;
+}
+
+.rule-skip-on-clear {
+    font-weight: 500;
+    color: var(--highlight-text);
+}
+
+/* Filter Rule Editor Styles */
+#filterRuleEditorModal .modal-content {
+    max-width: 500px;
+}
+
+.form-fieldset {
+    margin: 15px 0;
+    padding: 10px;
+    background-color: var(--secondary-bg);
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+}
+
+.form-fieldset label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+    color: var(--primary-text);
+}
+
+.checkbox-group, .radio-group {
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.checkbox-group label, .radio-group label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin: 0;
+    font-weight: normal;
+    cursor: pointer;
+}
+
+.checkbox-group input[type="checkbox"],
+.radio-group input[type="radio"] {
+    margin: 0;
+}
+
+#filterRuleEditorModal input[type="text"],
+#filterRuleEditorModal input[type="number"],
+#filterRuleEditorModal select,
+#filterRuleEditorModal textarea {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background-color: var(--input-bg);
+    color: var(--primary-text);
+    font-size: 0.9em;
+    box-sizing: border-box;
+}
+
+#filterRuleEditorModal input[type="text"]:focus,
+#filterRuleEditorModal input[type="number"]:focus,
+#filterRuleEditorModal select:focus,
+#filterRuleEditorModal textarea:focus {
+    outline: none;
+    border-color: var(--highlight-text);
+    box-shadow: 0 0 0 2px rgba(var(--highlight-text-rgb, 0, 123, 255), 0.25);
+}
+
+#filterRuleEditorModal textarea {
+    resize: vertical;
+    min-height: 60px;
+}
+
+#filterRuleEditorModal .form-actions {
+    margin-top: 20px;
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+/* Modal specific adjustments */
+#filterRulesModal .modal-content {
+    padding: 20px;
+}
+
+#filterRulesModal h2 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: var(--primary-text);
+}
+
+/* Status display styling */
+#filterStatus {
+    font-size: 0.9em;
+    padding: 2px 8px;
+    border-radius: 12px;
+    background-color: var(--secondary-bg);
+}
+
+/* MISS～气泡效果样式 */
+.miss-effect-bubble {
+    position: absolute;
+    background: linear-gradient(135deg, #ff6b6b, #ff8e8e);
+    color: white;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 0.9em;
+    font-weight: bold;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 4px 12px rgba(255, 107, 107, 0.4);
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0);
+    transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    z-index: 1000;
+    pointer-events: none;
+    white-space: nowrap;
+}
+
+.miss-effect-bubble::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, transparent 70%);
+    border-radius: 50%;
+    transform: translate(-50%, -50%) scale(0);
+    animation: miss-pulse 0.6s ease-out;
+}
+
+@keyframes miss-pulse {
+    0% {
+        transform: translate(-50%, -50%) scale(0);
+        opacity: 1;
+    }
+    50% {
+        transform: translate(-50%, -50%) scale(1.2);
+        opacity: 0.8;
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 0;
+    }
+}
+
+/* 被跳过通知项的高亮效果 */
+.notification-item.miss-highlight {
+    position: relative;
+    animation: miss-highlight-shake 0.5s ease-in-out;
+    border-left: 4px solid #ff6b6b !important;
+    background: linear-gradient(90deg,
+        rgba(255, 107, 107, 0.1) 0%,
+        var(--notification-bg) 20%,
+        var(--notification-bg) 80%,
+        rgba(255, 107, 107, 0.1) 100%
+    ) !important;
+}
+
+@keyframes miss-highlight-shake {
+    0%, 100% {
+        transform: translateX(0);
+    }
+    25% {
+        transform: translateX(-3px);
+    }
+    75% {
+        transform: translateX(3px);
+    }
+}
+
+/* 通知项的淡出动画增强 */
+.notification-item {
+    transition: opacity 0.5s ease, transform 0.5s ease, background-color 0.3s ease;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .miss-effect-bubble {
+        font-size: 0.8em;
+        padding: 6px 12px;
+    }
+}

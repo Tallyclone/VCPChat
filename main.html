@@ -277,7 +277,7 @@
                             <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"></path>
                         </svg>
                     </button>
-                    <button id="doNotDisturbBtn" class="header-button" title="勿扰模式（禁用浮动通知）">勿扰</button>
+                    <button id="doNotDisturbBtn" class="header-button" title="过滤模式（启用后可通过右键设置详细过滤规则）">过滤</button>
                     <button id="clearNotificationsBtn" title="清空通知">清空</button>
                 </div>
             </header>
@@ -634,7 +634,7 @@
             <h2>编辑正则表达式规则</h2>
             <form id="regexRuleForm">
                 <input type="hidden" id="editingRegexRuleId">
-                
+
                 <div>
                     <label for="regexRuleTitle">规则标题:</label>
                     <input type="text" id="regexRuleTitle" name="title" placeholder="例如：隐藏VCP内部标签" required>
@@ -689,6 +689,125 @@
 
                 <div class="form-actions">
                     <button type="button" id="cancelRegexRule" class="button-secondary">取消</button>
+                    <button type="submit" class="button-primary">保存规则</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Filter Rules Modal -->
+    <div class="modal" id="filterRulesModal">
+        <div class="modal-content" style="max-width: 800px; max-height: 80vh; overflow-y: auto;">
+            <span class="close-button" id="closeFilterRulesModal">×</span>
+            <h2>过滤规则设置</h2>
+
+            <div class="filter-rules-header" style="margin-bottom: 20px;">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                    <label for="globalFilterEnabled" style="display: flex; align-items: center; gap: 5px; font-weight: bold;">
+                        <input type="checkbox" id="globalFilterEnabled" style="margin: 0;">
+                        启用过滤总开关（启用后只显示白名单消息）
+                    </label>
+                    <span id="filterStatus" style="color: var(--text-secondary); font-size: 0.9em;"></span>
+                </div>
+                <button type="button" id="addFilterRuleBtn" class="sidebar-button small-button">添加过滤规则</button>
+            </div>
+
+            <div id="filterRulesList" class="filter-rules-list">
+                <!-- 过滤规则将在这里动态显示 -->
+            </div>
+
+            <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--border-color);">
+                <div style="font-size: 0.9em; color: var(--text-secondary);">
+                    <p><strong>使用说明：</strong></p>
+                    <p>• <strong>过滤总开关关闭：</strong>显示所有通知（相当于原来的勿扰模式关闭）</p>
+                    <p>• <strong>过滤总开关开启：</strong>只显示白名单规则匹配的消息，黑名单规则和其他消息都被过滤掉</p>
+                    <p>• <strong>白名单规则：</strong>明确指定要显示的消息类型</p>
+                    <p>• <strong>黑名单规则：</strong>明确指定要过滤掉的消息类型</p>
+                    <p>• <strong>规则优先级：</strong>按添加顺序匹配，第一个匹配的规则生效</p>
+                    <p>• <strong>停留时间：</strong>可设置每条规则对应的通知显示时长，支持永久显示</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filter Rule Editor Modal -->
+    <div class="modal" id="filterRuleEditorModal">
+        <div class="modal-content">
+            <span class="close-button" id="closeFilterRuleEditorModal">×</span>
+            <h2 id="filterRuleEditorTitle">添加过滤规则</h2>
+            <form id="filterRuleEditorForm">
+                <input type="hidden" id="editingFilterRuleId">
+
+                <div>
+                    <label for="filterRuleName">规则名称:</label>
+                    <input type="text" id="filterRuleName" name="name" placeholder="例如：系统消息过滤" required>
+                </div>
+
+                <div class="form-fieldset">
+                    <label>规则类型:</label>
+                    <div class="radio-group">
+                        <label for="ruleTypeBlacklist" style="display: flex; align-items: center; gap: 5px;">
+                            <input type="radio" id="ruleTypeBlacklist" name="ruleType" value="blacklist" checked>
+                            黑名单（过滤掉匹配的消息）
+                        </label>
+                        <label for="ruleTypeWhitelist" style="display: flex; align-items: center; gap: 5px;">
+                            <input type="radio" id="ruleTypeWhitelist" name="ruleType" value="whitelist">
+                            白名单（总是显示匹配的消息）
+                        </label>
+                    </div>
+                </div>
+
+                <div>
+                    <label for="filterRulePattern">匹配模式:</label>
+                    <input type="text" id="filterRulePattern" name="pattern" placeholder="消息标题中包含的关键字或正则表达式" required>
+                    <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                        支持简单的关键字匹配或正则表达式（无需/包围）
+                    </small>
+                </div>
+
+                <div class="form-fieldset">
+                    <label>匹配位置:</label>
+                    <div class="checkbox-group">
+                        <label><input type="checkbox" name="matchPosition" value="start" checked> 标题开头</label>
+                        <label><input type="checkbox" name="matchPosition" value="end"> 标题结尾</label>
+                        <label><input type="checkbox" name="matchPosition" value="contain"> 标题包含</label>
+                    </div>
+                </div>
+
+                <div>
+                    <label for="filterRuleDuration">消息停留时间（秒）:</label>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <input type="number" id="filterRuleDuration" name="duration" min="0" max="300" value="7" style="width: 80px;" oninput="this.value = Math.max(0, Math.min(300, parseInt(this.value) || 0))">
+                        <span>秒</span>
+                        <label for="filterRuleDurationInfinite" style="display: flex; align-items: center; gap: 5px;">
+                            <input type="checkbox" id="filterRuleDurationInfinite" name="durationInfinite">
+                            永久显示（不自动消失）
+                        </label>
+                    </div>
+                    <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                        设为0表示立即消失，1-300秒表示停留指定时间后消失，勾选永久显示则不自动消失
+                    </small>
+                </div>
+
+                <div class="form-fieldset">
+                    <label for="filterRuleEnabled" style="display: flex; align-items: center; gap: 5px;">
+                        <input type="checkbox" id="filterRuleEnabled" name="enabled" checked>
+                        启用此规则
+                    </label>
+                </div>
+
+                <div class="form-fieldset">
+                    <label for="filterRuleSkipOnClear" style="display: flex; align-items: center; gap: 5px;">
+                        <input type="checkbox" id="filterRuleSkipOnClear" name="skipOnClear">
+                        清空时跳过该消息（不被清空）
+                    </label>
+                    <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                        启用后，当点击清空按钮时，匹配该规则的消息不会被清除，并显示MISS～效果
+                    </small>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" id="cancelFilterRuleEditor" class="button-secondary">取消</button>
                     <button type="submit" class="button-primary">保存规则</button>
                 </div>
             </form>
