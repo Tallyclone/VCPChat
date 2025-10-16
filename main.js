@@ -352,8 +352,23 @@ if (!gotTheLock) {
        }
    }
 
-   // Fetch models on app startup
-   await fetchAndCacheModels();
+   // Create the main window first to give immediate feedback to the user.
+   createWindow();
+   createTray();
+
+   // Fetch models in the background and notify the renderer when done.
+   console.log('[Main] Fetching models in the background...');
+   fetchAndCacheModels().then(() => {
+       if (mainWindow && !mainWindow.isDestroyed()) {
+           console.log('[Main] Background model fetch complete. Notifying renderer.');
+           mainWindow.webContents.send('models-updated', cachedModels);
+       }
+   }).catch(error => {
+       console.error('[Main] Background model fetch failed:', error);
+       if (mainWindow && !mainWindow.isDestroyed()) {
+           mainWindow.webContents.send('models-update-failed', error.message);
+       }
+   });
 
    // IPC handler to provide cached models to the renderer process
    ipcMain.handle('get-cached-models', () => {
@@ -477,8 +492,6 @@ if (!gotTheLock) {
         });
     });
 
-    createWindow();
-    createTray();
     windowHandlers.initialize(mainWindow, openChildWindows);
     assistantHandlers.initialize({ SETTINGS_FILE });
     fileDialogHandlers.initialize(mainWindow, {
