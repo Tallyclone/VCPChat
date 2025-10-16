@@ -1571,6 +1571,30 @@ function setupEventListeners() {
             contextSanitizerDepthContainer.style.display = enableContextSanitizerCheckbox.checked ? 'block' : 'none';
         });
     }
+
+    // 添加全局键盘快捷键监听器
+    document.addEventListener('keydown', (e) => {
+        // Ctrl+S 或 Command+S 保存设置快捷键
+        if ((e.ctrlKey || e.metaKey) && e.key === 's' && !e.shiftKey) {
+            e.preventDefault();
+
+            // 检查当前是否在设置页面
+            const tabContentSettings = document.getElementById('tabContentSettings');
+            if (tabContentSettings && tabContentSettings.classList.contains('active')) {
+                handleQuickSaveSettings();
+            }
+        }
+
+        // Ctrl+E 或 Command+E 导出话题快捷键
+        if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
+            e.preventDefault();
+
+            // 检查当前是否有话题打开
+            if (currentTopicId && currentSelectedItem.id) {
+                handleQuickExportTopic();
+            }
+        }
+    });
 }
 
 
@@ -2193,6 +2217,132 @@ function checkMessageFilter(messageTitle) {
         action: 'hide',
         duration: 0
     };
+}
+
+// --- 快捷键处理函数 ---
+
+/**
+ * 处理快速保存设置的快捷键功能
+ */
+function handleQuickSaveSettings() {
+    console.log('[快捷键] 执行快速保存设置');
+
+    // 检查当前选中的项目
+    if (!currentSelectedItem.id) {
+        uiHelperFunctions.showToastNotification('请先选择一个Agent或群组', 'warning');
+        return;
+    }
+
+    // 检查是否有未保存的更改
+    const agentSettingsForm = document.getElementById('agentSettingsForm');
+    if (agentSettingsForm && currentSelectedItem.type === 'agent') {
+        // 对于Agent设置，直接提交表单
+        if (agentSettingsForm) {
+            // 创建并派发一个假的表单提交事件
+            const fakeEvent = new Event('submit', {
+                bubbles: true,
+                cancelable: true
+            });
+            agentSettingsForm.dispatchEvent(fakeEvent);
+        } else {
+            uiHelperFunctions.showToastNotification('Agent设置表单不可用', 'error');
+        }
+    } else if (currentSelectedItem.type === 'group') {
+        // 对于群组设置，直接提交表单
+        const groupSettingsForm = document.getElementById('groupSettingsForm');
+        if (groupSettingsForm) {
+            // 创建并派发一个假的表单提交事件
+            const fakeEvent = new Event('submit', {
+                bubbles: true,
+                cancelable: true
+            });
+            groupSettingsForm.dispatchEvent(fakeEvent);
+        } else {
+            uiHelperFunctions.showToastNotification('群组设置表单不可用', 'error');
+        }
+    } else {
+        uiHelperFunctions.showToastNotification('当前没有可保存的设置', 'info');
+    }
+}
+
+/**
+ * 处理快速导出话题的快捷键功能
+ */
+async function handleQuickExportTopic() {
+    console.log('[快捷键] 执行快速导出话题');
+
+    if (!currentTopicId || !currentSelectedItem.id) {
+        uiHelperFunctions.showToastNotification('请先选择并打开一个话题', 'warning');
+        return;
+    }
+
+    try {
+        // 获取当前话题的名称
+        let topicName = '未命名话题';
+        if (currentSelectedItem.config && currentSelectedItem.config.topics) {
+            const currentTopic = currentSelectedItem.config.topics.find(t => t.id === currentTopicId);
+            if (currentTopic) {
+                topicName = currentTopic.name;
+            }
+        }
+
+        // 获取聊天消息内容
+        const chatMessagesDiv = document.getElementById('chatMessages');
+        if (!chatMessagesDiv) {
+            uiHelperFunctions.showToastNotification('错误：找不到聊天内容容器', 'error');
+            return;
+        }
+
+        const messageItems = chatMessagesDiv.querySelectorAll('.message-item');
+        if (messageItems.length === 0) {
+            uiHelperFunctions.showToastNotification('此话题没有可见的聊天内容可导出', 'info');
+            return;
+        }
+
+        // 构建Markdown内容
+        let markdownContent = `# 话题: ${topicName}\n\n`;
+        let extractedCount = 0;
+
+        messageItems.forEach((item) => {
+            if (item.classList.contains('system') || item.classList.contains('thinking')) {
+                return;
+            }
+
+            const senderElement = item.querySelector('.sender-name');
+            const contentElement = item.querySelector('.md-content');
+
+            if (senderElement && contentElement) {
+                const sender = senderElement.textContent.trim().replace(':', '');
+                let content = contentElement.innerText || contentElement.textContent || "";
+                content = content.trim();
+
+                if (sender && content) {
+                    markdownContent += `**${sender}**: ${content}\n\n---\n\n`;
+                    extractedCount++;
+                }
+            }
+        });
+
+        if (extractedCount === 0) {
+            uiHelperFunctions.showToastNotification('未能从当前话题中提取任何有效对话内容', 'warning');
+            return;
+        }
+
+        // 调用导出功能
+        const result = await window.electronAPI.exportTopicAsMarkdown({
+            topicName: topicName,
+            markdownContent: markdownContent
+        });
+
+        if (result.success) {
+            uiHelperFunctions.showToastNotification(`话题 "${topicName}" 已成功导出到: ${result.path}`, 'success');
+        } else {
+            uiHelperFunctions.showToastNotification(`导出话题失败: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        console.error('[快捷键] 导出话题时发生错误:', error);
+        uiHelperFunctions.showToastNotification(`导出话题时发生错误: ${error.message}`, 'error');
+    }
 }
 
 // 设置事件监听器
