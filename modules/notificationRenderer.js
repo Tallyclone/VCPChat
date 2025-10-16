@@ -175,7 +175,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
             // };
             // element.appendChild(closeButton);
             element.onclick = () => {
-                // 清除自动消失的timeout
+                // 清除自动消失的timeout（如果有的话）
                 if (element.dataset.autoDismissTimeout) {
                     clearTimeout(parseInt(element.dataset.autoDismissTimeout));
                 }
@@ -240,13 +240,16 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
     // 初始化焦点清理机制
     initializeFocusCleanup();
 
-    // Render Floating Toast only if the sidebar is not already active and do not disturb mode is not enabled
+    // Render Floating Toast only if the sidebar is not already active and filter allows it
     const notificationsSidebarElement = document.getElementById('notificationsSidebar');
-    // Check if do not disturb mode is enabled (globalSettings.doNotDisturbLogMode or localStorage fallback)
-    const isDoNotDisturbMode = (window.globalSettings && window.globalSettings.doNotDisturbLogMode === true) ||
-                               (localStorage.getItem('doNotDisturbLogMode') === 'true');
 
-    if (toastContainer && (!notificationsSidebarElement || !notificationsSidebarElement.classList.contains('active')) && !isDoNotDisturbMode) {
+    // Check if message should be filtered
+    const filterResult = checkMessageFilter(titleText);
+
+    // 如果过滤总开关未启用，或者明确匹配白名单规则，则显示通知
+    const shouldShowNotification = !filterResult || (filterResult.action === 'show');
+
+    if (toastContainer && (!notificationsSidebarElement || !notificationsSidebarElement.classList.contains('active')) && shouldShowNotification) {
         const toastBubble = document.createElement('div');
         toastBubble.classList.add('floating-toast-notification');
         // 添加创建时间戳
@@ -255,19 +258,37 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
         toastContainer.prepend(toastBubble);
         setTimeout(() => toastBubble.classList.add('visible'), 50);
         
-        // 增强自动消失逻辑
-        const autoDismissTimeout = setTimeout(() => {
-            if (toastBubble.parentNode && toastBubble.classList.contains('visible') && !toastBubble.classList.contains('exiting')) {
-                closeToastNotification(toastBubble);
+        // 增强自动消失逻辑，支持自定义停留时间
+        let autoDismissDelay = 7000; // 默认7秒
+
+        // 检查是否有过滤规则指定了停留时间
+        if (typeof window.checkMessageFilter === 'function') {
+            const filterResult = window.checkMessageFilter(titleText);
+            if (filterResult && filterResult.duration !== undefined) {
+                autoDismissDelay = filterResult.duration === 0 ? Infinity : filterResult.duration * 1000;
             }
-        }, 7000); // Auto-dismiss after 7 seconds
+        }
+
+        let autoDismissTimeout;
+        if (autoDismissDelay === Infinity) {
+            // 永久显示，不设置自动消失定时器
+            autoDismissTimeout = null;
+        } else {
+            autoDismissTimeout = setTimeout(() => {
+                if (toastBubble.parentNode && toastBubble.classList.contains('visible') && !toastBubble.classList.contains('exiting')) {
+                    closeToastNotification(toastBubble);
+                }
+            }, autoDismissDelay);
+        }
         
-        // 保存timeout ID，以便在手动关闭时清除
-        toastBubble.dataset.autoDismissTimeout = autoDismissTimeout.toString();
+        // 保存timeout ID，以便在手动关闭时清除（如果有的话）
+        if (autoDismissTimeout) {
+            toastBubble.dataset.autoDismissTimeout = autoDismissTimeout.toString();
+        }
     } else if (toastContainer && notificationsSidebarElement && notificationsSidebarElement.classList.contains('active')) {
         // console.log('Notification sidebar is active, suppressing floating toast.');
-    } else if (isDoNotDisturbMode) {
-        console.log('Do not disturb mode is enabled, suppressing floating toast. globalSettings:', window.globalSettings);
+    } else if (filterResult && filterResult.action === 'hide') {
+        console.log('Message filtered out by rule:', filterResult.rule?.name || 'default blacklist', 'Action:', filterResult.action);
     } else if (!toastContainer) {
         console.warn('Floating toast container not found. Toast not displayed.');
     }

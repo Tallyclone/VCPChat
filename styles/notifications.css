@@ -105,6 +105,7 @@ body.light-theme #clearNotificationsBtn:hover, body.light-theme #doNotDisturbBtn
     padding: 0;
     margin: 0;
     overflow-y: auto;
+    overflow-x: hidden;
     flex-grow: 1;
 }
 .notification-item {
@@ -122,14 +123,14 @@ body.light-theme #clearNotificationsBtn:hover, body.light-theme #doNotDisturbBtn
     display: block;
     margin-bottom: 4px;
 }
-.notification-item pre { 
+.notification-item pre {
     background-color: rgba(0,0,0,0.2);
     padding: 6px;
     border-radius: 4px;
     font-size: 0.85em;
     margin-top: 5px;
     max-height: 100px;
-    overflow: auto;
+    overflow-y: auto;
     white-space: pre-wrap;
     word-break: break-all;
 }
@@ -249,6 +250,7 @@ body.light-theme .notes-section #openCanvasBtn:hover {
     box-sizing: border-box;
     cursor: pointer;
     overflow: hidden;
+    max-width: 100%;
 
     background-image: linear-gradient(
         110deg,
@@ -278,11 +280,17 @@ body.light-theme .notes-section #openCanvasBtn:hover {
     margin-bottom: 4px;
     position: relative;
     z-index: 1;
+    max-width: 100%;
+    overflow-wrap: break-word;
+    word-break: break-all;
 }
 
 .notification-item .notification-content {
     position: relative;
     z-index: 1;
+    max-width: 100%;
+    overflow-wrap: break-word;
+    word-break: break-all;
 }
 
 .notification-item pre {
@@ -292,7 +300,7 @@ body.light-theme .notes-section #openCanvasBtn:hover {
     font-size: 0.85em;
     margin-top: 5px;
     max-height: 100px;
-    overflow: auto;
+    overflow-y: auto;
     white-space: pre-wrap;
     word-break: break-all;
     position: relative;
@@ -328,6 +336,8 @@ body.light-theme .notes-section #openCanvasBtn:hover {
     margin-top: 5px;
     position: relative;
     z-index: 1;
+    max-width: 100%;
+    overflow-wrap: break-word;
 }
 
 body.light-theme .notification-item {
@@ -413,7 +423,7 @@ body.light-theme .floating-toast-notification {
     font-size: 0.85em;
     margin-top: 6px;
     max-height: 80px;
-    overflow: auto;
+    overflow-y: auto;
     white-space: pre-wrap;
     word-break: break-all;
 }
@@ -425,4 +435,191 @@ body.light-theme .floating-toast-notification {
     display: block;
     text-align: right;
     margin-top: 8px;
+}
+
+/* Filter Rules Management Styles */
+.filter-rules-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.filter-rules-list {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.filter-rule-item {
+    background-color: var(--tertiary-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-bottom: 10px;
+    padding: 12px;
+    transition: all 0.2s ease;
+}
+
+.filter-rule-item.enabled {
+    border-left: 4px solid var(--success-color, #28a745);
+    background-color: rgba(40, 167, 69, 0.05);
+}
+
+.filter-rule-item.disabled {
+    border-left: 4px solid var(--danger-color, #dc3545);
+    opacity: 0.6;
+}
+
+.filter-rule-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+}
+
+.filter-rule-title {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.filter-rule-title strong {
+    color: var(--primary-text);
+    font-size: 1em;
+}
+
+.rule-type {
+    font-size: 0.8em;
+    padding: 2px 6px;
+    border-radius: 12px;
+    background-color: var(--secondary-bg);
+    color: var(--secondary-text);
+    align-self: flex-start;
+}
+
+.rule-type.whitelist {
+    background-color: rgba(40, 167, 69, 0.2);
+    color: var(--success-color, #28a745);
+}
+
+
+.filter-rule-actions {
+    display: flex;
+    gap: 5px;
+    flex-shrink: 0;
+}
+
+.filter-rule-actions .small-button {
+    padding: 4px 8px;
+    font-size: 0.8em;
+    min-width: auto;
+}
+
+.filter-rule-details {
+    font-size: 0.85em;
+    color: var(--secondary-text);
+    line-height: 1.4;
+}
+
+.rule-pattern, .rule-positions, .rule-duration {
+    margin: 2px 0;
+}
+
+.rule-pattern {
+    font-weight: 500;
+}
+
+/* Filter Rule Editor Styles */
+#filterRuleEditorModal .modal-content {
+    max-width: 500px;
+}
+
+.form-fieldset {
+    margin: 15px 0;
+    padding: 10px;
+    background-color: var(--secondary-bg);
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+}
+
+.form-fieldset label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+    color: var(--primary-text);
+}
+
+.checkbox-group, .radio-group {
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.checkbox-group label, .radio-group label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin: 0;
+    font-weight: normal;
+    cursor: pointer;
+}
+
+.checkbox-group input[type="checkbox"],
+.radio-group input[type="radio"] {
+    margin: 0;
+}
+
+#filterRuleEditorModal input[type="text"],
+#filterRuleEditorModal input[type="number"],
+#filterRuleEditorModal select,
+#filterRuleEditorModal textarea {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background-color: var(--input-bg);
+    color: var(--primary-text);
+    font-size: 0.9em;
+    box-sizing: border-box;
+}
+
+#filterRuleEditorModal input[type="text"]:focus,
+#filterRuleEditorModal input[type="number"]:focus,
+#filterRuleEditorModal select:focus,
+#filterRuleEditorModal textarea:focus {
+    outline: none;
+    border-color: var(--highlight-text);
+    box-shadow: 0 0 0 2px rgba(var(--highlight-text-rgb, 0, 123, 255), 0.25);
+}
+
+#filterRuleEditorModal textarea {
+    resize: vertical;
+    min-height: 60px;
+}
+
+#filterRuleEditorModal .form-actions {
+    margin-top: 20px;
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+/* Modal specific adjustments */
+#filterRulesModal .modal-content {
+    padding: 20px;
+}
+
+#filterRulesModal h2 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: var(--primary-text);
+}
+
+/* Status display styling */
+#filterStatus {
+    font-size: 0.9em;
+    padding: 2px 8px;
+    border-radius: 12px;
+    background-color: var(--secondary-bg);
 }

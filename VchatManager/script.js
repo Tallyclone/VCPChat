@@ -447,7 +447,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Search Functionality ---
     function setupSearch() {
         window.addEventListener('keydown', (e) => {
-            if (e.ctrlKey && e.key === 'f') {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
                 e.preventDefault();
                 searchModalEl.style.display = 'flex';
                 searchInputEl.focus();

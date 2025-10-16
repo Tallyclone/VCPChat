@@ -40,9 +40,9 @@ const searchManager = {
     },
 
     setupEventListeners() {
-        // Global key listener for opening (Ctrl+F) and closing (Esc) the modal
+        // Global key listener for opening (Ctrl+F or Command+F) and closing (Esc) the modal
         window.addEventListener('keydown', (e) => {
-            if (e.ctrlKey && e.key === 'f') {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
                 e.preventDefault();
                 this.openModal();
             }
