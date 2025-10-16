@@ -28,7 +28,7 @@ body.light-theme .title-bar {
 .title-bar-text {
     font-size: 0.9em;
     font-weight: bold;
-    margin-left: -3px;
+    margin-left: 0;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -36,19 +36,14 @@ body.light-theme .title-bar {
     min-width: 0; /* Allow shrinking */
     margin-right: 10px; /* Add some space between text and controls */
     
-    /* --- Animated Gradient --- */
-    background: linear-gradient(90deg, #ff8c94, #a0a0ff, #8cfff4, #a0a0ff, #ff8c94);
-    background-size: 200% auto;
-    color: transparent;
-    background-clip: text;
-    -webkit-background-clip: text;
-    animation: title-text-gradient-scroll 5s linear infinite;
-    text-shadow: 0 0 4px rgba(255, 140, 148, 0.4); /* Subtle glow with theme color */
+    /* Animated gradient removed for performance. */
+    color: var(--primary-text);
+    text-shadow: none;
 }
 
 .title-bar-logo {
    height: 20px; /* Adjust based on title bar height */
-   margin-right: 8px;
+   margin-right: 4px;
    vertical-align: middle; /* Align with text */
 }
 

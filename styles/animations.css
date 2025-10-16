@@ -135,13 +135,5 @@ body.light-theme .topic-item.active-topic-glowing::before {
 }
 
 /* =======================================================
- * VCPChat Title: Animated Gradient Text
+ * VCPChat Title: Animated Gradient Text (Removed for performance)
  * ======================================================= */
-@keyframes title-text-gradient-scroll {
-    0% {
-        background-position: 200% center;
-    }
-    100% {
-        background-position: -200% center;
-    }
-}
