@@ -720,9 +720,8 @@
                 <div style="font-size: 0.9em; color: var(--text-secondary);">
                     <p><strong>使用说明：</strong></p>
                     <p>• <strong>过滤总开关关闭：</strong>显示所有通知（相当于原来的勿扰模式关闭）</p>
-                    <p>• <strong>过滤总开关开启：</strong>只显示白名单规则匹配的消息，黑名单规则和其他消息都被过滤掉</p>
+                    <p>• <strong>过滤总开关开启：</strong>只显示白名单规则匹配的消息，其他消息都被过滤掉</p>
                     <p>• <strong>白名单规则：</strong>明确指定要显示的消息类型</p>
-                    <p>• <strong>黑名单规则：</strong>明确指定要过滤掉的消息类型</p>
                     <p>• <strong>规则优先级：</strong>按添加顺序匹配，第一个匹配的规则生效</p>
                     <p>• <strong>停留时间：</strong>可设置每条规则对应的通知显示时长，支持永久显示</p>
                 </div>
@@ -746,12 +745,8 @@
                 <div class="form-fieldset">
                     <label>规则类型:</label>
                     <div class="radio-group">
-                        <label for="ruleTypeBlacklist" style="display: flex; align-items: center; gap: 5px;">
-                            <input type="radio" id="ruleTypeBlacklist" name="ruleType" value="blacklist" checked>
-                            黑名单（过滤掉匹配的消息）
-                        </label>
                         <label for="ruleTypeWhitelist" style="display: flex; align-items: center; gap: 5px;">
-                            <input type="radio" id="ruleTypeWhitelist" name="ruleType" value="whitelist">
+                            <input type="radio" id="ruleTypeWhitelist" name="ruleType" value="whitelist" checked>
                             白名单（总是显示匹配的消息）
                         </label>
                     </div>
@@ -768,7 +763,7 @@
                 <div class="form-fieldset">
                     <label>匹配位置:</label>
                     <div class="checkbox-group">
-                        <label><input type="checkbox" name="matchPosition" value="start" checked> 标题开头</label>
+                        <label><input type="checkbox" name="matchPosition" value="start"> 标题开头</label>
                         <label><input type="checkbox" name="matchPosition" value="end"> 标题结尾</label>
                         <label><input type="checkbox" name="matchPosition" value="contain"> 标题包含</label>
                     </div>
@@ -794,16 +789,6 @@
                         <input type="checkbox" id="filterRuleEnabled" name="enabled" checked>
                         启用此规则
                     </label>
-                </div>
-
-                <div class="form-fieldset">
-                    <label for="filterRuleSkipOnClear" style="display: flex; align-items: center; gap: 5px;">
-                        <input type="checkbox" id="filterRuleSkipOnClear" name="skipOnClear">
-                        清空时跳过该消息（不被清空）
-                    </label>
-                    <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                        启用后，当点击清空按钮时，匹配该规则的消息不会被清除，并显示MISS～效果
-                    </small>
                 </div>
 
                 <div class="form-actions">

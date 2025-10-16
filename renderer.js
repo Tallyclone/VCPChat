@@ -1346,115 +1346,8 @@ function setupEventListeners() {
 
 
     clearNotificationsBtn.addEventListener('click', () => {
-        clearNotificationsWithFilter();
+        notificationsListUl.innerHTML = '';
     });
-
-    /**
-     * 清空通知时跳过匹配过滤规则的消息，并显示MISS～效果
-     */
-    function clearNotificationsWithFilter() {
-        const notificationItems = notificationsListUl.querySelectorAll('.notification-item');
-
-        if (notificationItems.length === 0) {
-            return; // 没有通知，直接返回
-        }
-
-        let hasSkippedItems = false;
-
-        // 遍历所有通知项，倒序处理以避免DOM变化影响索引
-        const itemsArray = Array.from(notificationItems);
-        itemsArray.reverse().forEach(item => {
-            // 获取通知标题
-            const titleElement = item.querySelector('strong');
-            if (!titleElement) return;
-
-            const titleText = titleElement.textContent;
-
-            // 检查是否匹配过滤规则
-            const filterResult = checkMessageFilter(titleText);
-
-            if (filterResult && filterResult.rule && filterResult.rule.skipOnClear) {
-                // 规则明确设置了清空时跳过，显示MISS效果
-                showMissEffect(item);
-                hasSkippedItems = true;
-            } else if (filterResult && filterResult.action === 'hide') {
-                // 匹配黑名单规则或默认黑名单行为，跳过并显示MISS效果
-                showMissEffect(item);
-                hasSkippedItems = true;
-            } else {
-                // 不匹配过滤规则或匹配白名单规则，正常清空
-                item.style.opacity = '0';
-                item.style.transform = 'translateX(100%)';
-                setTimeout(() => {
-                    if (item.parentNode) {
-                        item.parentNode.removeChild(item);
-                    }
-                }, 500);
-            }
-        });
-
-        // 如果有跳过的项目，显示提示信息
-        if (hasSkippedItems) {
-            uiHelperFunctions.showToastNotification('部分消息因过滤规则被保留', 'info');
-        }
-    }
-
-    /**
-     * 为跳过的通知项显示MISS～气泡效果
-     * @param {HTMLElement} notificationItem - 通知项元素
-     */
-    function showMissEffect(notificationItem) {
-        // 创建MISS气泡元素
-        const missBubble = document.createElement('div');
-        missBubble.className = 'miss-effect-bubble';
-        missBubble.textContent = 'MISS～';
-
-        // 获取通知内容区域
-        const contentDiv = notificationItem.querySelector('.notification-content');
-        if (!contentDiv) {
-            console.warn('未找到通知内容区域，使用整个通知项中央');
-            return;
-        }
-
-        // 获取内容区域的位置（相对于视口）
-        const contentRect = contentDiv.getBoundingClientRect();
-
-        // 计算内容区域的3/4位置（水平偏右，垂直居中）
-        const centerX = contentRect.left + contentRect.width * 0.75;
-        const centerY = contentRect.top + contentRect.height / 2;
-
-        // 设置气泡的初始位置（相对于文档的绝对定位）
-        missBubble.style.position = 'fixed';
-        missBubble.style.left = centerX + 'px';
-        missBubble.style.top = centerY + 'px';
-        missBubble.style.transform = 'translate(-50%, -50%) scale(0)';
-        missBubble.style.zIndex = '10000';
-
-        // 添加到文档body中（使用fixed定位）
-        document.body.appendChild(missBubble);
-
-        // 为通知项添加高亮效果
-        notificationItem.classList.add('miss-highlight');
-
-        // 触发动画
-        setTimeout(() => {
-            missBubble.style.transform = 'translate(-50%, -50%) scale(1)';
-            missBubble.style.opacity = '1';
-        }, 50);
-
-        // 动画完成后清理
-        setTimeout(() => {
-            missBubble.style.transform = 'translate(-50%, -150%) scale(0.8)';
-            missBubble.style.opacity = '0';
-
-            setTimeout(() => {
-                if (missBubble.parentNode) {
-                    missBubble.parentNode.removeChild(missBubble);
-                }
-                notificationItem.classList.remove('miss-highlight');
-            }, 300);
-        }, 800);
-    }
 
     if (doNotDisturbBtn) {
         // 左键点击：切换过滤总开关
@@ -1979,14 +1872,13 @@ window.checkMessageFilter = checkMessageFilter;
  * @typedef {Object} FilterRule
  * @property {string} id - 规则唯一标识符
  * @property {string} name - 规则名称
- * @property {string} type - 规则类型：'blacklist' 或 'whitelist'
+ * @property {string} type - 规则类型：'whitelist'
  * @property {string} pattern - 匹配模式（正则表达式字符串）
  * @property {string[]} matchPositions - 匹配位置：['start', 'end', 'contain']
  * @property {number} duration - 消息停留时间（秒），0表示立即消失
  * @property {boolean} durationInfinite - 是否永久显示
  * @property {boolean} enabled - 是否启用此规则
  * @property {number} order - 规则顺序（数字越小优先级越高）
- * @property {boolean} skipOnClear - 清空时是否跳过该消息（不被清空）
  */
 
 /**
@@ -2061,7 +1953,7 @@ function createFilterRuleElement(rule) {
     ruleTitle.className = 'filter-rule-title';
     ruleTitle.innerHTML = `
         <strong>${rule.name}</strong>
-        <span class="rule-type ${rule.type}">${rule.type === 'whitelist' ? '白名单' : '黑名单'}</span>
+        <span class="rule-type ${rule.type}">白名单</span>
     `;
 
     const ruleActions = document.createElement('div');
@@ -2095,7 +1987,6 @@ function createFilterRuleElement(rule) {
         <div class="rule-pattern">匹配模式: ${rule.pattern}</div>
         <div class="rule-positions">匹配位置: ${rule.matchPositions.join(', ')}</div>
         <div class="rule-duration">停留时间: ${rule.durationInfinite ? '永久' : rule.duration + '秒'}</div>
-        <div class="rule-skip-on-clear">清空跳过: ${rule.skipOnClear ? '是' : '否'}</div>
     `;
 
     ruleDiv.appendChild(ruleHeader);
@@ -2162,7 +2053,7 @@ function openFilterRuleEditor(ruleToEdit = null) {
         title.textContent = '编辑过滤规则';
         document.getElementById('editingFilterRuleId').value = ruleToEdit.id;
         document.getElementById('filterRuleName').value = ruleToEdit.name;
-        document.querySelector(`input[name="ruleType"][value="${ruleToEdit.type}"]`).checked = true;
+        document.querySelector(`input[name="ruleType"][value="whitelist"]`).checked = true;
         document.getElementById('filterRulePattern').value = ruleToEdit.pattern;
 
         // 设置匹配位置复选框
@@ -2173,18 +2064,16 @@ function openFilterRuleEditor(ruleToEdit = null) {
         document.getElementById('filterRuleDuration').value = ruleToEdit.duration;
         document.getElementById('filterRuleDurationInfinite').checked = ruleToEdit.durationInfinite;
         document.getElementById('filterRuleEnabled').checked = ruleToEdit.enabled;
-        document.getElementById('filterRuleSkipOnClear').checked = ruleToEdit.skipOnClear || false;
     } else {
         title.textContent = '添加过滤规则';
         document.getElementById('editingFilterRuleId').value = '';
         form.reset();
         // 设置默认值
-        document.querySelector('input[name="ruleType"][value="blacklist"]').checked = true;
-        document.querySelector('input[name="matchPosition"][value="contain"]').checked = true;
+        document.querySelector('input[name="ruleType"][value="whitelist"]').checked = true;
+        // 匹配位置选项默认都不选中，由用户手动选择
         document.getElementById('filterRuleDuration').value = 7;
         document.getElementById('filterRuleDurationInfinite').checked = false;
         document.getElementById('filterRuleEnabled').checked = true;
-        document.getElementById('filterRuleSkipOnClear').checked = false;
     }
 
     uiHelperFunctions.openModal('filterRuleEditorModal');
@@ -2199,13 +2088,12 @@ async function saveFilterRule() {
 
     const ruleData = {
         name: document.getElementById('filterRuleName').value.trim(),
-        type: document.querySelector('input[name="ruleType"]:checked').value,
+        type: 'whitelist', // 只支持白名单
         pattern: document.getElementById('filterRulePattern').value.trim(),
         matchPositions: Array.from(document.querySelectorAll('input[name="matchPosition"]:checked')).map(cb => cb.value),
         duration: parseInt(document.getElementById('filterRuleDuration').value) || 0,
         durationInfinite: document.getElementById('filterRuleDurationInfinite').checked,
         enabled: document.getElementById('filterRuleEnabled').checked,
-        skipOnClear: document.getElementById('filterRuleSkipOnClear').checked,
         order: ruleId ? globalSettings.filterRules.find(r => r.id === ruleId)?.order : Date.now()
     };
 
@@ -2276,25 +2164,30 @@ function checkMessageFilter(messageTitle) {
 
         let matches = false;
 
-        // 检查是否匹配模式
-        if (rule.matchPositions.includes('contain') && messageTitle.includes(rule.pattern)) {
-            matches = true;
-        } else if (rule.matchPositions.includes('start') && messageTitle.startsWith(rule.pattern)) {
-            matches = true;
-        } else if (rule.matchPositions.includes('end') && messageTitle.endsWith(rule.pattern)) {
-            matches = true;
+        // 检查是否匹配模式（任一匹配位置满足即可）
+        for (const position of rule.matchPositions) {
+            if (position === 'contain' && messageTitle.includes(rule.pattern)) {
+                matches = true;
+                break;
+            } else if (position === 'start' && messageTitle.startsWith(rule.pattern)) {
+                matches = true;
+                break;
+            } else if (position === 'end' && messageTitle.endsWith(rule.pattern)) {
+                matches = true;
+                break;
+            }
         }
 
         if (matches) {
             return {
                 rule: rule,
-                action: rule.type === 'whitelist' ? 'show' : 'hide',
+                action: 'show',
                 duration: rule.durationInfinite ? 0 : rule.duration // 0表示永久显示
             };
         }
     }
 
-    // 如果过滤总开关开启但没有匹配任何规则，默认隐藏（相当于黑名单行为）
+    // 如果过滤总开关开启但没有匹配任何规则，默认隐藏（白名单行为：只显示匹配的消息）
     return {
         rule: null,
         action: 'hide',
