@@ -204,7 +204,9 @@
 
                         <div class="form-actions">
                             <button type="submit">保存Agent设置</button>
-                            <button type="button" id="deleteAgentBtn" class="danger-button">删除此Agent</button>
+                            <div class="delete-button-container">
+                                <button type="button" id="deleteAgentBtn" class="danger-button">删除此Agent</button>
+                            </div>
                         </div>
                     </form>
                 </div>
@@ -451,7 +453,7 @@
                 <hr style="border: none; border-top: 1px solid var(--border-color); margin: 20px 0;">
 
                 <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                    <label for="enableMiddleClickQuickAction">启用中键快速功能</label>
+                    <label for="enableMiddleClickQuickAction">启用中键快捷功能</label>
                     <label class="switch">
                         <input type="checkbox" id="enableMiddleClickQuickAction" name="enableMiddleClickQuickAction">
                         <span class="slider round"></span>
@@ -474,6 +476,17 @@
                     <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
                         提示：启用后，中键按下消息气泡，1 秒内松开将快速执行选中的右键菜单功能
                     </small>
+                </div>
+
+                <!-- 重新回复保险机制开关 - 仅在中键快速执行功能为重新回复时显示 -->
+                <div class="form-group" id="regenerateConfirmationContainer" style="display: none; margin-bottom: 15px;">
+                    <div class="form-group-inline" style="justify-content: space-between; align-items: center;">
+                        <label for="enableRegenerateConfirmation" title="开启后，当重新回复的消息不是最后一条时会显示确认对话框">重新回复保险机制</label>
+                        <label class="switch">
+                            <input type="checkbox" id="enableRegenerateConfirmation" name="enableRegenerateConfirmation">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
                 </div>
 
                 <div class="form-group" id="middleClickAdvancedContainer" style="display: none; margin-bottom: 20px;">

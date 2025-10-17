@@ -509,7 +509,10 @@ const settingsManager = (() => {
 
             // 创建正则设置UI
             createStripRegexUI();
-            
+
+            // 添加Agent设置滚动条粘性按钮逻辑
+            setupAgentSettingsStickyButtons();
+
             console.log('settingsManager initialized.');
 
             // --- Global Settings Enhancements ---
@@ -816,6 +819,59 @@ const settingsManager = (() => {
             console.error('导入正则规则时发生意外错误:', error);
             uiHelper.showToastNotification(`导入失败: ${error.message}`, 'error');
         }
+    }
+
+    /**
+     * 设置Agent设置的粘性按钮效果
+     */
+    function setupAgentSettingsStickyButtons() {
+        if (!agentSettingsContainer) return;
+
+        // 监听Agent设置容器的滚动事件
+        const settingsTabContent = agentSettingsContainer.closest('.sidebar-tab-content');
+        if (!settingsTabContent) return;
+
+        let isScrolledToBottom = false;
+
+        const updateStickyButtonState = () => {
+            const scrollTop = settingsTabContent.scrollTop;
+            const scrollHeight = settingsTabContent.scrollHeight;
+            const clientHeight = settingsTabContent.clientHeight;
+
+            // 检查是否滚动到底部（留出一些容差）
+            const newScrolledToBottom = scrollTop + clientHeight >= scrollHeight - 10;
+
+            if (newScrolledToBottom !== isScrolledToBottom) {
+                isScrolledToBottom = newScrolledToBottom;
+
+                // 更新按钮容器类名
+                const formActions = agentSettingsForm?.querySelector('.form-actions');
+                if (formActions) {
+                    if (isScrolledToBottom) {
+                        // 滚动到底部时，显示删除按钮
+                        formActions.classList.add('scrolled-to-bottom');
+                    } else {
+                        // 未滚动到底部时，隐藏删除按钮
+                        formActions.classList.remove('scrolled-to-bottom');
+                    }
+                }
+            }
+        };
+
+        // 使用节流函数避免过度调用
+        let scrollTimeout;
+        settingsTabContent.addEventListener('scroll', () => {
+            if (scrollTimeout) {
+                clearTimeout(scrollTimeout);
+            }
+            scrollTimeout = setTimeout(updateStickyButtonState, 10);
+        });
+
+        // 初始检查 - 确保初始状态下删除按钮是隐藏的
+        isScrolledToBottom = false;
+        updateStickyButtonState();
+
+        console.log('[SettingsManager] Agent settings sticky buttons initialized.');
     }
 })();
 
