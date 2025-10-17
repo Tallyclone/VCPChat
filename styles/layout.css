@@ -180,7 +180,7 @@ body.light-theme .notifications-sidebar {
     /* 1. 定位与尺寸 */
     position: fixed; /* 使用fixed定位，因为它要覆盖的title-bar也是fixed */
     left: 0;
-    right: 0; /* 宽度100% */
+    /* right: 0; */ /* 宽度由JS动态控制 */
     height: 16px; /* 羽化条的高度，这个值可以微调以达到最佳效果 */
     z-index: 1002; /* 必须比 title-bar (1001) 的 z-index 更高 */
 
