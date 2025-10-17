@@ -1616,6 +1616,31 @@ function setupEventListeners() {
         }
     });
 }
+    // --- Dynamic Seam Fixer Width ---
+    const seamFixer = document.getElementById('title-bar-seam-fixer');
+
+    if (seamFixer && notificationsSidebar) {
+        const setSeamFixerWidth = () => {
+            // Use getBoundingClientRect for precise width, including borders/padding.
+            const sidebarWidth = notificationsSidebar.getBoundingClientRect().width;
+            // When the sidebar is visible (width > 0), add a 2px offset to account for the resizer.
+            const offset = sidebarWidth > 0 ? 5 : 0;
+            seamFixer.style.right = `${sidebarWidth + offset}px`;
+        };
+
+        // Use ResizeObserver to watch for width changes (e.g., from dragging the resizer).
+        const resizeObserver = new ResizeObserver(setSeamFixerWidth);
+        resizeObserver.observe(notificationsSidebar);
+
+        // Use MutationObserver to watch for class/style changes (e.g., toggling the 'active' class).
+        // This is crucial because toggling the sidebar might not fire a resize event immediately.
+        const mutationObserver = new MutationObserver(setSeamFixerWidth);
+        mutationObserver.observe(notificationsSidebar, { attributes: true, attributeFilter: ['class', 'style'] });
+
+        // Set the initial width on load.
+        setSeamFixerWidth();
+    }
+    // --- End Dynamic Seam Fixer Width ---
 
 
  
