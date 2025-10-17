@@ -506,7 +506,7 @@ if (!gotTheLock) {
             height: 900,
             minWidth: 300,
             minHeight: 600,
-            title: 'VCP 信息流监听器',
+            title: 'VCP - 信息流监听器',
             frame: false, // 移除原生窗口框架
             titleBarStyle: 'hidden', // 隐藏标题栏
             webPreferences: {
