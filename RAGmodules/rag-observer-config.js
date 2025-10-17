@@ -16,8 +16,7 @@ class RAGObserverConfig {
         const params = new URLSearchParams(window.location.search);
         const settings = {
             vcpLogUrl: params.get('vcpLogUrl') || 'ws://127.0.0.1:5890',
-            vcpLogKey: params.get('vcpLogKey') || '',
-            currentThemeMode: params.get('currentThemeMode') || 'dark'
+            vcpLogKey: params.get('vcpLogKey') || ''
         };
         this.settings = settings;
         console.log('Loaded settings from URL:', this.settings);
@@ -41,8 +40,7 @@ class RAGObserverConfig {
 
         const settings = this.loadSettings();
         
-        // 应用主题 (只在首次连接或设置变化时应用，但这里保持原样，因为它幂等)
-        this.applyTheme(settings.currentThemeMode);
+        // Theme is now handled by the async DOMContentLoaded listener.
         
         // 获取连接信息
         const wsUrl = settings.vcpLogUrl || 'ws://127.0.0.1:5890';
@@ -133,8 +131,34 @@ class RAGObserverConfig {
 }
 
 // 页面加载时自动初始化
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
     const config = new RAGObserverConfig();
+
+    // Initialize and apply theme first
+    if (window.electronAPI) {
+        // Listen for subsequent theme updates from the main process
+        window.electronAPI.onThemeUpdated((theme) => {
+            console.log(`RAG Observer: Theme updated to ${theme}`);
+            config.applyTheme(theme);
+        });
+        
+        // Get and apply the initial theme
+        try {
+            const theme = await window.electronAPI.getCurrentTheme();
+            console.log(`RAG Observer: Initial theme set to ${theme}`);
+            config.applyTheme(theme || 'dark');
+        } catch (error) {
+            console.error('RAG Observer: Failed to get initial theme, falling back to dark.', error);
+            config.applyTheme('dark');
+        }
+    } else {
+        // Fallback for non-electron environments if needed
+        const params = new URLSearchParams(window.location.search);
+        const theme = params.get('currentThemeMode') || 'dark';
+        config.applyTheme(theme);
+    }
+
+    // Now connect to WebSocket
     config.autoConnect();
 
     // --- Custom Title Bar Listeners ---
@@ -153,12 +177,4 @@ window.addEventListener('DOMContentLoaded', () => {
     closeBtn.addEventListener('click', () => {
         window.close();
     });
-
-    // Listen for theme updates from the main process
-    if (window.electronAPI) {
-        window.electronAPI.onThemeUpdated((theme) => {
-            console.log(`RAG Observer: Theme updated to ${theme}`);
-            config.applyTheme(theme);
-        });
-    }
 });
