@@ -1624,7 +1624,7 @@ function setupEventListeners() {
             // Use getBoundingClientRect for precise width, including borders/padding.
             const sidebarWidth = notificationsSidebar.getBoundingClientRect().width;
             // When the sidebar is visible (width > 0), add a 2px offset to account for the resizer.
-            const offset = sidebarWidth > 0 ? 5 : 0;
+            const offset = sidebarWidth > 0 ? 3 : 0;
             seamFixer.style.right = `${sidebarWidth + offset}px`;
         };
 
