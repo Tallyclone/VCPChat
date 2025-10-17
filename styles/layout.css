@@ -171,3 +171,52 @@ body.light-theme .notifications-sidebar {
         display: none; 
     }
 }
+/* --- Seam Fixer for Title Bar --- */
+/*
+   这是我们根据你的“PS污点修复画笔”思路创建的元素。
+   它是一个覆盖在接缝上的、带有二次模糊和羽化效果的“魔法条”。
+*/
+.seam-fixer {
+    /* 1. 定位与尺寸 */
+    position: fixed; /* 使用fixed定位，因为它要覆盖的title-bar也是fixed */
+    left: 0;
+    right: 0; /* 宽度100% */
+    height: 16px; /* 羽化条的高度，这个值可以微调以达到最佳效果 */
+    z-index: 1002; /* 必须比 title-bar (1001) 的 z-index 更高 */
+
+    /* 2. 关键效果：二次模糊 */
+    /* 这个模糊值可以比主模糊(12px)小一些，专注于“融合”而不是“模糊” */
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+
+    /* 3. 关键效果：羽化遮罩 (上下两侧透明，中间实心) */
+    -webkit-mask-image: linear-gradient(
+        to bottom,
+        transparent 0%,
+        black 30%, /* 从30%处开始变得不透明 */
+        black 70%, /* 到70%处保持不透明 */
+        transparent 100% /* 之后再渐变到透明 */
+    );
+    mask-image: linear-gradient(
+        to bottom,
+        transparent 0%,
+        black 30%,
+        black 70%,
+        transparent 100%
+    );
+
+    /* 4. 自身特性 */
+    pointer-events: none; /* 让鼠标可以“穿透”它，不会影响下方的点击 */
+    background: transparent; /* 自身必须是透明的 */
+}
+
+/* 专门为标题栏下方的接缝进行定位 */
+#title-bar-seam-fixer {
+    /* 
+       标题栏高度是 30px，接缝就在 30px 的位置。
+       我们的羽化条高度是 16px。
+       所以 top 值设为 30px - (16px / 2) = 22px，
+       这样羽化条的中心就精准地对齐了接缝。
+    */
+    top: 22px; 
+}
