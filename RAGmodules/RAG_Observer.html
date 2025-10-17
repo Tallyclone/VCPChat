@@ -87,6 +87,30 @@
             max-height: calc(100vh - 60px); /* Adjust height for new padding (40px top + 10px bottom + 10px margin) */
             overflow-y: auto;
         }
+
+        /* --- Custom Scrollbar --- */
+        .container::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .container::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+        }
+
+        .container::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.25);
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+        }
+
+        .container::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.4);
+        }
+
+        .container::-webkit-scrollbar-thumb:active {
+            background: rgba(255, 255, 255, 0.5);
+        }
         h1 {
             color: var(--highlight-text);
             text-align: center;
