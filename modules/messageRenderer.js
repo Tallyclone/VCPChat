@@ -1887,26 +1887,113 @@ function handleMiddleClickQuickAction(event, messageItem, message, quickAction) 
                     uiHelper.showToastNotification("保存按钮未找到", "warning");
                 }
             } else {
-                // Not in edit mode - enter edit mode
+                // Not in edit mode - enter edit mode with enhanced content validation and retry mechanism
                 console.log(`[MiddleClick] Entering edit mode for message ${message.id}`);
 
-                // Try to call toggleEditMode function if it's available globally
-                if (typeof window.toggleEditMode === 'function') {
-                    window.toggleEditMode(messageItem, message);
-                } else {
-                    // Fallback: try to access it through contextMenu module
+                // Enhanced content validation with retry mechanism
+                const editWithRetry = async (retryCount = 0) => {
+                    const maxRetries = 3;
+                    const retryDelay = 200; // ms
+
                     try {
-                        // Check if contextMenu module is available and has the function
-                        if (contextMenu && typeof contextMenu.toggleEditMode === 'function') {
-                            contextMenu.toggleEditMode(messageItem, message);
-                        } else {
+                        // First, try to get the most up-to-date content from multiple sources
+                        let currentContent = null;
+
+                        // Source 1: Current message object
+                        if (typeof message.content === 'string' && message.content.trim() !== '') {
+                            currentContent = message.content;
+                        } else if (message.content && typeof message.content.text === 'string' && message.content.text.trim() !== '') {
+                            currentContent = message.content.text;
+                        }
+
+                        // Source 2: If content is empty, try to get it from current chat history
+                        if (!currentContent || currentContent.trim() === '') {
+                            console.log(`[MiddleClick] Content appears empty, checking current chat history for message ${message.id}`);
+                            const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
+                            const messageInHistory = currentChatHistoryArray.find(m => m.id === message.id);
+
+                            if (messageInHistory) {
+                                if (typeof messageInHistory.content === 'string' && messageInHistory.content.trim() !== '') {
+                                    currentContent = messageInHistory.content;
+                                    message.content = messageInHistory.content; // Update message object
+                                } else if (messageInHistory.content && typeof messageInHistory.content.text === 'string' && messageInHistory.content.text.trim() !== '') {
+                                    currentContent = messageInHistory.content.text;
+                                    message.content = messageInHistory.content; // Update message object
+                                }
+                            }
+                        }
+
+                        // Source 3: If still empty, try to get it from history file (with retry)
+                        if (!currentContent || currentContent.trim() === '') {
+                            console.log(`[MiddleClick] Content still empty, trying to fetch from history file for message ${message.id} (attempt ${retryCount + 1}/${maxRetries})`);
+
+                            try {
+                                const result = await electronAPI.getOriginalMessageContent(
+                                    currentSelectedItemVal.id,
+                                    currentSelectedItemVal.type,
+                                    currentTopicIdVal,
+                                    message.id
+                                );
+
+                                if (result.success && result.content) {
+                                    if (typeof result.content === 'string' && result.content.trim() !== '') {
+                                        currentContent = result.content;
+                                        message.content = result.content;
+                                    } else if (result.content.text && typeof result.content.text === 'string' && result.content.text.trim() !== '') {
+                                        currentContent = result.content.text;
+                                        message.content = result.content;
+                                    }
+                                }
+                            } catch (error) {
+                                console.error(`[MiddleClick] Failed to fetch content from history (attempt ${retryCount + 1}):`, error);
+                            }
+                        }
+
+                        // Final validation - if still no content, retry or show error
+                        if (!currentContent || currentContent.trim() === '') {
+                            if (retryCount < maxRetries) {
+                                console.log(`[MiddleClick] Content still empty, retrying in ${retryDelay}ms... (attempt ${retryCount + 1}/${maxRetries})`);
+                                setTimeout(() => editWithRetry(retryCount + 1), retryDelay);
+                                return;
+                            } else {
+                                uiHelper.showToastNotification("无法获取消息内容进行编辑，请稍后重试", "error");
+                                return;
+                            }
+                        }
+
+                        // Ensure content is properly formatted for editing
+                        if (currentContent !== message.content) {
+                            message.content = currentContent;
+                        }
+
+                        console.log(`[MiddleClick] Successfully obtained content for editing (${currentContent.length} characters)`);
+
+                        // Now proceed with edit mode
+                        try {
+                            if (typeof window.toggleEditMode === 'function') {
+                                window.toggleEditMode(messageItem, message);
+                            } else if (contextMenu && typeof contextMenu.toggleEditMode === 'function') {
+                                contextMenu.toggleEditMode(messageItem, message);
+                            } else {
+                                uiHelper.showToastNotification("编辑功能暂时不可用", "warning");
+                            }
+                        } catch (error) {
+                            console.error('Failed to call toggleEditMode:', error);
                             uiHelper.showToastNotification("编辑功能暂时不可用", "warning");
                         }
+
                     } catch (error) {
-                        console.error('Failed to call toggleEditMode:', error);
-                        uiHelper.showToastNotification("编辑功能暂时不可用", "warning");
+                        console.error(`[MiddleClick] Error in editWithRetry (attempt ${retryCount + 1}):`, error);
+                        if (retryCount < maxRetries) {
+                            setTimeout(() => editWithRetry(retryCount + 1), retryDelay);
+                        } else {
+                            uiHelper.showToastNotification("编辑功能出现错误，请稍后重试", "error");
+                        }
                     }
-                }
+                };
+
+                // Execute the enhanced edit function with retry mechanism
+                editWithRetry();
             }
             break;
 
@@ -2042,6 +2129,32 @@ function handleMiddleClickQuickAction(event, messageItem, message, quickAction) 
         case 'regenerate':
             // 重新回复
             if (message.role === 'assistant') {
+                // 获取全局设置来检查保险机制是否开启
+                const globalSettings = mainRendererReferences.globalSettingsRef.get();
+                const enableConfirmation = globalSettings.enableRegenerateConfirmation !== false;
+
+                if (enableConfirmation) {
+                    // 检查当前消息是否是最后一条消息
+                    const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
+                    const lastAssistantMessage = [...currentChatHistoryArray]
+                        .reverse()
+                        .find(msg => msg.role === 'assistant');
+
+                    const isLastMessage = lastAssistantMessage && lastAssistantMessage.id === message.id;
+
+                    // 如果不是最后一条消息，显示警告对话框
+                    if (!isLastMessage) {
+                        const confirmRegenerate = confirm(
+                            `当前消息不是最后一条消息，确定要重新生成此消息的回复吗？`
+                        );
+
+                        if (!confirmRegenerate) {
+                            uiHelper.showToastNotification("重新回复操作已取消", "info");
+                            return;
+                        }
+                    }
+                }
+
                 if (message.isGroupMessage) {
                     // 群聊重新回复逻辑
                     const currentSelectedItem = mainRendererReferences.currentSelectedItemRef.get();
