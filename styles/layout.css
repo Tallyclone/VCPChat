@@ -3,7 +3,6 @@
 /* --- Custom Title Bar --- */
 .title-bar {
     height: 30px;
-    height: 30px;
     background-color: var(--panel-bg-dark); /* 使用半透明变量 */
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
@@ -67,21 +66,31 @@ body.light-theme .title-bar {
 
 /* --- Resizers --- */
 .resizer {
-    background-color: var(--secondary-bg); 
-    width: 5px;
+    /* 默认状态：与侧边栏一样的磨砂透明效果 */
+    background-color: var(--panel-bg-dark);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    width: 3px;
     cursor: col-resize;
     flex-shrink: 0;
-    z-index: 100; 
-    transition: background-color 0.2s ease; 
-    pointer-events: auto; 
+    z-index: 100;
+    transition: background-color 0.2s ease;
+    pointer-events: auto;
 }
-.resizer:hover {
-    background-color: var(--user-bubble-bg);
+
+/* 悬停或拖拽时：显示高亮颜色 */
+.resizer:hover,
+.resizer:active {
+    background-color: var(--accent-bg); /* 使用主题强调色 */
+}
+
+/* 浅色主题下的 Resizer 背景 */
+body.light-theme .resizer {
+    background-color: var(--panel-bg-light);
 }
 
 /* --- Sidebar (Agent List) --- */
 .sidebar {
-    width: 260px;
     width: 260px;
     background-color: var(--panel-bg-dark); /* 使用半透明变量 */
     backdrop-filter: blur(12px);
@@ -117,8 +126,7 @@ body.light-theme .sidebar {
 
 /* --- Notifications Sidebar --- */
 .notifications-sidebar {
-    width: 300px;
-    width: 300px;
+    width: 310px;
     background-color: var(--panel-bg-dark); /* 使用半透明变量 */
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
