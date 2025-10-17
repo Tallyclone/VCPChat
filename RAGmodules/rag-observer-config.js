@@ -11,19 +11,17 @@ class RAGObserverConfig {
         this.isConnecting = false;
     }
 
-    // 读取settings（从全局变量）
+    // 从URL查询参数读取settings
     loadSettings() {
-        if (window.VCP_SETTINGS) {
-            this.settings = window.VCP_SETTINGS;
-            return this.settings;
-        }
-        // 如果无法加载，提供默认值
-        console.warn('未找到VCP_SETTINGS，使用默认配置');
-        return {
-            vcpLogUrl: 'ws://127.0.0.1:5890',
-            vcpLogKey: '',
-            currentThemeMode: 'dark'
+        const params = new URLSearchParams(window.location.search);
+        const settings = {
+            vcpLogUrl: params.get('vcpLogUrl') || 'ws://127.0.0.1:5890',
+            vcpLogKey: params.get('vcpLogKey') || '',
+            currentThemeMode: params.get('currentThemeMode') || 'dark'
         };
+        this.settings = settings;
+        console.log('Loaded settings from URL:', this.settings);
+        return this.settings;
     }
 
     // 应用主题
@@ -119,7 +117,8 @@ class RAGObserverConfig {
         }
     }
 
-    // 定期检查settings变化（可选功能）
+    // watchSettings is deprecated in favor of the onThemeUpdated IPC listener
+    /*
     watchSettings(interval = 5000) {
         setInterval(() => {
             const newSettings = this.loadSettings();
@@ -130,12 +129,36 @@ class RAGObserverConfig {
             }
         }, interval);
     }
+    */
 }
 
 // 页面加载时自动初始化
 window.addEventListener('DOMContentLoaded', () => {
     const config = new RAGObserverConfig();
     config.autoConnect();
-    // 启动设置监听（每5秒检查一次主题变化）
-    config.watchSettings(5000);
+
+    // --- Custom Title Bar Listeners ---
+    const minimizeBtn = document.getElementById('minimize-btn');
+    const maximizeBtn = document.getElementById('maximize-btn');
+    const closeBtn = document.getElementById('close-btn');
+
+    minimizeBtn.addEventListener('click', () => {
+        if (window.electronAPI) window.electronAPI.minimizeWindow();
+    });
+
+    maximizeBtn.addEventListener('click', () => {
+        if (window.electronAPI) window.electronAPI.maximizeWindow();
+    });
+
+    closeBtn.addEventListener('click', () => {
+        window.close();
+    });
+
+    // Listen for theme updates from the main process
+    if (window.electronAPI) {
+        window.electronAPI.onThemeUpdated((theme) => {
+            console.log(`RAG Observer: Theme updated to ${theme}`);
+            config.applyTheme(theme);
+        });
+    }
 });

@@ -1520,6 +1520,18 @@ function setupEventListeners() {
             window.electronAPI.sendToggleNotificationsSidebar(); // Send to main
         });
 
+        // 新增：右键单击打开VCP信息流监控面板
+        toggleNotificationsBtn.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            console.log('Right-click on toggleNotificationsBtn detected, opening RAG Observer.');
+            if (window.electronAPI && window.electronAPI.openRAGObserverWindow) {
+                window.electronAPI.openRAGObserverWindow();
+            } else {
+                console.error('electronAPI.openRAGObserverWindow is not defined!');
+                uiHelperFunctions.showToastNotification('功能缺失: preload.js需要更新。', 'error');
+            }
+        });
+
         // Listen for main process to actually toggle
         window.electronAPI.onDoToggleNotificationsSidebar(() => {
             const isActive = notificationsSidebar.classList.toggle('active');

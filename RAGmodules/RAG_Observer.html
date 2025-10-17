@@ -10,14 +10,71 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             color: var(--primary-text);
             margin: 0;
-            padding: 20px;
+            padding: 10px; /* Reduce side and bottom padding */
             display: flex;
             justify-content: center;
             transition: background-color 0.3s ease;
+            padding-top: 40px; /* Add padding for the custom title bar */
+            box-sizing: border-box;
+        }
+        /* --- Custom Title Bar --- */
+        #custom-title-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 10px 0 20px;
+            background-color: transparent;
+            z-index: 1000;
+            -webkit-app-region: drag;
+            user-select: none;
+        }
+
+        #custom-title-bar .title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--primary-text);
+            opacity: 0.7;
+            -webkit-app-region: no-drag;
+        }
+
+        #custom-title-bar .window-controls {
+            display: flex;
+            gap: 10px;
+            -webkit-app-region: no-drag;
+        }
+
+        .window-control-btn {
+            width: 30px;
+            height: 30px;
+            border: none;
+            background-color: transparent;
+            color: var(--secondary-text);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background-color 0.2s ease, color 0.2s ease;
+            padding: 0; /* Override generic button padding */
+        }
+
+        .window-control-btn:hover {
+            background-color: var(--button-hover-bg);
+            color: var(--primary-text);
+        }
+
+        #close-btn:hover {
+            background-color: #e81123;
+            color: white;
         }
         .container {
             width: 95%;
-            max-width: 1000px;
+            max-width: 1200px;
             background: var(--panel-bg);
             backdrop-filter: blur(20px) saturate(180%);
             -webkit-backdrop-filter: blur(20px) saturate(180%);
@@ -26,6 +83,9 @@
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.37);
             padding: 25px 35px;
             box-sizing: border-box;
+            /* New styles for scrolling within the container */
+            max-height: calc(100vh - 60px); /* Adjust height for new padding (40px top + 10px bottom + 10px margin) */
+            overflow-y: auto;
         }
         h1 {
             color: var(--highlight-text);
@@ -359,10 +419,25 @@
             breaks: true, // Interpret carriage returns as <br>
         });
     </script>
-    <script src="./settings.js"></script>
     <script src="./rag-observer-config.js"></script>
 </head>
 <body>
+    <!-- Custom Title Bar -->
+    <div id="custom-title-bar">
+        <span class="title">VCP 信息流监听器</span>
+        <div class="window-controls">
+            <button id="minimize-btn" class="window-control-btn" title="最小化">
+                <svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1.2"></line></svg>
+            </button>
+            <button id="maximize-btn" class="window-control-btn" title="最大化">
+                <svg width="10" height="10" viewBox="0 0 10 10"><path fill="none" stroke="currentColor" stroke-width="1" d="M0.5,0.5 h9 v9 h-9 z"></path></svg>
+            </button>
+            <button id="close-btn" class="window-control-btn" title="关闭">
+                <svg width="10" height="10" viewBox="0 0 10 10"><path fill="currentColor" d="M0.5,0.5 9.5,9.5 M9.5,0.5 0.5,9.5" stroke="currentColor" stroke-width="1.2"></path></svg>
+            </button>
+        </div>
+    </div>
+
     <div class="container">
         <canvas id="spectrum-canvas"></canvas>
         <h1>

@@ -121,6 +121,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     notesRendererReady: () => ipcRenderer.send('notes-renderer-ready'), // New, more reliable signal
     // Open Translator Window
     openTranslatorWindow: (theme) => ipcRenderer.invoke('open-translator-window', theme),
+    openRAGObserverWindow: () => ipcRenderer.invoke('open-rag-observer-window'), // 新增：打开RAG Observer窗口
  
     // Agent and Topic Order
     saveAgentOrder: (orderedAgentIds) => ipcRenderer.invoke('save-agent-order', orderedAgentIds),
