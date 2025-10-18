@@ -160,6 +160,9 @@ async function createAgentGroup(groupName, initialConfig = {}) {
             memberTags: {},
             groupPrompt: '',
             invitePrompt: '现在轮到你{{VCPChatAgentName}}发言了。系统已经为大家添加[xxx的发言：]这样的标记头，以用于区分不同发言来自谁。大家不用自己再输出自己的发言标记头，也不需要讨论发言标记系统，正常聊天即可。',
+           // 新增：统一模型设置
+           useUnifiedModel: false,
+           unifiedModel: '',
             createdAt: Date.now(),
             topics: [{ id: `group_topic_${Date.now()}`, name: "主要群聊", createdAt: Date.now() }]
         };
@@ -622,7 +625,7 @@ ${att._fileManagerData.extractedText}
             }
 
             const modelConfigForAgent = {
-                model: agentConfig.model,
+               model: groupConfig.useUnifiedModel ? groupConfig.unifiedModel : agentConfig.model,
                 temperature: parseFloat(agentConfig.temperature),
                 max_tokens: agentConfig.maxOutputTokens ? parseInt(agentConfig.maxOutputTokens) : undefined,
                 stream: agentConfig.streamOutput === true || String(agentConfig.streamOutput) === 'true'
@@ -1103,7 +1106,7 @@ ${att._fileManagerData.extractedText}
         }
 
         const modelConfigForAgent = {
-            model: agentConfig.model,
+           model: groupConfig.useUnifiedModel ? groupConfig.unifiedModel : agentConfig.model,
             temperature: parseFloat(agentConfig.temperature),
             max_tokens: agentConfig.maxOutputTokens ? parseInt(agentConfig.maxOutputTokens) : undefined,
             stream: agentConfig.streamOutput === true || String(agentConfig.streamOutput) === 'true'
