@@ -114,6 +114,29 @@ class ContextSanitizer {
                 return '';
             }
         });
+
+        // 自定义规则：保留 VCP 特殊块（工具使用、日记）的原始内容
+        // 这是为了防止 turndown 转义这些块内的特殊字符（如 [ ]）
+        this.turndownService.addRule('preserveVcpSpecialBlocks', {
+            filter: (node) => {
+                // 匹配由 contentProcessor.js 添加了特殊类的 <pre> 元素
+                return node.nodeName === 'PRE' &&
+                       (node.classList.contains('vcp-tool-use-bubble') || node.classList.contains('maid-diary-bubble'));
+            },
+            replacement: (content, node) => {
+                // 从 data-raw-content 属性中获取原始文本
+                const rawContent = node.getAttribute('data-raw-content');
+                
+                if (rawContent) {
+                    // 确保返回的内容前后有适当的换行，保持格式
+                    return '\n\n' + rawContent + '\n\n';
+                }
+                
+                // 如果没有找到原始内容，返回空字符串，避免显示美化后的HTML片段
+                console.warn('[ContextSanitizer] VCP special block missing data-raw-content attribute');
+                return '';
+            }
+        });
     }
 
     /**
