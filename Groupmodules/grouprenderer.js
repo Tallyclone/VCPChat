@@ -416,11 +416,27 @@ window.GroupRenderer = (() => {
            groupUnifiedModelContainer.style.display = groupUseUnifiedModel.checked ? 'block' : 'none';
        };
        
-       if (openGroupModelSelectBtn._eventListenerAttached) {
-           openGroupModelSelectBtn.removeEventListener('click', openGroupModelSelectModal);
-       }
-       openGroupModelSelectBtn.addEventListener('click', openGroupModelSelectModal);
-       openGroupModelSelectBtn._eventListenerAttached = true;
+       // To prevent adding multiple listeners, we replace the button with a clone of itself, which removes all old listeners.
+       const newBtn = openGroupModelSelectBtn.cloneNode(true);
+       openGroupModelSelectBtn.parentNode.replaceChild(newBtn, openGroupModelSelectBtn);
+       openGroupModelSelectBtn = newBtn; // Update our reference to the new button
+
+       openGroupModelSelectBtn.addEventListener('click', async () => {
+           try {
+               console.log('[GroupRenderer] Fetching cached models from main process...');
+               const models = await electronAPI.getCachedModels();
+               console.log(`[GroupRenderer] Received ${models.length} cached models.`);
+               // We assume the generic modal can accept a 'models' array in its options to prevent re-fetching.
+               uiHelper.openModal('modelSelectModal', (selectedModel) => {
+                   if (selectedModel && groupUnifiedModelInput) {
+                       groupUnifiedModelInput.value = selectedModel;
+                   }
+               }, { models: models });
+           } catch (error) {
+               console.error('Error fetching cached models for group settings:', error);
+               uiHelper.showToastNotification('加载模型列表失败', 'error');
+           }
+       });
 
         groupChatModeSelect.onchange = () => {
             toggleMemberTagsVisibility(groupChatModeSelect.value);
@@ -446,14 +462,6 @@ window.GroupRenderer = (() => {
         groupAvatarInput._eventListenerAttached = true;
     }
 
-   function openGroupModelSelectModal() {
-       // 使用 uiHelper 打开模型选择模态框，并设置回调
-       uiHelper.openModal('modelSelectModal', (selectedModel) => {
-           if (selectedModel && groupUnifiedModelInput) {
-               groupUnifiedModelInput.value = selectedModel;
-           }
-       });
-   }
 
     function handleGroupAvatarChange(event) {
         const file = event.target.files[0];
