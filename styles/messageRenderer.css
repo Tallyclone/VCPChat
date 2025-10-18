@@ -84,8 +84,8 @@
     max-width: 100%;
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
     font-size: 0.95em !important;
-    white-space: pre-wrap; /* Restore: Allow wrapping but preserve whitespace */
-    word-break: break-all; /* Restore: Break long strings */
+    white-space: pre-wrap !important; /* Restore: Allow wrapping but preserve whitespace */
+    word-break: break-all !important; /* Restore: Break long strings */
     transition: all 0.4s ease-in-out; /* Add transition for smooth hover effect */
 }
 
@@ -202,7 +202,7 @@
 }
 
 /* 隐藏 VCP 气泡内的复制按钮 */
-.vcp-tool-use-bubble code .code-copy { /* This might target <code> inside <pre class="vcp-tool-use-bubble"> */
+.vcp-tool-use-bubble .code-copy { /* This might target <code> inside <pre class="vcp-tool-use-bubble"> */
     display: none !important;
 }
  /* Also hide if copy button is direct child of the bubble (if no inner code element) */
@@ -229,6 +229,8 @@
     display: block !important;
     font-family: 'Georgia', 'Times New Roman', serif !important;
     font-size: 1em !important;
+    white-space: normal !important; /* Allow text to wrap naturally */
+    word-break: break-word !important;
 }
 
 /* The decorative icon on the top left, changed to a quill */
