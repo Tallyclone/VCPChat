@@ -394,7 +394,7 @@ function processAllPreBlocksInContentDiv(contentDiv) {
         const blockText = codeElement ? (codeElement.textContent || "") : (preElement.textContent || "");
         // 在美化前，将原始文本内容存储到 data-* 属性中
         // 这是为了在后续的上下文净化过程中，能够恢复原始内容，避免特殊字符被转义
-        preElement.dataset.rawContent = blockText;
+        preElement.setAttribute('data-raw-content', blockText);
 
         // Check for VCP Tool Request
         if (blockText.includes('<<<[TOOL_REQUEST]>>>') && blockText.includes('<<<[END_TOOL_REQUEST]>>>')) {

@@ -1,7 +1,7 @@
 // modules/contextSanitizer.js
 // 上下文HTML标签转MD净化器模块
 
-const cheerio = require('cheerio');
+const { JSDOM } = require('jsdom'); // ✅ 使用 jsdom
 const TurndownService = require('turndown');
 
 /**
@@ -80,21 +80,24 @@ class ContextSanitizer {
             emDelimiter: '*',
         });
 
-        // 自定义规则：保留 img 标签的 src
+        this.setupTurndownRules();
+    }
+
+    setupTurndownRules() {
+        // 规则1：保留图片
         this.turndownService.addRule('preserveImages', {
             filter: 'img',
             replacement: (content, node) => {
                 const src = node.getAttribute('src');
                 const alt = node.getAttribute('alt') || '';
                 if (src) {
-                    // 保持原始的 img 标签，但简化属性
                     return `<img src="${src}" alt="${alt}">`;
                 }
                 return '';
             }
         });
 
-        // 自定义规则：保留其他多媒体元素（audio, video）
+        // 规则2：保留多媒体
         this.turndownService.addRule('preserveMedia', {
             filter: ['audio', 'video'],
             replacement: (content, node) => {
@@ -103,7 +106,6 @@ class ContextSanitizer {
                 if (src) {
                     return `<${tagName} src="${src}"></${tagName}>`;
                 }
-                // 如果有 source 子元素
                 const sources = node.querySelectorAll('source');
                 if (sources.length > 0) {
                     const firstSrc = sources[0].getAttribute('src');
@@ -115,26 +117,51 @@ class ContextSanitizer {
             }
         });
 
-        // 自定义规则：保留 VCP 特殊块（工具使用、日记）的原始内容
-        // 这是为了防止 turndown 转义这些块内的特殊字符（如 [ ]）
-        this.turndownService.addRule('preserveVcpSpecialBlocks', {
+        // 规则3：✅ 保留 VCP 特殊块（已美化的）
+        // 优先级高于未美化的块
+        this.turndownService.addRule('vcpPrettifiedBlocks', {
             filter: (node) => {
-                // 匹配由 contentProcessor.js 添加了特殊类的 <pre> 元素
-                return node.nodeName === 'PRE' &&
-                       (node.classList.contains('vcp-tool-use-bubble') || node.classList.contains('maid-diary-bubble'));
+                if (node.nodeName !== 'PRE') return false;
+                
+                // ✅ jsdom 支持 classList
+                return node.classList.contains('vcp-tool-use-bubble') || 
+                       node.classList.contains('maid-diary-bubble');
             },
             replacement: (content, node) => {
-                // 从 data-raw-content 属性中获取原始文本
+                // ✅ 从 data-raw-content 获取原始内容
                 const rawContent = node.getAttribute('data-raw-content');
                 
                 if (rawContent) {
-                    // 确保返回的内容前后有适当的换行，保持格式
-                    return '\n\n' + rawContent + '\n\n';
+                    // ✅ 直接返回原始内容，Turndown 不会对其进行转义
+                    return rawContent;
                 }
                 
-                // 如果没有找到原始内容，返回空字符串，避免显示美化后的HTML片段
-                console.warn('[ContextSanitizer] VCP special block missing data-raw-content attribute');
-                return '';
+                console.warn('[ContextSanitizer] VCP special block missing data-raw-content:', 
+                    node.className, node.textContent.substring(0, 50));
+                return ''; // 返回空，避免污染
+            }
+        });
+
+        // 规则4：✅ 保留未美化但包含特殊标记的块
+        this.turndownService.addRule('vcpRawBlocks', {
+            filter: (node) => {
+                if (node.nodeName !== 'PRE') return false;
+                
+                // 排除已美化的（由上面的规则处理）
+                if (node.classList.contains('vcp-tool-use-bubble') || 
+                    node.classList.contains('maid-diary-bubble')) {
+                    return false;
+                }
+                
+                // 检查是否包含特殊标记
+                const text = node.textContent || '';
+                return text.includes('<<<[TOOL_REQUEST]>>>') || 
+                       text.includes('<<<DailyNoteStart>>>');
+            },
+            replacement: (content, node) => {
+                const text = node.textContent || '';
+                // ✅ 直接返回原始内容，Turndown 不会对其进行转义
+                return text;
             }
         });
     }
@@ -192,35 +219,15 @@ class ContextSanitizer {
         }
 
         try {
-            // 使用 cheerio 解析 HTML
-            const $ = cheerio.load(content, {
-                decodeEntities: false, // 不解码实体，保持原样
-                xmlMode: false
-            });
+            // ✅ 使用 jsdom 解析
+            const dom = new JSDOM(content);
+            const body = dom.window.document.body;
 
-            // 提取所有多媒体元素的信息（在转换前）
-            const mediaElements = [];
-            $('img, audio, video').each((i, elem) => {
-                const $elem = $(elem);
-                const tagName = elem.name;
-                const src = $elem.attr('src');
-                if (src) {
-                    mediaElements.push({
-                        tag: tagName,
-                        src: src,
-                        alt: $elem.attr('alt') || ''
-                    });
-                }
-            });
-
-            // 获取 HTML 字符串
-            const htmlString = $.html();
-
-            // 使用 turndown 转换为 Markdown
-            let markdown = this.turndownService.turndown(htmlString);
+            // ✅ 转换为 Markdown
+            let markdown = this.turndownService.turndown(body);
 
             // 清理多余的空行（保留最多2个连续空行）
-            markdown = markdown.replace(/\n{3,}/g, '\n\n');
+            markdown = markdown.replace(/\n{3,}/g, '\n\n').trim();
 
             // 存入缓存
             this.cache.set(cacheKey, markdown);
