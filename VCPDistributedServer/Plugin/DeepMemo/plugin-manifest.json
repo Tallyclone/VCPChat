@@ -5,7 +5,8 @@
   "description": "根据关键词从Vchat聊天记录中检索相关上下文，实现AI的深度回忆功能。",
   "pluginType": "synchronous",
   "communication": {
-    "protocol": "stdio"
+    "protocol": "stdio",
+    "timeout": 180000
   },
   "entryPoint": {
     "type": "executable",
