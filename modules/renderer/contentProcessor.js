@@ -29,10 +29,13 @@ function ensureNewlineAfterCodeBlock(text) {
  */
 function ensureSpaceAfterTilde(text) {
     if (typeof text !== 'string') return text;
-    // Replace ~ not followed by a space with ~ followed by a space,
-    // but only if the ~ is not preceded by a non-whitespace character (i.e., it's at the start of a word).
-    // This prevents modification of ~ inside URLs.
-    return text.replace(/(?<!\S)~(?![\s~])/g, '~ ');
+    // Replace a tilde `~` with `~ ` to prevent it from being interpreted as a strikethrough marker.
+    // This should not affect tildes in URLs (e.g., `.../~user/`) or code (e.g., `var_~a`).
+    // The regex matches a tilde if it's:
+    // 1. At the start of the string (`^`).
+    // 2. Preceded by a character that is NOT a word character (`\w`), path separator (`/`, `\`), or equals sign (`=`).
+    // It also ensures it's not already followed by a space or another tilde `(?![\s~])`.
+    return text.replace(/(^|[^\w/\\=])~(?![\s~])/g, '$1~ ');
 }
 
 /**
