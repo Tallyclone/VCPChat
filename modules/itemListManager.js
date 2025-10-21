@@ -209,9 +209,56 @@ window.itemListManager = (() => {
 
                 li.appendChild(avatarImg);
                 li.appendChild(nameSpan);
-                li.addEventListener('click', () => {
-                    if (mainRendererFunctions && typeof mainRendererFunctions.selectItem === 'function') {
-                        mainRendererFunctions.selectItem(item.id, item.type, item.name, item.avatarUrl, item.config || item);
+
+                // 为每个项目添加独立的状态管理
+                li._lastClickTime = 0;
+                li._middleClickHandled = false;
+
+                // 添加鼠标事件监听器
+                // 专门处理中键点击的辅助事件
+                li.addEventListener('auxclick', (e) => {
+                    if (e.button === 1) { // 中键
+                        console.log('[ItemListManager] 检测到中键auxclick事件');
+                        e.preventDefault();
+                        e.stopPropagation();
+                        li._middleClickHandled = true;
+                        handleMiddleClick(item);
+                    }
+                });
+
+                // 普通点击事件（左键双击检测）
+                li.addEventListener('click', (e) => {
+                    // 如果是中键点击，已经被auxclick处理了，直接返回
+                    if (li._middleClickHandled) {
+                        li._middleClickHandled = false;
+                        return;
+                    }
+
+                    const currentTime = Date.now();
+                    const timeDiff = currentTime - li._lastClickTime;
+
+                    if (e.button === 0 && timeDiff < 300) {
+                        // 双击 - 打开设置页面
+                        console.log('[ItemListManager] 检测到双击');
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleDoubleClick(item);
+                    } else if (e.button === 0) {
+                        // 普通左键点击 - 选择项目
+                        console.log('[ItemListManager] 普通左键点击');
+                        if (mainRendererFunctions && typeof mainRendererFunctions.selectItem === 'function') {
+                            mainRendererFunctions.selectItem(item.id, item.type, item.name, item.avatarUrl, item.config || item);
+                        }
+                    }
+
+                    li._lastClickTime = currentTime;
+                });
+
+                // 防止中键点击的默认行为
+                li.addEventListener('contextmenu', (e) => {
+                    // 不阻止右键菜单，但记录中键状态
+                    if (e.button === 1) {
+                        console.log('[ItemListManager] 中键contextmenu事件');
                     }
                 });
                 itemListUl.appendChild(li);
@@ -285,7 +332,7 @@ window.itemListManager = (() => {
             } catch (error) {
                 console.error('[ItemListManager] 切换到设置页面时出错:', error);
             }
-        }, 50); // 延时50ms
+        }, 100); // 增加延时到100ms
     }
 
     /**
@@ -343,7 +390,7 @@ window.itemListManager = (() => {
             } catch (error) {
                 console.error('[ItemListManager] 切换到话题页面时出错:', error);
             }
-        }, 50); // 延时50ms
+        }, 100); // 增加延时到100ms
     }
 
     /**
@@ -368,6 +415,7 @@ window.itemListManager = (() => {
     return {
         init,
         loadItems,
-        highlightActiveItem
+        highlightActiveItem,
+        resetMouseEventStates
     };
 })();
