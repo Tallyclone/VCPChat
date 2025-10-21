@@ -1403,7 +1403,8 @@ body.light-theme .custom-dropdown {
 /* 全局设置模态框常驻滚动条，避免布局动态波动 */
 #globalSettingsModal .modal-content {
     overflow-y: auto !important; /* 强制始终显示滚动条，覆盖:hover选择器 */
-    max-height: 80vh; /* 限制最大高度 */
+    max-width: 700px; /* 增加最大宽度 */
+    max-height: 85vh; /* 增加最大高度 */
     padding-right: 20px; /* 为滚动条留出空间，避免内容被遮挡 */
     box-sizing: border-box; /* 确保内边距计算在总宽度内 */
 }

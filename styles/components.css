@@ -44,6 +44,7 @@
     font-size: 0.95em;
     transition: background-color 0.2s ease;
     text-align: center;
+    white-space: nowrap; /* 防止文字换行 */
 }
 
 /* 确保创建按钮始终相邻显示 */
