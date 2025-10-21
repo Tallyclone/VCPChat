@@ -46,11 +46,19 @@
     text-align: center;
 }
 
-.sidebar-button.small-button {
-    flex: 1; /* Make buttons take equal width */
-    min-width: 100px; /* Ensure a minimum width */
-    max-width: 140px; /* Increase max-width slightly */
-    flex-shrink: 0;
+/* 确保创建按钮始终相邻显示 */
+.sidebar-actions {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+    margin-top: auto;
+}
+
+.sidebar-actions .sidebar-button {
+    flex: 1;
+    margin: 0;
+    min-width: 0; /* 允许缩小 */
+    max-width: none; /* 移除最大宽度限制 */
 }
 .sidebar-button:hover {
     background-color: var(--button-hover-bg);
@@ -389,37 +397,39 @@ body.light-theme .modal-content .danger-button {
 
 .sidebar .agent-list::-webkit-scrollbar,
 .sidebar .topic-list::-webkit-scrollbar {
-    width: 8px;
+    width: 12px; /* 固定宽度，避免布局变化 */
     height: 8px;
 }
 
 .sidebar .agent-list::-webkit-scrollbar-thumb,
 .sidebar .topic-list::-webkit-scrollbar-thumb {
-    background-color: transparent; 
-    border-radius: 4px;
-    transition: background-color 0.3s ease-in-out;
+    background-color: transparent;
+    border-radius: 6px;
+    /* 使用 inset box-shadow 来控制颜色，并对其应用过渡 */
+    box-shadow: inset 0 0 6px 6px transparent;
+    transition: box-shadow 0.3s ease-in-out;
 }
 
 .sidebar .agent-list::-webkit-scrollbar-track,
 .sidebar .topic-list::-webkit-scrollbar-track {
-    background-color: transparent; 
-    border-radius: 4px;
+    background-color: transparent;
+    border-radius: 6px;
     transition: background-color 0.3s ease-in-out;
 }
 
 .sidebar .agent-list:hover::-webkit-scrollbar-thumb,
 .sidebar .topic-list:hover::-webkit-scrollbar-thumb {
-    background-color: var(--scrollbar-thumb); 
+    box-shadow: inset 0 0 6px 6px var(--scrollbar-thumb);
 }
 
 .sidebar .agent-list:hover::-webkit-scrollbar-track,
 .sidebar .topic-list:hover::-webkit-scrollbar-track {
-    background-color: var(--scrollbar-track); 
+    background-color: var(--scrollbar-track);
 }
 
 .sidebar .agent-list:hover::-webkit-scrollbar-thumb:hover,
 .sidebar .topic-list:hover::-webkit-scrollbar-thumb:hover {
-    background-color: var(--scrollbar-thumb-hover);
+    box-shadow: inset 0 0 6px 6px var(--scrollbar-thumb-hover);
 }
 
 /* --- Context Menu --- */
