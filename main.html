@@ -362,7 +362,7 @@
                 <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
                     <label for="enableAgentBubbleTheme">开启Agent自定义气泡主题</label>
                     <label class="switch">
-                        <input type="checkbox" id="enableAgentBubbleTheme" name="enableAgentBubbleTheme">
+                        <input type="checkbox" id="enableAgentBubbleTheme" name="enableAgentBubbleTheme" checked>
                         <span class="slider round"></span>
                     </label>
                 </div>
@@ -376,11 +376,11 @@
                 <div class="form-group-inline">
                     <div>
                         <label for="minChunkBufferSize" style="display: block; margin-bottom: 4px;">最小渲染Chunk字数 (≥1):</label>
-                        <input type="number" id="minChunkBufferSize" name="minChunkBufferSize" min="1" value="1" style="width: 80px;">
+                        <input type="number" id="minChunkBufferSize" name="minChunkBufferSize" min="1" value="16" style="width: 80px;">
                     </div>
                     <div style="margin-left: 20px;">
                         <label for="smoothStreamIntervalMs" style="display: block; margin-bottom: 4px;">最小渲染Chunk间隔 (ms, ≥1):</label>
-                        <input type="number" id="smoothStreamIntervalMs" name="smoothStreamIntervalMs" min="1" value="25" style="width: 80px;">
+                        <input type="number" id="smoothStreamIntervalMs" name="smoothStreamIntervalMs" min="1" value="100" style="width: 80px;">
                     </div>
                 </div>
                 <div>
