@@ -2,7 +2,7 @@ use anyhow::{anyhow, Context, Result};
 use glob::glob;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -13,6 +13,7 @@ use tantivy::schema::*;
 use tantivy::tokenizer::{Token, TokenStream, Tokenizer};
 use tantivy::{doc, Index, tokenizer::BoxTokenStream};
 use tokio::fs;
+use futures::future::join_all;
 
 // --- Jieba Tokenizer for Tantivy ---
 
@@ -270,6 +271,82 @@ async fn run() -> Result<()> {
 
 // --- Core Logic Functions ---
 
+async fn process_single_history_file(
+    file_path: PathBuf,
+    keywords: Arc<Vec<String>>,
+    window_size: i32,
+) -> Result<Vec<Vec<HistoryEntry>>> {
+    let content = fs::read_to_string(&file_path).await?;
+    let history: Vec<HistoryEntry> = match serde_json::from_str::<Vec<HistoryEntry>>(&content) {
+        Ok(data) if !data.is_empty() => data,
+        _ => return Ok(Vec::new()),
+    };
+
+    let schema = {
+        let mut schema_builder = Schema::builder();
+        let text_indexing_options = TextFieldIndexing::default()
+            .set_tokenizer("jieba")
+            .set_index_option(IndexRecordOption::WithFreqsAndPositions);
+        let text_options = TextOptions::default()
+            .set_indexing_options(text_indexing_options)
+            .set_stored();
+        schema_builder.add_text_field("content", text_options);
+        schema_builder.add_u64_field("id", INDEXED | STORED);
+        schema_builder.build()
+    };
+
+    let index = Index::create_in_ram(schema.clone());
+    let jieba_tokenizer = JiebaTokenizer {
+        jieba: Arc::new(jieba_rs::Jieba::new()),
+    };
+    index.tokenizers().register("jieba", jieba_tokenizer);
+
+    let mut index_writer = index.writer(50_000_000)?;
+    let content_field = schema.get_field("content").unwrap();
+    let id_field = schema.get_field("id").unwrap();
+
+    for (i, entry) in history.iter().enumerate() {
+        let clean_content = extract_text(&entry.content);
+        if !clean_content.trim().is_empty() {
+            index_writer.add_document(doc!(
+                content_field => clean_content,
+                id_field => i as u64
+            ))?;
+        }
+    }
+    index_writer.commit()?;
+
+    let reader = index.reader()?;
+    let searcher = reader.searcher();
+    let query_parser = QueryParser::for_index(&index, vec![content_field]);
+
+    let combined_query_str = keywords.join(" ");
+    let mut file_memories = Vec::new();
+    let mut used_indices = HashSet::new();
+
+    if let Ok(query) = query_parser.parse_query(&combined_query_str) {
+        let top_docs = searcher.search(&query, &TopDocs::with_limit(100))?;
+        for (_score, doc_address) in top_docs {
+            let retrieved_doc = searcher.doc(doc_address)?;
+            let match_index = retrieved_doc.get_first(id_field).unwrap().as_u64().unwrap() as usize;
+
+            if used_indices.contains(&match_index) {
+                continue;
+            }
+            
+            let start = (match_index as i32 - window_size).max(0) as usize;
+            let end = (match_index + window_size as usize + 1).min(history.len());
+            let context_slice = &history[start..end];
+            file_memories.push(context_slice.to_vec());
+            
+            for i in start..end {
+                used_indices.insert(i);
+            }
+        }
+    }
+    Ok(file_memories)
+}
+
 async fn search_histories(
     vchat_path: &Path,
     agent_uuid: &str,
@@ -296,201 +373,100 @@ async fn search_histories(
     history_files.sort_by_key(|k| k.1);
     history_files.reverse();
 
+    let keywords_arc = Arc::new(keywords.to_vec());
+    let mut tasks = Vec::new();
+
+    for (file_path, _) in history_files.into_iter().skip(1) {
+        let keywords_clone = Arc::clone(&keywords_arc);
+        tasks.push(tokio::spawn(async move {
+            process_single_history_file(file_path, keywords_clone, window_size).await
+        }));
+    }
+
+    let results = join_all(tasks).await;
+
     let mut all_memories = Vec::new();
     let mut memory_index = 1;
 
-    for (file_path, _) in history_files.iter().skip(1) {
-        let content = fs::read_to_string(file_path).await?;
-        let history: Vec<HistoryEntry> = match serde_json::from_str(&content) {
-            Ok(data) => data,
-            Err(_) => continue,
-        };
-        if history.is_empty() {
-            continue;
-        }
-
-        let schema = {
-            let mut schema_builder = Schema::builder();
-            let text_indexing_options = TextFieldIndexing::default()
-                .set_tokenizer("jieba")
-                .set_index_option(IndexRecordOption::WithFreqsAndPositions);
-            let text_options = TextOptions::default()
-                .set_indexing_options(text_indexing_options)
-                .set_stored();
-            schema_builder.add_text_field("content", text_options);
-            schema_builder.add_u64_field("id", INDEXED | STORED);
-            schema_builder.build()
-        };
-
-        let index = Index::create_in_ram(schema.clone());
-        let jieba_tokenizer = JiebaTokenizer {
-            jieba: Arc::new(jieba_rs::Jieba::new()),
-        };
-        index.tokenizers().register("jieba", jieba_tokenizer);
-
-        let mut index_writer = index.writer(50_000_000)?;
-        let content_field = schema.get_field("content").unwrap();
-        let id_field = schema.get_field("id").unwrap();
-
-        for (i, entry) in history.iter().enumerate() {
-            let clean_content = extract_text(&entry.content);
-            if !clean_content.trim().is_empty() {
-                index_writer.add_document(doc!(
-                    content_field => clean_content,
-                    id_field => i as u64
-                ))?;
-            }
-        }
-        index_writer.commit()?;
-
-        let reader = index.reader()?;
-        let searcher = reader.searcher();
-        let query_parser = QueryParser::for_index(&index, vec![content_field]);
-
-        let mut match_scores: HashMap<usize, usize> = HashMap::new();
-        for keyword in keywords {
-            if let Ok(query) = query_parser.parse_query(keyword) {
-                let top_docs = searcher.search(&query, &TopDocs::with_limit(100))?;
-                for (_score, doc_address) in top_docs {
-                    let retrieved_doc = searcher.doc(doc_address)?;
-                    let id = retrieved_doc.get_first(id_field).unwrap().as_u64().unwrap() as usize;
-                    *match_scores.entry(id).or_insert(0) += 1;
+    for result in results {
+        match result {
+            Ok(Ok(file_memories)) => {
+                for context_slice in file_memories {
+                    if let Some(formatted_memory) =
+                        format_memory(&context_slice, user_name, agent_name, memory_index)
+                    {
+                        all_memories.push(formatted_memory);
+                        memory_index += 1;
+                    }
                 }
             }
-        }
-
-        let mut sorted_matches: Vec<(usize, usize)> = match_scores.into_iter().collect();
-        sorted_matches.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-
-        let mut used_indices = HashSet::new();
-        for &(match_index, _) in &sorted_matches {
-            if used_indices.contains(&match_index) {
-                continue;
-            }
-            let start = (match_index as i32 - window_size).max(0) as usize;
-            let end = (match_index + window_size as usize + 1).min(history.len());
-            let context_slice = &history[start..end];
-            if let Some(formatted_memory) = format_memory(context_slice, user_name, agent_name, memory_index) {
-                all_memories.push(formatted_memory);
-                memory_index += 1;
-                for i in start..end {
-                    used_indices.insert(i);
-                }
-            }
+            Ok(Err(e)) => eprintln!("[ERROR] Failed to process a history file: {}", e),
+            Err(e) => eprintln!("[ERROR] A task panicked while processing history file: {}", e),
         }
     }
+
     Ok(all_memories)
 }
 
 // --- Rerank Logic ---
 
+#[derive(Debug)]
+struct ScoredDocument {
+    document: String,
+    score: f64,
+}
+
 async fn rerank_memories(memories: Vec<String>, query: &str, config: &Config) -> Result<Vec<String>> {
-    if config.rerank_url.is_empty() {
+    if config.rerank_url.is_empty() || memories.is_empty() {
+        eprintln!("[DEBUG] Rerank skipped: URL not configured or no memories to rerank.");
         return Ok(memories);
     }
-    recursive_rerank(memories, query.to_string(), config.clone(), 1, 5).await
-}
 
-fn recursive_rerank(
-    documents: Vec<String>,
-    query: String,
-    config: Config,
-    level: usize,
-    max_level: usize,
-) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<String>>> + Send>> {
-    Box::pin(async move {
-        eprintln!("[DEBUG] Rerank Level {}: {} docs", level, documents.len());
+    eprintln!("[DEBUG] Starting batch rerank for {} memories...", memories.len());
+    let batches = create_batches(&memories, config.rerank_max_tokens_per_batch);
+    eprintln!("[DEBUG] Created {} batches.", batches.len());
 
-        if level > max_level {
-            eprintln!("[WARNING] Max recursion level reached.");
-            return Ok(documents.into_iter().take(config.rerank_top_n).collect());
-        }
-
-        if documents.len() <= config.rerank_top_n * 2 || documents.len() <= 10 {
-            return perform_rerank_request(&documents, &query, &config).await;
-        }
-
-        let batches = create_batches(&documents, config.rerank_max_tokens_per_batch);
-        if batches.len() >= documents.len() * 8 / 10 && documents.len() > 1 {
-            eprintln!("[WARNING] Too many batches. Switching to tournament sort.");
-            return tournament_sort(documents, &query, &config).await;
-        }
-
-        let mut tasks = Vec::new();
-        for batch in batches {
-            let q = query.clone();
-            let cfg = config.clone();
-            tasks.push(tokio::spawn(async move {
-                perform_rerank_request(&batch, &q, &cfg).await
-            }));
-        }
-
-        let mut candidates = Vec::new();
-        let target_total = (config.rerank_top_n + 2).max(documents.len() / 2);
-        let top_k_per_batch = (1).max(target_total / tasks.len());
-
-        for task in tasks {
-            if let Ok(Ok(results)) = task.await {
-                candidates.extend(results.into_iter().take(top_k_per_batch));
-            }
-        }
-
-        if candidates.is_empty() && !documents.is_empty() {
-            return Ok(documents.into_iter().take(config.rerank_top_n).collect());
-        }
-
-        recursive_rerank(candidates, query, config, level + 1, max_level).await
-    })
-}
-
-async fn tournament_sort(documents: Vec<String>, query: &str, config: &Config) -> Result<Vec<String>> {
-    eprintln!("[DEBUG] Starting Tournament Sort with {} docs", documents.len());
-    let mut champions = documents;
-    
-    while champions.len() > 1 {
-        let mut next_round = Vec::new();
-        let mut tasks = Vec::new();
-        
-        for pair in champions.chunks(2) {
-            if pair.len() == 2 {
-                let p = vec![pair[0].clone(), pair[1].clone()];
-                let q = query.to_string();
-                let cfg = config.clone();
-                tasks.push(tokio::spawn(async move {
-                    perform_rerank_request(&p, &q, &cfg).await
-                }));
-            } else {
-                next_round.push(pair[0].clone()); // 轮空直接晋级
-            }
-        }
-        
-        let mut round_had_results = false;
-        for (i, task) in tasks.into_iter().enumerate() {
-            match task.await {
-                Ok(Ok(mut winner)) if !winner.is_empty() => {
-                    next_round.push(winner.remove(0));
-                    round_had_results = true;
-                }
-                _ => {
-                    // Rerank 失败时，保留原配对中的第一个
-                    if let Some(original) = champions.get(i * 2) {
-                        next_round.push(original.clone());
-                    }
-                }
-            }
-        }
-        
-        // 防止死循环：如果没有任何进展，直接返回
-        if !round_had_results && next_round.is_empty() {
-            eprintln!("[WARNING] Tournament sort failed. Returning original documents.");
-            return Ok(champions.into_iter().take(config.rerank_top_n).collect());
-        }
-        
-        champions = next_round;
-        eprintln!("[DEBUG] Tournament: {} champions advance", champions.len());
+    let mut tasks = Vec::new();
+    for batch in batches {
+        let q = query.to_string();
+        let cfg = config.clone();
+        tasks.push(tokio::spawn(async move {
+            perform_rerank_request(&batch, &q, &cfg).await
+        }));
     }
+
+    let mut all_scored_results: Vec<ScoredDocument> = Vec::new();
+    for task in tasks {
+        match task.await {
+            Ok(Ok(scored_batch_results)) => {
+                all_scored_results.extend(scored_batch_results);
+            }
+            Ok(Err(e)) => {
+                eprintln!("[DEBUG] A rerank batch failed: {}", e);
+            }
+            Err(e) => {
+                eprintln!("[DEBUG] A rerank task panicked: {}", e);
+            }
+        }
+    }
+    eprintln!("[DEBUG] Collected {} scored results from all batches.", all_scored_results.len());
+
+    all_scored_results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+
+    let final_memories: Vec<String> = all_scored_results
+        .into_iter()
+        .take(config.rerank_top_n)
+        .map(|res| res.document)
+        .collect();
     
-    perform_rerank_request(&champions, query, config).await
+    eprintln!("[DEBUG] Rerank finished. Returning top {} memories.", final_memories.len());
+
+    if final_memories.is_empty() && !memories.is_empty() {
+        eprintln!("[WARNING] Rerank resulted in zero memories, falling back to original top N.");
+        return Ok(memories.into_iter().take(config.rerank_top_n).collect());
+    }
+
+    Ok(final_memories)
 }
 
 fn create_batches(documents: &[String], max_tokens: usize) -> Vec<Vec<String>> {
@@ -502,7 +478,7 @@ fn create_batches(documents: &[String], max_tokens: usize) -> Vec<Vec<String>> {
         let doc_len = doc.len();
         
         let processed_doc = if doc_len > max_tokens * 8 / 10 {
-            let mut keep_length = max_tokens / 4;
+            let keep_length = max_tokens / 4;
             if keep_length * 2 >= doc.len() {
                 // 如果文档不够长，无法安全地截取头尾，则不处理
                 doc.clone()
@@ -555,7 +531,7 @@ fn create_batches(documents: &[String], max_tokens: usize) -> Vec<Vec<String>> {
     batches
 }
 
-async fn perform_rerank_request(documents: &[String], query: &str, config: &Config) -> Result<Vec<String>> {
+async fn perform_rerank_request(documents: &[String], query: &str, config: &Config) -> Result<Vec<ScoredDocument>> {
     if documents.is_empty() {
         return Ok(Vec::new());
     }
@@ -576,10 +552,16 @@ async fn perform_rerank_request(documents: &[String], query: &str, config: &Conf
         .await?
         .json::<RerankResponse>()
         .await?;
+
     Ok(response
         .results
         .into_iter()
-        .filter_map(|res| documents.get(res.index).cloned())
+        .filter_map(|res| {
+            documents.get(res.index).map(|doc| ScoredDocument {
+                document: doc.clone(),
+                score: res.relevance_score,
+            })
+        })
         .collect())
 }
 
