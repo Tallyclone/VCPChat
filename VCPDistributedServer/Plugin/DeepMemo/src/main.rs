@@ -705,8 +705,24 @@ fn load_config() -> Result<Config> {
     
     dotenv::from_path(&config_path).with_context(|| format!("Failed to load .env file from {:?}", config_path))?;
 
+    let vchat_data_url = match std::env::var("VchatDataURL") {
+        Ok(url) if !url.trim().is_empty() => PathBuf::from(url),
+        _ => {
+            // config_path is VCPDistributedServer/Plugin/DeepMemo/config.env
+            // Project root (h:/MCP/VCPChat) is 4 levels up from config_path.
+            let project_root = config_path
+                .parent()
+                .and_then(|p| p.parent())
+                .and_then(|p| p.parent())
+                .and_then(|p| p.parent())
+                .ok_or_else(|| anyhow!("Failed to determine project root from config path."))?;
+
+            project_root.join("AppData")
+        }
+    };
+
     Ok(Config {
-        vchat_data_url: std::env::var("VchatDataURL")?.into(),
+        vchat_data_url,
         max_memo_tokens: std::env::var("MaxMemoTokens")?.parse()?,
         rerank_search: std::env::var("RerankSearch")?.to_lowercase() == "true",
         rerank_url: std::env::var("RerankUrl")?,
