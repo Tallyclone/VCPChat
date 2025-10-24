@@ -150,6 +150,21 @@ function stripAnsi(str) {
     );
 }
 
+/**
+ * 从字符串中移除 VCP 命令边界标记。
+ * @param {string} str - 可能包含边界标记的输入字符串。
+ * @returns {string} - 清理后的字符串。
+ */
+function stripBoundary(str) {
+    // 匹配并移除边界字符串，例如 "--- VCP_COMMAND_BOUNDARY_d86e08c1-8f3b-4f31-856e-46ecd0296a21 ---"
+    // 考虑到可能存在换行符，使用 \r?\n?
+    // 匹配并移除边界字符串，例如 "--- VCP_COMMAND_BOUNDARY_d86e08c1-8f3b-4f31-856e-46ecd0296a21 ---"
+    // 以及包含 Write-Host 命令的整行，例如 "PS C:\Users\Administrator> Write-Host "--- VCP_COMMAND_BOUNDARY_..." ---""
+    // 考虑到可能存在换行符，使用 \r?\n?
+    const boundaryRegex = /^(?:PS [A-Z]:\\(?:[^\r\n]+\\)*[^\r\n]*> )?Write-Host "--- VCP_COMMAND_BOUNDARY_[0-9a-fA-F-]{36} ---"\r?\n?|--- VCP_COMMAND_BOUNDARY_[0-9a-fA-F-]{36} ---\r?\n?/gm;
+    return str.replace(boundaryRegex, '');
+}
+
 // --- 模块级状态 ---
 // 用于保存持久化的伪终端（PowerShell）进程
 let ptyProcess = null;
@@ -264,9 +279,21 @@ function createNewPtySession() {
             guiWindow.webContents.send('powershell-clear');
         }
     }
-
-    const shell = os.platform() === 'win32' ? 'powershell.exe' : 'bash';
-    const args = os.platform() === 'win32' ? ['-NoLogo'] : [];
+ 
+    let shell = 'bash';
+    let args = [];
+ 
+    if (os.platform() === 'win32') {
+        // 优先使用 PowerShell Core (pwsh.exe)，如果不存在则回退到 Windows PowerShell (powershell.exe)
+        const pwshPath = path.join(process.env.PROGRAMFILES, 'PowerShell', '7', 'pwsh.exe');
+        if (fs.existsSync(pwshPath)) {
+            shell = pwshPath;
+        } else {
+            shell = 'powershell.exe';
+        }
+        args = ['-NoLogo'];
+    }
+ 
     ptyProcess = pty.spawn(shell, args, {
         name: 'xterm-color',
         cwd: process.env.USERPROFILE || process.env.HOME,
@@ -280,7 +307,10 @@ function createNewPtySession() {
     // 设置数据监听器，将所有 pty 输出直接代理到 GUI
     ptyProcess.onData(data => {
         if (guiWindow && !guiWindow.isDestroyed()) {
-            guiWindow.webContents.send('powershell-data', data);
+            const cleanedData = stripBoundary(data.toString('utf-8'));
+            if (cleanedData) { // 只有在清理后还有内容时才发送
+                guiWindow.webContents.send('powershell-data', cleanedData);
+            }
         }
     });
 
