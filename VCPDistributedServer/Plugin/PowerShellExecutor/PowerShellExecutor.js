@@ -33,6 +33,16 @@ function ensureGuiWindow() {
 
     guiWindow.on('closed', () => {
         guiWindow = null;
+        // 当GUI关闭时，也终止关联的 pty 进程
+        if (ptyProcess) {
+            try {
+                ptyProcess.kill();
+                console.log('[PowerShellExecutor] GUI closed, associated pty process terminated.');
+            } catch (e) {
+                console.error('[PowerShellExecutor] Error terminating pty process on GUI close:', e);
+            }
+            // ptyProcess 的 onExit 事件处理器会自动将其设置为 null 并从 childProcesses 集合中移除
+        }
     });
 }
 
@@ -71,6 +81,8 @@ function stripAnsi(str) {
 let ptyProcess = null;
 // 用于存储完整的终端输出历史，以支持 "full" 返回模式
 let fullTerminalHistory = '';
+// 新增：用于跟踪所有子进程，确保它们在插件卸载或程序退出时被正确清理
+const childProcesses = new Set();
 
 // --- 配置加载 ---
 // 插件启动时，从 config.env 文件读取默认配置
@@ -125,6 +137,7 @@ function executeAdminCommand(command) {
             ], {
                 windowsHide: true
             });
+            childProcesses.add(child); // 跟踪进程
 
             let stderrOutput = '';
             child.stderr.on('data', (data) => {
@@ -132,11 +145,13 @@ function executeAdminCommand(command) {
             });
             
             child.on('error', (err) => {
+                childProcesses.delete(child); // 停止跟踪
                 cleanupCallback(); // 清理临时文件
                 reject(new Error(`无法启动PowerShell包装脚本: ${err.message}`));
             });
 
             child.on('close', (code) => {
+                childProcesses.delete(child); // 停止跟踪
                 // PowerShell脚本执行完毕，现在我们可以安全地读取临时文件的内容了。
                 fs.readFile(tmpFilePath, 'utf-8', (readErr, data) => {
                     cleanupCallback(); // 确保无论如何都清理临时文件
@@ -169,6 +184,7 @@ function executeAdminCommand(command) {
 function createNewPtySession() {
     // 如果已存在旧进程，先销毁它
     if (ptyProcess) {
+        childProcesses.delete(ptyProcess);
         ptyProcess.kill();
     }
     
@@ -182,6 +198,7 @@ function createNewPtySession() {
         cwd: process.env.USERPROFILE || process.env.HOME, // 从用户主目录开始
         env: process.env
     });
+    childProcesses.add(ptyProcess); // 跟踪 pty 进程
 
     // 设置 PowerShell 输出为 UTF-8 编码
     ptyProcess.write('[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\r');
@@ -202,6 +219,7 @@ function createNewPtySession() {
 
     // 当 pty 进程意外退出时，清理资源
     ptyProcess.onExit(() => {
+        childProcesses.delete(ptyProcess); // 停止跟踪
         ptyProcess = null;
         fullTerminalHistory = '';
     });
@@ -339,28 +357,37 @@ async function processToolCall(args) {
  */
 function cleanup() {
     console.log('[PowerShellExecutor] 正在清理资源...');
-    
-    // 1. 终止持久化的 PowerShell pty 进程
-    if (ptyProcess) {
-        try {
-            ptyProcess.kill();
-            console.log('[PowerShellExecutor] 持久化 pty 进程已终止。');
-        } catch (e) {
-            console.error('[PowerShellExecutor] 终止 pty 进程时出错:', e);
-        }
-        ptyProcess = null;
-    }
 
-    // 2. 关闭并销毁 GUI 窗口
+    // 1. 关闭并销毁 GUI 窗口
     if (guiWindow && !guiWindow.isDestroyed()) {
         try {
+            // 移除 'closed' 监听器，以避免在程序化关闭时触发额外的 ptyProcess.kill()
+            guiWindow.removeAllListeners('closed');
             guiWindow.close();
             console.log('[PowerShellExecutor] GUI 窗口已关闭。');
-        } catch(e) {
+        } catch (e) {
             console.error('[PowerShellExecutor] 关闭 GUI 窗口时出错:', e);
         }
         guiWindow = null;
     }
+
+    // 2. 终止所有跟踪的子进程
+    if (childProcesses.size > 0) {
+        console.log(`[PowerShellExecutor] 正在终止 ${childProcesses.size} 个子进程...`);
+        for (const processToKill of childProcesses) {
+            try {
+                // ptyProcess 和 child_process 对象都有一个 .kill() 方法
+                processToKill.kill();
+                console.log(`[PowerShellExecutor] 进程 (PID: ${processToKill.pid}) 已终止。`);
+            } catch (e) {
+                console.error(`[PowerShellExecutor] 终止进程 (PID: ${processToKill.pid}) 时出错:`, e);
+            }
+        }
+        childProcesses.clear();
+    }
+
+    // 3. 确保 ptyProcess 状态被重置
+    ptyProcess = null;
 }
 
 // 导出 processToolCall 函数和 cleanup 函数
