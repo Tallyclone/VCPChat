@@ -44,6 +44,14 @@ ipcMain.on('powershell-gui-ready', (event) => {
     }
 });
 
+// 监听来自GUI的用户命令
+ipcMain.on('powershell-command', (event, command) => {
+    if (ptyProcess && command) {
+        // 将用户输入的命令写入 pty 进程
+        ptyProcess.write(`${command}\r`);
+    }
+});
+
 // --- ANSI Escape Code Stripper ---
 /**
  * 从字符串中移除 ANSI 转义序列（用于控制颜色的代码）。

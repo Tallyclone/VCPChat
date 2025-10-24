@@ -5,6 +5,8 @@
 
 // --- 终端初始化 ---
 const terminalContainer = document.getElementById('terminal-container');
+const commandInput = document.getElementById('command-input');
+const sendButton = document.getElementById('send-button');
 
 // 创建 FitAddon 实例
 // 当通过 <script> 标签加载时, 构造函数位于 FitAddon.FitAddon
@@ -62,6 +64,24 @@ function fitTerminal() {
     }
 }
 
+/**
+ * 将命令发送到主进程执行
+ */
+function sendCommand() {
+    const command = commandInput.value;
+    if (command.trim() && window.electronAPI) {
+        // 为了提供即时反馈，将用户输入的命令立即回显到本地终端上
+        term.write(command + '\r\n');
+        
+        // 通过暴露的 API 发送命令
+        window.electronAPI.send('powershell-command', command);
+        
+        // 清空输入框并重新聚焦
+        commandInput.value = '';
+        commandInput.focus();
+    }
+}
+
 // --- IPC 通信 ---
 
 // 检查 preload 脚本是否成功注入了 API
@@ -94,6 +114,19 @@ window.addEventListener('DOMContentLoaded', () => {
 
 // 当窗口大小改变时，重新调整终端尺寸
 window.addEventListener('resize', fitTerminal);
+
+// --- 用户输入事件监听 ---
+
+// 点击发送按钮
+sendButton.addEventListener('click', sendCommand);
+
+// 在输入框中按回车键
+commandInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+        sendCommand();
+    }
+});
+
 
 // 示例：显示欢迎信息
 term.writeln('Welcome to VCP PowerShell Terminal!');

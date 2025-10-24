@@ -13,6 +13,12 @@
     <!-- 终端将在这个容器里被创建 -->
     <div id="terminal-container"></div>
 
+    <!-- 命令输入区域 -->
+    <div id="input-area">
+        <input type="text" id="command-input" placeholder="在这里输入命令...">
+        <button id="send-button">执行</button>
+    </div>
+
     <!-- 引入 xterm.js 及其插件 -->
     <script src="../../../../node_modules/xterm/lib/xterm.js"></script>
     <script src="../../../../node_modules/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
