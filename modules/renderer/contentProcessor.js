@@ -81,6 +81,46 @@ function ensureSeparatorBetweenImgAndCode(text) {
 
 
 /**
+ * Removes leading whitespace from special VCP blocks like Tool Requests.
+ * This prevents the markdown parser from misinterpreting the entire indented
+ * block as a single code block before it can be transformed into a bubble.
+ * @param {string} text The input string.
+ * @returns {string} The processed string.
+ */
+function deIndentToolRequestBlocks(text) {
+    if (typeof text !== 'string') return text;
+
+    const lines = text.split('\n');
+    let inToolBlock = false;
+
+    return lines.map(line => {
+        const isStart = line.includes('<<<[TOOL_REQUEST]>>>');
+        const isEnd = line.includes('<<<[END_TOOL_REQUEST]>>>');
+
+        let needsTrim = false;
+        // If a line contains the start marker, we begin trimming.
+        if (isStart) {
+            needsTrim = true;
+            inToolBlock = true;
+        }
+        // If we are already in a block, we continue trimming.
+        else if (inToolBlock) {
+            needsTrim = true;
+        }
+
+        const processedLine = needsTrim ? line.trimStart() : line;
+
+        // If a line contains the end marker, we stop trimming from the *next* line.
+        if (isEnd) {
+            inToolBlock = false;
+        }
+
+        return processedLine;
+    }).join('\n');
+}
+
+
+/**
  * Parses VCP tool_name from content.
  * @param {string} toolContent - The raw string content of the tool request.
  * @returns {string|null} The extracted tool name or null.
@@ -731,6 +771,7 @@ export {
     removeIndentationFromCodeBlockMarkers,
     removeSpeakerTags,
     ensureSeparatorBetweenImgAndCode,
+    deIndentToolRequestBlocks,
     processAllPreBlocksInContentDiv,
     highlightTagsInMessage,
     highlightQuotesInMessage,

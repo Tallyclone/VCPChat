@@ -574,7 +574,11 @@ function preprocessFullContent(text, settings = {}, messageRole = 'assistant', d
     // Step 3. Fix indented HTML that markdown might misinterpret as code blocks.
     processed = deIndentHtml(processed);
 
-    // Step 3. Directly transform special blocks (Tool/Diary) into styled HTML divs.
+    // Step 3.1: Specifically de-indent VCP Tool Request blocks to prevent them from being parsed as code blocks.
+    // This is a targeted fix for the race condition.
+    processed = contentProcessor.deIndentToolRequestBlocks(processed);
+
+    // Step 3.2. Directly transform special blocks (Tool/Diary) into styled HTML divs.
     processed = transformSpecialBlocks(processed);
 
     // Step 4. Ensure raw HTML documents are fenced to be displayed as code.
