@@ -703,23 +703,8 @@ import * as interruptHandler from './modules/interruptHandler.js';
         window.topicListManager.setupTopicSearch(); // Ensure this is called after DOM for topic search input is ready
         if(messageInput) uiHelperFunctions.autoResizeTextarea(messageInput);
 
-        // Restore last session or set default view
-        if (globalSettings.lastOpenItemId) {
-            const { lastOpenItemId, lastOpenItemType, lastOpenTopicId } = globalSettings;
-            const itemToSelect = await window.itemListManager.findItemById(lastOpenItemId, lastOpenItemType);
-
-            if (itemToSelect) {
-                console.log(`[Renderer] Restoring last session: ${lastOpenItemType} ${lastOpenItemId}, Topic ${lastOpenTopicId}`);
-                await window.chatManager.selectItem(itemToSelect.id, itemToSelect.type, itemToSelect.name, itemToSelect.avatarUrl, itemToSelect.config);
-                // selectItem will load the last active topic by default, but we can be explicit
-                if (lastOpenTopicId) {
-                   await window.chatManager.selectTopic(lastOpenTopicId);
-                }
-            } else {
-                console.warn(`[Renderer] Could not find last opened item ${lastOpenItemId} to restore session.`);
-                window.chatManager.displayNoItemSelected();
-            }
-        } else if (!currentSelectedItem.id) {
+        // Set default view if no item is selected
+        if (!currentSelectedItem.id) {
             window.chatManager.displayNoItemSelected();
         }
  
