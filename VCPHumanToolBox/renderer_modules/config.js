@@ -33,6 +33,20 @@ export const tools = {
             }
         }
     },
+    'QwenImageGen': {
+        displayName: '千问图片生成',
+        description: '国产新星，文字排版能力不输豆包哦。',
+        commands: {
+            'GenerateImage': {
+                description: '生成图片',
+                params: [
+                    { name: 'prompt', type: 'textarea', required: true, placeholder: '(必需) 用于图片生成的详细提示词。' },
+                    { name: 'negative_prompt', type: 'textarea', required: false, placeholder: '(可选) 负向提示词。' },
+                    { name: 'image_size', type: 'select', required: false, options: ["1328x1328", "1664x928", "928x1664", "1472x1140", "1140x1472", "1584x1056", "1056x1584"], placeholder: '(可选) 图片分辨率' }
+                ]
+            }
+        }
+    },
     'SunoGen': {
         displayName: 'Suno 音乐生成',
         description: '强大的Suno音乐生成器。',
@@ -49,9 +63,9 @@ export const tools = {
             }
         }
     },
-    'Wan2.1VideoGen': {
-        displayName: 'Wan2.1 视频生成',
-        description: '基于强大的Wan2.1模型生成视频。',
+    'WanVideoGen': {
+        displayName: 'Wan 视频生成',
+        description: '基于强大的Wan系列模型生成视频。',
         commands: {
             'submit': {
                 description: '提交新视频任务',
@@ -91,6 +105,19 @@ export const tools = {
         description: '进行一次标准的谷歌网页搜索。',
         params: [{ name: 'query', type: 'text', required: true, placeholder: '如何学习编程？' }]
     },
+    'SerpSearch': {
+        displayName: 'SerpAPI 搜索',
+        description: '使用DuckDuckGo搜索引擎进行网页搜索。',
+        commands: {
+            'duckduckgo_search': {
+                description: 'DuckDuckGo 搜索',
+                params: [
+                    { name: 'q', type: 'text', required: true, placeholder: '需要搜索的关键词' },
+                    { name: 'kl', type: 'text', required: false, placeholder: 'us-en' }
+                ]
+            }
+        }
+    },
     'UrlFetch': {
         displayName: '网页超级爬虫',
         description: '获取网页的文本内容或快照。',
@@ -111,6 +138,25 @@ export const tools = {
             { name: 'SearchContent', type: 'textarea', required: true, placeholder: '希望研究的主题内容' },
             { name: 'SearchBroadness', type: 'number', required: false, placeholder: '7 (范围 5-20)' }
         ]
+    },
+    'AnimeFinder': {
+        displayName: '番剧名称查找',
+        description: '通过图片找原始番剧名字工具。',
+        params: [
+            { name: 'imageUrl', type: 'dragdrop_image', required: true, placeholder: '可以是任意类型url比如http或者file' }
+        ]
+    },
+    'MusicController': {
+        displayName: '莱恩家的点歌台',
+        description: '播放音乐。',
+        commands: {
+            'playSong': {
+                description: '播放歌曲',
+                params: [
+                    { name: 'songname', type: 'text', required: true, placeholder: '星の余韻' }
+                ]
+            }
+        }
     },
     // VCP通讯插件
     'AgentAssistant': {
@@ -135,6 +181,17 @@ export const tools = {
             { name: 'window_size', type: 'number', required: false, placeholder: '10 (范围 1-20)' }
         ]
     },
+    'LightMemo': {
+        displayName: '快速回忆',
+        description: '主动检索日记本或者知识库。',
+        params: [
+            { name: 'maid', type: 'text', required: true, placeholder: 'Nova' },
+            { name: 'query', type: 'textarea', required: true, placeholder: '关于上次项目会议的讨论内容' },
+            { name: 'k', type: 'number', required: false, placeholder: '3 (默认5)' },
+            { name: 'rerank', type: 'checkbox', required: false, default: false },
+            { name: 'search_all_knowledge_bases', type: 'checkbox', required: false, default: false }
+        ]
+    },
     // 物联网插件
     'TableLampRemote': {
         displayName: '桌面台灯控制器',
@@ -154,6 +211,13 @@ export const tools = {
             }
         }
     },
+    'VCPAlarm': {
+        displayName: 'Vchat 闹钟',
+        description: '设置一个闹钟。',
+        params: [
+            { name: 'time_description', type: 'text', required: true, placeholder: '1分钟后' }
+        ]
+    },
     // ComfyUI 图像生成
     'ComfyUIGen': {
         displayName: 'ComfyUI 生成',
@@ -167,9 +231,9 @@ export const tools = {
         ]
     },
     // NanoBanana 图像生成
-    'NanoBananaGenOR': {
-        displayName: 'NanoBanana 图像生成',
-        description: '使用 OpenRouter 接口调用 Google Gemini 2.5 Flash Image Preview 模型进行高级的图像生成和编辑。支持代理和多密钥随机选择。',
+    'NanoBananaGen': {
+        displayName: 'NanoBanana 图像编辑',
+        description: '地球最强的图像编辑AI，支持中英文tag，支持多语种自然语言描述，英文效果好。',
         commands: {
             'generate': {
                 description: '生成一张全新的图片',
@@ -196,5 +260,97 @@ export const tools = {
                 dynamicImages: true
             }
         }
+    },
+
+    // VCP思考自进化插件
+    'ThoughtClusterManager': {
+        displayName: '思维簇管理器',
+        description: '创建和编辑思维簇文件。',
+        commands: {
+            'CreateClusterFile': {
+                description: '创建新的思维簇文件',
+                params: [
+                    { name: 'clusterName', type: 'text', required: true, placeholder: '目标簇文件夹的名称，必须以\'簇\'结尾' },
+                    { name: 'content', type: 'textarea', required: true, placeholder: '【思考模块：模块名】\n【触发条件】：\n【核心功能】：\n【执行流程】：' }
+                ]
+            },
+            'EditClusterFile': {
+                description: '编辑已存在的思维簇文件',
+                params: [
+                    { name: 'clusterName', type: 'text', required: false, placeholder: '指定在哪个簇文件夹中进行搜索' },
+                    { name: 'targetText', type: 'textarea', required: true, placeholder: '这是需要被替换的旧的思考内容，确保它不少于15字。' },
+                    { name: 'replacementText', type: 'textarea', required: true, placeholder: '这是更新后的新的思考内容。' }
+                ]
+            }
+        }
+    },
+
+    // 文件管理
+    'LocalSearchController': {
+        displayName: '本地文件搜索',
+        description: '基于Everything模块实现本地文件搜索。',
+        commands: {
+            'search': {
+                description: '搜索文件',
+                params: [
+                    { name: 'query', type: 'text', required: true, placeholder: 'VCP a.txt' },
+                    { name: 'maxResults', type: 'number', required: false, placeholder: '50' }
+                ]
+            }
+        }
+    },
+    'ServerSearchController': {
+        displayName: '服务器文件搜索',
+        description: '基于Everything模块实现服务器文件搜索。',
+        commands: {
+            'search': {
+                description: '搜索文件',
+                params: [
+                    { name: 'query', type: 'text', required: true, placeholder: 'VCP a.txt' },
+                    { name: 'maxResults', type: 'number', required: false, placeholder: '50' }
+                ]
+            }
+        }
+    },
+    'PowerShellExecutor': {
+        displayName: 'PowerShell (前端)',
+        description: '在前端执行PowerShell命令。',
+        params: [
+            { name: 'command', type: 'textarea', required: true, placeholder: 'Get-ChildItem' },
+            { name: 'executionType', type: 'select', options: ['blocking', 'background'], required: false, placeholder: 'blocking' },
+            { name: 'newSession', type: 'checkbox', required: false, default: false },
+            { name: 'requireAdmin', type: 'checkbox', required: false, default: false }
+        ]
+    },
+    'ServerPowerShellExecutor': {
+        displayName: 'PowerShell (后端)',
+        description: '在服务器后端执行PowerShell命令。',
+        params: [
+            { name: 'command', type: 'textarea', required: true, placeholder: 'Get-ChildItem' },
+            { name: 'executionType', type: 'select', options: ['blocking', 'background'], required: false, placeholder: 'blocking' },
+            { name: 'requireAdmin', type: 'text', required: false, placeholder: '6位数安全码' }
+        ]
+    },
+    'CodeSearcher': {
+        displayName: '代码检索器 (前端)',
+        description: '在VCP项目前端源码中搜索。',
+        params: [
+            { name: 'query', type: 'text', required: true, placeholder: '关键词或正则表达式' },
+            { name: 'search_path', type: 'text', required: false, placeholder: '相对路径' },
+            { name: 'case_sensitive', type: 'checkbox', required: false, default: false },
+            { name: 'whole_word', type: 'checkbox', required: false, default: false },
+            { name: 'context_lines', type: 'number', required: false, placeholder: '2' }
+        ]
+    },
+    'ServerCodeSearcher': {
+        displayName: '代码检索器 (后端)',
+        description: '在VCP项目后端源码中搜索。',
+        params: [
+            { name: 'query', type: 'text', required: true, placeholder: '关键词或正则表达式' },
+            { name: 'search_path', type: 'text', required: false, placeholder: '相对路径' },
+            { name: 'case_sensitive', type: 'checkbox', required: false, default: false },
+            { name: 'whole_word', type: 'checkbox', required: false, default: false },
+            { name: 'context_lines', type: 'number', required: false, placeholder: '2' }
+        ]
     }
 };
