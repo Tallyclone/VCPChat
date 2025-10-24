@@ -143,8 +143,31 @@ window.chatManager = (() => {
         }
     }
 
-    // --- Functions moved from renderer.js ---
+    /**
+     * Saves the last opened item and topic IDs to the settings file.
+     * This is a private helper function.
+     */
+    function _saveLastOpenState() {
+        const currentSelectedItem = currentSelectedItemRef.get();
+        const currentTopicId = currentTopicIdRef.get();
+        const globalSettings = globalSettingsRef.get();
 
+        if (currentSelectedItem && currentSelectedItem.id) {
+            const settingsToSave = {
+                ...globalSettings, // Preserve existing settings
+                lastOpenItemId: currentSelectedItem.id,
+                lastOpenItemType: currentSelectedItem.type,
+                lastOpenTopicId: currentTopicId,
+            };
+            // No need to await, let it save in the background
+            electronAPI.saveSettings(settingsToSave).catch(err => {
+                console.error('[ChatManager] Failed to save last open state:', err);
+            });
+        }
+    }
+ 
+    // --- Functions moved from renderer.js ---
+ 
     function displayNoItemSelected() {
         const { currentChatNameH3, chatMessagesDiv, currentItemActionBtn, messageInput, sendMessageBtn, attachFileBtn } = elements;
         const voiceChatBtn = document.getElementById('voiceChatBtn');
@@ -273,8 +296,9 @@ window.chatManager = (() => {
         attachFileBtn.disabled = false;
         // messageInput.focus();
         if (topicListManager) topicListManager.loadTopicList();
+        _saveLastOpenState(); // Save state after selecting an item and its default topic
     }
-
+ 
     async function selectTopic(topicId) {
         let currentTopicId = currentTopicIdRef.get();
         if (currentTopicId !== topicId) {
@@ -297,6 +321,7 @@ window.chatManager = (() => {
             });
             await loadChatHistory(currentSelectedItem.id, currentSelectedItem.type, topicId);
             localStorage.setItem(`lastActiveTopic_${currentSelectedItem.id}_${currentSelectedItem.type}`, topicId);
+            _saveLastOpenState(); // Save state when a new topic is selected
         }
     }
 

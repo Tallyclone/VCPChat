@@ -16,11 +16,14 @@ class SettingsValidator {
                 console.log(`Added missing field: ${key}`);
             }
             
-            // 类型检查
-            if (typeof validated[key] !== typeof defaultValue) {
+            // 类型检查 - 允许新添加的字段从 undefined 变为 null
+            if (typeof validated[key] !== typeof defaultValue && defaultValue !== null) {
                 validated[key] = defaultValue;
                 hasIssues = true;
                 console.log(`Fixed type for field: ${key}`);
+            } else if (key.startsWith('lastOpen') && validated[key] === undefined) {
+                // 确保新添加的 lastOpen... 字段在 settings.json 中不存在时，被正确初始化为 null
+                validated[key] = null;
             }
         }
         
@@ -68,7 +71,10 @@ class SettingsManager extends EventEmitter {
             enableDistributedServer: true,
             agentMusicControl: false,
             enableDistributedServerLogs: false,
-            enableVcpToolInjection: false
+            enableVcpToolInjection: false,
+            lastOpenItemId: null,
+            lastOpenItemType: null,
+            lastOpenTopicId: null
         };
     }
 
@@ -191,9 +197,13 @@ class SettingsManager extends EventEmitter {
             await this.acquireLock();
             
             const currentSettings = await this.readSettings();
-            const newSettings = typeof updater === 'function' 
-                ? await updater(currentSettings)
-                : { ...currentSettings, ...updater };
+            let newSettings;
+            if (typeof updater === 'function') {
+                newSettings = await updater(currentSettings);
+            } else {
+                // 确保在合并时，不会丢失 defaultSettings 中定义的字段
+                newSettings = { ...this.defaultSettings, ...currentSettings, ...updater };
+            }
             
             await this.writeSettings(newSettings);
             

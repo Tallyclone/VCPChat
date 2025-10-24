@@ -129,6 +129,9 @@ window.itemListManager = (() => {
         }
     }
 
+    // To hold the loaded items in memory for quick access
+    let loadedItemsCache = [];
+
     /**
      * Loads agents and groups, sorts them, and renders them in the list.
      */
@@ -154,6 +157,8 @@ window.itemListManager = (() => {
         } else if (groupsResult && groupsResult.error) {
             itemListUl.innerHTML += `<li>加载群组失败: ${groupsResult.error}</li>`;
         }
+
+        loadedItemsCache = [...items]; // Cache the loaded items
 
         let combinedOrderFromSettings = [];
         try {
@@ -411,11 +416,26 @@ window.itemListManager = (() => {
         console.log('[ItemListManager] 鼠标事件状态已重置');
     }
 
+    /**
+     * Finds a loaded item by its ID and type from the cache.
+     * @param {string} itemId - The ID of the item to find.
+     * @param {string} itemType - The type of the item ('agent' or 'group').
+     * @returns {object|null} The found item object or null.
+     */
+    function findItemById(itemId, itemType) {
+        if (!loadedItemsCache || loadedItemsCache.length === 0) {
+            console.warn('[ItemListManager] findItemById called before items were loaded or cache is empty.');
+            return null;
+        }
+        return loadedItemsCache.find(item => item.id === itemId && item.type === itemType) || null;
+    }
+
     // --- Public API ---
     return {
         init,
         loadItems,
         highlightActiveItem,
-        resetMouseEventStates
+        resetMouseEventStates,
+        findItemById // Expose the new function
     };
 })();
