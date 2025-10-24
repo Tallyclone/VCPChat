@@ -1004,6 +1004,14 @@ window.chatManager = (() => {
                 }
                 localStorage.setItem(`lastActiveTopic_${itemId}_${itemType}`, result.topicId);
                 
+                // 🔧 关键修复：为新建的话题启动文件监听器
+                const agentConfigForWatcher = currentSelectedItem.config || currentSelectedItem;
+                if (electronAPI.watcherStart && agentConfigForWatcher?.agentDataPath) {
+                    const historyFilePath = `${agentConfigForWatcher.agentDataPath}\\topics\\${result.topicId}\\history.json`;
+                    await electronAPI.watcherStart(historyFilePath, itemId, result.topicId);
+                    console.log(`[ChatManager] Started file watcher for new topic: ${result.topicId}`);
+                }
+                
                 if (document.getElementById('tabContentTopics').classList.contains('active')) {
                     if (topicListManager) await topicListManager.loadTopicList();
                 }

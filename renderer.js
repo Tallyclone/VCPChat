@@ -1633,6 +1633,23 @@ function setupEventListeners() {
                 handleQuickExportTopic();
             }
         }
+
+        // Ctrl+D 或 Command+D 续写快捷键（与中键点击输入框效果一致）
+        if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+            e.preventDefault();
+
+            // 检查是否有选中的项目和话题
+            if (!currentSelectedItem.id || !currentTopicId) {
+                uiHelperFunctions.showToastNotification('请先选择一个项目和话题', 'warning');
+                return;
+            }
+
+            // 保存当前输入框的内容
+            const currentInputText = messageInput ? messageInput.value.trim() : '';
+
+            // 执行续写
+            handleContinueWriting(currentInputText);
+        }
     });
 }
     // --- Dynamic Seam Fixer Width ---
