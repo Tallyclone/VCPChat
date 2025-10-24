@@ -27,15 +27,13 @@ window.filterManager = (() => {
      */
     function openFilterRulesModal() {
         const modal = document.getElementById('filterRulesModal');
-        const globalFilterCheckbox = document.getElementById('globalFilterEnabled');
         
-        if (!modal || !globalFilterCheckbox) {
+        if (!modal) {
             console.error("[FilterManager] Modal elements not found!");
             return;
         }
 
-        // 更新总开关状态
-        globalFilterCheckbox.checked = getGlobalSettings().filterEnabled;
+        // 更新状态显示
         updateFilterStatusDisplay();
 
         // 渲染规则列表
@@ -414,16 +412,7 @@ window.filterManager = (() => {
             });
         }
 
-        const globalFilterCheckbox = document.getElementById('globalFilterEnabled');
-        if (globalFilterCheckbox) {
-            globalFilterCheckbox.addEventListener('change', async () => {
-                const settings = getGlobalSettings();
-                settings.filterEnabled = globalFilterCheckbox.checked;
-                setGlobalSettings(settings);
-                await saveFilterSettings();
-                updateFilterStatusDisplay();
-            });
-        }
+        // 移除了 globalFilterCheckbox 的事件监听器，因为现在通过左键点击 doNotDisturbBtn 来切换总开关
     }
 
     // --- Public API ---

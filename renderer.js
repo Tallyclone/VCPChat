@@ -941,6 +941,7 @@ async function loadAndApplyGlobalSettings() {
         document.getElementById('vcpLogUrl').value = globalSettings.vcpLogUrl || '';
         document.getElementById('vcpLogKey').value = globalSettings.vcpLogKey || '';
         document.getElementById('topicSummaryModel').value = globalSettings.topicSummaryModel || '';
+        document.getElementById('continueWritingPrompt').value = globalSettings.continueWritingPrompt || '请继续';
         
         // --- Load Network Notes Paths ---
         const networkNotesPathsContainer = document.getElementById('networkNotesPathsContainer');
@@ -1173,6 +1174,26 @@ function setupEventListeners() {
     });
     messageInput.addEventListener('input', () => uiHelperFunctions.autoResizeTextarea(messageInput));
 
+    // 中键续写功能
+    messageInput.addEventListener('mousedown', async (e) => {
+        if (e.button === 1) { // 中键
+            e.preventDefault();
+            e.stopPropagation();
+            
+            // 检查是否有选中的项目和话题
+            if (!currentSelectedItem.id || !currentTopicId) {
+                uiHelperFunctions.showToastNotification('请先选择一个项目和话题', 'warning');
+                return;
+            }
+            
+            // 保存当前输入框的内容
+            const currentInputText = messageInput.value.trim();
+            
+            // 执行续写
+            await handleContinueWriting(currentInputText);
+        }
+    });
+
     attachFileBtn.addEventListener('click', async () => {
         if (!currentSelectedItem.id || !currentTopicId) {
             uiHelperFunctions.showToastNotification("请先选择一个项目和话题以上传附件。", 'error');
@@ -1216,6 +1237,7 @@ function setupEventListeners() {
 
         const newSettings = { // Read directly from globalSettings for widths
             userName: document.getElementById('userName').value.trim() || '用户',
+            continueWritingPrompt: document.getElementById('continueWritingPrompt').value.trim() || '请继续',
             enableMiddleClickQuickAction: document.getElementById('enableMiddleClickQuickAction').checked,
             middleClickQuickAction: document.getElementById('middleClickQuickAction').value,
             enableMiddleClickAdvanced: document.getElementById('enableMiddleClickAdvanced').checked,
@@ -1610,6 +1632,23 @@ function setupEventListeners() {
             if (currentTopicId && currentSelectedItem.id) {
                 handleQuickExportTopic();
             }
+        }
+
+        // Ctrl+D 或 Command+D 续写快捷键（与中键点击输入框效果一致）
+        if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+            e.preventDefault();
+
+            // 检查是否有选中的项目和话题
+            if (!currentSelectedItem.id || !currentTopicId) {
+                uiHelperFunctions.showToastNotification('请先选择一个项目和话题', 'warning');
+                return;
+            }
+
+            // 保存当前输入框的内容
+            const currentInputText = messageInput ? messageInput.value.trim() : '';
+
+            // 执行续写
+            handleContinueWriting(currentInputText);
         }
     });
 }
@@ -2061,4 +2100,255 @@ async function handleQuickExportTopic() {
         console.error('[快捷键] 导出话题时发生错误:', error);
         uiHelperFunctions.showToastNotification(`导出话题时发生错误: ${error.message}`, 'error');
     }
+}
+
+/**
+ * 处理续写功能
+ * @param {string} additionalPrompt - 输入框中的额外提示词（如果有）
+ */
+async function handleContinueWriting(additionalPrompt = '') {
+                console.log('[ContinueWriting] 开始执行续写功能，附加提示词:', additionalPrompt);
+                
+                // 检查必要的上下文
+                if (!currentSelectedItem.id || !currentTopicId) {
+                    uiHelperFunctions.showToastNotification('请先选择一个项目和话题', 'warning');
+                    return;
+                }
+                
+                if (!globalSettings.vcpServerUrl) {
+                    uiHelperFunctions.showToastNotification('请先在全局设置中配置VCP服务器URL！', 'error');
+                    uiHelperFunctions.openModal('globalSettingsModal');
+                    return;
+                }
+                
+                // 群组暂不支持续写
+                if (currentSelectedItem.type === 'group') {
+                    uiHelperFunctions.showToastNotification('群组聊天暂不支持续写功能', 'warning');
+                    return;
+                }
+                
+                // 找到最后一个非用户的AI消息
+                const lastAiMessage = [...currentChatHistory]
+                    .reverse()
+                    .find(msg => msg.role === 'assistant' && !msg.isThinking);
+                
+                // 如果没有AI消息，则视为普通对话
+                if (!lastAiMessage) {
+                    console.log('[ContinueWriting] 没有找到AI消息，视为普通对话');
+                    if (!additionalPrompt) {
+                        uiHelperFunctions.showToastNotification('请输入内容或选择包含AI回复的话题', 'info');
+                        return;
+                    }
+                    // 直接使用 handleSendMessage 发送
+                    await window.chatManager.handleSendMessage();
+                    return;
+                }
+                
+                // 注意：续写功能不会在历史记录中保存用户消息
+                // 如果有附加提示词，它只会临时影响AI的续写，但不会作为用户消息保存
+                // 如果输入框为空，使用用户设置的默认提示词
+                const temporaryPrompt = additionalPrompt || globalSettings.continueWritingPrompt || '请继续';
+                
+                console.log('[ContinueWriting] 临时提示词:', temporaryPrompt);
+                
+                // 创建思考消息（使用与重新回复相同的ID格式）
+                const thinkingMessageId = `regen_${Date.now()}`;
+                const thinkingMessage = {
+                    role: 'assistant',
+                    name: currentSelectedItem.name || currentSelectedItem.id || 'AI',
+                    content: '续写中...',
+                    timestamp: Date.now(),
+                    id: thinkingMessageId,
+                    isThinking: true,
+                    avatarUrl: currentSelectedItem.avatarUrl,
+                    avatarColor: (currentSelectedItem.config || currentSelectedItem)?.avatarCalculatedColor
+                };
+                
+                let thinkingMessageItem = null;
+                if (window.messageRenderer) {
+                    thinkingMessageItem = await window.messageRenderer.renderMessage(thinkingMessage);
+                }
+                // 添加思考消息到历史，但不立即保存（流式响应结束时会保存）
+                currentChatHistory.push(thinkingMessage);
+                
+                try {
+                    const agentConfig = currentSelectedItem.config || currentSelectedItem;
+                    
+                    // 准备发送给VCP的消息历史（不包括思考消息）
+                    let historySnapshotForVCP = currentChatHistory.filter(msg => msg.id !== thinkingMessage.id && !msg.isThinking);
+                    
+                    // 将临时提示词作为临时的用户消息添加到发送给VCP的历史中
+                    // 但不保存到实际的历史记录中
+                    const temporaryUserMessage = {
+                        role: 'user',
+                        content: temporaryPrompt
+                    };
+                    historySnapshotForVCP = [...historySnapshotForVCP, temporaryUserMessage];
+                    console.log('[ContinueWriting] 添加临时提示词到VCP请求中:', temporaryPrompt);
+                    
+                    console.log('[ContinueWriting] 发送给VCP的消息数量:', historySnapshotForVCP.length);
+                    
+                    // 使用与 handleSendMessage 相同的消息构建逻辑
+                    const messagesForVCP = await Promise.all(historySnapshotForVCP.map(async msg => {
+                        // 提取消息的文本内容
+                        let currentMessageTextContent = '';
+                        if (typeof msg.content === 'string') {
+                            currentMessageTextContent = msg.content;
+                        } else if (msg.content && typeof msg.content === 'object') {
+                            // 如果content是对象，尝试提取text字段
+                            if (typeof msg.content.text === 'string') {
+                                currentMessageTextContent = msg.content.text;
+                            } else if (Array.isArray(msg.content)) {
+                                // 如果是数组，提取所有文本内容
+                                currentMessageTextContent = msg.content
+                                    .filter(item => item.type === 'text' && item.text)
+                                    .map(item => item.text)
+                                    .join('\n');
+                            }
+                        }
+                        
+                        // 应用正则规则（如果有）
+                        if (agentConfig?.stripRegexes && Array.isArray(agentConfig.stripRegexes) && agentConfig.stripRegexes.length > 0) {
+                            const turns = [];
+                            for (let i = historySnapshotForVCP.length - 1; i >= 0; i--) {
+                                if (historySnapshotForVCP[i].role === 'assistant') {
+                                    const turn = { assistant: historySnapshotForVCP[i], user: null };
+                                    if (i > 0 && historySnapshotForVCP[i - 1].role === 'user') {
+                                        turn.user = historySnapshotForVCP[i - 1];
+                                        i--;
+                                    }
+                                    turns.unshift(turn);
+                                } else if (historySnapshotForVCP[i].role === 'user') {
+                                    turns.unshift({ assistant: null, user: historySnapshotForVCP[i] });
+                                }
+                            }
+                            
+                            const turnIndex = turns.findIndex(t => (t.assistant && t.assistant.id === msg.id) || (t.user && t.user.id === msg.id));
+                            const depth = turnIndex !== -1 ? (turns.length - 1 - turnIndex) : -1;
+                            
+                            if (depth !== -1 && window.chatManager) {
+                                // 这里需要调用 chatManager 中的 applyRegexRules，但它是私有的
+                                // 暂时跳过正则处理，或者可以重构将其暴露出来
+                            }
+                        }
+                        
+                        return { role: msg.role, content: currentMessageTextContent };
+                    }));
+                    
+                    // 添加系统提示词
+                    if (agentConfig && agentConfig.systemPrompt) {
+                        let systemPromptContent = agentConfig.systemPrompt.replace(/\{\{AgentName\}\}/g, agentConfig.name || currentSelectedItem.id);
+                        const prependedContent = [];
+                        
+                        if (agentConfig.agentDataPath && currentTopicId) {
+                            const historyPath = `${agentConfig.agentDataPath}\\topics\\${currentTopicId}\\history.json`;
+                            prependedContent.push(`当前聊天记录文件路径: ${historyPath}`);
+                        }
+                        
+                        if (agentConfig.topics && currentTopicId) {
+                            const currentTopicObj = agentConfig.topics.find(t => t.id === currentTopicId);
+                            if (currentTopicObj && currentTopicObj.createdAt) {
+                                const date = new Date(currentTopicObj.createdAt);
+                                const formattedDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+                                prependedContent.push(`当前话题创建于: ${formattedDate}`);
+                            }
+                        }
+                        
+                        if (prependedContent.length > 0) {
+                            systemPromptContent = prependedContent.join('\n') + '\n\n' + systemPromptContent;
+                        }
+                        
+                        messagesForVCP.unshift({ role: 'system', content: systemPromptContent });
+                    }
+                    
+                    // 配置模型参数
+                    const useStreaming = (agentConfig && agentConfig.streamOutput !== undefined) ? (agentConfig.streamOutput === true || agentConfig.streamOutput === 'true') : true;
+                    const modelConfigForVCP = {
+                        model: (agentConfig && agentConfig.model) ? agentConfig.model : 'gemini-pro',
+                        temperature: (agentConfig && agentConfig.temperature !== undefined) ? parseFloat(agentConfig.temperature) : 0.7,
+                        ...(agentConfig && agentConfig.maxOutputTokens && { max_tokens: parseInt(agentConfig.maxOutputTokens) }),
+                        ...(agentConfig && agentConfig.top_p !== undefined && agentConfig.top_p !== null && { top_p: parseFloat(agentConfig.top_p) }),
+                        ...(agentConfig && agentConfig.top_k !== undefined && agentConfig.top_k !== null && { top_k: parseInt(agentConfig.top_k) }),
+                        stream: useStreaming
+                    };
+                    
+                    if (useStreaming) {
+                        if (window.messageRenderer) {
+                            await new Promise(resolve => setTimeout(resolve, 500));
+                            await window.messageRenderer.startStreamingMessage({ ...thinkingMessage, content: "" }, thinkingMessageItem);
+                        }
+                    }
+                    
+                    const context = {
+                        agentId: currentSelectedItem.id,
+                        agentName: currentSelectedItem.name || currentSelectedItem.id,
+                        topicId: currentTopicId,
+                        isGroupMessage: false
+                    };
+                    
+                    // 发送到VCP
+                    const vcpResponse = await window.electronAPI.sendToVCP(
+                        globalSettings.vcpServerUrl,
+                        globalSettings.vcpApiKey,
+                        messagesForVCP,
+                        modelConfigForVCP,
+                        thinkingMessage.id,
+                        false,
+                        context
+                    );
+                    
+                    // 非流式响应的处理
+                    if (!useStreaming) {
+                        const { response, context } = vcpResponse;
+                        const isForActiveChat = context && context.agentId === currentSelectedItem.id && context.topicId === currentTopicId;
+                        
+                        if (isForActiveChat) {
+                            if (window.messageRenderer) window.messageRenderer.removeMessageById(thinkingMessage.id);
+                        }
+                        
+                        if (response.error) {
+                            if (isForActiveChat && window.messageRenderer) {
+                                window.messageRenderer.renderMessage({ role: 'system', content: `VCP错误: ${response.error}`, timestamp: Date.now() });
+                            }
+                            console.error(`[ContinueWriting] VCP Error:`, response.error);
+                        } else if (response.choices && response.choices.length > 0) {
+                            const assistantMessageContent = response.choices[0].message.content;
+                            const assistantMessage = {
+                                role: 'assistant',
+                                name: context.agentName || context.agentId || 'AI',
+                                avatarUrl: currentSelectedItem.avatarUrl,
+                                avatarColor: (currentSelectedItem.config || currentSelectedItem)?.avatarCalculatedColor,
+                                content: assistantMessageContent,
+                                timestamp: Date.now(),
+                                id: response.id || `regen_nonstream_${Date.now()}`
+                            };
+                            
+                            const historyForSave = await window.electronAPI.getChatHistory(context.agentId, context.topicId);
+                            if (historyForSave && !historyForSave.error) {
+                                const finalHistory = historyForSave.filter(msg => msg.id !== thinkingMessage.id && !msg.isThinking);
+                                finalHistory.push(assistantMessage);
+                                await window.electronAPI.saveChatHistory(context.agentId, context.topicId, finalHistory);
+                                
+                                if (isForActiveChat) {
+                                    currentChatHistory.length = 0;
+                                    currentChatHistory.push(...finalHistory);
+                                    if (window.messageRenderer) window.messageRenderer.renderMessage(assistantMessage);
+                                    await window.chatManager.attemptTopicSummarizationIfNeeded();
+                                }
+                            }
+                        }
+                    } else {
+                        if (vcpResponse && vcpResponse.streamError) {
+                            console.error("[ContinueWriting] Streaming setup failed:", vcpResponse.errorDetail || vcpResponse.error);
+                        }
+                    }
+                    
+                } catch (error) {
+                    console.error('[ContinueWriting] 续写时出错:', error);
+                    if (window.messageRenderer) window.messageRenderer.removeMessageById(thinkingMessage.id);
+                    if (window.messageRenderer) window.messageRenderer.renderMessage({ role: 'system', content: `错误: ${error.message}`, timestamp: Date.now() });
+                    if (currentSelectedItem.id && currentTopicId) {
+                        await window.electronAPI.saveChatHistory(currentSelectedItem.id, currentTopicId, currentChatHistory.filter(msg => !msg.isThinking));
+                    }
+                }
 }
