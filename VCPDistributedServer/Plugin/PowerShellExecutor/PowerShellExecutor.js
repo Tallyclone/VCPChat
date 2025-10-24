@@ -150,20 +150,6 @@ function stripAnsi(str) {
     );
 }
 
-/**
- * 从字符串中移除 VCP 命令边界标记。
- * @param {string} str - 可能包含边界标记的输入字符串。
- * @returns {string} - 清理后的字符串。
- */
-function stripBoundary(str) {
-    // 匹配并移除边界字符串，例如 "--- VCP_COMMAND_BOUNDARY_d86e08c1-8f3b-4f31-856e-46ecd0296a21 ---"
-    // 考虑到可能存在换行符，使用 \r?\n?
-    // 匹配并移除边界字符串，例如 "--- VCP_COMMAND_BOUNDARY_d86e08c1-8f3b-4f31-856e-46ecd0296a21 ---"
-    // 以及包含 Write-Host 命令的整行，例如 "PS C:\Users\Administrator> Write-Host "--- VCP_COMMAND_BOUNDARY_..." ---""
-    // 考虑到可能存在换行符，使用 \r?\n?
-    const boundaryRegex = /^(?:PS [A-Z]:\\(?:[^\r\n]+\\)*[^\r\n]*> )?Write-Host "--- VCP_COMMAND_BOUNDARY_[0-9a-fA-F-]{36} ---"\r?\n?|--- VCP_COMMAND_BOUNDARY_[0-9a-fA-F-]{36} ---\r?\n?/gm;
-    return str.replace(boundaryRegex, '');
-}
 
 // --- 模块级状态 ---
 // 用于保存持久化的伪终端（PowerShell）进程
@@ -171,6 +157,8 @@ let ptyProcess = null;
 // 移除 fullTerminalHistory，后端不再维护终端内容的完整状态
 // 新增：用于跟踪所有子进程，确保它们在插件卸载或程序退出时被正确清理
 const childProcesses = new Set();
+let guiDataListener = null; // 新增：保存GUI监听器的引用
+let isExecutingCommand = false; // 新增：执行命令状态标志
 
 // --- 配置加载 ---
 // 插件启动时，从 config.env 文件读取默认配置
@@ -304,20 +292,30 @@ function createNewPtySession() {
     // 设置 PowerShell 输出为 UTF-8 编码
     ptyProcess.write('[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\r');
 
-    // 设置数据监听器，将所有 pty 输出直接代理到 GUI
-    ptyProcess.onData(data => {
+    // 创建GUI数据监听器（带执行状态检查）
+    guiDataListener = (data) => {
+        // 关键修复：执行命令期间不向GUI发送数据
+        if (isExecutingCommand) {
+            return;
+        }
+        
         if (guiWindow && !guiWindow.isDestroyed()) {
-            const cleanedData = stripBoundary(data.toString('utf-8'));
-            if (cleanedData) { // 只有在清理后还有内容时才发送
-                guiWindow.webContents.send('powershell-data', cleanedData);
+            const dataStr = data.toString('utf-8');
+            if (dataStr) {
+                guiWindow.webContents.send('powershell-data', dataStr);
             }
         }
-    });
+    };
+
+    // 设置数据监听器，将所有 pty 输出直接代理到 GUI
+    ptyProcess.onData(guiDataListener);
 
     // 当 pty 进程意外退出时，清理资源
     ptyProcess.onExit(() => {
         childProcesses.delete(ptyProcess);
         ptyProcess = null;
+        guiDataListener = null;
+        isExecutingCommand = false;
     });
 }
 

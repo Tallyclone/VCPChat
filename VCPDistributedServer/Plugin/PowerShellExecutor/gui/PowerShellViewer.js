@@ -60,7 +60,15 @@ if (window.electronAPI) {
     // --- 数据、清屏与主题 ---
     // 前端现在是一个纯粹的渲染器，所有状态和内容都由后端主导。
     window.electronAPI.on('powershell-data', (data) => {
-        term.write(data);
+        // 定义一个正则表达式来匹配并移除包含 VCP 命令边界的整行。
+        // 这可以防止在AI执行命令时，内部使用的边界标记显示在用户界面上。
+        const boundaryLineRegex = /.*VCP_COMMAND_BOUNDARY[^\r\n]*\r?\n?/g;
+        const cleanedData = data.replace(boundaryLineRegex, '');
+
+        // 只有在清理后仍有数据时才写入终端，以避免写入空字符串。
+        if (cleanedData) {
+            term.write(cleanedData);
+        }
     });
 
     window.electronAPI.on('powershell-clear', () => {
@@ -136,5 +144,10 @@ window.addEventListener('DOMContentLoaded', () => {
 window.addEventListener('resize', () => setTimeout(fitTerminal, 0));
 sendButton.addEventListener('click', sendCommand);
 commandInput.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') sendCommand();
+    // 当用户按下 Enter 键但没有同时按下 Shift 键时，发送命令
+    if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault(); // 阻止默认的 Enter 行为（例如，在 textarea 中换行）
+        sendCommand();
+    }
+    // Shift+Enter 的默认行为就是在 textarea 中换行，所以我们不需要为它编写特殊逻辑
 });

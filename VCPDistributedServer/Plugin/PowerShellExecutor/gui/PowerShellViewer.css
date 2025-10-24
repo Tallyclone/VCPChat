@@ -114,6 +114,9 @@ body, html {
     border-radius: 4px;
     outline: none;
     transition: border-color 0.2s ease-in-out;
+    resize: none; /* 禁止用户手动调整 textarea 的大小 */
+    overflow-y: auto; /* 当内容超出时显示滚动条 */
+    line-height: 1.4; /* 改善多行文本的可读性 */
 }
 
 #command-input:focus {
