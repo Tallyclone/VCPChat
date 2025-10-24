@@ -4,7 +4,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const { BrowserWindow, ipcMain } = require('electron');
+const { BrowserWindow, ipcMain, clipboard } = require('electron');
 const tmp = require('tmp');
 
 // --- GUI Window Management ---
@@ -25,6 +25,8 @@ function ensureGuiWindow() {
             nodeIntegration: false, // 禁用 Node.js 集成以增强安全性
             contextIsolation: true, // 启用上下文隔离
             spellcheck: false,
+            // 将 node_modules 的路径作为参数传递给窗口，以便在 HTML 中使用
+            additionalArguments: [`--node-modules-path=${path.join(__dirname, '..', '..', '..', '..', 'node_modules')}`]
         },
         autoHideMenuBar: true,
     });
@@ -48,9 +50,26 @@ function ensureGuiWindow() {
 
 // 监听来自GUI的“就绪”信号
 ipcMain.on('powershell-gui-ready', (event) => {
-    // 当GUI准备好时，如果已经有终端历史记录，则立即发送给它
-    if (guiWindow && !guiWindow.isDestroyed() && fullTerminalHistory) {
-        event.sender.send('powershell-data', fullTerminalHistory);
+    // 当GUI准备好时，发送初始化数据
+    if (guiWindow && !guiWindow.isDestroyed()) {
+        // 1. 发送主题信息
+        try {
+            // 构造相对于项目根目录的路径
+            const settingsPath = path.join(__dirname, '..', '..', '..', '..', 'AppData', 'settings.json');
+
+            let themeName = 'dark'; // 默认主题名称
+            if (fs.existsSync(settingsPath)) {
+                const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+                themeName = settings.vcpht_theme || 'dark';
+            }
+
+            // 只发送主题名称，而不是路径
+            event.sender.send('theme-init', { themeName });
+        } catch (error) {
+            console.error('[PowerShellExecutor] Error reading theme settings:', error);
+        }
+
+        // 2. 历史记录现在由后端在会话创建时主动推送，这里不再需要发送
     }
 });
 
@@ -59,6 +78,24 @@ ipcMain.on('powershell-command', (event, command) => {
     if (ptyProcess && command) {
         // 将用户输入的命令写入 pty 进程
         ptyProcess.write(`${command}\r`);
+    }
+});
+
+// 监听来自GUI的复制请求
+ipcMain.on('copy-to-clipboard', (event, text) => {
+    if (text) {
+        clipboard.writeText(text);
+    }
+});
+
+// 监听来自GUI的尺寸调整请求
+ipcMain.on('powershell-resize', (event, { cols, rows }) => {
+    if (ptyProcess) {
+        try {
+            ptyProcess.resize(cols, rows);
+        } catch (e) {
+            console.error('[PowerShellExecutor] Failed to resize pty:', e);
+        }
     }
 });
 
@@ -79,8 +116,7 @@ function stripAnsi(str) {
 // --- 模块级状态 ---
 // 用于保存持久化的伪终端（PowerShell）进程
 let ptyProcess = null;
-// 用于存储完整的终端输出历史，以支持 "full" 返回模式
-let fullTerminalHistory = '';
+// 移除 fullTerminalHistory，后端不再维护终端内容的完整状态
 // 新增：用于跟踪所有子进程，确保它们在插件卸载或程序退出时被正确清理
 const childProcesses = new Set();
 
@@ -186,32 +222,26 @@ function createNewPtySession() {
     if (ptyProcess) {
         childProcesses.delete(ptyProcess);
         ptyProcess.kill();
+        // 当重置会话时，通知前端清屏
+        if (guiWindow && !guiWindow.isDestroyed()) {
+            guiWindow.webContents.send('powershell-clear');
+        }
     }
-    
-    fullTerminalHistory = ''; // 重置历史记录
 
     const shell = os.platform() === 'win32' ? 'powershell.exe' : 'bash';
-    ptyProcess = pty.spawn(shell, [], {
+    const args = os.platform() === 'win32' ? ['-NoLogo'] : [];
+    ptyProcess = pty.spawn(shell, args, {
         name: 'xterm-color',
-        cols: 120, // 设置一个合理的宽度
-        rows: 30,
-        cwd: process.env.USERPROFILE || process.env.HOME, // 从用户主目录开始
+        cwd: process.env.USERPROFILE || process.env.HOME,
         env: process.env
     });
-    childProcesses.add(ptyProcess); // 跟踪 pty 进程
-
+    childProcesses.add(ptyProcess);
+    
     // 设置 PowerShell 输出为 UTF-8 编码
     ptyProcess.write('[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\r');
 
-    // 如果GUI窗口存在，通知它清屏
-    if (guiWindow && !guiWindow.isDestroyed()) {
-        guiWindow.webContents.send('powershell-clear');
-    }
-
-    // 设置一个持久的数据监听器，用于不断累积终端的完整输出历史并广播到GUI
+    // 设置数据监听器，将所有 pty 输出直接代理到 GUI
     ptyProcess.onData(data => {
-        fullTerminalHistory += data;
-        // 将原始数据广播到GUI窗口
         if (guiWindow && !guiWindow.isDestroyed()) {
             guiWindow.webContents.send('powershell-data', data);
         }
@@ -219,9 +249,8 @@ function createNewPtySession() {
 
     // 当 pty 进程意外退出时，清理资源
     ptyProcess.onExit(() => {
-        childProcesses.delete(ptyProcess); // 停止跟踪
+        childProcesses.delete(ptyProcess);
         ptyProcess = null;
-        fullTerminalHistory = '';
     });
 }
 
@@ -339,9 +368,9 @@ async function processToolCall(args) {
 
     // --- 5. 格式化并返回结果 ---
     if (finalReturnMode === 'full') {
-        const lastBoundary = /--- VCP_COMMAND_BOUNDARY_.* ---/g;
-        const cleanFullHistory = fullTerminalHistory.replace(lastBoundary, '').trim();
-        return stripAnsi(cleanFullHistory);
+        // 'full' 模式现在无法再支持，因为它依赖于已移除的 fullTerminalHistory
+        // 将其行为降级为返回最后一个命令的 delta 输出
+        return deltaOutputs.length > 0 ? deltaOutputs[deltaOutputs.length - 1].output : '';
     } else { // delta 模式
         if (deltaOutputs.length === 1) {
             return deltaOutputs[0].output;

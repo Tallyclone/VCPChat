@@ -7,11 +7,28 @@
     <!-- 引入 xterm.js 的核心样式 -->
     <link rel="stylesheet" href="../../../../node_modules/xterm/css/xterm.css" />
     <!-- 引入我们的自定义样式 -->
-    <link rel="stylesheet" href="PowerShellViewer.css" />
+   <!-- 静态链接所有主题定义 -->
+   <link rel="stylesheet" href="../../../../styles/themes.css">
+   <!-- 修正路径: 从 gui/ 返回到根目录需要上溯四级 -->
+   <link rel="stylesheet" href="../../../../styles/messageRenderer.css" />
+   <link rel="stylesheet" href="PowerShellViewer.css" />
 </head>
 <body>
-    <!-- 终端将在这个容器里被创建 -->
-    <div id="terminal-container"></div>
+    <!-- 内容包装器，用于实现磨砂玻璃效果 -->
+    <div id="content-wrapper">
+        <!-- 静态字符画容器 -->
+        <pre id="ascii-art-container">
+   ███╗   ██╗ ██████╗ ██████╗ ██████╗  █████
+   ████╗  ██║██╔═══██╗██╔══██╗██╔══██╗██╔══██╗
+   ██╔██╗ ██║██║   ██║██████╔╝██║  ██║███████║
+   ██║╚██╗██║██║   ██║██╔══██╗██║  ██║██╔══██║
+   ██║ ╚████║╚██████╔╝██║  ██║██████╔╝██║  ██║
+   ╚═╝  ╚═══╝ ╚═════╝ ╚═╝  ╚═╝╚═════╝ ╚═╝  ╚═╝
+         Welcome to V C P  •  v1.2.3
+        </pre>
+        <!-- 终端将在这个容器里被创建 -->
+        <div id="terminal-container"></div>
+    </div>
 
     <!-- 命令输入区域 -->
     <div id="input-area">
