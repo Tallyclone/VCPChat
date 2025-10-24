@@ -280,7 +280,7 @@
                             <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"></path>
                         </svg>
                     </button>
-                    <button id="doNotDisturbBtn" class="header-button" title="过滤模式（启用后可通过右键设置详细过滤规则）">过滤</button>
+                    <button id="doNotDisturbBtn" class="header-button" title="过滤模式（左键总开关/右键设置过滤规则）">过滤</button>
                     <button id="clearNotificationsBtn" title="清空通知">清空</button>
                 </div>
             </header>
@@ -457,7 +457,7 @@
                     <label for="continueWritingPrompt">中键续写默认提示词:</label>
                     <input type="text" id="continueWritingPrompt" name="continueWritingPrompt" placeholder="默认: 请继续" value="请继续">
                     <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                        提示：在输入框上中键点击时，如果输入框为空则使用此提示词进行续写
+                        提示：在输入框上中键点击时，如果输入框为空则使用此提示词进行续写；使用 ctrl/command+d 快速使用。
                     </small>
                 </div>
 
@@ -726,15 +726,12 @@
             <span class="close-button" id="closeFilterRulesModal">×</span>
             <h2>过滤规则设置</h2>
 
-            <div class="filter-rules-header" style="margin-bottom: 20px;">
-                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-                    <label for="globalFilterEnabled" style="display: flex; align-items: center; gap: 5px; font-weight: bold;">
-                        <input type="checkbox" id="globalFilterEnabled" style="margin: 0;">
-                        启用过滤总开关
-                    </label>
-                    <span id="filterStatus" style="color: var(--text-secondary); font-size: 0.9em;"></span>
+            <div class="filter-rules-header" style="margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 15px;">
+                <div style="display: flex; align-items: center; gap: 8px; flex: 0 1 auto;">
+                    <span style="font-weight: 500; color: var(--secondary-text); white-space: nowrap;">当前状态:</span>
+                    <span id="filterStatus" style="color: var(--text-secondary); font-size: 0.95em; white-space: nowrap;"></span>
                 </div>
-                <button type="button" id="addFilterRuleBtn" class="sidebar-button small-button">添加过滤规则</button>
+                <button type="button" id="addFilterRuleBtn" class="sidebar-button small-button" style="width: 130px; flex-shrink: 0; margin-left: auto;">添加过滤规则</button>
             </div>
 
             <div id="filterRulesList" class="filter-rules-list">
