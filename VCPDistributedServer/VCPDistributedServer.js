@@ -337,7 +337,7 @@ class DistributedServer {
 
             // --- Special Handling for MusicController ---
             if (toolName === 'MusicController') {
-                const commandPayload = JSON.parse(result);
+                const commandPayload = (typeof result === 'string') ? JSON.parse(result) : result;
                 if (commandPayload.status === 'error') {
                     throw new Error(commandPayload.error);
                 }
@@ -384,38 +384,37 @@ class DistributedServer {
 
             } else {
                 // --- Default Handling for all other plugins ---
-                try {
-                    // First, try to parse the result as JSON, which is the modern contract.
-                    const parsedPluginResult = JSON.parse(result);
-                    if (parsedPluginResult.status === 'success') {
-                        finalResult = parsedPluginResult.result;
-
-                        // --- Special Handling for create_canvas action ---
-                        if (finalResult && finalResult._specialAction === 'create_canvas') {
-                            if (typeof this.handleCanvasControl === 'function') {
-                                console.log(`[${this.serverName}] Detected create_canvas action. Calling main process handler.`);
-                                // Directly call the injected handler from main.js
-                                this.handleCanvasControl(finalResult.payload.filePath);
-                            } else {
-                                console.error(`[${this.serverName}] Canvas control handler is not configured for the Distributed Server.`);
-                            }
+                if (typeof result === 'object' && result !== null) {
+                    // Result is already an object from a direct call (e.g., hybrid service)
+                    finalResult = result;
+                } else {
+                    // Result is a string from stdio, needs parsing
+                    try {
+                        const parsedPluginResult = JSON.parse(result);
+                        if (parsedPluginResult.status === 'success') {
+                            finalResult = parsedPluginResult.result;
+                        } else {
+                            throw new Error(parsedPluginResult.error || 'Plugin reported an error without a message.');
                         }
-                        // --- End of special handling ---
-
-                    } else {
-                        // If the plugin itself reported an error, throw it to be caught below.
-                        throw new Error(parsedPluginResult.error || 'Plugin reported an error without a message.');
-                    }
-                } catch (e) {
-                    // If parsing fails, assume it's a legacy plugin returning a raw string.
-                    // We check if the error is a JSON parsing error.
-                    if (e instanceof SyntaxError) {
-                        finalResult = result; // Use the raw output as the result.
-                    } else {
-                        // If it's another type of error (e.g., from the 'else' block above), re-throw it.
-                        throw e; // Re-throw the original error to be handled by the outer catch block.
+                    } catch (e) {
+                        if (e instanceof SyntaxError) {
+                            finalResult = result; // Legacy plugin returning a raw string
+                        } else {
+                            throw e; // Other error
+                        }
                     }
                 }
+
+                // --- Special Handling for create_canvas action (applied to the finalResult) ---
+                if (finalResult && finalResult._specialAction === 'create_canvas') {
+                    if (typeof this.handleCanvasControl === 'function') {
+                        console.log(`[${this.serverName}] Detected create_canvas action. Calling main process handler.`);
+                        this.handleCanvasControl(finalResult.payload.filePath);
+                    } else {
+                        console.error(`[${this.serverName}] Canvas control handler is not configured for the Distributed Server.`);
+                    }
+                }
+                // --- End of special handling ---
             }
 
             responsePayload = {

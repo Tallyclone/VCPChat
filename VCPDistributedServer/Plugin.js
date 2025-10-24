@@ -100,8 +100,8 @@ class PluginManager {
                         this.plugins.set(manifest.name, manifest);
                         console.log(`[DistPluginManager] Loaded manifest: ${manifest.displayName} (${manifest.name}, Type: ${manifest.pluginType})`);
 
-                        // 如果是服务类插件，则加载其模块以备初始化
-                        if (manifest.pluginType === 'service' && manifest.entryPoint.script && manifest.communication?.protocol === 'direct') {
+                        // 如果是服务类或混合服务类插件，则加载其模块以备初始化
+                        if ((manifest.pluginType === 'service' || manifest.pluginType === 'hybridservice') && manifest.entryPoint.script && manifest.communication?.protocol === 'direct') {
                             try {
                                 const scriptPath = path.join(pluginPath, manifest.entryPoint.script);
                                 const serviceModule = require(scriptPath);
@@ -133,14 +133,34 @@ class PluginManager {
         return this.plugins.get(name);
     }
 
+    getServiceModule(name) {
+        return this.serviceModules.get(name)?.module;
+    }
+
     async processToolCall(toolName, toolArgs) {
+        const plugin = this.plugins.get(toolName);
+        if (!plugin) {
+            throw new Error(`[DistPluginManager] Plugin "${toolName}" not found for tool call.`);
+        }
+
+        // --- 混合服务插件直接调用逻辑 ---
+        if (plugin.pluginType === 'hybridservice' && plugin.communication?.protocol === 'direct') {
+            if (this.debugMode) console.log(`[DistPluginManager] Processing direct tool call for hybrid service: ${toolName}`);
+            const serviceModule = this.getServiceModule(toolName);
+            if (serviceModule && typeof serviceModule.processToolCall === 'function') {
+                // 直接调用模块的 processToolCall 方法
+                return serviceModule.processToolCall(toolArgs);
+            } else {
+                throw new Error(`[DistPluginManager] Hybrid service plugin "${toolName}" does not have a processToolCall function.`);
+            }
+        }
+
+        // --- 现有同步插件调用逻辑 (后备) ---
         let executionParam = null;
-        // Default behavior for all plugins: pass arguments as a JSON string.
         executionParam = toolArgs ? JSON.stringify(toolArgs) : null;
 
         if (this.debugMode) console.log(`[DistPluginManager] Calling executePlugin for: ${toolName} with prepared param:`, executionParam);
         
-        // Now call the existing executePlugin with the correctly formatted parameter
         return this.executePlugin(toolName, executionParam);
     }
 
