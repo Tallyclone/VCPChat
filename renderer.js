@@ -2134,8 +2134,8 @@ async function handleContinueWriting(additionalPrompt = '') {
                 
                 console.log('[ContinueWriting] 临时提示词:', temporaryPrompt);
                 
-                // 创建思考消息
-                const thinkingMessageId = `msg_${Date.now()}_assistant_${Math.random().toString(36).substring(2, 9)}`;
+                // 创建思考消息（使用与重新回复相同的ID格式）
+                const thinkingMessageId = `regen_${Date.now()}`;
                 const thinkingMessage = {
                     role: 'assistant',
                     name: currentSelectedItem.name || currentSelectedItem.id || 'AI',
@@ -2303,7 +2303,7 @@ async function handleContinueWriting(additionalPrompt = '') {
                                 avatarColor: (currentSelectedItem.config || currentSelectedItem)?.avatarCalculatedColor,
                                 content: assistantMessageContent,
                                 timestamp: Date.now(),
-                                id: `msg_${Date.now()}_assistant_${Math.random().toString(36).substring(2, 9)}`
+                                id: response.id || `regen_nonstream_${Date.now()}`
                             };
                             
                             const historyForSave = await window.electronAPI.getChatHistory(context.agentId, context.topicId);
