@@ -204,90 +204,126 @@ function createNewPtySession() {
  * @param {object} args - 从 AI 工具调用中解析出的参数。
  * @returns {Promise<string>} - 命令执行的结果。
  */
-async function processToolCall(args) {
-    const {
-        command,
-        requireAdmin = false,
-        newSession = false,
-        returnMode = defaultConfig.returnMode
-    } = args;
-
-    if (!command) {
-        throw new Error('缺少必需参数: command');
-    }
-
-    // --- 管理员权限执行 ---
-    // 管理员请求总是会启动一个全新的、独立的、带GUI授权的进程。
-    // 它不使用我们维护的持久化 pty 会话。
-    if (requireAdmin) {
-        // 为了避免混淆，如果存在一个活动的非管理员会话，先将其关闭。
-        if (ptyProcess) {
-            ptyProcess.kill();
-            ptyProcess = null;
-        }
-        const fullCommand = `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; ${command}`;
-        return executeAdminCommand(fullCommand);
-    }
-
-    // 确保GUI窗口存在
-    ensureGuiWindow();
-
-    // --- 会话管理 ---
-    // 如果请求新会话，或者当前还没有会话，则创建一个。
-    if (newSession || !ptyProcess) {
-        createNewPtySession();
-    }
-
-    // --- 命令执行与结果捕获 ---
+/**
+ * 在给定的 pty 会话中执行单条命令并返回其增量输出。
+ * @param {object} ptyProcess - node-pty 实例。
+ * @param {string} singleCommand - 要执行的单条命令。
+ * @returns {Promise<string>} - 该命令的增量输出。
+ */
+function executeSingleCommandInPty(ptyProcess, singleCommand) {
     return new Promise((resolve, reject) => {
+        if (!ptyProcess) {
+            return reject(new Error("PTY process is not available."));
+        }
+
         let commandOutput = '';
-        // 创建一个唯一的边界字符串，用于标识命令输出的结束
         const boundary = `--- VCP_COMMAND_BOUNDARY_${crypto.randomUUID()} ---`;
 
-        // 创建一个临时的监听器，只为本次命令的输出服务
         const dataListener = (data) => {
             const dataStr = data.toString('utf-8');
-            
             if (dataStr.includes(boundary)) {
-                // 命令已执行完毕
-                // 移除此临时监听器，避免内存泄漏
-                clearTimeout(timeoutId); // <-- 关键修复1：清除超时定时器
-                if (ptyProcess) {
-                    ptyProcess.removeListener('data', dataListener);
-                }
-
-                // 从本次捕获的输出中，清理掉边界字符串本身和可能的多余换行
+                clearTimeout(timeoutId);
+                ptyProcess.removeListener('data', dataListener);
+                
                 const cleanOutput = commandOutput + dataStr.substring(0, dataStr.indexOf(boundary));
-                const finalOutput = cleanOutput.trim();
-
-                // 根据 returnMode 决定返回内容
-                if (returnMode === 'full') {
-                    // 返回完整的历史记录（去掉最后的提示符和边界字符串）
-                    const fullHistoryRaw = fullTerminalHistory.substring(0, fullTerminalHistory.indexOf(boundary)).trim();
-                    resolve(stripAnsi(fullHistoryRaw));
-                } else {
-                    // 只返回本次命令的增量输出
-                    resolve(stripAnsi(finalOutput));
-                }
+                resolve(stripAnsi(cleanOutput.trim()));
             } else {
-                // 持续拼接本次命令的输出
                 commandOutput += dataStr;
             }
         };
 
-        // 附加临时监听器
-        ptyProcess.on('data', dataListener);
-        
-        // 设置超时机制
         const timeoutId = setTimeout(() => {
-            ptyProcess.removeListener('data', dataListener); // 清理监听器
-            reject(new Error('命令执行超时。'));
-        }, 60000); // 60秒超时
+            ptyProcess.removeListener('data', dataListener);
+            reject(new Error(`Command "${singleCommand}" timed out after 60 seconds.`));
+        }, 60000);
 
-        // 将实际命令和我们的边界打印命令一起写入 pty
-        // `Write-Host` 用于确保边界字符串被打印到终端
-        ptyProcess.write(`${command}\r\nWrite-Host "${boundary}"\r\n`);
+        ptyProcess.on('data', dataListener);
+        ptyProcess.write(`${singleCommand}\r\nWrite-Host "${boundary}"\r\n`);
     });
+}
+
+
+async function processToolCall(args) {
+    // --- 1. 解析和排序命令 ---
+    const commandEntries = Object.entries(args)
+        .filter(([key]) => key.startsWith('command'))
+        .map(([key, value]) => {
+            const match = key.match(/^command(\d*)$/);
+            // command -> 0, command1 -> 1, command2 -> 2
+            const index = match ? (match[1] === '' ? 0 : parseInt(match[1], 10)) : -1;
+            return { key, value, index };
+        })
+        .filter(item => item.index !== -1)
+        .sort((a, b) => a.index - b.index);
+
+    if (commandEntries.length === 0) {
+        throw new Error('未提供任何有效的 command 参数 (例如 command, command1, command2)。');
+    }
+
+    // --- 2. 初始化会话和参数 ---
+    // 使用最后一个命令条目中的参数作为基础，或者使用全局默认值
+    const lastCommandIndex = commandEntries[commandEntries.length - 1].index;
+    const getArg = (key, defaultVal) => {
+        const indexedKey = `${key}${lastCommandIndex || ''}`;
+        return args[indexedKey] !== undefined ? args[indexedKey] : (args[key] !== undefined ? args[key] : defaultVal);
+    };
+
+    const requireAdmin = getArg('requireAdmin', false);
+    const newSession = getArg('newSession', false);
+    const finalReturnMode = getArg('returnMode', defaultConfig.returnMode);
+
+    // --- 3. 管理员模式执行 (不支持命令链) ---
+    if (requireAdmin) {
+        if (commandEntries.length > 1) {
+            throw new Error("管理员模式 (requireAdmin: true) 不支持执行多个命令链 (command1, command2, ...)。");
+        }
+        if (ptyProcess) {
+            ptyProcess.kill();
+            ptyProcess = null;
+        }
+        const command = commandEntries[0].value;
+        const fullCommand = `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; ${command}`;
+        return executeAdminCommand(fullCommand);
+    }
+
+    // --- 4. 非管理员会话执行 ---
+    ensureGuiWindow();
+
+    if (newSession || !ptyProcess) {
+        createNewPtySession();
+        await new Promise(resolve => setTimeout(resolve, 500)); // 等待PTY初始化
+    }
+
+    const deltaOutputs = [];
+
+    for (const entry of commandEntries) {
+        const command = entry.value;
+        // 检查是否有针对此特定命令的 returnMode
+        const currentReturnModeKey = `returnMode${entry.index || ''}`;
+        const currentReturnMode = args[currentReturnModeKey] || finalReturnMode;
+
+        try {
+            const output = await executeSingleCommandInPty(ptyProcess, command);
+            // 即使是full模式，我们也需要收集增量输出，以备最终格式化
+            deltaOutputs.push({ command, output, returnMode: currentReturnMode });
+        } catch (error) {
+            throw new Error(`在执行命令 "${command}" 时出错: ${error.message}`);
+        }
+    }
+
+    // --- 5. 格式化并返回结果 ---
+    if (finalReturnMode === 'full') {
+        const lastBoundary = /--- VCP_COMMAND_BOUNDARY_.* ---/g;
+        const cleanFullHistory = fullTerminalHistory.replace(lastBoundary, '').trim();
+        return stripAnsi(cleanFullHistory);
+    } else { // delta 模式
+        if (deltaOutputs.length === 1) {
+            return deltaOutputs[0].output;
+        }
+        return deltaOutputs.map(res =>
+            `---[Output for: ${res.command}]---\n${res.output}`
+        ).join('\n\n');
+    }
 }
 
 /**
