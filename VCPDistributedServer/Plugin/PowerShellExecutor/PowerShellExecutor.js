@@ -6,6 +6,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { BrowserWindow, ipcMain, clipboard } = require('electron');
 const tmp = require('tmp');
+const chokidar = require('chokidar');
 
 // --- GUI Window Management ---
 let guiWindow = null;
@@ -48,29 +49,65 @@ function ensureGuiWindow() {
     });
 }
 
-// 监听来自GUI的“就绪”信号
-ipcMain.on('powershell-gui-ready', (event) => {
-    // 当GUI准备好时，发送初始化数据
-    if (guiWindow && !guiWindow.isDestroyed()) {
-        // 1. 发送主题信息
-        try {
-            // 构造相对于项目根目录的路径
-            const settingsPath = path.join(__dirname, '..', '..', '..', '..', 'AppData', 'settings.json');
+// --- 主题管理与文件监视 ---
+const settingsPath = path.join(__dirname, '..', '..', '..', 'AppData', 'settings.json');
+let settingsWatcher = null;
+let lastSentTheme = null; // 用于存储上一次发送的主题名称
 
-            let themeName = 'dark'; // 默认主题名称
-            if (fs.existsSync(settingsPath)) {
-                const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
-                themeName = settings.vcpht_theme || 'dark';
-            }
-
-            // 只发送主题名称，而不是路径
-            event.sender.send('theme-init', { themeName });
-        } catch (error) {
-            console.error('[PowerShellExecutor] Error reading theme settings:', error);
+/**
+ * 读取、比较并发送主题更新。
+ * 只有当主题名称实际发生变化时，才会向GUI发送事件。
+ * @param {Electron.WebContents} targetWebContents - 目标窗口的 webContents。
+ * @param {boolean} [forceSend=false] - 是否强制发送，即使用于初始化。
+ */
+function sendThemeUpdate(targetWebContents, forceSend = false) {
+    if (!targetWebContents || targetWebContents.isDestroyed()) {
+        return;
+    }
+    try {
+        let currentTheme = 'dark'; // 默认主题
+        if (fs.existsSync(settingsPath)) {
+            const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+            currentTheme = settings.currentThemeMode || 'dark';
         }
 
-        // 2. 历史记录现在由后端在会话创建时主动推送，这里不再需要发送
+        // 只有当主题变化或强制发送时，才进行通信
+        if (currentTheme !== lastSentTheme || forceSend) {
+            targetWebContents.send('theme-init', { themeName: currentTheme });
+            lastSentTheme = currentTheme; // 更新已发送的主题记录
+            console.log(`[PowerShellExecutor] Theme updated to: ${currentTheme}`);
+        }
+    } catch (error) {
+        console.error('[PowerShellExecutor] Error reading or sending theme settings:', error);
     }
+}
+
+// 初始化文件监视器
+function setupThemeWatcher() {
+    if (settingsWatcher) {
+        settingsWatcher.close();
+    }
+    settingsWatcher = chokidar.watch(settingsPath, {
+        persistent: true,
+        ignoreInitial: true
+    });
+
+    settingsWatcher.on('change', () => {
+        if (guiWindow && !guiWindow.isDestroyed()) {
+            sendThemeUpdate(guiWindow.webContents);
+        }
+    });
+}
+
+// 在插件加载时启动监视
+setupThemeWatcher();
+
+
+// 监听来自GUI的“就绪”信号
+ipcMain.on('powershell-gui-ready', (event) => {
+    // 当GUI准备好时，发送初始主题
+    // 强制发送初始主题
+    sendThemeUpdate(event.sender, true);
 });
 
 // 监听来自GUI的用户命令
@@ -415,7 +452,18 @@ function cleanup() {
         childProcesses.clear();
     }
 
-    // 3. 确保 ptyProcess 状态被重置
+    // 3. 停止文件监视器
+    if (settingsWatcher) {
+        try {
+            settingsWatcher.close();
+            settingsWatcher = null;
+            console.log('[PowerShellExecutor] Settings file watcher stopped.');
+        } catch (e) {
+            console.error('[PowerShellExecutor] Error stopping settings watcher:', e);
+        }
+    }
+
+    // 4. 确保 ptyProcess 状态被重置
     ptyProcess = null;
 }
 

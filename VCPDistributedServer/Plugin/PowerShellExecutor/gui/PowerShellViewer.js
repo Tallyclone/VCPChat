@@ -10,7 +10,7 @@ const fitAddon = new FitAddon.FitAddon();
 
 // 创建一个函数来获取CSS变量值
 function getCssVariable(variable) {
-    return getComputedStyle(document.documentElement).getPropertyValue(variable).trim();
+    return getComputedStyle(document.body).getPropertyValue(variable).trim();
 }
 
 const term = new Terminal({
@@ -67,10 +67,9 @@ if (window.electronAPI) {
         term.clear();
     });
     window.electronAPI.on('theme-init', ({ themeName }) => {
-        // 移除所有可能存在的主题类，以防万一
-        document.body.className = '';
-        // 将从后端收到的主题名称作为类添加到body上
-        document.body.classList.add(themeName);
+        // 恢复主程序使用的标准主题切换逻辑：
+        // 当 themeName 为 'light' 时，添加 'light-theme' 类；否则，移除该类以应用默认的深色主题。
+        document.body.classList.toggle('light-theme', themeName === 'light');
 
         // 延迟执行以确保CSS变量已应用
         setTimeout(() => {

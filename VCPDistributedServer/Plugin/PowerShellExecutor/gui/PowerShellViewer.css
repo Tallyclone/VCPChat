@@ -12,7 +12,7 @@ body, html {
     overflow: hidden; /* 防止出现滚动条 */
     display: flex; /* 启用 Flexbox 布局 */
     flex-direction: column; /* 设置主轴为垂直方向 */
-    padding: 10px; /* 在 body 周围添加一些空间 */
+    padding: 0px; /* 在 body 实现填充 */
     box-sizing: border-box;
 }
 
@@ -22,13 +22,14 @@ body, html {
     display: flex;
     flex-direction: column;
     border-radius: var(--chat-bubble-border-radius, 10px); /* 从主题获取圆角 */
-    background-color: var(--chat-bubble-bg-glass, rgba(30, 30, 46, 0.7)); /* 从主题获取磨砂背景色 */
-    backdrop-filter: var(--chat-bubble-backdrop-filter, blur(10px)); /* 从主题获取磨砂效果 */
-    -webkit-backdrop-filter: var(--chat-bubble-backdrop-filter, blur(10px));
-    border: 1px solid var(--chat-bubble-border-color, rgba(255, 255, 255, 0.1)); /* 从主题获取边框颜色 */
+    background-color: var(--panel-bg); /* 统一使用面板背景变量 */
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--border-color); /* 统一使用边框颜色变量 */
     overflow: hidden; /* 确保子元素的圆角正确 */
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
     min-height: 0;
+    margin: 10px 10px 0 10px; /* 上、左右边距 */
 }
 
 /* --- 静态字符画样式 --- */
@@ -91,14 +92,14 @@ body, html {
 #input-area {
     display: flex;
     padding: 8px;
-    margin-top: 10px; /* 增加与上方内容区域的间距 */
+    margin: 10px; /* 四周外边距 */
     flex-shrink: 0; /* 防止被压缩 */
     /* 应用与内容区相同的磨砂玻璃效果 */
     border-radius: var(--chat-bubble-border-radius, 10px);
-    background-color: var(--chat-bubble-bg-glass, rgba(30, 30, 46, 0.7));
-    backdrop-filter: var(--chat-bubble-backdrop-filter, blur(10px));
-    -webkit-backdrop-filter: var(--chat-bubble-backdrop-filter, blur(10px));
-    border: 1px solid var(--chat-bubble-border-color, rgba(255, 255, 255, 0.1));
+    background-color: var(--panel-bg); /* 统一使用面板背景变量 */
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--border-color); /* 统一使用边框颜色变量 */
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
