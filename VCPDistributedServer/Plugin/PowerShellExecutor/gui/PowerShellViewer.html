@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VCP PowerShell Terminal</title>
+    <!-- 引入 xterm.js 的核心样式 -->
+    <link rel="stylesheet" href="../../../../node_modules/xterm/css/xterm.css" />
+    <!-- 引入我们的自定义样式 -->
+    <link rel="stylesheet" href="PowerShellViewer.css" />
+</head>
+<body>
+    <!-- 终端将在这个容器里被创建 -->
+    <div id="terminal-container"></div>
+
+    <!-- 引入 xterm.js 及其插件 -->
+    <script src="../../../../node_modules/xterm/lib/xterm.js"></script>
+    <script src="../../../../node_modules/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+
+    <!-- 引入我们的终端逻辑脚本 -->
+    <script src="PowerShellViewer.js"></script>
+</body>
+</html>
