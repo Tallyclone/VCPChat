@@ -21,6 +21,8 @@ function ensureGuiWindow() {
         width: 800,
         height: 600,
         title: 'VCP PowerShell Executor',
+        frame: false, // 禁用窗口边框
+        titleBarStyle: 'hidden', // 隐藏标题栏
         webPreferences: {
             preload: path.join(__dirname, 'gui', 'preload.js'),
             nodeIntegration: false, // 禁用 Node.js 集成以增强安全性
@@ -134,6 +136,25 @@ ipcMain.on('powershell-resize', (event, { cols, rows }) => {
             console.error('[PowerShellExecutor] Failed to resize pty:', e);
         }
     }
+});
+
+// --- 新增：窗口控制事件监听 ---
+ipcMain.on('minimize-window', () => {
+    if (guiWindow) guiWindow.minimize();
+});
+
+ipcMain.on('maximize-window', () => {
+    if (guiWindow) {
+        if (guiWindow.isMaximized()) {
+            guiWindow.unmaximize();
+        } else {
+            guiWindow.maximize();
+        }
+    }
+});
+
+ipcMain.on('close-window', () => {
+    if (guiWindow) guiWindow.close();
 });
 
 // --- ANSI Escape Code Stripper ---

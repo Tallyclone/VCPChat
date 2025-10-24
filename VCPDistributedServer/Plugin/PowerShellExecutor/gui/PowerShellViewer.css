@@ -6,7 +6,7 @@ body, html {
     padding: 0;
     height: 100vh; /* 使用视口高度确保占满全屏 */
     width: 100%;
-    background-color: var(--primary-bg, #1e1e2e); /* 使用CSS变量，并提供一个备用值 */
+    background-color: var(--primary-bg, #1e1e2e); /* 恢复背景色 */
     color: var(--primary-text, #cdd6f4);
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     overflow: hidden; /* 防止出现滚动条 */
@@ -16,6 +16,69 @@ body, html {
     box-sizing: border-box;
 }
 
+/* --- 自定义标题栏 --- */
+#custom-title-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 40px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 10px 0 20px;
+    z-index: 1000;
+    -webkit-app-region: drag; /* 允许拖动 */
+    user-select: none;
+}
+
+#custom-title-bar > * {
+    -webkit-app-region: no-drag; /* 子元素不可拖动 */
+}
+
+.title-text-container {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#custom-title-bar .title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--primary-text);
+    opacity: 0.7;
+}
+
+#custom-title-bar .window-controls {
+    display: flex;
+    gap: 10px;
+}
+
+.window-control-btn {
+    width: 30px;
+    height: 30px;
+    border: none;
+    background-color: transparent;
+    color: var(--secondary-text);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.window-control-btn:hover {
+    background-color: var(--button-hover-bg);
+    color: var(--primary-text);
+}
+
+#close-btn:hover {
+    background-color: #e81123;
+    color: white;
+}
+
+
 /* --- 内容包装器，实现磨砂玻璃效果 --- */
 #content-wrapper {
     flex-grow: 1;
@@ -23,13 +86,11 @@ body, html {
     flex-direction: column;
     border-radius: var(--chat-bubble-border-radius, 10px); /* 从主题获取圆角 */
     background-color: var(--panel-bg); /* 统一使用面板背景变量 */
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
     border: 1px solid var(--border-color); /* 统一使用边框颜色变量 */
     overflow: hidden; /* 确保子元素的圆角正确 */
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
     min-height: 0;
-    margin: 10px 10px 0 10px; /* 上、左右边距 */
+    margin: 40px 10px 0 10px; /* 顶部留出标题栏空间，左右下留出边距 */
 }
 
 /* --- 静态字符画样式 --- */
@@ -94,11 +155,8 @@ body, html {
     padding: 8px;
     margin: 10px; /* 四周外边距 */
     flex-shrink: 0; /* 防止被压缩 */
-    /* 应用与内容区相同的磨砂玻璃效果 */
     border-radius: var(--chat-bubble-border-radius, 10px);
     background-color: var(--panel-bg); /* 统一使用面板背景变量 */
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
     border: 1px solid var(--border-color); /* 统一使用边框颜色变量 */
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }

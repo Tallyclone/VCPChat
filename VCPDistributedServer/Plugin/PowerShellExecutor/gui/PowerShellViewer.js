@@ -140,6 +140,23 @@ window.addEventListener('DOMContentLoaded', () => {
     if (window.electronAPI) {
         window.electronAPI.send('powershell-gui-ready');
     }
+
+    // --- 自定义标题栏事件监听 ---
+    const minimizeBtn = document.getElementById('minimize-btn');
+    const maximizeBtn = document.getElementById('maximize-btn');
+    const closeBtn = document.getElementById('close-btn');
+
+    minimizeBtn.addEventListener('click', () => {
+        if (window.electronAPI) window.electronAPI.minimizeWindow();
+    });
+
+    maximizeBtn.addEventListener('click', () => {
+        if (window.electronAPI) window.electronAPI.maximizeWindow();
+    });
+
+    closeBtn.addEventListener('click', () => {
+        if (window.electronAPI) window.electronAPI.closeWindow();
+    });
 });
 window.addEventListener('resize', () => setTimeout(fitTerminal, 0));
 sendButton.addEventListener('click', sendCommand);

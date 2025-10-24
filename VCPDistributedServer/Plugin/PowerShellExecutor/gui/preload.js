@@ -26,5 +26,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
    */
   send: (channel, ...args) => {
     ipcRenderer.send(channel, ...args);
-  }
+  },
+  // --- 新增窗口控制API ---
+ minimizeWindow: () => ipcRenderer.send('minimize-window'),
+ maximizeWindow: () => ipcRenderer.send('maximize-window'),
+ closeWindow: () => ipcRenderer.send('close-window')
 });
