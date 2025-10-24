@@ -36,9 +36,10 @@ const chokidar = require('chokidar'); // 引入 chokidar
  
  // --- File Watcher ---
 let historyWatcher = null;
-let isInternalSaveExpected = false; // A one-shot flag to signal an internal save is happening.
-let internalSaveTimeout = null; // 🔧 新增：超时保护
-let isEditingInProgress = false; // 🔧 新增：编辑状态标识
+let lastInternalSaveTime = 0; // 🔧 改为时间戳记录
+let internalSaveTimeout = null; // 🔧 超时保护
+let isEditingInProgress = false; // 🔧 编辑状态标识
+const INTERNAL_SAVE_WINDOW_MS = 2000; // 🔧 内部保存时间窗口（2秒）
 
 const fileWatcher = {
   watchFile: (filePath, callback) => {
@@ -55,12 +56,12 @@ const fileWatcher = {
         }
     });
     historyWatcher.on('all', (event, path) => {
-      // 🔧 改进：检查多个条件来决定是否忽略事件
-      if (isInternalSaveExpected || isEditingInProgress) {
-        console.log(`[FileWatcher] Ignored ${isInternalSaveExpected ? 'internal save' : 'editing'} event '${event}' for: ${path}`);
-        if (isInternalSaveExpected) {
-          isInternalSaveExpected = false; // Consume the one-shot flag
-        }
+      // 🔧 改进：使用时间窗口而非一次性标志
+      const now = Date.now();
+      const isWithinSaveWindow = (now - lastInternalSaveTime) < INTERNAL_SAVE_WINDOW_MS;
+      
+      if (isWithinSaveWindow || isEditingInProgress) {
+        console.log(`[FileWatcher] Ignored ${isWithinSaveWindow ? 'internal save' : 'editing'} event '${event}' for: ${path} (time since last save: ${now - lastInternalSaveTime}ms)`);
         return;
       }
       console.log(`[FileWatcher] Detected external event '${event}' for: ${path}`);
@@ -76,19 +77,26 @@ const fileWatcher = {
     }
     // 🔧 清理状态
     isEditingInProgress = false;
+    lastInternalSaveTime = 0; // 重置时间戳
     if (internalSaveTimeout) {
       clearTimeout(internalSaveTimeout);
       internalSaveTimeout = null;
     }
   },
   signalInternalSave: () => {
-    isInternalSaveExpected = true;
-    // 🔧 设置超时保护，防止标志永远不被重置
+    // 🔧 记录内部保存时间戳
+    lastInternalSaveTime = Date.now();
+    console.log('[FileWatcher] Internal save signaled at:', lastInternalSaveTime);
+    
+    // 🔧 设置超时保护，防止时间窗口失效（虽然理论上不需要了）
     if (internalSaveTimeout) clearTimeout(internalSaveTimeout);
     internalSaveTimeout = setTimeout(() => {
-      isInternalSaveExpected = false;
-      console.log('[FileWatcher] Internal save flag auto-reset due to timeout');
-    }, 5000); // 5秒超时
+      // 这个超时主要是为了调试，正常情况下时间窗口会自然过期
+      const timeSinceLastSave = Date.now() - lastInternalSaveTime;
+      if (timeSinceLastSave >= INTERNAL_SAVE_WINDOW_MS) {
+        console.log('[FileWatcher] Internal save window naturally expired');
+      }
+    }, INTERNAL_SAVE_WINDOW_MS + 1000);
   },
   // 🔧 新增：编辑状态管理
   setEditingMode: (editing) => {

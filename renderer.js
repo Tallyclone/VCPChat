@@ -941,6 +941,7 @@ async function loadAndApplyGlobalSettings() {
         document.getElementById('vcpLogUrl').value = globalSettings.vcpLogUrl || '';
         document.getElementById('vcpLogKey').value = globalSettings.vcpLogKey || '';
         document.getElementById('topicSummaryModel').value = globalSettings.topicSummaryModel || '';
+        document.getElementById('continueWritingPrompt').value = globalSettings.continueWritingPrompt || '请继续';
         
         // --- Load Network Notes Paths ---
         const networkNotesPathsContainer = document.getElementById('networkNotesPathsContainer');
@@ -1236,6 +1237,7 @@ function setupEventListeners() {
 
         const newSettings = { // Read directly from globalSettings for widths
             userName: document.getElementById('userName').value.trim() || '用户',
+            continueWritingPrompt: document.getElementById('continueWritingPrompt').value.trim() || '请继续',
             enableMiddleClickQuickAction: document.getElementById('enableMiddleClickQuickAction').checked,
             middleClickQuickAction: document.getElementById('middleClickQuickAction').value,
             enableMiddleClickAdvanced: document.getElementById('enableMiddleClickAdvanced').checked,
@@ -2127,7 +2129,8 @@ async function handleContinueWriting(additionalPrompt = '') {
                 
                 // 注意：续写功能不会在历史记录中保存用户消息
                 // 如果有附加提示词，它只会临时影响AI的续写，但不会作为用户消息保存
-                const temporaryPrompt = additionalPrompt || null;
+                // 如果输入框为空，使用用户设置的默认提示词
+                const temporaryPrompt = additionalPrompt || globalSettings.continueWritingPrompt || '请继续';
                 
                 console.log('[ContinueWriting] 临时提示词:', temporaryPrompt);
                 
@@ -2148,6 +2151,7 @@ async function handleContinueWriting(additionalPrompt = '') {
                 if (window.messageRenderer) {
                     thinkingMessageItem = await window.messageRenderer.renderMessage(thinkingMessage);
                 }
+                // 添加思考消息到历史，但不立即保存（流式响应结束时会保存）
                 currentChatHistory.push(thinkingMessage);
                 
                 try {
@@ -2156,16 +2160,14 @@ async function handleContinueWriting(additionalPrompt = '') {
                     // 准备发送给VCP的消息历史（不包括思考消息）
                     let historySnapshotForVCP = currentChatHistory.filter(msg => msg.id !== thinkingMessage.id && !msg.isThinking);
                     
-                    // 如果有临时提示词，将其作为临时的用户消息添加到发送给VCP的历史中
+                    // 将临时提示词作为临时的用户消息添加到发送给VCP的历史中
                     // 但不保存到实际的历史记录中
-                    if (temporaryPrompt) {
-                        const temporaryUserMessage = {
-                            role: 'user',
-                            content: temporaryPrompt
-                        };
-                        historySnapshotForVCP = [...historySnapshotForVCP, temporaryUserMessage];
-                        console.log('[ContinueWriting] 添加临时提示词到VCP请求中');
-                    }
+                    const temporaryUserMessage = {
+                        role: 'user',
+                        content: temporaryPrompt
+                    };
+                    historySnapshotForVCP = [...historySnapshotForVCP, temporaryUserMessage];
+                    console.log('[ContinueWriting] 添加临时提示词到VCP请求中:', temporaryPrompt);
                     
                     console.log('[ContinueWriting] 发送给VCP的消息数量:', historySnapshotForVCP.length);
                     
