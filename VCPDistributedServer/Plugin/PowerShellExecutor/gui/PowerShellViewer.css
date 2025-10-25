@@ -86,6 +86,8 @@ body, html {
     flex-direction: column;
     border-radius: var(--chat-bubble-border-radius, 10px); /* 从主题获取圆角 */
     background-color: var(--panel-bg); /* 统一使用面板背景变量 */
+    -webkit-backdrop-filter: blur(15px); /* 兼容性前缀 */
+    backdrop-filter: blur(15px); /* 磨砂玻璃效果 */
     border: 1px solid var(--border-color); /* 统一使用边框颜色变量 */
     overflow: hidden; /* 确保子元素的圆角正确 */
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
@@ -157,13 +159,15 @@ body, html {
     flex-shrink: 0; /* 防止被压缩 */
     border-radius: var(--chat-bubble-border-radius, 10px);
     background-color: var(--panel-bg); /* 统一使用面板背景变量 */
+    -webkit-backdrop-filter: blur(15px); /* 兼容性前缀 */
+    backdrop-filter: blur(15px); /* 磨砂玻璃效果 */
     border: 1px solid var(--border-color); /* 统一使用边框颜色变量 */
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
 #command-input {
     flex-grow: 1;
-    background-color: var(--input-bg, #2a2a3e);
+    background-color: transparent; /* 透明背景，效果由 #input-area 提供 */
     color: var(--primary-text, #cdd6f4);
     border: 1px solid var(--border-color, #45475a);
     padding: 10px;
