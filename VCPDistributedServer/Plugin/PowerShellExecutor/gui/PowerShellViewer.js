@@ -60,14 +60,9 @@ if (window.electronAPI) {
     // --- 数据、清屏与主题 ---
     // 前端现在是一个纯粹的渲染器，所有状态和内容都由后端主导。
     window.electronAPI.on('powershell-data', (data) => {
-        // 定义一个正则表达式来匹配并移除包含 VCP 命令边界的整行。
-        // 这可以防止在AI执行命令时，内部使用的边界标记显示在用户界面上。
-        const boundaryLineRegex = /.*VCP_COMMAND_BOUNDARY[^\r\n]*\r?\n?/g;
-        const cleanedData = data.replace(boundaryLineRegex, '');
-
-        // 只有在清理后仍有数据时才写入终端，以避免写入空字符串。
-        if (cleanedData) {
-            term.write(cleanedData);
+        // 后端现在负责所有数据清理，前端只需直接写入即可。
+        if (data) {
+            term.write(data);
         }
     });
 

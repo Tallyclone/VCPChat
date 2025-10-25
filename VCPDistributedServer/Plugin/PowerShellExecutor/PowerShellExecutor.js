@@ -362,14 +362,30 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
 
         const dataListener = (data) => {
             const dataStr = data.toString('utf-8');
+
+            // 检查数据是否包含边界
             if (dataStr.includes(boundary)) {
                 clearTimeout(timeoutId);
                 ptyProcess.removeListener('data', dataListener);
+
+                // 提取边界之前最后的有效数据
+                const finalChunk = dataStr.substring(0, dataStr.indexOf(boundary));
+                commandOutput += finalChunk;
+
+                // 将最后的干净数据块发送到GUI
+                if (guiWindow && !guiWindow.isDestroyed() && finalChunk) {
+                    guiWindow.webContents.send('powershell-data', finalChunk);
+                }
                 
-                const cleanOutput = commandOutput + dataStr.substring(0, dataStr.indexOf(boundary));
-                resolve(stripAnsi(cleanOutput.trim()));
+                // 解析Promise，完成AI工具调用
+                resolve(stripAnsi(commandOutput.trim()));
             } else {
+                // 如果没有边界，这是正常的命令输出
                 commandOutput += dataStr;
+                // 将中间输出实时发送到GUI
+                if (guiWindow && !guiWindow.isDestroyed()) {
+                    guiWindow.webContents.send('powershell-data', dataStr);
+                }
             }
         };
 
@@ -437,19 +453,24 @@ async function processToolCall(args) {
 
     const deltaOutputs = [];
 
-    for (const entry of commandEntries) {
-        const command = entry.value;
-        // 检查是否有针对此特定命令的 returnMode
-        const currentReturnModeKey = `returnMode${entry.index || ''}`;
-        const currentReturnMode = args[currentReturnModeKey] || finalReturnMode;
+    isExecutingCommand = true; // 阻止 guiDataListener 发送原始数据
+    try {
+        for (const entry of commandEntries) {
+            const command = entry.value;
+            // 检查是否有针对此特定命令的 returnMode
+            const currentReturnModeKey = `returnMode${entry.index || ''}`;
+            const currentReturnMode = args[currentReturnModeKey] || finalReturnMode;
 
-        try {
-            const output = await executeSingleCommandInPty(ptyProcess, command);
-            // 即使是full模式，我们也需要收集增量输出，以备最终格式化
-            deltaOutputs.push({ command, output, returnMode: currentReturnMode });
-        } catch (error) {
-            throw new Error(`在执行命令 "${command}" 时出错: ${error.message}`);
+            try {
+                const output = await executeSingleCommandInPty(ptyProcess, command);
+                // 即使是full模式，我们也需要收集增量输出，以备最终格式化
+                deltaOutputs.push({ command, output, returnMode: currentReturnMode });
+            } catch (error) {
+                throw new Error(`在执行命令 "${command}" 时出错: ${error.message}`);
+            }
         }
+    } finally {
+        isExecutingCommand = false; // 恢复 guiDataListener
     }
 
     // --- 5. 格式化并返回结果 ---
