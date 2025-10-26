@@ -576,10 +576,9 @@ export function appendStreamChunk(messageId, chunkData, context) {
         buffer.push({ chunk: chunkData, context });
         
         // 防止缓冲区无限增长 - 如果超过1000个chunks，可能有问题
-        // 防止缓冲区无限增长 - 如果超过1000个chunks，可能有问题
         if (buffer.length > 1000) {
             console.warn(`[StreamManager] Pre-buffer overflow for ${messageId}, discarding old chunks.`);
-            buffer.splice(0, buffer.length - 500); // 只保留最新500个
+            buffer.splice(0, buffer.length - 1000); // 只保留最新1000个
             return;
         }
         return;
