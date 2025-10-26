@@ -426,7 +426,13 @@ class PluginManager {
 
     // 新增：获取所有静态占位符值
     getAllPlaceholderValues() {
-        return new Map(this.staticPlaceholderValues);
+        const valuesMap = new Map();
+        for (const [key, value] of this.staticPlaceholderValues.entries()) {
+            // Ensure that the returned map contains only string values,
+            // consistent with the main server's expectations.
+            valuesMap.set(key, String(value));
+        }
+        return valuesMap;
     }
 
     // 新增：关闭所有插件
@@ -437,20 +443,6 @@ class PluginManager {
         }
         this.scheduledJobs.clear();
         console.log('[DistPluginManager] All scheduled jobs cancelled.');
-
-        // 调用所有已加载服务模块的清理函数
-        for (const [name, serviceData] of this.serviceModules) {
-            if (serviceData.module && typeof serviceData.module.cleanup === 'function') {
-                try {
-                    console.log(`[DistPluginManager] Cleaning up plugin: ${name}...`);
-                    // 使用 Promise.resolve 来兼容同步和异步的 cleanup 函数
-                    await Promise.resolve(serviceData.module.cleanup());
-                    console.log(`[DistPluginManager] Plugin ${name} cleaned up.`);
-                } catch (e) {
-                    console.error(`[DistPluginManager] Error cleaning up plugin ${name}:`, e);
-                }
-            }
-        }
     }
 }
 
