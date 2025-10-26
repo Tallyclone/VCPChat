@@ -598,35 +598,6 @@ import { setupEventListeners } from './modules/event-listeners.js';
     }
 
 
-    // Initialize UI Manager first (handles theme, resizers, title bar, clock)
-    if (window.uiManager) {
-        await window.uiManager.init({
-            electronAPI: window.electronAPI,
-            refs: {
-                globalSettingsRef: { get: () => globalSettings, set: (newSettings) => globalSettings = newSettings },
-            },
-            elements: {
-                leftSidebar: document.querySelector('.sidebar'),
-                rightNotificationsSidebar: document.getElementById('notificationsSidebar'),
-                resizerLeft: document.getElementById('resizerLeft'),
-                resizerRight: document.getElementById('resizerRight'),
-                minimizeBtn: document.getElementById('minimize-btn'),
-                maximizeBtn: document.getElementById('maximize-btn'),
-                restoreBtn: document.getElementById('restore-btn'),
-                closeBtn: document.getElementById('close-btn'),
-                settingsBtn: document.getElementById('settings-btn'),
-                themeToggleBtn: document.getElementById('themeToggleBtn'),
-                digitalClockElement: document.getElementById('digitalClock'),
-                dateDisplayElement: document.getElementById('dateDisplay'),
-                notificationTitleElement: document.getElementById('notificationTitle'),
-                sidebarTabButtons: sidebarTabButtons,
-                sidebarTabContents: sidebarTabContents,
-            }
-        });
-    } else {
-        console.error('[RENDERER_INIT] uiManager module not found!');
-    }
-
     // Initialize Settings Manager
     if (window.settingsManager) {
         window.settingsManager.init({
@@ -686,6 +657,35 @@ import { setupEventListeners } from './modules/event-listeners.js';
         await loadAndApplyGlobalSettings();
         await window.itemListManager.loadItems(); // Load both agents and groups
 
+        // Initialize UI Manager after settings are loaded to ensure correct theme, widths, etc.
+        if (window.uiManager) {
+            await window.uiManager.init({
+                electronAPI: window.electronAPI,
+                refs: {
+                    globalSettingsRef: { get: () => globalSettings, set: (newSettings) => globalSettings = newSettings },
+                },
+                elements: {
+                    leftSidebar: document.querySelector('.sidebar'),
+                    rightNotificationsSidebar: document.getElementById('notificationsSidebar'),
+                    resizerLeft: document.getElementById('resizerLeft'),
+                    resizerRight: document.getElementById('resizerRight'),
+                    minimizeBtn: document.getElementById('minimize-btn'),
+                    maximizeBtn: document.getElementById('maximize-btn'),
+                    restoreBtn: document.getElementById('restore-btn'),
+                    closeBtn: document.getElementById('close-btn'),
+                    settingsBtn: document.getElementById('settings-btn'),
+                    themeToggleBtn: document.getElementById('themeToggleBtn'),
+                    digitalClockElement: document.getElementById('digitalClock'),
+                    dateDisplayElement: document.getElementById('dateDisplay'),
+                    notificationTitleElement: document.getElementById('notificationTitle'),
+                    sidebarTabButtons: sidebarTabButtons,
+                    sidebarTabContents: sidebarTabContents,
+                }
+            });
+        } else {
+            console.error('[RENDERER_INIT] uiManager module not found!');
+        }
+
         // Initialize Filter Manager
         if (window.filterManager) {
             window.filterManager.init({
@@ -709,11 +709,18 @@ import { setupEventListeners } from './modules/event-listeners.js';
             openMusicBtn: document.getElementById('openMusicBtn'),
             openCanvasBtn: document.getElementById('openCanvasBtn'),
             toggleAssistantBtn,
+            voiceChatBtn: document.getElementById('voiceChatBtn'),
             enableContextSanitizerCheckbox: document.getElementById('enableContextSanitizer'),
             contextSanitizerDepthContainer: document.getElementById('contextSanitizerDepthContainer'),
             seamFixer: document.getElementById('title-bar-seam-fixer'),
             addNetworkPathBtn: document.getElementById('addNetworkPathBtn'),
-            currentSelectedItem, currentTopicId, globalSettings, attachedFiles,
+            refs: {
+                currentSelectedItem: { get: () => currentSelectedItem },
+                currentTopicId: { get: () => currentTopicId },
+                globalSettings: { get: () => globalSettings },
+                attachedFiles: { get: () => attachedFiles, set: (val) => attachedFiles = val },
+                currentChatHistory: { get: () => currentChatHistory, set: (val) => currentChatHistory = val },
+            },
             uiHelperFunctions,
             chatManager: window.chatManager,
             itemListManager: window.itemListManager,
