@@ -20,6 +20,19 @@ import * as contextMenu from './renderer/messageContextMenu.js';
 import * as middleClickHandler from './renderer/middleClickHandler.js';
 
 
+// --- Pre-compiled Regular Expressions for Performance ---
+const TOOL_REGEX = /<<<\[TOOL_REQUEST\]>>>(.*?)<<<\[END_TOOL_REQUEST\]>>>/gs;
+const NOTE_REGEX = /<<<DailyNoteStart>>>(.*?)<<<DailyNoteEnd>>>/gs;
+const TOOL_RESULT_REGEX = /\[\[VCP调用结果信息汇总:(.*?)\]\]/gs;
+const BUTTON_CLICK_REGEX = /\[\[点击按钮:(.*?)\]\]/gs;
+const CANVAS_PLACEHOLDER_REGEX = /\{\{VCPChatCanvas\}\}/g;
+const STYLE_REGEX = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
+const HTML_FENCE_CHECK_REGEX = /```\w*\n<!DOCTYPE html>/i;
+const MERMAID_CODE_REGEX = /<code.*?>\s*(flowchart|graph|mermaid)\s+([\s\S]*?)<\/code>/gi;
+const MERMAID_FENCE_REGEX = /```(mermaid|flowchart|graph)\n([\s\S]*?)```/g;
+const CODE_FENCE_REGEX = /```\w*([\s\S]*?)```/g;
+
+
 // --- Enhanced Rendering Styles (from UserScript) ---
 function injectEnhancedStyles() {
    try {
@@ -199,14 +212,15 @@ function applyFrontendRegexRules(text, rules, role, depth) {
  * @returns {string} The processed text with special blocks as HTML.
  */
 function transformSpecialBlocks(text) {
-    const toolRegex = /<<<\[TOOL_REQUEST\]>>>(.*?)<<<\[END_TOOL_REQUEST\]>>>/gs;
-    const noteRegex = /<<<DailyNoteStart>>>(.*?)<<<DailyNoteEnd>>>/gs;
-    const toolResultRegex = /\[\[VCP调用结果信息汇总:(.*?)\]\]/gs;
+    // Reset lastIndex for global regexes before use
+    TOOL_REGEX.lastIndex = 0;
+    NOTE_REGEX.lastIndex = 0;
+    TOOL_RESULT_REGEX.lastIndex = 0;
 
     let processed = text;
 
     // Process VCP Tool Results
-    processed = processed.replace(toolResultRegex, (match, rawContent) => {
+    processed = processed.replace(TOOL_RESULT_REGEX, (match, rawContent) => {
         const content = rawContent.trim();
         const lines = content.split('\n').filter(line => line.trim() !== '');
 
@@ -277,7 +291,7 @@ function transformSpecialBlocks(text) {
     });
 
     // Process Tool Requests
-    processed = processed.replace(toolRegex, (match, content) => {
+    processed = processed.replace(TOOL_REGEX, (match, content) => {
         // Regex to find tool name in either XML format (<tool_name>...</tool_name>) or key-value format (tool_name: ...)
         const toolNameRegex = /<tool_name>([\s\S]*?)<\/tool_name>|tool_name:\s*([^\n\r]*)/;
         const toolNameMatch = content.match(toolNameRegex);
@@ -310,7 +324,7 @@ function transformSpecialBlocks(text) {
     });
 
     // Process Daily Notes
-    processed = processed.replace(noteRegex, (match, rawContent) => {
+    processed = processed.replace(NOTE_REGEX, (match, rawContent) => {
         const content = rawContent.trim();
         const maidRegex = /Maid:\s*([^\n\r]*)/;
         const dateRegex = /Date:\s*([^\n\r]*)/;
@@ -355,16 +369,16 @@ function transformSpecialBlocks(text) {
  * @returns {string} The processed text.
  */
 function transformUserButtonClick(text) {
-    const buttonClickRegex = /\[\[点击按钮:(.*?)\]\]/gs;
-    return text.replace(buttonClickRegex, (match, content) => {
+    BUTTON_CLICK_REGEX.lastIndex = 0;
+    return text.replace(BUTTON_CLICK_REGEX, (match, content) => {
         const escapedContent = escapeHtml(content.trim());
         return `<span class="user-clicked-button-bubble">${escapedContent}</span>`;
     });
 }
 
 function transformVCPChatCanvas(text) {
-    const canvasPlaceholderRegex = /\{\{VCPChatCanvas\}\}/g;
-    return text.replace(canvasPlaceholderRegex, () => {
+    CANVAS_PLACEHOLDER_REGEX.lastIndex = 0;
+    return text.replace(CANVAS_PLACEHOLDER_REGEX, () => {
         // Use a div for better block-level layout and margin behavior
         return `<div class="vcp-chat-canvas-placeholder">Canvas协同中<span class="thinking-indicator-dots">...</span></div>`;
     });
@@ -377,11 +391,11 @@ function transformVCPChatCanvas(text) {
  * @returns {{processedContent: string, styleInjected: boolean}} The content with <style> tags removed, and a flag indicating if styles were injected.
  */
 function processAndInjectScopedCss(content, scopeId) {
-    const styleRegex = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
+    STYLE_REGEX.lastIndex = 0;
     let cssContent = '';
     let styleInjected = false;
 
-    const processedContent = content.replace(styleRegex, (match, css) => {
+    const processedContent = content.replace(STYLE_REGEX, (match, css) => {
         cssContent += css.trim() + '\n';
         return ''; // Remove style tags from the content
     });
@@ -420,7 +434,8 @@ function ensureHtmlFenced(text) {
 
     // If it's already in a proper html code block, do nothing. This is the fix.
     // This regex now checks for any language specifier (or none) after the fences.
-    if (/```\w*\n<!DOCTYPE html>/i.test(text)) {
+    HTML_FENCE_CHECK_REGEX.lastIndex = 0;
+    if (HTML_FENCE_CHECK_REGEX.test(text)) {
         return text;
     }
 
@@ -539,69 +554,63 @@ function preprocessFullContent(text, settings = {}, messageRole = 'assistant', d
     const agentConfig = currentSelectedItem?.config || currentSelectedItem;
 
     if (agentConfig?.stripRegexes && Array.isArray(agentConfig.stripRegexes)) {
-        // 应用前端正则规则，包含深度控制
         text = applyFrontendRegexRules(text, agentConfig.stripRegexes, messageRole, depth);
     }
     // --- 正则规则应用结束 ---
 
-    const codeBlockMap = new Map();
-    let placeholderId = 0;
-
-    // Step 1: Handle Mermaid blocks, both in `<code>` tags and fenced blocks.
-    // Case 1: AI wraps it in `<code>flowchart ...</code>`
-    let processed = text.replace(/<code.*?>\s*(flowchart|graph|mermaid)\s+([\s\S]*?)<\/code>/gi, (match, lang, code) => {
-        // Decode potential HTML entities like >
+    // 一次性处理 Mermaid（合并两种情况）
+    MERMAID_CODE_REGEX.lastIndex = 0;
+    text = text.replace(MERMAID_CODE_REGEX, (match, lang, code) => {
         const tempEl = document.createElement('textarea');
         tempEl.innerHTML = code;
-        const decodedCode = tempEl.value;
-        const encodedCode = encodeURIComponent(decodedCode.trim());
+        const encodedCode = encodeURIComponent(tempEl.value.trim());
         return `<div class="mermaid-placeholder" data-mermaid-code="${encodedCode}"></div>`;
     });
-
-    // Case 2: Standard fenced code blocks
-    processed = processed.replace(/```(mermaid|flowchart|graph)\n([\s\S]*?)```/g, (match, lang, code) => {
+    
+    MERMAID_FENCE_REGEX.lastIndex = 0;
+    text = text.replace(MERMAID_FENCE_REGEX, (match, lang, code) => {
         const encodedCode = encodeURIComponent(code.trim());
         return `<div class="mermaid-placeholder" data-mermaid-code="${encodedCode}"></div>`;
     });
 
-    // Step 2: Find and protect all remaining fenced code blocks.
-    // The regex looks for ``` followed by an optional language identifier, then anything until the next ```
-    processed = processed.replace(/```\w*([\s\S]*?)```/g, (match) => {
-        const placeholder = `__VCP_CODE_BLOCK_PLACEHOLDER_${placeholderId}__`;
-        codeBlockMap.set(placeholder, match);
-        placeholderId++;
-        return placeholder;
-    });
+    // 保护代码块（优化：只在需要时创建 Map）
+    let codeBlockMap = null;
+    let placeholderId = 0;
+    
+    CODE_FENCE_REGEX.lastIndex = 0;
+    // Use a lookahead to test without consuming the match
+    const hasCodeBlocks = /```/.test(text);
+    
+    if (hasCodeBlocks) {
+        codeBlockMap = new Map();
+        CODE_FENCE_REGEX.lastIndex = 0; // Reset index before replacing
+        
+        text = text.replace(CODE_FENCE_REGEX, (match) => {
+            const placeholder = `__VCP_CODE_BLOCK_PLACEHOLDER_${placeholderId}__`;
+            codeBlockMap.set(placeholder, match);
+            placeholderId++;
+            return placeholder;
+        });
+    }
 
     // The order of the remaining operations is critical.
-    // Step 3. Fix indented HTML that markdown might misinterpret as code blocks.
-    processed = deIndentHtml(processed);
+    text = deIndentHtml(text);
+    text = contentProcessor.deIndentToolRequestBlocks(text);
+    text = transformSpecialBlocks(text);
+    text = ensureHtmlFenced(text);
+    
+    // 批量应用内容处理器（减少函数调用）
+    text = contentProcessor.applyContentProcessors(text);
 
-    // Step 3.1: Specifically de-indent VCP Tool Request blocks to prevent them from being parsed as code blocks.
-    // This is a targeted fix for the race condition.
-    processed = contentProcessor.deIndentToolRequestBlocks(processed);
-
-    // Step 3.2. Directly transform special blocks (Tool/Diary) into styled HTML divs.
-    processed = transformSpecialBlocks(processed);
-
-    // Step 4. Ensure raw HTML documents are fenced to be displayed as code.
-    processed = ensureHtmlFenced(processed);
-
-    // Step 5. Run other standard content processors.
-    processed = contentProcessor.ensureNewlineAfterCodeBlock(processed);
-    processed = contentProcessor.ensureSpaceAfterTilde(processed);
-    processed = contentProcessor.removeIndentationFromCodeBlockMarkers(processed);
-    processed = contentProcessor.removeSpeakerTags(processed);
-    processed = contentProcessor.ensureSeparatorBetweenImgAndCode(processed);
-
-    // Step 6: Restore the protected code blocks.
-    if (codeBlockMap.size > 0) {
+    // 恢复代码块
+    if (codeBlockMap) {
         for (const [placeholder, block] of codeBlockMap.entries()) {
-            processed = processed.replace(placeholder, block);
+            // Use a function for replacement to handle special characters in the block
+            text = text.replace(placeholder, () => block);
         }
     }
 
-    return processed;
+    return text;
 }
 
 /**
@@ -686,110 +695,147 @@ function clearChat() {
 
 
 function initializeMessageRenderer(refs) {
-   Object.assign(mainRendererReferences, refs);
+    Object.assign(mainRendererReferences, refs);
 
-   initializeImageHandler({
-       electronAPI: mainRendererReferences.electronAPI,
-       uiHelper: mainRendererReferences.uiHelper,
-       chatMessagesDiv: mainRendererReferences.chatMessagesDiv,
-   });
+    initializeImageHandler({
+        electronAPI: mainRendererReferences.electronAPI,
+        uiHelper: mainRendererReferences.uiHelper,
+        chatMessagesDiv: mainRendererReferences.chatMessagesDiv,
+    });
 
-   // Start the emoticon fixer initialization, but don't wait for it here.
-   // The await will happen inside renderMessage to ensure it's ready before rendering.
-   emoticonUrlFixer.initialize(mainRendererReferences.electronAPI);
+    // Start the emoticon fixer initialization, but don't wait for it here.
+    // The await will happen inside renderMessage to ensure it's ready before rendering.
+    emoticonUrlFixer.initialize(mainRendererReferences.electronAPI);
 
-   // Add event listener for collapsible tool results
-   mainRendererReferences.chatMessagesDiv.addEventListener('click', (event) => {
-       const header = event.target.closest('.vcp-tool-result-header');
-       if (header) {
-           const bubble = header.closest('.vcp-tool-result-bubble.collapsible');
-           if (bubble) {
-               bubble.classList.toggle('expanded');
-           }
-       }
-   });
+    // --- Event Delegation ---
+    mainRendererReferences.chatMessagesDiv.addEventListener('click', (e) => {
+        // 1. Handle collapsible tool results
+        const header = e.target.closest('.vcp-tool-result-header');
+        if (header) {
+            const bubble = header.closest('.vcp-tool-result-bubble.collapsible');
+            if (bubble) {
+                bubble.classList.toggle('expanded');
+            }
+            return;
+        }
 
-   // Create a new marked instance wrapper specifically for the stream manager.
-   // This ensures that any text passed to `marked.parse()` during streaming
-   // is first processed by `deIndentHtml`. This robustly fixes the issue of
-   // indented HTML being rendered as code blocks during live streaming,
-   // without needing to modify the stream manager itself.
-   const originalMarkedParse = mainRendererReferences.markedInstance.parse.bind(mainRendererReferences.markedInstance);
-   const streamingMarkedInstance = {
-       ...mainRendererReferences.markedInstance,
-       parse: (text) => {
-           const globalSettings = mainRendererReferences.globalSettingsRef.get();
-           // Pass settings to the preprocessor so it can adjust its behavior.
-           const processedText = preprocessFullContent(text, globalSettings);
-           return originalMarkedParse(processedText);
-       }
-   };
+        // 2. Avatar 点击停止 TTS（也使用委托）
+        const avatar = e.target.closest('.message-avatar');
+        if (avatar) {
+            const messageItem = avatar.closest('.message-item');
+            if (messageItem?.dataset.role === 'assistant') {
+                mainRendererReferences.electronAPI.sovitsStop();
+            }
+        }
+    });
 
-   contentProcessor.initializeContentProcessor(mainRendererReferences);
+    // Delegated context menu
+    mainRendererReferences.chatMessagesDiv.addEventListener('contextmenu', (e) => {
+        const messageItem = e.target.closest('.message-item');
+        if (!messageItem) return;
+        
+        const messageId = messageItem.dataset.messageId;
+        const message = mainRendererReferences.currentChatHistoryRef.get()
+            .find(m => m.id === messageId);
+        
+        if (message && (message.role === 'assistant' || message.role === 'user')) {
+            e.preventDefault();
+            contextMenu.showContextMenu(e, messageItem, message);
+        }
+    });
 
-   contextMenu.initializeContextMenu(mainRendererReferences, {
-       // Pass functions that the context menu needs to call back into the main renderer
-       removeMessageById: removeMessageById,
-       finalizeStreamedMessage: finalizeStreamedMessage,
-       renderMessage: renderMessage,
-       startStreamingMessage: startStreamingMessage,
-       setContentAndProcessImages: setContentAndProcessImages,
-       processRenderedContent: contentProcessor.processRenderedContent,
-       runTextHighlights: contentProcessor.runTextHighlights,
-       preprocessFullContent: preprocessFullContent,
-       renderAttachments: renderAttachments,
-       interruptHandler: mainRendererReferences.interruptHandler, // Pass the interrupt handler
-   });
+    // Delegated middle mouse button click
+    mainRendererReferences.chatMessagesDiv.addEventListener('mousedown', (e) => {
+        if (e.button !== 1) return; // 只处理中键
+        
+        const messageItem = e.target.closest('.message-item');
+        if (!messageItem) return;
+        
+        const messageId = messageItem.dataset.messageId;
+        const message = mainRendererReferences.currentChatHistoryRef.get()
+            .find(m => m.id === messageId);
+        
+        if (message && (message.role === 'assistant' || message.role === 'user')) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const globalSettings = mainRendererReferences.globalSettingsRef.get();
+            if (globalSettings.enableMiddleClickQuickAction) {
+                middleClickHandler.startMiddleClickTimer(e, messageItem, message, globalSettings.middleClickQuickAction);
+                
+                if (globalSettings.enableMiddleClickAdvanced) {
+                    const delay = Math.max(1000, globalSettings.middleClickAdvancedDelay || 1000);
+                    middleClickHandler.startAdvancedMiddleClickTimer(e, messageItem, message, globalSettings);
+                }
+            }
+        }
+    });
+    // --- End Event Delegation ---
 
-   // Make toggleEditMode available globally for middle click functionality
-   if (typeof contextMenu.toggleEditMode === 'function') {
-       window.toggleEditMode = contextMenu.toggleEditMode;
-       window.messageContextMenu = contextMenu; // Also expose the entire module for fallback
-   }
+    // Create a new marked instance wrapper specifically for the stream manager.
+    const originalMarkedParse = mainRendererReferences.markedInstance.parse.bind(mainRendererReferences.markedInstance);
+    const streamingMarkedInstance = {
+        ...mainRendererReferences.markedInstance,
+        parse: (text) => {
+            const globalSettings = mainRendererReferences.globalSettingsRef.get();
+            const processedText = preprocessFullContent(text, globalSettings);
+            return originalMarkedParse(processedText);
+        }
+    };
 
-   streamManager.initStreamManager({
-       // Core Refs
-       globalSettingsRef: mainRendererReferences.globalSettingsRef,
-       currentChatHistoryRef: mainRendererReferences.currentChatHistoryRef,
-       currentSelectedItemRef: mainRendererReferences.currentSelectedItemRef,
-       currentTopicIdRef: mainRendererReferences.currentTopicIdRef,
-       
-       // DOM & API Refs
-       chatMessagesDiv: mainRendererReferences.chatMessagesDiv,
-       markedInstance: streamingMarkedInstance, // Use the wrapped instance
-       electronAPI: mainRendererReferences.electronAPI,
-       uiHelper: mainRendererReferences.uiHelper,
-       morphdom: window.morphdom, // Pass the morphdom library instance
+    contentProcessor.initializeContentProcessor(mainRendererReferences);
 
-       // Rendering & Utility Functions
-       renderMessage: renderMessage,
-       showContextMenu: contextMenu.showContextMenu,
-       setContentAndProcessImages: setContentAndProcessImages,
-       processRenderedContent: contentProcessor.processRenderedContent,
-       runTextHighlights: contentProcessor.runTextHighlights,
-       preprocessFullContent: preprocessFullContent,
-       // Pass individual processors needed by streamManager
-       removeSpeakerTags: contentProcessor.removeSpeakerTags,
-       ensureNewlineAfterCodeBlock: contentProcessor.ensureNewlineAfterCodeBlock,
-       ensureSpaceAfterTilde: contentProcessor.ensureSpaceAfterTilde,
-       removeIndentationFromCodeBlockMarkers: contentProcessor.removeIndentationFromCodeBlockMarkers,
-       ensureSeparatorBetweenImgAndCode: contentProcessor.ensureSeparatorBetweenImgAndCode,
+    contextMenu.initializeContextMenu(mainRendererReferences, {
+        removeMessageById: removeMessageById,
+        finalizeStreamedMessage: finalizeStreamedMessage,
+        renderMessage: renderMessage,
+        startStreamingMessage: startStreamingMessage,
+        setContentAndProcessImages: setContentAndProcessImages,
+        processRenderedContent: contentProcessor.processRenderedContent,
+        runTextHighlights: contentProcessor.highlightAllPatternsInMessage,
+        preprocessFullContent: preprocessFullContent,
+        renderAttachments: renderAttachments,
+        interruptHandler: mainRendererReferences.interruptHandler,
+    });
 
-       // Pass the main processor function
-       processAnimationsInContent: processAnimationsInContent, // Pass the animation processor
+    if (typeof contextMenu.toggleEditMode === 'function') {
+        window.toggleEditMode = contextMenu.toggleEditMode;
+        window.messageContextMenu = contextMenu;
+    }
 
-       // Debouncing and Timers
-       enhancedRenderDebounceTimers: enhancedRenderDebounceTimers,
-       ENHANCED_RENDER_DEBOUNCE_DELAY: ENHANCED_RENDER_DEBOUNCE_DELAY,
-       DIARY_RENDER_DEBOUNCE_DELAY: DIARY_RENDER_DEBOUNCE_DELAY,
-   });
+    streamManager.initStreamManager({
+        globalSettingsRef: mainRendererReferences.globalSettingsRef,
+        currentChatHistoryRef: mainRendererReferences.currentChatHistoryRef,
+        currentSelectedItemRef: mainRendererReferences.currentSelectedItemRef,
+        currentTopicIdRef: mainRendererReferences.currentTopicIdRef,
+        chatMessagesDiv: mainRendererReferences.chatMessagesDiv,
+        markedInstance: streamingMarkedInstance,
+        electronAPI: mainRendererReferences.electronAPI,
+        uiHelper: mainRendererReferences.uiHelper,
+        morphdom: window.morphdom,
+        renderMessage: renderMessage,
+        showContextMenu: contextMenu.showContextMenu,
+        setContentAndProcessImages: setContentAndProcessImages,
+        processRenderedContent: contentProcessor.processRenderedContent,
+        runTextHighlights: contentProcessor.highlightAllPatternsInMessage,
+        preprocessFullContent: preprocessFullContent,
+        removeSpeakerTags: contentProcessor.removeSpeakerTags,
+        ensureNewlineAfterCodeBlock: contentProcessor.ensureNewlineAfterCodeBlock,
+        ensureSpaceAfterTilde: contentProcessor.ensureSpaceAfterTilde,
+        removeIndentationFromCodeBlockMarkers: contentProcessor.removeIndentationFromCodeBlockMarkers,
+        ensureSeparatorBetweenImgAndCode: contentProcessor.ensureSeparatorBetweenImgAndCode,
+        processAnimationsInContent: processAnimationsInContent,
+        enhancedRenderDebounceTimers: enhancedRenderDebounceTimers,
+        ENHANCED_RENDER_DEBOUNCE_DELAY: ENHANCED_RENDER_DEBOUNCE_DELAY,
+        DIARY_RENDER_DEBOUNCE_DELAY: DIARY_RENDER_DEBOUNCE_DELAY,
+    });
 
-   middleClickHandler.initialize(mainRendererReferences, {
-       removeMessageById: removeMessageById,
-   });
+    middleClickHandler.initialize(mainRendererReferences, {
+        removeMessageById: removeMessageById,
+    });
 
-   injectEnhancedStyles();
-   console.log("[MessageRenderer] Initialized. Current selected item type on init:", mainRendererReferences.currentSelectedItemRef.get()?.type);
+    injectEnhancedStyles();
+    console.log("[MessageRenderer] Initialized. Current selected item type on init:", mainRendererReferences.currentSelectedItemRef.get()?.type);
 }
 
 
@@ -912,54 +958,6 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
     }
     // --- END Scoped CSS Implementation ---
 
-    // Attach context menu to all assistant and user messages, regardless of state.
-    // The context menu itself will decide which options to show.
-    if (message.role === 'assistant' || message.role === 'user') {
-        messageItem.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            contextMenu.showContextMenu(e, messageItem, message);
-        });
-
-        // Add middle click quick action functionality with advanced grid selection
-        messageItem.addEventListener('mousedown', (e) => {
-            if (e.button === 1) { // Middle mouse button
-                e.preventDefault();
-                e.stopPropagation();
-
-                const globalSettings = mainRendererReferences.globalSettingsRef.get();
-                if (globalSettings.enableMiddleClickQuickAction) {
-                    // Always start basic 1-second quick action timer if configured
-                    if (globalSettings.middleClickQuickAction && globalSettings.middleClickQuickAction.trim() !== '') {
-                        middleClickHandler.startMiddleClickTimer(e, messageItem, message, globalSettings.middleClickQuickAction);
-                    }
-
-                    // Start advanced mode timer if enabled and delay >= 1000ms
-                    if (globalSettings.enableMiddleClickAdvanced) {
-                        const delay = globalSettings.middleClickAdvancedDelay || 1000;
-                        if (delay >= 1000) {
-                            middleClickHandler.startAdvancedMiddleClickTimer(e, messageItem, message, globalSettings);
-                        } else {
-                            console.warn('[MiddleClick] Advanced mode delay must be >= 1000ms for compatibility. Current delay:', delay);
-                            // Force delay to minimum 1000ms for compatibility
-                            globalSettings.middleClickAdvancedDelay = 1000;
-                            middleClickHandler.startAdvancedMiddleClickTimer(e, messageItem, message, globalSettings);
-                        }
-                    }
-                }
-            }
-        });
-    }
-
-    // Add logic for stopping TTS by clicking the avatar
-    // Add logic for stopping TTS by clicking the avatar
-    // Simplified logic: always add the click listener to assistant avatars.
-    // Clicking it will stop any ongoing TTS playback.
-    if (avatarImg && message.role === 'assistant') {
-        avatarImg.addEventListener('click', () => {
-            console.log(`[MessageRenderer] Avatar clicked for message ${message.id}. Stopping TTS.`);
-            mainRendererReferences.electronAPI.sovitsStop();
-        });
-    }
 
     // 先确定颜色值（但不应用）
     let avatarColorToUse;
@@ -1061,7 +1059,7 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
                 // Defer TreeWalker-based highlighters with a hardcoded delay to ensure the DOM is stable.
                 setTimeout(() => {
                     if (contentDiv && contentDiv.isConnected) {
-                        contentProcessor.runTextHighlights(contentDiv);
+                        contentProcessor.highlightAllPatternsInMessage(contentDiv);
                     }
                 }, 0);
 
@@ -1105,17 +1103,24 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
         if (avatarColorToUse) {
             applyColorToElements(avatarColorToUse);
         } else if (avatarUrlToUse && !avatarUrlToUse.includes('default_')) { // No persisted color, try to extract
-            const dominantColor = await getDominantAvatarColor(avatarUrlToUse);
-            if (dominantColor) { // Successfully extracted a color
-                applyColorToElements(dominantColor);
-                if (messageItem.isConnected) { // If extracted and still in DOM, try to persist
+            // 🟢 Non-blocking color calculation
+            // Immediately apply a default border, which will be overridden if color extraction succeeds.
+            if (avatarImg) {
+                avatarImg.style.borderColor = 'var(--border-color)';
+            }
+
+            getDominantAvatarColor(avatarUrlToUse).then(dominantColor => {
+                if (dominantColor && messageItem.isConnected) {
+                    applyColorToElements(dominantColor);
+                    
+                    // Persist the extracted color
                     let typeToSave, idToSaveFor;
                     if (message.role === 'user') {
                         typeToSave = 'user'; idToSaveFor = 'user_global';
                     } else if (message.isGroupMessage && message.agentId) {
-                        typeToSave = 'agent'; idToSaveFor = message.agentId; // Save for the specific group member
+                        typeToSave = 'agent'; idToSaveFor = message.agentId;
                     } else if (currentSelectedItem && currentSelectedItem.type === 'agent') {
-                        typeToSave = 'agent'; idToSaveFor = currentSelectedItem.id; // Current agent
+                        typeToSave = 'agent'; idToSaveFor = currentSelectedItem.id;
                     }
 
                     if (typeToSave && idToSaveFor) {
@@ -1125,9 +1130,9 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
                                     if (typeToSave === 'user') {
                                         mainRendererReferences.globalSettingsRef.set({...globalSettings, userAvatarCalculatedColor: dominantColor });
                                     } else if (typeToSave === 'agent' && idToSaveFor === currentSelectedItem.id) {
-                                        if (currentSelectedItem.config) { // Handle nested structure
+                                        if (currentSelectedItem.config) {
                                             currentSelectedItem.config.avatarCalculatedColor = dominantColor;
-                                        } else { // Handle flat structure
+                                        } else {
                                             currentSelectedItem.avatarCalculatedColor = dominantColor;
                                         }
                                     }
@@ -1135,9 +1140,10 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
                             });
                     }
                 }
-            } else { // Failed to extract color (e.g., CORS issue), apply a default border
-                avatarImg.style.borderColor = 'var(--border-color)';
-            }
+            }).catch(err => {
+                console.warn(`[Color] Failed to extract dominant color for ${avatarUrlToUse}:`, err);
+                // The default border is already applied, so no further action is needed on error.
+            });
         } else { // Default avatar or no URL, reset to theme defaults
             // Remove the custom property. The CSS will automatically use its fallback values.
             messageItem.style.removeProperty('--dynamic-avatar-color');
@@ -1305,7 +1311,7 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId) {
     // Step 2: Asynchronous, deferred highlighting for DOM stability with a hardcoded delay
     setTimeout(() => {
         if (contentDiv && contentDiv.isConnected) {
-            contentProcessor.runTextHighlights(contentDiv);
+            contentProcessor.highlightAllPatternsInMessage(contentDiv);
         }
     }, 0);
 
@@ -1370,7 +1376,7 @@ function updateMessageContent(messageId, newContent) {
     // 4. Asynchronous, deferred highlighting for DOM stability
     setTimeout(() => {
         if (contentDiv && contentDiv.isConnected) {
-            contentProcessor.runTextHighlights(contentDiv);
+            contentProcessor.highlightAllPatternsInMessage(contentDiv);
         }
     }, 0);
 
@@ -1477,21 +1483,21 @@ async function renderMessageBatch(messages, scrollToBottom = false) {
  * @param {number} batchSize 每批大小
  * @param {number} batchDelay 批次间延迟
  */
+/**
+ * 智能批量渲染：使用 requestIdleCallback 在浏览器空闲时渲染
+ */
 async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay) {
     const totalBatches = Math.ceil(olderMessages.length / batchSize);
     
-    // 从最新的历史消息开始，向前渲染（这样插入顺序就是正确的）
     for (let i = totalBatches - 1; i >= 0; i--) {
         const startIndex = i * batchSize;
         const endIndex = Math.min(startIndex + batchSize, olderMessages.length);
         const batch = olderMessages.slice(startIndex, endIndex);
         
-        console.log(`[MessageRenderer] 渲染历史消息批次 ${totalBatches - i}/${totalBatches} (${batch.length} 条)`);
-        
-        // 创建批次的 fragment
+        // 创建批次 fragment
         const batchFragment = document.createDocumentFragment();
-        
         const elementsForProcessing = [];
+        
         for (const msg of batch) {
             const messageElement = await renderMessage(msg, true, false);
             if (messageElement) {
@@ -1500,14 +1506,12 @@ async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay
             }
         }
         
-        // 将批次插入到已渲染内容的最前面（在系统消息之后）
+        // 🟢 使用 requestIdleCallback 在空闲时插入（降级到 requestAnimationFrame）
         await new Promise(resolve => {
-            requestAnimationFrame(() => {
+            const insertBatch = () => {
                 const chatMessagesDiv = mainRendererReferences.chatMessagesDiv;
-                
-                // 找到第一个非系统消息作为插入点
                 let insertPoint = chatMessagesDiv.firstChild;
-                while (insertPoint && insertPoint.classList && insertPoint.classList.contains('topic-timestamp-bubble')) {
+                while (insertPoint?.classList?.contains('topic-timestamp-bubble')) {
                     insertPoint = insertPoint.nextSibling;
                 }
                 
@@ -1517,7 +1521,6 @@ async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay
                     chatMessagesDiv.appendChild(batchFragment);
                 }
 
-                // Run processors for the newly added batch
                 elementsForProcessing.forEach(el => {
                     if (typeof el._vcp_process === 'function') {
                         el._vcp_process();
@@ -1526,12 +1529,20 @@ async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay
                 });
 
                 resolve();
-            });
+            };
+
+            // 优先使用 requestIdleCallback，不支持时降级到 rAF
+            if ('requestIdleCallback' in window) {
+                requestIdleCallback(insertBatch, { timeout: 1000 });
+            } else {
+                requestAnimationFrame(insertBatch);
+            }
         });
         
-        // 批次间延迟，避免阻塞 UI
+        // 动态调整延迟：如果批次小，减少延迟
         if (i > 0 && batchDelay > 0) {
-            await new Promise(resolve => setTimeout(resolve, batchDelay));
+            const actualDelay = batch.length < batchSize / 2 ? batchDelay / 2 : batchDelay;
+            await new Promise(resolve => setTimeout(resolve, actualDelay));
         }
     }
 }
