@@ -216,6 +216,40 @@ function getCachedMessageDom(messageId) {
 }
 
 /**
+ * Sets up onload and onerror handlers for an emoticon image to fix its URL on error
+ * and prevent flickering by controlling its visibility.
+ * @param {HTMLImageElement} img The image element.
+ */
+function setupEmoticonHandlers(img) {
+    img.onload = function() {
+        this.style.visibility = 'visible';
+        this.onload = null;
+        this.onerror = null;
+    };
+    
+    img.onerror = function() {
+        // If a fix was already attempted, make it visible (as a broken image) and stop.
+        if (this.dataset.emoticonFixAttempted === 'true') {
+            this.style.visibility = 'visible';
+            this.onload = null;
+            this.onerror = null;
+            return;
+        }
+        this.dataset.emoticonFixAttempted = 'true';
+        
+        const fixedSrc = refs.emoticonUrlFixer.fixEmoticonUrl(this.src);
+        if (fixedSrc !== this.src) {
+            this.src = fixedSrc; // This will re-trigger either onload or onerror
+        } else {
+            // If the URL can't be fixed, show the broken image and clean up handlers.
+            this.style.visibility = 'visible';
+            this.onload = null;
+            this.onerror = null;
+        }
+    };
+}
+
+/**
  * Renders a single frame of the streaming message using morphdom for efficient DOM updates.
  * This version performs minimal processing to keep it fast and avoid destroying JS state.
  * @param {string} messageId The ID of the message.
@@ -278,6 +312,27 @@ function renderStreamFrame(messageId) {
                     requestAnimationFrame(() => toEl.focus());
                 }
                 
+                // 🟢 保留表情包修复的状态标记和事件处理器
+                if (fromEl.tagName === 'IMG') {
+                    if (fromEl.dataset.emoticonHandlerAttached) {
+                        toEl.dataset.emoticonHandlerAttached = 'true';
+                    }
+                    if (fromEl.dataset.emoticonFixAttempted) {
+                        toEl.dataset.emoticonFixAttempted = 'true';
+                    }
+                    // Preserve handlers to continue the loading/error process
+                    if (fromEl.onerror && !toEl.onerror) {
+                        toEl.onerror = fromEl.onerror;
+                    }
+                    if (fromEl.onload && !toEl.onload) {
+                        toEl.onload = fromEl.onload;
+                    }
+                    // Preserve visibility style to prevent flicker on re-renders
+                    if (fromEl.style.visibility) {
+                        toEl.style.visibility = fromEl.style.visibility;
+                    }
+                }
+                
                 return true;
             },
             
@@ -291,6 +346,26 @@ function renderStreamFrame(messageId) {
         });
     } else {
         contentDiv.innerHTML = rawHtml;
+    }
+
+    // 🟢 新增：为表情包图片添加防闪烁和错误修复逻辑
+    if (refs.emoticonUrlFixer) {
+        const newImages = contentDiv.querySelectorAll('img[src*="表情包"]:not([data-emoticon-handler-attached])');
+        
+        newImages.forEach(img => {
+            img.dataset.emoticonHandlerAttached = 'true';
+            
+            // Hide image initially to prevent broken icon flicker
+            img.style.visibility = 'hidden';
+    
+            // If image is already loaded (e.g., from cache), show it immediately.
+            // Otherwise, set up handlers to show it on load/error.
+            if (img.complete && img.naturalWidth > 0) {
+                img.style.visibility = 'visible';
+            } else {
+                setupEmoticonHandlers(img);
+            }
+        });
     }
 }
 

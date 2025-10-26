@@ -820,6 +820,7 @@ function initializeMessageRenderer(refs) {
         removeIndentationFromCodeBlockMarkers: contentProcessor.removeIndentationFromCodeBlockMarkers,
         ensureSeparatorBetweenImgAndCode: contentProcessor.ensureSeparatorBetweenImgAndCode,
         processAnimationsInContent: processAnimationsInContent,
+        emoticonUrlFixer: emoticonUrlFixer, // 🟢 Pass emoticon fixer for live updates
         enhancedRenderDebounceTimers: enhancedRenderDebounceTimers,
         ENHANCED_RENDER_DEBOUNCE_DELAY: ENHANCED_RENDER_DEBOUNCE_DELAY,
         DIARY_RENDER_DEBOUNCE_DELAY: DIARY_RENDER_DEBOUNCE_DELAY,
