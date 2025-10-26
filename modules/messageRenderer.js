@@ -756,6 +756,7 @@ function initializeMessageRenderer(refs) {
        markedInstance: streamingMarkedInstance, // Use the wrapped instance
        electronAPI: mainRendererReferences.electronAPI,
        uiHelper: mainRendererReferences.uiHelper,
+       morphdom: window.morphdom, // Pass the morphdom library instance
 
        // Rendering & Utility Functions
        renderMessage: renderMessage,

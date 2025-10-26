@@ -22,6 +22,10 @@ let refs = {};
  */
 export function initStreamManager(dependencies) {
     refs = dependencies;
+    // Assume morphdom is passed in dependencies, warn if not present.
+    if (!refs.morphdom) {
+        console.warn('[StreamManager] `morphdom` not provided. Streaming rendering will fall back to inefficient innerHTML updates.');
+    }
 }
 
 function shouldEnableSmoothStreaming() {
@@ -92,95 +96,76 @@ async function saveHistoryForContext(context, history) {
     }
 }
 
-function processAndRenderSmoothChunk(messageId) {
+/**
+ * Renders a single frame of the streaming message using morphdom for efficient DOM updates.
+ * This version performs minimal processing to keep it fast and avoid destroying JS state.
+ * @param {string} messageId The ID of the message.
+ */
+function renderStreamFrame(messageId) {
     const context = messageContextMap.get(messageId);
-    const isForCurrentView = isMessageForCurrentView(context);
-    
-    if (!isForCurrentView) {
-        // For background messages, just process the queue without DOM operations
-        const queue = streamingChunkQueues.get(messageId);
-        if (queue && queue.length > 0) {
-            const globalSettings = refs.globalSettingsRef.get();
-            const minChunkSize = globalSettings.minChunkBufferSize !== undefined && globalSettings.minChunkBufferSize >= 1 ? globalSettings.minChunkBufferSize : 1;
-            
-            let textBatchToProcess = "";
-            while (queue.length > 0 && textBatchToProcess.length < minChunkSize) {
-                textBatchToProcess += queue.shift();
-            }
-            // Just accumulate the text, don't render
-            // The text is already accumulated in appendStreamChunk
-        }
-        return;
-    }
-    
-    // For current view messages, render to DOM
+    if (!isMessageForCurrentView(context)) return;
+
     const { chatMessagesDiv, markedInstance } = refs;
     const messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
     if (!messageItem || !document.body.contains(messageItem)) return;
-    
+
     const contentDiv = messageItem.querySelector('.md-content');
     if (!contentDiv) return;
-    
-    const queue = streamingChunkQueues.get(messageId);
-    if (!queue || queue.length === 0) return;
-    
-    let textBatchToRender = "";
-    const globalSettings = refs.globalSettingsRef.get();
-    const minChunkSize = globalSettings.minChunkBufferSize !== undefined && globalSettings.minChunkBufferSize >= 1 ? globalSettings.minChunkBufferSize : 1;
-    
-    while (queue.length > 0 && textBatchToRender.length < minChunkSize) {
-        textBatchToRender += queue.shift();
-    }
-    
-    if (!textBatchToRender) return;
-    
+
     const textForRendering = accumulatedStreamText.get(messageId) || "";
-    
+
+    // Remove the "Thinking..." indicator if it exists. morphdom will handle this efficiently.
     const streamingIndicator = contentDiv.querySelector('.streaming-indicator, .thinking-indicator');
     if (streamingIndicator) streamingIndicator.remove();
-    
+
+    // Perform lightweight, essential preprocessing for streaming
     let processedTextForParse = refs.removeSpeakerTags(textForRendering);
     processedTextForParse = refs.ensureNewlineAfterCodeBlock(processedTextForParse);
     processedTextForParse = refs.ensureSpaceAfterTilde(processedTextForParse);
     processedTextForParse = refs.removeIndentationFromCodeBlockMarkers(processedTextForParse);
     processedTextForParse = refs.ensureSeparatorBetweenImgAndCode(processedTextForParse);
-    
+
     const rawHtml = markedInstance.parse(processedTextForParse);
-    refs.setContentAndProcessImages(contentDiv, rawHtml, messageId);
-    refs.processRenderedContent(contentDiv);
-    refs.uiHelper.scrollToBottom();
+
+    // Use morphdom for efficient, state-preserving DOM updates
+    if (refs.morphdom) {
+        refs.morphdom(contentDiv, `<div>${rawHtml}</div>`, {
+            childrenOnly: true // IMPORTANT: Only diff the children, not the container itself
+        });
+    } else {
+        // Fallback to the old, inefficient method if morphdom is not available
+        contentDiv.innerHTML = rawHtml;
+    }
+}
+
+function processAndRenderSmoothChunk(messageId) {
+    const queue = streamingChunkQueues.get(messageId);
+    if (!queue || queue.length === 0) return;
+
+    const globalSettings = refs.globalSettingsRef.get();
+    const minChunkSize = globalSettings.minChunkBufferSize !== undefined && globalSettings.minChunkBufferSize >= 1 ? globalSettings.minChunkBufferSize : 1;
+
+    // Drain a small batch from the queue. The rendering uses the accumulated text,
+    // so we don't need the return value here. This just advances the stream.
+    let processedChars = 0;
+    while (queue.length > 0 && processedChars < minChunkSize) {
+        processedChars += queue.shift().length;
+    }
+
+    // Render the current state of the accumulated text using our lightweight method.
+    renderStreamFrame(messageId);
+    
+    // Scroll if the message is in the current view.
+    const context = messageContextMap.get(messageId);
+    if (isMessageForCurrentView(context)) {
+        refs.uiHelper.scrollToBottom();
+    }
 }
 
 function renderChunkDirectlyToDOM(messageId, textToAppend) {
-    const context = messageContextMap.get(messageId);
-    const isForCurrentView = isMessageForCurrentView(context);
-    
-    if (!isForCurrentView) {
-        // For background messages, don't render to DOM
-        return;
-    }
-    
-    const { chatMessagesDiv, markedInstance } = refs;
-    const messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
-    if (!messageItem) return;
-    
-    const contentDiv = messageItem.querySelector('.md-content');
-    if (!contentDiv) return;
-    
-    const streamingIndicator = contentDiv.querySelector('.streaming-indicator, .thinking-indicator');
-    if (streamingIndicator) streamingIndicator.remove();
-    
-    const fullCurrentText = accumulatedStreamText.get(messageId) || "";
-    
-    let processedFullCurrentTextForParse = refs.removeSpeakerTags(fullCurrentText);
-    processedFullCurrentTextForParse = refs.ensureNewlineAfterCodeBlock(processedFullCurrentTextForParse);
-    processedFullCurrentTextForParse = refs.ensureSpaceAfterTilde(processedFullCurrentTextForParse);
-    processedFullCurrentTextForParse = refs.removeIndentationFromCodeBlockMarkers(processedFullCurrentTextForParse);
-    processedFullCurrentTextForParse = refs.ensureSeparatorBetweenImgAndCode(processedFullCurrentTextForParse);
-    
-    const rawHtml = markedInstance.parse(processedFullCurrentTextForParse);
-    refs.setContentAndProcessImages(contentDiv, rawHtml, messageId);
-    refs.processRenderedContent(contentDiv);
+    // For non-smooth streaming, we just render the new frame immediately using the lightweight method.
+    // The check for whether it's in the current view is handled inside renderStreamFrame.
+    renderStreamFrame(messageId);
 }
 
 export async function startStreamingMessage(message, passedMessageItem = null) {
@@ -495,8 +480,12 @@ export async function finalizeStreamedMessage(messageId, finishReason, context) 
             const contentDiv = messageItem.querySelector('.md-content');
             if (contentDiv) {
                 const globalSettings = refs.globalSettingsRef.get();
+                // Use the more thorough preprocessFullContent for the final render
                 const processedFinalText = refs.preprocessFullContent(finalFullText, globalSettings);
                 const rawHtml = markedInstance.parse(processedFinalText);
+                
+                // Perform the final, high-quality render using the original global refresh method.
+                // This ensures images, KaTeX, code highlighting, etc., are all processed correctly.
                 refs.setContentAndProcessImages(contentDiv, rawHtml, messageId);
                 
                 // Step 1: Run synchronous processors (KaTeX, hljs, etc.)
@@ -509,6 +498,7 @@ export async function finalizeStreamedMessage(messageId, finishReason, context) 
                     }
                 }, 0);
 
+                // Step 3: Process animations
                 if (globalSettings.enableAgentBubbleTheme && refs.processAnimationsInContent) {
                     refs.processAnimationsInContent(contentDiv);
                 }
