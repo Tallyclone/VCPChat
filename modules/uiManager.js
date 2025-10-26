@@ -170,7 +170,6 @@ const uiManager = (() => {
         // Listen for theme updates broadcast from the main process
         if (electronAPI && electronAPI.onThemeUpdated) {
             electronAPI.onThemeUpdated((theme) => {
-                // The theme might be a simple string from broadcast or an object from a direct reply
                 const themeName = typeof theme === 'object' && theme !== null ? theme.theme : theme;
                 if (themeName) {
                     applyTheme(themeName);
@@ -178,16 +177,26 @@ const uiManager = (() => {
             });
         }
 
-        // Get the initial theme from the main process (which reads it from settings.json)
-        // Note: This is slightly redundant if renderer.js also applies the theme on load,
-        // but centralizing it here is cleaner. We'll remove the logic from renderer.js.
-        if (electronAPI && electronAPI.getCurrentTheme) {
-            try {
-                const currentTheme = await electronAPI.getCurrentTheme();
-                applyTheme(currentTheme);
-            } catch (error) {
-                console.error('[UIManager] Failed to get initial theme:', error);
-                applyTheme('light'); // Fallback
+        // Apply the initial theme based on the settings loaded in the renderer process.
+        // This ensures the UI matches the settings file immediately on load.
+        const settings = globalSettingsRef.get();
+        if (settings && settings.currentThemeMode && electronAPI.setTheme) {
+            console.log(`[UIManager] Applying initial theme from settings: ${settings.currentThemeMode}`);
+            // We tell the main process to set the theme. The onThemeUpdated listener
+            // above will then catch the broadcast and call applyTheme(), ensuring a single
+            // consistent flow for all theme changes.
+            electronAPI.setTheme(settings.currentThemeMode);
+        } else {
+            // Fallback if the setting is not present for some reason.
+            console.warn('[UIManager] currentThemeMode not found in settings, falling back to requesting from main process.');
+            if (electronAPI && electronAPI.getCurrentTheme) {
+                try {
+                    const currentTheme = await electronAPI.getCurrentTheme();
+                    applyTheme(currentTheme);
+                } catch (error) {
+                    console.error('[UIManager] Fallback failed to get initial theme:', error);
+                    applyTheme('light'); // Final fallback
+                }
             }
         }
     }
