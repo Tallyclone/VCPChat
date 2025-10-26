@@ -6,7 +6,6 @@ const { minimatch } = require('minimatch');
 const pdf = require('pdf-parse');
 const mammoth = require('mammoth');
 const ExcelJS = require('exceljs');
-const trash = require('trash');
 const axios = require('axios');
 
 // Load environment variables
@@ -656,6 +655,8 @@ async function deleteFile(filePath) {
       type: stats.isDirectory() ? 'directory' : 'file',
     };
 
+    // trash is now an ESM-only package, so we must use dynamic import().
+    const { default: trash } = await import('trash');
     await trash(filePath);
 
     return {
