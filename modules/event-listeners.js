@@ -677,7 +677,26 @@ async function handleContinueWriting(additionalPrompt = '') {
         
         if (agentConfig && agentConfig.systemPrompt) {
             let systemPromptContent = agentConfig.systemPrompt.replace(/\{\{AgentName\}\}/g, agentConfig.name || currentSelectedItem.id);
-            // ... (rest of system prompt logic)
+            const prependedContent = [];
+            
+            if (agentConfig.agentDataPath && currentTopicId) {
+                const historyPath = `${agentConfig.agentDataPath}\\topics\\${currentTopicId}\\history.json`;
+                prependedContent.push(`当前聊天记录文件路径: ${historyPath}`);
+            }
+            
+            if (agentConfig.topics && currentTopicId) {
+                const currentTopicObj = agentConfig.topics.find(t => t.id === currentTopicId);
+                if (currentTopicObj && currentTopicObj.createdAt) {
+                    const date = new Date(currentTopicObj.createdAt);
+                    const formattedDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+                    prependedContent.push(`当前话题创建于: ${formattedDate}`);
+                }
+            }
+            
+            if (prependedContent.length > 0) {
+                systemPromptContent = prependedContent.join('\n') + '\n\n' + systemPromptContent;
+            }
+            
             messagesForVCP.unshift({ role: 'system', content: systemPromptContent });
         }
         
@@ -714,8 +733,44 @@ async function handleContinueWriting(additionalPrompt = '') {
         );
         
         if (!useStreaming) {
-            // Handle non-streaming response
-            // ... (logic from original file)
+            const { response, context } = vcpResponse;
+            const isForActiveChat = context && context.agentId === currentSelectedItem.id && context.topicId === currentTopicId;
+            
+            if (isForActiveChat) {
+                if (window.messageRenderer) window.messageRenderer.removeMessageById(thinkingMessage.id);
+            }
+            
+            if (response.error) {
+                if (isForActiveChat && window.messageRenderer) {
+                    window.messageRenderer.renderMessage({ role: 'system', content: `VCP错误: ${response.error}`, timestamp: Date.now() });
+                }
+                console.error(`[ContinueWriting] VCP Error:`, response.error);
+            } else if (response.choices && response.choices.length > 0) {
+                const assistantMessageContent = response.choices[0].message.content;
+                const assistantMessage = {
+                    role: 'assistant',
+                    name: context.agentName || context.agentId || 'AI',
+                    avatarUrl: currentSelectedItem.avatarUrl,
+                    avatarColor: (currentSelectedItem.config || currentSelectedItem)?.avatarCalculatedColor,
+                    content: assistantMessageContent,
+                    timestamp: Date.now(),
+                    id: response.id || `regen_nonstream_${Date.now()}`
+                };
+                
+                const historyForSave = await window.electronAPI.getChatHistory(context.agentId, context.topicId);
+                if (historyForSave && !historyForSave.error) {
+                    const finalHistory = historyForSave.filter(msg => msg.id !== thinkingMessage.id && !msg.isThinking);
+                    finalHistory.push(assistantMessage);
+                    await window.electronAPI.saveChatHistory(context.agentId, context.topicId, finalHistory);
+                    
+                    if (isForActiveChat) {
+                        currentChatHistory.length = 0;
+                        currentChatHistory.push(...finalHistory);
+                        if (window.messageRenderer) window.messageRenderer.renderMessage(assistantMessage);
+                        await window.chatManager.attemptTopicSummarizationIfNeeded();
+                    }
+                }
+            }
         } else {
             if (vcpResponse && vcpResponse.streamError) {
                 console.error("[ContinueWriting] Streaming setup failed:", vcpResponse.errorDetail || vcpResponse.error);
