@@ -12,6 +12,14 @@ import { createMessageSkeleton } from './renderer/domBuilder.js';
 import * as streamManager from './renderer/streamManager.js';
 import * as emoticonUrlFixer from './renderer/emoticonUrlFixer.js';
 
+const colorExtractionPromises = new Map();
+
+async function getDominantAvatarColorCached(url) {
+    if (!colorExtractionPromises.has(url)) {
+        colorExtractionPromises.set(url, getDominantAvatarColor(url));
+    }
+    return colorExtractionPromises.get(url);
+}
 
 import * as contentProcessor from './renderer/contentProcessor.js';
 import * as contextMenu from './renderer/messageContextMenu.js';
@@ -212,11 +220,6 @@ function applyFrontendRegexRules(text, rules, role, depth) {
  * @returns {string} The processed text with special blocks as HTML.
  */
 function transformSpecialBlocks(text) {
-    // Reset lastIndex for global regexes before use
-    TOOL_REGEX.lastIndex = 0;
-    NOTE_REGEX.lastIndex = 0;
-    TOOL_RESULT_REGEX.lastIndex = 0;
-
     let processed = text;
 
     // Process VCP Tool Results
@@ -369,7 +372,6 @@ function transformSpecialBlocks(text) {
  * @returns {string} The processed text.
  */
 function transformUserButtonClick(text) {
-    BUTTON_CLICK_REGEX.lastIndex = 0;
     return text.replace(BUTTON_CLICK_REGEX, (match, content) => {
         const escapedContent = escapeHtml(content.trim());
         return `<span class="user-clicked-button-bubble">${escapedContent}</span>`;
@@ -377,7 +379,6 @@ function transformUserButtonClick(text) {
 }
 
 function transformVCPChatCanvas(text) {
-    CANVAS_PLACEHOLDER_REGEX.lastIndex = 0;
     return text.replace(CANVAS_PLACEHOLDER_REGEX, () => {
         // Use a div for better block-level layout and margin behavior
         return `<div class="vcp-chat-canvas-placeholder">Canvas协同中<span class="thinking-indicator-dots">...</span></div>`;
@@ -391,7 +392,6 @@ function transformVCPChatCanvas(text) {
  * @returns {{processedContent: string, styleInjected: boolean}} The content with <style> tags removed, and a flag indicating if styles were injected.
  */
 function processAndInjectScopedCss(content, scopeId) {
-    STYLE_REGEX.lastIndex = 0;
     let cssContent = '';
     let styleInjected = false;
 
@@ -434,7 +434,6 @@ function ensureHtmlFenced(text) {
 
     // If it's already in a proper html code block, do nothing. This is the fix.
     // This regex now checks for any language specifier (or none) after the fences.
-    HTML_FENCE_CHECK_REGEX.lastIndex = 0;
     if (HTML_FENCE_CHECK_REGEX.test(text)) {
         return text;
     }
@@ -528,17 +527,18 @@ function calculateDepthByTurns(messageId, history) {
             const turn = { assistant: history[i], user: null };
             if (i > 0 && history[i - 1].role === 'user') {
                 turn.user = history[i - 1];
-                i--; // 跳过用户消息
+                i--;
             }
-            turns.unshift(turn);
+            turns.push(turn); // ✅ 使用 push
         } else if (history[i].role === 'user') {
-            turns.unshift({ assistant: null, user: history[i] });
+            turns.push({ assistant: null, user: history[i] });
         }
     }
+    turns.reverse(); // ✅ 最后反转一次
     
-    const turnIndex = turns.findIndex(t => (t.assistant && t.assistant.id === messageId) || (t.user && t.user.id === messageId));
-    
-    // 如果找不到，默认为最新消息（深度0），这对于新消息渲染是安全的回退
+    const turnIndex = turns.findIndex(t =>
+        (t.assistant?.id === messageId) || (t.user?.id === messageId)
+    );
     return turnIndex !== -1 ? (turns.length - 1 - turnIndex) : 0;
 }
 
@@ -559,7 +559,6 @@ function preprocessFullContent(text, settings = {}, messageRole = 'assistant', d
     // --- 正则规则应用结束 ---
 
     // 一次性处理 Mermaid（合并两种情况）
-    MERMAID_CODE_REGEX.lastIndex = 0;
     text = text.replace(MERMAID_CODE_REGEX, (match, lang, code) => {
         const tempEl = document.createElement('textarea');
         tempEl.innerHTML = code;
@@ -567,7 +566,6 @@ function preprocessFullContent(text, settings = {}, messageRole = 'assistant', d
         return `<div class="mermaid-placeholder" data-mermaid-code="${encodedCode}"></div>`;
     });
     
-    MERMAID_FENCE_REGEX.lastIndex = 0;
     text = text.replace(MERMAID_FENCE_REGEX, (match, lang, code) => {
         const encodedCode = encodeURIComponent(code.trim());
         return `<div class="mermaid-placeholder" data-mermaid-code="${encodedCode}"></div>`;
@@ -577,14 +575,11 @@ function preprocessFullContent(text, settings = {}, messageRole = 'assistant', d
     let codeBlockMap = null;
     let placeholderId = 0;
     
-    CODE_FENCE_REGEX.lastIndex = 0;
     // Use a lookahead to test without consuming the match
     const hasCodeBlocks = /```/.test(text);
     
     if (hasCodeBlocks) {
         codeBlockMap = new Map();
-        CODE_FENCE_REGEX.lastIndex = 0; // Reset index before replacing
-        
         text = text.replace(CODE_FENCE_REGEX, (match) => {
             const placeholder = `__VCP_CODE_BLOCK_PLACEHOLDER_${placeholderId}__`;
             codeBlockMap.set(placeholder, match);
@@ -1109,7 +1104,7 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
                 avatarImg.style.borderColor = 'var(--border-color)';
             }
 
-            getDominantAvatarColor(avatarUrlToUse).then(dominantColor => {
+            getDominantAvatarColorCached(avatarUrlToUse).then(dominantColor => {
                 if (dominantColor && messageItem.isConnected) {
                     applyColorToElements(dominantColor);
                     
@@ -1444,13 +1439,19 @@ async function renderMessageBatch(messages, scrollToBottom = false) {
     const fragment = document.createDocumentFragment();
     const messageElements = [];
 
-    // 在内存中创建所有消息元素
-    for (const msg of messages) {
-        const messageElement = await renderMessage(msg, true, false);
-        if (messageElement) {
-            messageElements.push(messageElement);
+    // 使用 Promise.allSettled 避免单个失败影响整体
+    const results = await Promise.allSettled(
+        messages.map(msg => renderMessage(msg, true, false))
+    );
+
+    results.forEach((result, index) => {
+        if (result.status === 'fulfilled' && result.value) {
+            messageElements.push(result.value);
+        } else {
+            console.error(`Failed to render message ${messages[index].id}:`,
+                result.reason);
         }
-    }
+    });
 
     // 一次性添加到 fragment
     messageElements.forEach(el => fragment.appendChild(el));
