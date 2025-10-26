@@ -131,6 +131,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // VCP Communication
     sendToVCP: (vcpUrl, vcpApiKey, messages, modelConfig, messageId, isGroupCall, context) => ipcRenderer.invoke('send-to-vcp', vcpUrl, vcpApiKey, messages, modelConfig, messageId, isGroupCall, context),
     onVCPStreamEvent: (callback) => ipcRenderer.on('vcp-stream-event', (_event, eventData) => callback(eventData)),
+    onVCPStreamChunk: (callback) => ipcRenderer.on('vcp-stream-chunk', (_event, chunkData) => callback(chunkData)),
     interruptVcpRequest: (data) => ipcRenderer.invoke('interrupt-vcp-request', data),
     // Group Chat
     createAgentGroup: (groupName, initialConfig) => ipcRenderer.invoke('create-agent-group', groupName, initialConfig),

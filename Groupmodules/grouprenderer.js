@@ -970,6 +970,11 @@ window.GroupRenderer = (() => {
             return;
         }
         
+        if (!globalSettings) {
+            console.error("[GroupRenderer] handleSendGroupMessage called before settings reference was initialized. Aborting.");
+            if (uiHelper && uiHelper.showToastNotification) uiHelper.showToastNotification('群组模块尚未完全初始化，请稍后再试。', 'error');
+            return;
+        }
         const currentGlobalSettings = globalSettings.get(); // 获取实际的设置对象
         if (!currentGlobalSettings.vcpServerUrl) {
             // alert('请先在全局设置中配置VCP服务器URL！'); // 使用 uiHelper

@@ -286,7 +286,7 @@ const uiManager = (() => {
 
     // --- Public API ---
     return {
-        init: (options) => {
+        init: async (options) => {
             electronAPI = options.electronAPI;
             globalSettingsRef = options.refs.globalSettingsRef;
 
@@ -310,7 +310,7 @@ const uiManager = (() => {
             // Initialize all features
             setupTitleBarControls();
             initializeResizers();
-            initializeTheme(); // Replaces loadAndApplyThemePreference
+            await initializeTheme(); // Replaces loadAndApplyThemePreference
             initializeDigitalClock();
             setupSidebarTabs();
 

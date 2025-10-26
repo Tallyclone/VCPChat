@@ -1026,6 +1026,9 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
         const processedContent = preprocessFullContent(textToRender, globalSettings, message.role, depth);
         let rawHtml = markedInstance.parse(processedContent);
         
+        // 修复：清理 Markdown 解析器可能生成的损坏的 SVG viewBox 属性
+        // 错误 "Unexpected end of attribute" 表明 viewBox 的值不完整, 例如 "0 "
+        rawHtml = rawHtml.replace(/viewBox="0 "/g, 'viewBox="0 0 24 24"');
         // Create a temporary div to apply emoticon fixes before setting innerHTML
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = rawHtml;

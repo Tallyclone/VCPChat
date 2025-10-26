@@ -2,6 +2,11 @@
 (function() {
     'use strict';
 
+    // --- State for helper functions ---
+    let croppedAgentAvatarFile = null;
+    let croppedUserAvatarFile = null;
+    let croppedGroupAvatarFile = null;
+
     const uiHelperFunctions = {};
 
     /**
@@ -366,48 +371,55 @@
             console.error('[UI Helper] updateAttachmentPreview: attachmentPreviewArea is null or undefined!');
             return;
         }
-
+    
         attachmentPreviewArea.innerHTML = ''; // Clear previous previews
-        if (!attachedFiles || attachedFiles.length === 0) {
+        if (attachedFiles.length === 0) {
             attachmentPreviewArea.style.display = 'none';
             return;
         }
-
-        attachmentPreviewArea.style.display = 'block';
-        attachedFiles.forEach((attachedFile, index) => {
-            const file = attachedFile.file;
+        attachmentPreviewArea.style.display = 'flex'; // Show the area
+    
+        attachedFiles.forEach((af, index) => {
             const prevDiv = document.createElement('div');
-            prevDiv.className = 'file-preview-item';
-
-            const iconSpan = document.createElement('span');
-            iconSpan.className = 'file-preview-icon';
-            if (file.type.startsWith('image/')) {
-                iconSpan.innerHTML = '🖼️';
-            } else if (file.type.startsWith('text/') || file.type === 'application/json' || file.type === 'application/xml') {
-                iconSpan.innerHTML = '📄';
-            } else if (file.type === 'application/pdf') {
-                iconSpan.innerHTML = '📕';
-            } else if (file.type.includes('word') || file.type.includes('document')) {
-                iconSpan.innerHTML = '📘';
-            } else if (file.type.includes('sheet') || file.type.includes('excel')) {
-                iconSpan.innerHTML = '📗';
-            } else if (file.type.includes('presentation') || file.type.includes('powerpoint')) {
-                iconSpan.innerHTML = '📙';
-            } else if (file.type.startsWith('audio/')) {
-                iconSpan.innerHTML = '🎵';
-            } else if (file.type.startsWith('video/')) {
-                iconSpan.innerHTML = '🎬';
+            prevDiv.className = 'attachment-preview-item';
+            prevDiv.title = af.originalName || af.file.name;
+    
+            const fileType = af.file.type;
+    
+            if (fileType.startsWith('image/')) {
+                const thumbnailImg = document.createElement('img');
+                thumbnailImg.className = 'attachment-thumbnail-image';
+                thumbnailImg.src = af.localPath; // Assumes localPath is a usable URL (e.g., file://)
+                thumbnailImg.alt = af.originalName || af.file.name;
+                thumbnailImg.onerror = () => { // Fallback to icon if image fails to load
+                    thumbnailImg.remove(); // Remove broken image
+                    const iconSpanFallback = document.createElement('span');
+                    iconSpanFallback.className = 'file-preview-icon';
+                    iconSpanFallback.textContent = '⚠️'; // Error/fallback icon
+                    prevDiv.prepend(iconSpanFallback); // Add fallback icon at the beginning
+                };
+                prevDiv.appendChild(thumbnailImg);
             } else {
-                iconSpan.innerHTML = '📎';
+                const iconSpan = document.createElement('span');
+                iconSpan.className = 'file-preview-icon';
+                if (fileType.startsWith('audio/')) {
+                    iconSpan.textContent = '🎵';
+                } else if (fileType.startsWith('video/')) {
+                    iconSpan.textContent = '🎞️';
+                } else if (fileType.includes('pdf')) {
+                    iconSpan.textContent = '📄';
+                } else {
+                    iconSpan.textContent = '📎';
+                }
+                prevDiv.appendChild(iconSpan);
             }
-            prevDiv.appendChild(iconSpan);
-
+    
             const nameSpan = document.createElement('span');
             nameSpan.className = 'file-preview-name';
-            nameSpan.textContent = file.name;
-            nameSpan.title = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+            const displayName = af.originalName || af.file.name;
+            nameSpan.textContent = displayName.length > 20 ? displayName.substring(0, 17) + '...' : displayName;
             prevDiv.appendChild(nameSpan);
-
+    
             const removeBtn = document.createElement('button');
             removeBtn.className = 'file-preview-remove-btn';
             removeBtn.innerHTML = '×';
@@ -417,7 +429,7 @@
                 uiHelperFunctions.updateAttachmentPreview(attachedFiles, attachmentPreviewArea);
             };
             prevDiv.appendChild(removeBtn);
-
+    
             attachmentPreviewArea.appendChild(prevDiv);
         });
     };
@@ -428,12 +440,9 @@
      * @returns {File|null} The cropped file or null.
      */
     uiHelperFunctions.getCroppedFile = function(type) {
-        // This function needs access to the global cropped file variables
-        // We'll delegate to the main renderer for now
-        if (window.getCroppedFile) {
-            return window.getCroppedFile(type);
-        }
-        console.warn('[UI Helper] getCroppedFile: window.getCroppedFile not available');
+        if (type === 'agent') return croppedAgentAvatarFile;
+        if (type === 'group') return croppedGroupAvatarFile;
+        if (type === 'user') return croppedUserAvatarFile;
         return null;
     };
 
@@ -443,13 +452,9 @@
      * @param {File|null} file The cropped file to store.
      */
     uiHelperFunctions.setCroppedFile = function(type, file) {
-        // This function needs access to the global cropped file variables
-        // We'll delegate to the main renderer for now
-        if (window.setCroppedFile) {
-            window.setCroppedFile(type, file);
-        } else {
-            console.warn('[UI Helper] setCroppedFile: window.setCroppedFile not available');
-        }
+        if (type === 'agent') croppedAgentAvatarFile = file;
+        else if (type === 'group') croppedGroupAvatarFile = file;
+        else if (type === 'user') croppedUserAvatarFile = file;
     };
 
     /**
@@ -500,6 +505,97 @@
             callback(null);
         };
         img.src = imageUrl;
+    };
+
+    uiHelperFunctions.prepareGroupSettingsDOM = function() {
+        // This function is called early in DOMContentLoaded.
+        // It ensures the container for group settings exists.
+        // The actual content (form fields) will be managed by GroupRenderer.
+        if (!document.getElementById('groupSettingsContainer')) {
+            const settingsTab = document.getElementById('tabContentSettings');
+            if (settingsTab) {
+                const groupContainerHTML = `<div id="groupSettingsContainer" style="display: none;"></div>`;
+                settingsTab.insertAdjacentHTML('beforeend', groupContainerHTML);
+                console.log("[UI Helper] groupSettingsContainer placeholder created.");
+            } else {
+                console.error("[UI Helper] Could not find tabContentSettings to append group settings DOM placeholder.");
+            }
+        }
+         // Ensure createNewGroupBtn has its text updated
+         const createNewAgentBtn = document.getElementById('createNewAgentBtn');
+         const createNewGroupBtn = document.getElementById('createNewGroupBtn');
+         if (createNewAgentBtn) {
+             createNewAgentBtn.textContent = '创建 Agent';
+         }
+         if (createNewGroupBtn) {
+             createNewGroupBtn.textContent = '创建 Group';
+             console.log('[UI Helper prepareGroupSettingsDOM] createNewGroupBtn textContent set to:', createNewGroupBtn.textContent);
+             createNewGroupBtn.style.display = 'inline-block'; // Make it visible
+         }
+    };
+
+    uiHelperFunctions.addNetworkPathInput = function(path = '') {
+        const container = document.getElementById('networkNotesPathsContainer');
+        const inputGroup = document.createElement('div');
+        inputGroup.className = 'network-path-input-group';
+    
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.name = 'networkNotesPath';
+        input.placeholder = '例如 \\\\NAS\\Shared\\Notes';
+        input.value = path;
+        input.style.flexGrow = '1';
+    
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.textContent = '删除';
+        removeBtn.className = 'sidebar-button small-button danger-button'; // Re-use existing styles
+        removeBtn.style.width = 'auto';
+        removeBtn.onclick = () => {
+            inputGroup.remove();
+        };
+    
+        inputGroup.appendChild(input);
+        inputGroup.appendChild(removeBtn);
+        container.appendChild(inputGroup);
+    };
+
+    uiHelperFunctions.filterAgentList = function(searchTerm) {
+        const lowerCaseSearchTerm = searchTerm.toLowerCase().trim();
+        const itemListUl = document.getElementById('agentList'); // Renamed from agentListUl to itemListUl
+        if (!itemListUl) return;
+        const items = itemListUl.querySelectorAll('li'); // Get all list items
+    
+        items.forEach(item => {
+            const nameElement = item.querySelector('.agent-name');
+            if (nameElement) {
+                const name = nameElement.textContent.toLowerCase();
+                if (name.includes(lowerCaseSearchTerm)) {
+                    item.style.display = ''; // Reset to default display style from CSS
+                } else {
+                    item.style.display = 'none';
+                }
+            }
+        });
+    };
+
+    /**
+     * Updates the speaking indicator animation on an avatar.
+     * @param {string} msgId The ID of the message item.
+     * @param {boolean} isSpeaking True to show the indicator, false to hide it.
+     */
+    uiHelperFunctions.updateSpeakingIndicator = function(msgId, isSpeaking) {
+        const messageItem = document.querySelector(`.message-item[data-message-id="${msgId}"]`);
+        if (messageItem) {
+            const avatarElement = messageItem.querySelector('.chat-avatar');
+            if (avatarElement) {
+                if (isSpeaking) {
+                    avatarElement.classList.add('speaking');
+                } else {
+                    avatarElement.classList.remove('speaking');
+                }
+            }
+        }
     };
 
     window.uiHelperFunctions = uiHelperFunctions;
