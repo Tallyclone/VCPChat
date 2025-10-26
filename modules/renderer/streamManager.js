@@ -252,10 +252,38 @@ function renderStreamFrame(messageId) {
     if (refs.morphdom) {
         refs.morphdom(contentDiv, `<div>${rawHtml}</div>`, {
             childrenOnly: true,
-            // 🟢 添加性能优化配置
+            
             onBeforeElUpdated: function(fromEl, toEl) {
-                // 跳过没有变化的元素
+                // 跳过相同节点
                 if (fromEl.isEqualNode(toEl)) {
+                    return false;
+                }
+                
+                // 🟢 保留按钮状态
+                if (fromEl.tagName === 'BUTTON' && fromEl.dataset.vcpInteractive === 'true') {
+                    if (fromEl.disabled) {
+                        toEl.disabled = true;
+                        toEl.style.opacity = fromEl.style.opacity;
+                        toEl.textContent = fromEl.textContent; // 保留"✓"标记
+                    }
+                }
+                
+                // 🟢 保留媒体播放状态
+                if ((fromEl.tagName === 'VIDEO' || fromEl.tagName === 'AUDIO') && !fromEl.paused) {
+                    return false; // 不更新正在播放的媒体
+                }
+                
+                // 🟢 保留输入焦点
+                if (fromEl === document.activeElement) {
+                    requestAnimationFrame(() => toEl.focus());
+                }
+                
+                return true;
+            },
+            
+            onBeforeNodeDiscarded: function(node) {
+                // 防止删除标记为永久保留的元素
+                if (node.classList?.contains('keep-alive')) {
                     return false;
                 }
                 return true;
@@ -443,42 +471,60 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
 }
 
 // 🟢 全局渲染循环（替代每个消息一个 interval）
+let lastFrameTime = 0;
+const TARGET_FPS = 30; // 流式渲染30fps足够
+const FRAME_INTERVAL = 1000 / TARGET_FPS;
+
 function startGlobalRenderLoop() {
     if (globalRenderLoopRunning) return;
-    
+
     globalRenderLoopRunning = true;
-    
-    function renderLoop() {
+    lastFrameTime = 0; // 重置时间戳
+
+    function renderLoop(currentTime) {
         if (streamingTimers.size === 0) {
-            // 没有活动的流式消息，停止循环
             globalRenderLoopRunning = false;
             return;
         }
-        
+
+        // 🟢 帧率限制
+        if (!currentTime) { // Fallback for browsers that don't pass currentTime
+            currentTime = performance.now();
+        }
+        if (!lastFrameTime) {
+            lastFrameTime = currentTime;
+        }
+        const elapsed = currentTime - lastFrameTime;
+        if (elapsed < FRAME_INTERVAL) {
+            requestAnimationFrame(renderLoop);
+            return;
+        }
+
+        lastFrameTime = currentTime - (elapsed % FRAME_INTERVAL); // More accurate timing
+
         // 处理所有活动的流式消息
         for (const [messageId, _] of streamingTimers) {
             processAndRenderSmoothChunk(messageId);
-            
+
             const currentQueue = streamingChunkQueues.get(messageId);
             if ((!currentQueue || currentQueue.length === 0) && messageIsFinalized(messageId)) {
                 streamingTimers.delete(messageId);
-                
+
                 const storedContext = messageContextMap.get(messageId);
                 const isForCurrentView = viewContextCache.get(messageId) ?? isMessageForCurrentView(storedContext);
-                
+
                 if (isForCurrentView) {
                     const finalMessageItem = getCachedMessageDom(messageId)?.messageItem;
                     if (finalMessageItem) finalMessageItem.classList.remove('streaming');
                 }
-                
+
                 streamingChunkQueues.delete(messageId);
             }
         }
-        
-        // 使用 rAF 而不是固定间隔，更流畅
+
         requestAnimationFrame(renderLoop);
     }
-    
+
     requestAnimationFrame(renderLoop);
 }
 
@@ -486,17 +532,34 @@ function startGlobalRenderLoop() {
  * 🟢 智能分块策略：按语义单位（词/短语）拆分，而非字符
  */
 function intelligentChunkSplit(text) {
-    const chunks = [];
-    
-    // 使用正则表达式按有意义的单位拆分
-    // 优先保持：英文单词、中文词组、标点符号组
-    const regex = /[\u4e00-\u9fa5]+|[a-zA-Z0-9]+|[^\u4e00-\u9fa5a-zA-Z0-9\s]+|\s+/g;
-    let match;
-    
-    while ((match = regex.exec(text)) !== null) {
-        chunks.push(match[0]);
+    const MIN_SPLIT_SIZE = 20;
+    const MAX_CHUNK_SIZE = 10; // 每个语义块最大字符数
+
+    if (text.length < MIN_SPLIT_SIZE) {
+        return [text];
     }
-    
+
+    // 使用 matchAll 更快
+    const regex = /[\u4e00-\u9fa5]+|[a-zA-Z0-9]+|[^\u4e00-\u9fa5a-zA-Z0-9\s]+|\s+/g;
+    const semanticUnits = [...text.matchAll(regex)].map(m => m[0]);
+
+    // 将语义单元合并为合理大小的chunk
+    const chunks = [];
+    let currentChunk = '';
+
+    for (const unit of semanticUnits) {
+        if (currentChunk.length + unit.length > MAX_CHUNK_SIZE) {
+            if (currentChunk) { // Avoid pushing empty strings
+                chunks.push(currentChunk);
+            }
+            currentChunk = unit;
+        } else {
+            currentChunk += unit;
+        }
+    }
+
+    if (currentChunk) chunks.push(currentChunk);
+
     return chunks;
 }
 
@@ -513,15 +576,11 @@ export function appendStreamChunk(messageId, chunkData, context) {
         buffer.push({ chunk: chunkData, context });
         
         // 防止缓冲区无限增长 - 如果超过1000个chunks，可能有问题
+        // 防止缓冲区无限增长 - 如果超过1000个chunks，可能有问题
         if (buffer.length > 1000) {
-            console.error(`[StreamManager] Pre-buffer overflow for message ${messageId}! Forcing initialization...`);
-            // 强制设置为ready状态以开始处理
-            messageInitializationStatus.set(messageId, 'ready');
-            // 处理缓冲的chunks
-            for (const bufferedData of buffer) {
-                appendStreamChunk(messageId, bufferedData.chunk, bufferedData.context);
-            }
-            preBufferedChunks.delete(messageId);
+            console.warn(`[StreamManager] Pre-buffer overflow for ${messageId}, discarding old chunks.`);
+            buffer.splice(0, buffer.length - 500); // 只保留最新500个
+            return;
         }
         return;
     }
