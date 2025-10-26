@@ -668,7 +668,11 @@ function applyContentProcessors(text) {
          // removeSpeakerTags - Simplified regex to remove all occurrences at the start
         .replace(/^(\[(?:(?!\]:\s).)*的发言\]:\s*)+/g, '')
         // ensureSeparatorBetweenImgAndCode
-        .replace(/(<img[^>]+>)\s*(```)/g, '$1\n\n<!-- VCP-Renderer-Separator -->\n\n$2');
+        .replace(/(<img[^>]+>)\s*(```)/g, '$1\n\n<!-- VCP-Renderer-Separator -->\n\n$2')
+        // New FIX: ensureSeparatorBetweenImgAndText
+        // Prevents text from merging into a paragraph with a single image, which breaks centering.
+        // It looks for a closing </p> or an <img> tag, followed by text that is not another tag.
+        .replace(/(<\/p>|<img[^>]+>)\s*(?=[^\s<])/g, '$1\n\n');
 }
 
 
