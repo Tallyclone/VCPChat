@@ -137,10 +137,6 @@ export function setupEventListeners(deps) {
      * @param {string} additionalPrompt - Additional prompt text from the input box.
      */
     async function handleContinueWriting(additionalPrompt = '') {
-        // 导出到window对象供Flowlock使用
-        if (!window.handleContinueWriting) {
-            window.handleContinueWriting = handleContinueWriting;
-        }
         console.log('[ContinueWriting] 开始执行续写功能，附加提示词:', additionalPrompt);
 
         const currentSelectedItem = refs.currentSelectedItem.get();
@@ -338,6 +334,9 @@ export function setupEventListeners(deps) {
         }
     }
 
+    // 导出到window对象供Flowlock使用
+    window.handleContinueWriting = handleContinueWriting;
+
     if (chatMessagesDiv) {
         chatMessagesDiv.addEventListener('click', (event) => {
             const target = event.target.closest('a');
@@ -381,6 +380,12 @@ export function setupEventListeners(deps) {
         if (e.button === 1) { // 中键
             e.preventDefault();
             e.stopPropagation();
+            
+            // 检查心流锁是否激活
+            if (window.flowlockManager && window.flowlockManager.getState().isActive) {
+                uiHelperFunctions.showToastNotification('心流锁已启用，无法手动续写', 'warning');
+                return;
+            }
             
             const currentSelectedItem = refs.currentSelectedItem.get();
             const currentTopicId = refs.currentTopicId.get();
@@ -785,6 +790,13 @@ export function setupEventListeners(deps) {
 
         if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
             e.preventDefault();
+            
+            // 检查心流锁是否激活
+            if (window.flowlockManager && window.flowlockManager.getState().isActive) {
+                uiHelperFunctions.showToastNotification('心流锁已启用，无法手动续写', 'warning');
+                return;
+            }
+            
             if (!refs.currentSelectedItem.get().id || !refs.currentTopicId.get()) {
                 uiHelperFunctions.showToastNotification('请先选择一个项目和话题', 'warning');
                 return;

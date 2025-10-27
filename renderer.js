@@ -383,14 +383,30 @@ import { setupEventListeners } from './modules/event-listeners.js';
                     if (flowlockState.isActive && !flowlockState.isProcessing && isRelevantToCurrentView) {
                         console.log('[Flowlock] ✓ All conditions met, triggering continue writing in 1 second...');
                         
-                        // 延迟一小段时间确保消息完全渲染，然后直接调用续写函数
+                        // 延迟2秒确保消息完全渲染，然后直接调用续写函数
                         setTimeout(() => {
                             if (window.flowlockManager && window.flowlockManager.getState().isActive) {
                                 console.log('[Flowlock] Calling handleContinueWriting now...');
-                                // 直接调用续写函数
+                                
+                                // 触发心跳动画
+                                const chatNameElement = document.getElementById('currentChatAgentName');
+                                if (chatNameElement) {
+                                    chatNameElement.classList.add('flowlock-heartbeat');
+                                    // 动画结束后移除类
+                                    setTimeout(() => {
+                                        chatNameElement.classList.remove('flowlock-heartbeat');
+                                    }, 800);
+                                }
+                                
+                                // 获取输入框内容作为提示词
+                                const messageInput = document.getElementById('messageInput');
+                                const customPrompt = messageInput ? messageInput.value.trim() : '';
+                                console.log('[Flowlock] Using custom prompt from input:', customPrompt || '(empty, will use default)');
+                                
+                                // 直接调用续写函数，使用输入框内容或空字符串（将使用默认提示词）
                                 if (window.handleContinueWriting) {
                                     window.flowlockManager.isProcessing = true;
-                                    window.handleContinueWriting('').then(() => {
+                                    window.handleContinueWriting(customPrompt).then(() => {
                                         console.log('[Flowlock] Continue writing completed');
                                         window.flowlockManager.isProcessing = false;
                                         window.flowlockManager.retryCount = 0; // 重置重试计数
@@ -418,7 +434,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
                             } else {
                                 console.log('[Flowlock] Flowlock was stopped before timeout, skipping continue writing');
                             }
-                        }, 1000);
+                        }, 5000);
                     } else {
                         console.log('[Flowlock] Conditions not met:', {
                             isActive: flowlockState.isActive,

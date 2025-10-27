@@ -59,7 +59,7 @@ function setupFlowlockInteractions() {
         return;
     }
 
-    // 右键菜单 - 启动心流锁
+    // 右键菜单 - 启动/停止心流锁
     chatNameElement.addEventListener('contextmenu', async (e) => {
         if (!window.flowlockManager) return;
         
@@ -76,16 +76,13 @@ function setupFlowlockInteractions() {
             return;
         }
 
-        // 如果已经激活，则显示状态信息
+        // 如果已经激活，则停止心流锁
         if (state.isActive) {
-            if (window.uiHelperFunctions && window.uiHelperFunctions.showToastNotification) {
-                window.uiHelperFunctions.showToastNotification('心流锁已在运行中', 'info');
-            }
-            return;
+            await window.flowlockManager.stop();
+        } else {
+            // 启动心流锁（不立即续写）
+            await window.flowlockManager.start(currentItem.id, currentTopic, false);
         }
-
-        // 启动心流锁（不立即续写）
-        await window.flowlockManager.start(currentItem.id, currentTopic, false);
     });
 
     // 中键点击 - 启动并立即续写 / 停止
@@ -113,7 +110,33 @@ function setupFlowlockInteractions() {
                 return;
             }
 
-            await window.flowlockManager.start(currentItem.id, currentTopic, true);
+            // 启动心流锁
+            await window.flowlockManager.start(currentItem.id, currentTopic, false);
+            
+            // 立即触发一次续写 - 直接模拟 Ctrl+D 快捷键
+            console.log('[Flowlock] Middle click: checking handleContinueWriting availability...');
+            console.log('[Flowlock] window.handleContinueWriting exists:', !!window.handleContinueWriting);
+            
+            if (window.handleContinueWriting && typeof window.handleContinueWriting === 'function') {
+                console.log('[Flowlock] Middle click: triggering immediate continue writing...');
+                // 使用setTimeout确保在下一个事件循环中执行
+                setTimeout(async () => {
+                    try {
+                        await window.handleContinueWriting('');
+                        console.log('[Flowlock] Immediate continue writing triggered successfully');
+                    } catch (error) {
+                        console.error('[Flowlock] Immediate continue writing failed:', error);
+                        if (window.uiHelperFunctions && window.uiHelperFunctions.showToastNotification) {
+                            window.uiHelperFunctions.showToastNotification('立即续写失败: ' + error.message, 'error');
+                        }
+                    }
+                }, 300);
+            } else {
+                console.error('[Flowlock] handleContinueWriting not available!');
+                if (window.uiHelperFunctions && window.uiHelperFunctions.showToastNotification) {
+                    window.uiHelperFunctions.showToastNotification('续写功能未就绪', 'error');
+                }
+            }
         }
     });
 
@@ -125,18 +148,54 @@ function setupFlowlockInteractions() {
  */
 function setupFlowlockShortcuts() {
     document.addEventListener('keydown', async (e) => {
-        // Command/Ctrl + G - 停止心流锁
+        // Command/Ctrl + G - 启动心流锁并立即续写 / 停止心流锁
         if ((e.metaKey || e.ctrlKey) && e.key === 'g') {
             e.preventDefault();
             
             if (!window.flowlockManager) return;
             
             const state = window.flowlockManager.getState();
+            const currentItem = window.currentSelectedItem;
+            const currentTopic = window.currentTopicId;
+            
             if (state.isActive) {
+                // 如果已激活，则停止
                 await window.flowlockManager.stop();
             } else {
-                if (window.uiHelperFunctions && window.uiHelperFunctions.showToastNotification) {
-                    window.uiHelperFunctions.showToastNotification('心流锁未运行', 'info');
+                // 如果未激活，则启动并立即触发续写
+                if (!currentItem || !currentItem.id || !currentTopic) {
+                    if (window.uiHelperFunctions && window.uiHelperFunctions.showToastNotification) {
+                        window.uiHelperFunctions.showToastNotification('请先选择一个Agent和话题', 'warning');
+                    }
+                    return;
+                }
+                
+                // 启动心流锁
+                await window.flowlockManager.start(currentItem.id, currentTopic, false);
+                
+                // 立即触发一次续写 - 直接模拟 Ctrl+D 快捷键
+                console.log('[Flowlock] Ctrl/Cmd+G: checking handleContinueWriting availability...');
+                console.log('[Flowlock] window.handleContinueWriting exists:', !!window.handleContinueWriting);
+                
+                if (window.handleContinueWriting && typeof window.handleContinueWriting === 'function') {
+                    console.log('[Flowlock] Ctrl/Cmd+G: triggering immediate continue writing...');
+                    // 使用setTimeout确保在下一个事件循环中执行
+                    setTimeout(async () => {
+                        try {
+                            await window.handleContinueWriting('');
+                            console.log('[Flowlock] Ctrl/Cmd+G continue writing triggered successfully');
+                        } catch (error) {
+                            console.error('[Flowlock] Ctrl/Cmd+G continue writing failed:', error);
+                            if (window.uiHelperFunctions && window.uiHelperFunctions.showToastNotification) {
+                                window.uiHelperFunctions.showToastNotification('立即续写失败: ' + error.message, 'error');
+                            }
+                        }
+                    }, 300);
+                } else {
+                    console.error('[Flowlock] handleContinueWriting not available!');
+                    if (window.uiHelperFunctions && window.uiHelperFunctions.showToastNotification) {
+                        window.uiHelperFunctions.showToastNotification('续写功能未就绪', 'error');
+                    }
                 }
             }
         }

@@ -185,6 +185,15 @@ window.chatManager = (() => {
     }
 
     async function selectItem(itemId, itemType, itemName, itemAvatarUrl, itemFullConfig) {
+        // 心流锁激活时，不允许切换Agent
+        if (window.flowlockManager && window.flowlockManager.getState && window.flowlockManager.getState().isActive) {
+            if (uiHelper && uiHelper.showToastNotification) {
+                uiHelper.showToastNotification('心流锁运行中，无法切换Agent。请先停止心流锁。', 'warning');
+            }
+            console.log('[ChatManager] Blocked agent switch due to active Flowlock');
+            return;
+        }
+        
         // Stop any previous watcher when switching items
         if (electronAPI.watcherStop) {
             await electronAPI.watcherStop();
@@ -300,6 +309,15 @@ window.chatManager = (() => {
     }
  
     async function selectTopic(topicId) {
+        // 心流锁激活时，不允许切换话题
+        if (window.flowlockManager && window.flowlockManager.getState && window.flowlockManager.getState().isActive) {
+            if (uiHelper && uiHelper.showToastNotification) {
+                uiHelper.showToastNotification('心流锁运行中，无法切换话题。请先停止心流锁。', 'warning');
+            }
+            console.log('[ChatManager] Blocked topic switch due to active Flowlock');
+            return;
+        }
+        
         let currentTopicId = currentTopicIdRef.get();
         if (currentTopicId !== topicId) {
             currentTopicIdRef.set(topicId);
