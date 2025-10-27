@@ -804,6 +804,29 @@ export function setupEventListeners(deps) {
             const currentInputText = messageInput ? messageInput.value.trim() : '';
             handleContinueWriting(currentInputText);
         }
+
+        if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+            e.preventDefault();
+            console.log('[快捷键] 执行快速新建话题');
+            
+            const currentSelectedItem = refs.currentSelectedItem.get();
+            if (!currentSelectedItem.id) {
+                uiHelperFunctions.showToastNotification('请先选择一个Agent', 'warning');
+                return;
+            }
+            
+            if (currentSelectedItem.type !== 'agent') {
+                uiHelperFunctions.showToastNotification('此快捷键仅适用于Agent，不适用于群组', 'warning');
+                return;
+            }
+            
+            // 调用chatManager的创建新话题功能
+            if (chatManager && chatManager.createNewTopicForItem) {
+                chatManager.createNewTopicForItem(currentSelectedItem.id, currentSelectedItem.type);
+            } else {
+                uiHelperFunctions.showToastNotification('无法创建新话题：功能不可用', 'error');
+            }
+        }
     });
 
     if (seamFixer && notificationsSidebar) {
