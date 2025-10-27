@@ -162,17 +162,19 @@ export function setupEventListeners(deps) {
         
         const lastAiMessage = [...currentChatHistory].reverse().find(msg => msg.role === 'assistant' && !msg.isThinking);
         
+        // 改进：即使没有AI消息，也允许续写（让当前Agent开始发言）
+        // 区分两种情况：
+        // 1. 有AI消息：使用续写提示词（附加提示词或默认续写提示词）
+        // 2. 无AI消息：如果有附加提示词则使用，否则直接让AI开始对话（不添加额外提示）
+        let temporaryPrompt;
         if (!lastAiMessage) {
-            console.log('[ContinueWriting] 没有找到AI消息，视为普通对话');
-            if (!additionalPrompt) {
-                uiHelperFunctions.showToastNotification('请输入内容或选择包含AI回复的话题', 'info');
-                return;
-            }
-            await chatManager.handleSendMessage();
-            return;
+            console.log('[ContinueWriting] 没有找到AI消息，让当前Agent开始发言');
+            // 如果有附加提示词，使用附加提示词；否则不添加提示词（让AI基于现有上下文自然开始）
+            temporaryPrompt = additionalPrompt || '';
+        } else {
+            // 有AI消息时，使用续写逻辑：优先使用附加提示词，否则使用默认续写提示词
+            temporaryPrompt = additionalPrompt || globalSettings.continueWritingPrompt || '请继续';
         }
-        
-        const temporaryPrompt = additionalPrompt || globalSettings.continueWritingPrompt || '请继续';
         
         const thinkingMessageId = `regen_${Date.now()}`;
         const thinkingMessage = {
@@ -196,8 +198,12 @@ export function setupEventListeners(deps) {
             const agentConfig = currentSelectedItem.config || currentSelectedItem;
             let historySnapshotForVCP = currentChatHistory.filter(msg => msg.id !== thinkingMessage.id && !msg.isThinking);
             
-            const temporaryUserMessage = { role: 'user', content: temporaryPrompt };
-            historySnapshotForVCP = [...historySnapshotForVCP, temporaryUserMessage];
+            // 只有当有提示词时才添加临时用户消息
+            // 如果 temporaryPrompt 为空，说明是无AI消息且无输入的情况，让AI基于现有上下文自然开始
+            if (temporaryPrompt && temporaryPrompt.trim()) {
+                const temporaryUserMessage = { role: 'user', content: temporaryPrompt };
+                historySnapshotForVCP = [...historySnapshotForVCP, temporaryUserMessage];
+            }
             
             const messagesForVCP = await Promise.all(historySnapshotForVCP.map(async msg => {
                 let currentMessageTextContent = '';
