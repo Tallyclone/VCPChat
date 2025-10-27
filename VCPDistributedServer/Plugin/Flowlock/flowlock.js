@@ -84,6 +84,9 @@ process.stdin.on('end', () => {
             case 'get':
                 // Get current input box content - no additional parameters required
                 break;
+            case 'status':
+                // Get current flowlock status - no additional parameters required
+                break;
             default:
                 throw new Error(`Unknown command: ${command}`);
         }

@@ -6,7 +6,7 @@ Flowlock（心流锁）插件允许AI Agent像人类用户一样控制VCPChat的
 
 ## 版本
 
-- **版本**: 2.0.0
+- **版本**: 2.3.0
 - **类型**: Node.js同步插件
 - **协议**: stdio
 
@@ -156,6 +156,48 @@ command:「始」get「末」
 }
 ```
 
+### 9. **status** - 获取心流锁状态
+获取心流锁的当前运行状态，包括是否启用、是否正在处理、关联的Agent和话题等信息。用于AI了解当前心流锁状态。
+
+**参数**:
+- `command`: "status"
+
+**调用示例**:
+```
+<<<[TOOL_REQUEST]>>>
+tool_name:「始」Flowlock「末」,
+command:「始」status「末」
+<<<[END_TOOL_REQUEST]>>>
+```
+
+**返回示例（心流锁已启用）**:
+```json
+{
+  "status": "success",
+  "message": "心流锁已启用 (Agent: my_agent_id, Topic: topic_123, 处理中: 否)",
+  "flowlockStatus": {
+    "isActive": true,
+    "isProcessing": false,
+    "agentId": "my_agent_id",
+    "topicId": "topic_123"
+  }
+}
+```
+
+**返回示例（心流锁未启用）**:
+```json
+{
+  "status": "success",
+  "message": "心流锁未启用",
+  "flowlockStatus": {
+    "isActive": false,
+    "isProcessing": false,
+    "agentId": null,
+    "topicId": null
+  }
+}
+```
+
 ## 工作原理
 
 ### 数据流
@@ -274,7 +316,12 @@ AI: 输入框中有一些测试文字，我先清理一下
 
 ## 版本历史
 
-### v2.2.0 (Current)
+### v2.3.0 (Current)
+- 新增 **status** 命令：获取心流锁当前状态
+- 支持查询心流锁是否激活、是否正在处理、关联的Agent和话题
+- 完善AI对心流锁状态的感知能力
+
+### v2.2.0
 - 新增 **get** 命令：获取输入框当前内容
 - 支持异步返回数据给AI
 - 完善IPC双向通信机制

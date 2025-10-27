@@ -1132,6 +1132,38 @@ import { setupEventListeners } from './modules/event-listeners.js';
                         }
                         break;
                         
+                    case 'status':
+                        // Get current flowlock status and return it
+                        {
+                            if (window.flowlockManager) {
+                                const state = window.flowlockManager.getState();
+                                console.log(`[Renderer] Retrieved flowlock status:`, state);
+                                // Send the status back to main process
+                                if (window.electronAPI && window.electronAPI.sendFlowlockResponse) {
+                                    window.electronAPI.sendFlowlockResponse({
+                                        command: 'status',
+                                        success: true,
+                                        status: {
+                                            isActive: state.isActive,
+                                            isProcessing: state.isProcessing,
+                                            agentId: state.agentId,
+                                            topicId: state.topicId
+                                        }
+                                    });
+                                }
+                            } else {
+                                console.error('[Renderer] flowlockManager not available');
+                                if (window.electronAPI && window.electronAPI.sendFlowlockResponse) {
+                                    window.electronAPI.sendFlowlockResponse({
+                                        command: 'status',
+                                        success: false,
+                                        error: 'flowlockManager not available'
+                                    });
+                                }
+                            }
+                        }
+                        break;
+                        
                     default:
                         console.error(`[Renderer] Unknown flowlock command: ${command}`);
                 }

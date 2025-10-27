@@ -1008,11 +1008,11 @@ async function handleFlowlockControl(commandPayload) {
             throw new Error('Main window is not available.');
         }
         
-        // For 'get' command, we need to wait for a response from renderer
-        if (command === 'get') {
+        // For 'get' and 'status' commands, we need to wait for a response from renderer
+        if (command === 'get' || command === 'status') {
             return new Promise((resolve, reject) => {
                 const timeout = setTimeout(() => {
-                    reject(new Error('获取输入框内容超时'));
+                    reject(new Error(`${command === 'get' ? '获取输入框内容' : '获取心流锁状态'}超时`));
                 }, 5000); // 5 second timeout
                 
                 // Set up one-time listener for the response
@@ -1021,13 +1021,25 @@ async function handleFlowlockControl(commandPayload) {
                     ipcMain.removeListener('flowlock-response', responseHandler);
                     
                     if (responseData.success) {
-                        resolve({
-                            status: 'success',
-                            message: `输入框当前内容为: "${responseData.content}"`,
-                            content: responseData.content
-                        });
+                        if (command === 'get') {
+                            resolve({
+                                status: 'success',
+                                message: `输入框当前内容为: "${responseData.content}"`,
+                                content: responseData.content
+                            });
+                        } else if (command === 'status') {
+                            const statusInfo = responseData.status;
+                            const statusText = statusInfo.isActive
+                                ? `心流锁已启用 (Agent: ${statusInfo.agentId}, Topic: ${statusInfo.topicId}, 处理中: ${statusInfo.isProcessing ? '是' : '否'})`
+                                : '心流锁未启用';
+                            resolve({
+                                status: 'success',
+                                message: statusText,
+                                flowlockStatus: statusInfo
+                            });
+                        }
                     } else {
-                        reject(new Error(responseData.error || '获取输入框内容失败'));
+                        reject(new Error(responseData.error || `${command === 'get' ? '获取输入框内容' : '获取心流锁状态'}失败`));
                     }
                 };
                 
