@@ -22,6 +22,10 @@ let currentSelectedItem = {
 };
 let currentTopicId = null;
 let currentChatHistory = [];
+
+// 暴露到window对象以便其他模块访问
+window.currentSelectedItem = currentSelectedItem;
+window.currentTopicId = currentTopicId;
 let attachedFiles = [];
 let audioContext = null;
 let currentAudioSource = null;
@@ -189,8 +193,20 @@ import { setupEventListeners } from './modules/event-listeners.js';
         window.GroupRenderer.init({
             electronAPI: window.electronAPI,
             globalSettingsRef: { get: () => globalSettings, set: (newSettings) => globalSettings = newSettings },
-            currentSelectedItemRef: { get: () => currentSelectedItem, set: (val) => currentSelectedItem = val },
-            currentTopicIdRef: { get: () => currentTopicId, set: (val) => currentTopicId = val },
+            currentSelectedItemRef: {
+                get: () => currentSelectedItem,
+                set: (val) => {
+                    currentSelectedItem = val;
+                    window.currentSelectedItem = val;
+                }
+            },
+            currentTopicIdRef: {
+                get: () => currentTopicId,
+                set: (val) => {
+                    currentTopicId = val;
+                    window.currentTopicId = val;
+                }
+            },
             messageRenderer: window.messageRenderer, // Will be initialized later, pass ref
             uiHelper: uiHelperFunctions,
             mainRendererElements: mainRendererElementsForGroupRenderer, // 使用构造好的对象
@@ -235,8 +251,20 @@ import { setupEventListeners } from './modules/event-listeners.js';
 
         window.messageRenderer.initializeMessageRenderer({
             currentChatHistoryRef: { get: () => currentChatHistory, set: (val) => currentChatHistory = val },
-            currentSelectedItemRef: { get: () => currentSelectedItem, set: (val) => currentSelectedItem = val },
-            currentTopicIdRef: { get: () => currentTopicId, set: (val) => currentTopicId = val },
+            currentSelectedItemRef: {
+                get: () => currentSelectedItem,
+                set: (val) => {
+                    currentSelectedItem = val;
+                    window.currentSelectedItem = val;
+                }
+            },
+            currentTopicIdRef: {
+                get: () => currentTopicId,
+                set: (val) => {
+                    currentTopicId = val;
+                    window.currentTopicId = val;
+                }
+            },
             globalSettingsRef: { get: () => globalSettings, set: (newSettings) => globalSettings = newSettings },
             chatMessagesDiv: chatMessagesDiv,
             electronAPI: window.electronAPI,
@@ -345,6 +373,59 @@ import { setupEventListeners } from './modules/event-listeners.js';
                 if (context && !context.isGroupMessage) {
                     // This can run in the background
                     await window.chatManager.attemptTopicSummarizationIfNeeded();
+                }
+                
+                // --- Flowlock: 检查是否需要自动触发续写 ---
+                if (window.flowlockManager) {
+                    const flowlockState = window.flowlockManager.getState();
+                    console.log('[Flowlock] End event received. State:', flowlockState, 'isRelevantToCurrentView:', isRelevantToCurrentView);
+                    
+                    if (flowlockState.isActive && !flowlockState.isProcessing && isRelevantToCurrentView) {
+                        console.log('[Flowlock] ✓ All conditions met, triggering continue writing in 1 second...');
+                        
+                        // 延迟一小段时间确保消息完全渲染，然后直接调用续写函数
+                        setTimeout(() => {
+                            if (window.flowlockManager && window.flowlockManager.getState().isActive) {
+                                console.log('[Flowlock] Calling handleContinueWriting now...');
+                                // 直接调用续写函数
+                                if (window.handleContinueWriting) {
+                                    window.flowlockManager.isProcessing = true;
+                                    window.handleContinueWriting('').then(() => {
+                                        console.log('[Flowlock] Continue writing completed');
+                                        window.flowlockManager.isProcessing = false;
+                                        window.flowlockManager.retryCount = 0; // 重置重试计数
+                                    }).catch((error) => {
+                                        console.error('[Flowlock] Continue writing failed:', error);
+                                        window.flowlockManager.isProcessing = false;
+                                        window.flowlockManager.retryCount++;
+                                        
+                                        if (window.flowlockManager.retryCount >= window.flowlockManager.maxRetries) {
+                                            console.error('[Flowlock] Max retries reached, stopping flowlock');
+                                            if (window.uiHelperFunctions && window.uiHelperFunctions.showToastNotification) {
+                                                window.uiHelperFunctions.showToastNotification('心流锁续写失败次数过多，已自动停止', 'error');
+                                            }
+                                            window.flowlockManager.stop();
+                                        } else {
+                                            console.log(`[Flowlock] Retry ${window.flowlockManager.retryCount}/${window.flowlockManager.maxRetries}`);
+                                            if (window.uiHelperFunctions && window.uiHelperFunctions.showToastNotification) {
+                                                window.uiHelperFunctions.showToastNotification(`心流锁续写失败，正在重试 (${window.flowlockManager.retryCount}/${window.flowlockManager.maxRetries})`, 'warning');
+                                            }
+                                        }
+                                    });
+                                } else {
+                                    console.error('[Flowlock] handleContinueWriting function not found!');
+                                }
+                            } else {
+                                console.log('[Flowlock] Flowlock was stopped before timeout, skipping continue writing');
+                            }
+                        }, 1000);
+                    } else {
+                        console.log('[Flowlock] Conditions not met:', {
+                            isActive: flowlockState.isActive,
+                            isProcessing: flowlockState.isProcessing,
+                            isRelevantToCurrentView: isRelevantToCurrentView
+                        });
+                    }
                 }
                 break;
 
@@ -528,8 +609,12 @@ import { setupEventListeners } from './modules/event-listeners.js';
             },
             electronAPI: window.electronAPI,
             refs: {
-                currentSelectedItemRef: { get: () => currentSelectedItem },
-                currentTopicIdRef: { get: () => currentTopicId },
+                currentSelectedItemRef: {
+                    get: () => currentSelectedItem
+                },
+                currentTopicIdRef: {
+                    get: () => currentTopicId
+                },
             },
             uiHelper: uiHelperFunctions,
             mainRendererFunctions: {
@@ -572,8 +657,20 @@ import { setupEventListeners } from './modules/event-listeners.js';
                 groupRenderer: window.GroupRenderer,
             },
             refs: {
-                currentSelectedItemRef: { get: () => currentSelectedItem, set: (val) => currentSelectedItem = val },
-                currentTopicIdRef: { get: () => currentTopicId, set: (val) => currentTopicId = val },
+                currentSelectedItemRef: {
+                    get: () => currentSelectedItem,
+                    set: (val) => {
+                        currentSelectedItem = val;
+                        window.currentSelectedItem = val;
+                    }
+                },
+                currentTopicIdRef: {
+                    get: () => currentTopicId,
+                    set: (val) => {
+                        currentTopicId = val;
+                        window.currentTopicId = val;
+                    }
+                },
                 currentChatHistoryRef: { get: () => currentChatHistory, set: (val) => currentChatHistory = val },
                 attachedFilesRef: { get: () => attachedFiles, set: (val) => attachedFiles = val },
                 globalSettingsRef: { get: () => globalSettings },
@@ -604,8 +701,20 @@ import { setupEventListeners } from './modules/event-listeners.js';
             electronAPI: window.electronAPI,
             uiHelper: uiHelperFunctions,
             refs: {
-                currentSelectedItemRef: { get: () => currentSelectedItem, set: (val) => currentSelectedItem = val },
-                currentTopicIdRef: { get: () => currentTopicId, set: (val) => currentTopicId = val },
+                currentSelectedItemRef: {
+                    get: () => currentSelectedItem,
+                    set: (val) => {
+                        currentSelectedItem = val;
+                        window.currentSelectedItem = val;
+                    }
+                },
+                currentTopicIdRef: {
+                    get: () => currentTopicId,
+                    set: (val) => {
+                        currentTopicId = val;
+                        window.currentTopicId = val;
+                    }
+                },
                 currentChatHistoryRef: { get: () => currentChatHistory, set: (val) => currentChatHistory = val },
             },
             elements: {
@@ -776,6 +885,14 @@ import { setupEventListeners } from './modules/event-listeners.js';
             }
         }
     });
+
+    // --- Initialize Flowlock Module ---
+    if (window.initializeFlowlockIntegration) {
+        window.initializeFlowlockIntegration();
+        console.log('[Renderer] Flowlock integration initialized.');
+    } else {
+        console.warn('[Renderer] Flowlock integration function not found.');
+    }
 
 });
 

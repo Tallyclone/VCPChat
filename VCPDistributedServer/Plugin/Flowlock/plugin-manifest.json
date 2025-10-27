@@ -1,0 +1,41 @@
+{
+    "manifestVersion": "1.0.0",
+    "name": "Flowlock",
+    "version": "1.0.0",
+    "displayName": "心流锁",
+    "description": "心流锁插件：实现自动续写功能，Agent可以通过此插件控制续写行为。支持启动、停止、设置提示词等操作。",
+    "author": "VCP Team",
+    "pluginType": "synchronous",
+    "entryPoint": {
+        "type": "nodejs",
+        "command": "node flowlock.js"
+    },
+    "communication": {
+        "protocol": "stdio",
+        "timeout": 5000
+    },
+    "capabilities": {
+        "invocationCommands": [
+            {
+                "commandIdentifier": "FlowlockStart",
+                "description": "启动心流锁，开始自动续写模式。\n\n参数说明:\n- agentId (字符串, 必需): 当前Agent的ID\n- topicId (字符串, 必需): 当前话题的ID\n- immediate (布尔值, 可选): 是否立即开始续写，默认为false\n\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」Flowlock「末」,\ncommand:「始」start「末」,\nagentId:「始」agent_123「末」,\ntopicId:「始」topic_456「末」,\nimmediate:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>",
+                "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」Flowlock「末」,\ncommand:「始」start「末」,\nagentId:「始」current_agent「末」,\ntopicId:「始」current_topic「末」\n<<<[END_TOOL_REQUEST]>>>"
+            },
+            {
+                "commandIdentifier": "FlowlockStop",
+                "description": "停止心流锁，结束自动续写模式。\n\n参数说明:\n- agentId (字符串, 可选): Agent的ID\n- topicId (字符串, 可选): 话题的ID\n\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」Flowlock「末」,\ncommand:「始」stop「末」\n<<<[END_TOOL_REQUEST]>>>",
+                "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」Flowlock「末」,\ncommand:「始」stop「末」\n<<<[END_TOOL_REQUEST]>>>"
+            },
+            {
+                "commandIdentifier": "FlowlockPromptee",
+                "description": "设置下一次续写时使用的自定义提示词。\n\n参数说明:\n- prompt (字符串, 必需): 自定义提示词内容\n\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」Flowlock「末」,\ncommand:「始」promptee「末」,\nprompt:「始」请继续详细描述这个场景「末」\n<<<[END_TOOL_REQUEST]>>>",
+                "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」Flowlock「末」,\ncommand:「始」promptee「末」,\nprompt:「始」请继续深入分析这个问题「末」\n<<<[END_TOOL_REQUEST]>>>"
+            },
+            {
+                "commandIdentifier": "FlowlockPrompter",
+                "description": "设置提示词来源接口，允许外部程序提供续写提示词。\n\n参数说明:\n- source (字符串, 必需): 提示词来源标识\n- params (对象, 可选): 额外参数\n\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」Flowlock「末」,\ncommand:「始」prompter「末」,\nsource:「始」external_api「末」,\nparams:「始」{\"key\": \"value\"}「末」\n<<<[END_TOOL_REQUEST]>>>",
+                "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」Flowlock「末」,\ncommand:「始」prompter「末」,\nsource:「始」dynamic_prompt_generator「末」\n<<<[END_TOOL_REQUEST]>>>"
+            }
+        ]
+    }
+}

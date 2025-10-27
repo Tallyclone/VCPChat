@@ -137,6 +137,10 @@ export function setupEventListeners(deps) {
      * @param {string} additionalPrompt - Additional prompt text from the input box.
      */
     async function handleContinueWriting(additionalPrompt = '') {
+        // 导出到window对象供Flowlock使用
+        if (!window.handleContinueWriting) {
+            window.handleContinueWriting = handleContinueWriting;
+        }
         console.log('[ContinueWriting] 开始执行续写功能，附加提示词:', additionalPrompt);
 
         const currentSelectedItem = refs.currentSelectedItem.get();
