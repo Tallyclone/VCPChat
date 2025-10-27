@@ -245,8 +245,25 @@ const uiManager = (() => {
     function setupSidebarTabs() {
         if (sidebarTabButtons) {
             sidebarTabButtons.forEach(button => {
+                // 左键点击 - 切换标签
                 button.addEventListener('click', () => {
                     switchToTab(button.dataset.tab);
+                });
+                
+                // 中键点击 - 如果是设置标签，直接打开全局设置
+                button.addEventListener('mousedown', (e) => {
+                    if (e.button === 1 && button.dataset.tab === 'settings') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        
+                        // 打开全局设置模态框
+                        if (window.uiHelperFunctions && window.uiHelperFunctions.openModal) {
+                            console.log('[UIManager] Middle click on settings tab - opening global settings modal');
+                            window.uiHelperFunctions.openModal('globalSettingsModal');
+                        } else {
+                            console.warn('[UIManager] uiHelperFunctions.openModal not available');
+                        }
+                    }
                 });
             });
             // Default to 'agents' tab (or your preferred default)

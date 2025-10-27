@@ -162,17 +162,19 @@ export function setupEventListeners(deps) {
         
         const lastAiMessage = [...currentChatHistory].reverse().find(msg => msg.role === 'assistant' && !msg.isThinking);
         
+        // 改进：即使没有AI消息，也允许续写（让当前Agent开始发言）
+        // 区分两种情况：
+        // 1. 有AI消息：使用续写提示词（附加提示词或默认续写提示词）
+        // 2. 无AI消息：如果有附加提示词则使用，否则直接让AI开始对话（不添加额外提示）
+        let temporaryPrompt;
         if (!lastAiMessage) {
-            console.log('[ContinueWriting] 没有找到AI消息，视为普通对话');
-            if (!additionalPrompt) {
-                uiHelperFunctions.showToastNotification('请输入内容或选择包含AI回复的话题', 'info');
-                return;
-            }
-            await chatManager.handleSendMessage();
-            return;
+            console.log('[ContinueWriting] 没有找到AI消息，让当前Agent开始发言');
+            // 如果有附加提示词，使用附加提示词；否则不添加提示词（让AI基于现有上下文自然开始）
+            temporaryPrompt = additionalPrompt || '';
+        } else {
+            // 有AI消息时，使用续写逻辑：优先使用附加提示词，否则使用默认续写提示词
+            temporaryPrompt = additionalPrompt || globalSettings.continueWritingPrompt || '请继续';
         }
-        
-        const temporaryPrompt = additionalPrompt || globalSettings.continueWritingPrompt || '请继续';
         
         const thinkingMessageId = `regen_${Date.now()}`;
         const thinkingMessage = {
@@ -196,8 +198,12 @@ export function setupEventListeners(deps) {
             const agentConfig = currentSelectedItem.config || currentSelectedItem;
             let historySnapshotForVCP = currentChatHistory.filter(msg => msg.id !== thinkingMessage.id && !msg.isThinking);
             
-            const temporaryUserMessage = { role: 'user', content: temporaryPrompt };
-            historySnapshotForVCP = [...historySnapshotForVCP, temporaryUserMessage];
+            // 只有当有提示词时才添加临时用户消息
+            // 如果 temporaryPrompt 为空，说明是无AI消息且无输入的情况，让AI基于现有上下文自然开始
+            if (temporaryPrompt && temporaryPrompt.trim()) {
+                const temporaryUserMessage = { role: 'user', content: temporaryPrompt };
+                historySnapshotForVCP = [...historySnapshotForVCP, temporaryUserMessage];
+            }
             
             const messagesForVCP = await Promise.all(historySnapshotForVCP.map(async msg => {
                 let currentMessageTextContent = '';
@@ -328,6 +334,9 @@ export function setupEventListeners(deps) {
         }
     }
 
+    // 导出到window对象供Flowlock使用
+    window.handleContinueWriting = handleContinueWriting;
+
     if (chatMessagesDiv) {
         chatMessagesDiv.addEventListener('click', (event) => {
             const target = event.target.closest('a');
@@ -371,6 +380,12 @@ export function setupEventListeners(deps) {
         if (e.button === 1) { // 中键
             e.preventDefault();
             e.stopPropagation();
+            
+            // 检查心流锁是否激活
+            if (window.flowlockManager && window.flowlockManager.getState().isActive) {
+                uiHelperFunctions.showToastNotification('心流锁已启用，无法手动续写', 'warning');
+                return;
+            }
             
             const currentSelectedItem = refs.currentSelectedItem.get();
             const currentTopicId = refs.currentTopicId.get();
@@ -739,6 +754,33 @@ export function setupEventListeners(deps) {
             }
         });
     }
+
+    // 语音聊天按钮事件处理
+    const voiceChatBtn = document.getElementById('voiceChatBtn');
+    if (voiceChatBtn) {
+        voiceChatBtn.addEventListener('click', async () => {
+            const currentSelectedItem = refs.currentSelectedItem.get();
+            if (!currentSelectedItem.id) {
+                uiHelperFunctions.showToastNotification('请先选择一个Agent', 'warning');
+                return;
+            }
+
+            if (currentSelectedItem.type !== 'agent') {
+                uiHelperFunctions.showToastNotification('语音聊天功能仅适用于Agent，不适用于群组', 'warning');
+                return;
+            }
+
+            try {
+                console.log(`[VoiceChat] Opening voice chat for agent: ${currentSelectedItem.id}`);
+                await window.electronAPI.openVoiceChatWindow({
+                    agentId: currentSelectedItem.id
+                });
+            } catch (error) {
+                console.error('[VoiceChat] Failed to open voice chat window:', error);
+                uiHelperFunctions.showToastNotification(`打开语音聊天失败: ${error.message}`, 'error');
+            }
+        });
+    }
     if (agentSearchInput) {
         agentSearchInput.addEventListener('input', (e) => {
             filterAgentList(e.target.value);
@@ -775,12 +817,42 @@ export function setupEventListeners(deps) {
 
         if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
             e.preventDefault();
+            
+            // 检查心流锁是否激活
+            if (window.flowlockManager && window.flowlockManager.getState().isActive) {
+                uiHelperFunctions.showToastNotification('心流锁已启用，无法手动续写', 'warning');
+                return;
+            }
+            
             if (!refs.currentSelectedItem.get().id || !refs.currentTopicId.get()) {
                 uiHelperFunctions.showToastNotification('请先选择一个项目和话题', 'warning');
                 return;
             }
             const currentInputText = messageInput ? messageInput.value.trim() : '';
             handleContinueWriting(currentInputText);
+        }
+
+        if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+            e.preventDefault();
+            console.log('[快捷键] 执行快速新建话题');
+            
+            const currentSelectedItem = refs.currentSelectedItem.get();
+            if (!currentSelectedItem.id) {
+                uiHelperFunctions.showToastNotification('请先选择一个Agent', 'warning');
+                return;
+            }
+            
+            if (currentSelectedItem.type !== 'agent') {
+                uiHelperFunctions.showToastNotification('此快捷键仅适用于Agent，不适用于群组', 'warning');
+                return;
+            }
+            
+            // 调用chatManager的创建新话题功能
+            if (chatManager && chatManager.createNewTopicForItem) {
+                chatManager.createNewTopicForItem(currentSelectedItem.id, currentSelectedItem.type);
+            } else {
+                uiHelperFunctions.showToastNotification('无法创建新话题：功能不可用', 'error');
+            }
         }
     });
 

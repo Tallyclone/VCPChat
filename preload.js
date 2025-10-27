@@ -305,6 +305,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Watcher controls
     watcherStart: (filePath, agentId, topicId) => ipcRenderer.invoke('watcher:start', filePath, agentId, topicId),
     watcherStop: () => ipcRenderer.invoke('watcher:stop'),
+    
+    // Flowlock Control - for AI to control flowlock like a human user
+    onFlowlockCommand: (callback) => ipcRenderer.on('flowlock-command', (_event, data) => callback(data)),
+    sendFlowlockResponse: (data) => ipcRenderer.send('flowlock-response', data),
 });
 
 // Log the electronAPI object as it's defined in preload.js right after exposing it
