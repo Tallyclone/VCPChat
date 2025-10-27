@@ -383,7 +383,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
                     if (flowlockState.isActive && !flowlockState.isProcessing && isRelevantToCurrentView) {
                         console.log('[Flowlock] ✓ All conditions met, triggering continue writing in 1 second...');
                         
-                        // 延迟2秒确保消息完全渲染，然后直接调用续写函数
+                        // 延迟5秒确保消息完全渲染，然后直接调用续写函数
                         setTimeout(() => {
                             if (window.flowlockManager && window.flowlockManager.getState().isActive) {
                                 console.log('[Flowlock] Calling handleContinueWriting now...');
