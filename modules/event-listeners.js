@@ -754,6 +754,33 @@ export function setupEventListeners(deps) {
             }
         });
     }
+
+    // 语音聊天按钮事件处理
+    const voiceChatBtn = document.getElementById('voiceChatBtn');
+    if (voiceChatBtn) {
+        voiceChatBtn.addEventListener('click', async () => {
+            const currentSelectedItem = refs.currentSelectedItem.get();
+            if (!currentSelectedItem.id) {
+                uiHelperFunctions.showToastNotification('请先选择一个Agent', 'warning');
+                return;
+            }
+
+            if (currentSelectedItem.type !== 'agent') {
+                uiHelperFunctions.showToastNotification('语音聊天功能仅适用于Agent，不适用于群组', 'warning');
+                return;
+            }
+
+            try {
+                console.log(`[VoiceChat] Opening voice chat for agent: ${currentSelectedItem.id}`);
+                await window.electronAPI.openVoiceChatWindow({
+                    agentId: currentSelectedItem.id
+                });
+            } catch (error) {
+                console.error('[VoiceChat] Failed to open voice chat window:', error);
+                uiHelperFunctions.showToastNotification(`打开语音聊天失败: ${error.message}`, 'error');
+            }
+        });
+    }
     if (agentSearchInput) {
         agentSearchInput.addEventListener('input', (e) => {
             filterAgentList(e.target.value);
