@@ -119,6 +119,17 @@ function setupFlowlockInteractions() {
             
             if (window.handleContinueWriting && typeof window.handleContinueWriting === 'function') {
                 console.log('[Flowlock] Middle click: triggering immediate continue writing...');
+                
+                // 触发心跳动画
+                const chatNameElement = document.getElementById('currentChatAgentName');
+                if (chatNameElement) {
+                    chatNameElement.classList.add('flowlock-heartbeat');
+                    // 动画结束后移除类
+                    setTimeout(() => {
+                        chatNameElement.classList.remove('flowlock-heartbeat');
+                    }, 800);
+                }
+                
                 // 使用setTimeout确保在下一个事件循环中执行
                 setTimeout(async () => {
                     try {
@@ -179,6 +190,17 @@ function setupFlowlockShortcuts() {
                 
                 if (window.handleContinueWriting && typeof window.handleContinueWriting === 'function') {
                     console.log('[Flowlock] Ctrl/Cmd+G: triggering immediate continue writing...');
+                    
+                    // 触发心跳动画
+                    const chatNameElement = document.getElementById('currentChatAgentName');
+                    if (chatNameElement) {
+                        chatNameElement.classList.add('flowlock-heartbeat');
+                        // 动画结束后移除类
+                        setTimeout(() => {
+                            chatNameElement.classList.remove('flowlock-heartbeat');
+                        }, 800);
+                    }
+                    
                     // 使用setTimeout确保在下一个事件循环中执行
                     setTimeout(async () => {
                         try {
