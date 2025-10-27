@@ -11,6 +11,7 @@ let globalSettings = {
     filterEnabled: false, // 过滤总开关状态
     filterRules: [], // 过滤规则列表
     enableRegenerateConfirmation: true, // 重新回复确认机制开关
+    flowlockContinueDelay: 5, // 心流锁续写延迟（秒）
 };
 // Unified selected item state
 let currentSelectedItem = {
@@ -381,9 +382,14 @@ import { setupEventListeners } from './modules/event-listeners.js';
                     console.log('[Flowlock] End event received. State:', flowlockState, 'isRelevantToCurrentView:', isRelevantToCurrentView);
                     
                     if (flowlockState.isActive && !flowlockState.isProcessing && isRelevantToCurrentView) {
-                        console.log('[Flowlock] ✓ All conditions met, triggering continue writing in 1 second...');
+                        console.log('[Flowlock] ✓ All conditions met, triggering continue writing...');
                         
-                        // 延迟5秒确保消息完全渲染，然后直接调用续写函数
+                        // 使用全局设置中的延迟
+                        const delaySeconds = globalSettings.flowlockContinueDelay !== undefined ? globalSettings.flowlockContinueDelay : 5;
+                        const delayMilliseconds = delaySeconds * 1000;
+                        console.log(`[Flowlock] Using delay of ${delaySeconds}s (${delayMilliseconds}ms)`);
+
+                        // 延迟指定时间确保消息完全渲染，然后直接调用续写函数
                         setTimeout(() => {
                             if (window.flowlockManager && window.flowlockManager.getState().isActive) {
                                 console.log('[Flowlock] Calling handleContinueWriting now...');
@@ -434,7 +440,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
                             } else {
                                 console.log('[Flowlock] Flowlock was stopped before timeout, skipping continue writing');
                             }
-                        }, 5000);
+                        }, delayMilliseconds);
                     } else {
                         console.log('[Flowlock] Conditions not met:', {
                             isActive: flowlockState.isActive,
@@ -464,6 +470,10 @@ import { setupEventListeners } from './modules/event-listeners.js';
                     if (flowlockState.isActive && isRelevantToCurrentView) {
                         console.log('[Flowlock] Flowlock still active after error, will trigger next continue writing');
                         
+                        const errorDelaySeconds = globalSettings.flowlockContinueDelay !== undefined ? globalSettings.flowlockContinueDelay : 5;
+                        const errorDelayMilliseconds = errorDelaySeconds * 1000;
+                        console.log(`[Flowlock] Using error recovery delay of ${errorDelaySeconds}s (${errorDelayMilliseconds}ms)`);
+
                         setTimeout(() => {
                             if (window.flowlockManager && window.flowlockManager.getState().isActive) {
                                 console.log('[Flowlock] Triggering continue writing after error...');
@@ -504,7 +514,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
                                     });
                                 }
                             }
-                        }, 5000);
+                        }, errorDelayMilliseconds);
                     }
                 }
                 
@@ -1336,6 +1346,7 @@ async function loadAndApplyGlobalSettings() {
         document.getElementById('vcpLogKey').value = globalSettings.vcpLogKey || '';
         document.getElementById('topicSummaryModel').value = globalSettings.topicSummaryModel || '';
         document.getElementById('continueWritingPrompt').value = globalSettings.continueWritingPrompt || '请继续';
+        document.getElementById('flowlockContinueDelay').value = globalSettings.flowlockContinueDelay !== undefined ? globalSettings.flowlockContinueDelay : 5;
         
         // --- Load Network Notes Paths ---
         const networkNotesPathsContainer = document.getElementById('networkNotesPathsContainer');
