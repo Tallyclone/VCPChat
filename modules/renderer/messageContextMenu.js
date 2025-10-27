@@ -91,9 +91,71 @@ function showContextMenu(event, messageItem, message) {
                     if (result.success) {
                         uiHelper.showToastNotification("已发送中止信号。", "success");
                     } else {
+                        console.warn(`[ContextMenu] Interrupt failed: ${result.error}`);
                         uiHelper.showToastNotification(`中止失败: ${result.error}`, "error");
+                        
+                        // 中止失败时手动finalize消息
                         if (contextMenuDependencies.finalizeStreamedMessage) {
                             contextMenuDependencies.finalizeStreamedMessage(activeMessageId, 'cancelled_by_user');
+                        }
+                        
+                        // --- Flowlock: 中止失败后恢复心流锁自动续写 ---
+                        if (window.flowlockManager) {
+                            const flowlockState = window.flowlockManager.getState();
+                            console.log('[Flowlock] Interrupt failed, checking if flowlock should recover. State:', flowlockState);
+                            
+                            // 重置processing状态
+                            if (window.flowlockManager.isProcessing) {
+                                console.log('[Flowlock] Resetting isProcessing state after interrupt failure');
+                                window.flowlockManager.isProcessing = false;
+                            }
+                            
+                            // 如果心流锁激活，触发下一次续写
+                            if (flowlockState.isActive) {
+                                console.log('[Flowlock] Flowlock active after interrupt failure, will trigger next continue writing');
+                                
+                                setTimeout(() => {
+                                    if (window.flowlockManager && window.flowlockManager.getState().isActive) {
+                                        console.log('[Flowlock] Triggering continue writing after interrupt failure recovery...');
+                                        
+                                        // 触发心跳动画
+                                        const chatNameElement = document.getElementById('currentChatAgentName');
+                                        if (chatNameElement) {
+                                            chatNameElement.classList.add('flowlock-heartbeat');
+                                            setTimeout(() => {
+                                                chatNameElement.classList.remove('flowlock-heartbeat');
+                                            }, 800);
+                                        }
+                                        
+                                        // 获取输入框内容作为提示词
+                                        const messageInput = document.getElementById('messageInput');
+                                        const customPrompt = messageInput ? messageInput.value.trim() : '';
+                                        console.log('[Flowlock] Using custom prompt from input:', customPrompt || '(empty, will use default)');
+                                        
+                                        // 触发续写
+                                        if (window.handleContinueWriting) {
+                                            window.flowlockManager.isProcessing = true;
+                                            window.handleContinueWriting(customPrompt).then(() => {
+                                                console.log('[Flowlock] Continue writing completed after interrupt failure recovery');
+                                                window.flowlockManager.isProcessing = false;
+                                                window.flowlockManager.retryCount = 0;
+                                            }).catch((error) => {
+                                                console.error('[Flowlock] Continue writing failed after interrupt failure recovery:', error);
+                                                window.flowlockManager.isProcessing = false;
+                                                window.flowlockManager.retryCount++;
+                                                
+                                                if (window.flowlockManager.retryCount >= window.flowlockManager.maxRetries) {
+                                                    console.error('[Flowlock] Max retries reached, stopping flowlock');
+                                                    if (window.uiHelperFunctions && window.uiHelperFunctions.showToastNotification) {
+                                                        window.uiHelperFunctions.showToastNotification('心流锁续写失败次数过多，已自动停止', 'error');
+                                                    }
+                                                    window.flowlockManager.stop();
+                                                }
+                                            });
+                                        }
+                                    }
+                                }, 5000);
+                            }
                         }
                     }
                 } else {

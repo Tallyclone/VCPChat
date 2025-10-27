@@ -448,6 +448,66 @@ import { setupEventListeners } from './modules/event-listeners.js';
             case 'error':
                 console.error('VCP Stream Error on ID', messageId, ':', error, 'Context:', context);
                 window.messageRenderer.finalizeStreamedMessage(messageId, 'error', context);
+                
+                // --- Flowlock: 处理错误情况，重置状态并可能触发下一次续写 ---
+                if (window.flowlockManager) {
+                    const flowlockState = window.flowlockManager.getState();
+                    console.log('[Flowlock] Error event received. State:', flowlockState, 'isRelevantToCurrentView:', isRelevantToCurrentView);
+                    
+                    // 重置processing状态
+                    if (window.flowlockManager.isProcessing) {
+                        console.log('[Flowlock] Resetting isProcessing state due to error');
+                        window.flowlockManager.isProcessing = false;
+                    }
+                    
+                    // 如果心流锁仍然激活且相关，触发下一次续写（即使出错也继续）
+                    if (flowlockState.isActive && isRelevantToCurrentView) {
+                        console.log('[Flowlock] Flowlock still active after error, will trigger next continue writing');
+                        
+                        setTimeout(() => {
+                            if (window.flowlockManager && window.flowlockManager.getState().isActive) {
+                                console.log('[Flowlock] Triggering continue writing after error...');
+                                
+                                // 触发心跳动画
+                                const chatNameElement = document.getElementById('currentChatAgentName');
+                                if (chatNameElement) {
+                                    chatNameElement.classList.add('flowlock-heartbeat');
+                                    setTimeout(() => {
+                                        chatNameElement.classList.remove('flowlock-heartbeat');
+                                    }, 800);
+                                }
+                                
+                                // 获取输入框内容作为提示词
+                                const messageInput = document.getElementById('messageInput');
+                                const customPrompt = messageInput ? messageInput.value.trim() : '';
+                                console.log('[Flowlock] Using custom prompt from input:', customPrompt || '(empty, will use default)');
+                                
+                                // 触发续写
+                                if (window.handleContinueWriting) {
+                                    window.flowlockManager.isProcessing = true;
+                                    window.handleContinueWriting(customPrompt).then(() => {
+                                        console.log('[Flowlock] Continue writing completed after error recovery');
+                                        window.flowlockManager.isProcessing = false;
+                                        window.flowlockManager.retryCount = 0;
+                                    }).catch((error) => {
+                                        console.error('[Flowlock] Continue writing failed after error recovery:', error);
+                                        window.flowlockManager.isProcessing = false;
+                                        window.flowlockManager.retryCount++;
+                                        
+                                        if (window.flowlockManager.retryCount >= window.flowlockManager.maxRetries) {
+                                            console.error('[Flowlock] Max retries reached, stopping flowlock');
+                                            if (window.uiHelperFunctions && window.uiHelperFunctions.showToastNotification) {
+                                                window.uiHelperFunctions.showToastNotification('心流锁续写失败次数过多，已自动停止', 'error');
+                                            }
+                                            window.flowlockManager.stop();
+                                        }
+                                    });
+                                }
+                            }
+                        }, 5000);
+                    }
+                }
+                
                 if (isRelevantToCurrentView) {
                     const errorMsgItem = document.querySelector(`.message-item[data-message-id="${messageId}"] .md-content`);
                     if (errorMsgItem) {
@@ -908,6 +968,178 @@ import { setupEventListeners } from './modules/event-listeners.js';
         console.log('[Renderer] Flowlock integration initialized.');
     } else {
         console.warn('[Renderer] Flowlock integration function not found.');
+    }
+
+    // --- Listen for Flowlock commands from plugins (via main process) ---
+    if (window.electronAPI && window.electronAPI.onFlowlockCommand) {
+        window.electronAPI.onFlowlockCommand(async (commandData) => {
+            console.log('[Renderer] Received flowlock command from plugin:', commandData);
+            
+            if (!window.flowlockManager) {
+                console.error('[Renderer] flowlockManager not available');
+                return;
+            }
+            
+            const { command, agentId, topicId, prompt, promptSource } = commandData;
+            
+            try {
+                switch (command) {
+                    case 'start':
+                        // Start flowlock for the specified agent and topic
+                        if (agentId && topicId) {
+                            await window.flowlockManager.start(agentId, topicId, false);
+                            console.log(`[Renderer] Flowlock started for agent: ${agentId}, topic: ${topicId}`);
+                        } else {
+                            console.error('[Renderer] Missing agentId or topicId for start command');
+                        }
+                        break;
+                        
+                    case 'stop':
+                        // Stop flowlock
+                        await window.flowlockManager.stop();
+                        console.log('[Renderer] Flowlock stopped');
+                        break;
+                        
+                    case 'promptee':
+                        // Set custom prompt and append to input
+                        if (prompt) {
+                            const messageInput = document.getElementById('messageInput');
+                            if (messageInput) {
+                                const currentValue = messageInput.value;
+                                messageInput.value = currentValue + (currentValue ? ' ' : '') + prompt;
+                                console.log(`[Renderer] Prompt appended to input: "${prompt}"`);
+                                // Auto-resize textarea after content change
+                                if (window.uiHelperFunctions && window.uiHelperFunctions.autoResizeTextarea) {
+                                    window.uiHelperFunctions.autoResizeTextarea(messageInput);
+                                }
+                            }
+                        } else {
+                            console.error('[Renderer] Missing prompt for promptee command');
+                        }
+                        break;
+                        
+                    case 'prompter':
+                        // Get content from external source and append to input
+                        if (promptSource) {
+                            // TODO: Implement fetching from external source
+                            // For now, just log the source
+                            console.log(`[Renderer] Prompter source: ${promptSource}`);
+                            // Placeholder: treat promptSource as the actual prompt for now
+                            const messageInput = document.getElementById('messageInput');
+                            if (messageInput) {
+                                const currentValue = messageInput.value;
+                                messageInput.value = currentValue + (currentValue ? ' ' : '') + `[来自: ${promptSource}]`;
+                                console.log(`[Renderer] Prompter content appended from source: ${promptSource}`);
+                                // Auto-resize textarea after content change
+                                if (window.uiHelperFunctions && window.uiHelperFunctions.autoResizeTextarea) {
+                                    window.uiHelperFunctions.autoResizeTextarea(messageInput);
+                                }
+                            }
+                        } else {
+                            console.error('[Renderer] Missing promptSource for prompter command');
+                        }
+                        break;
+                        
+                    case 'clear':
+                        // Clear all content in input box
+                        {
+                            const messageInput = document.getElementById('messageInput');
+                            if (messageInput) {
+                                messageInput.value = '';
+                                console.log('[Renderer] Input box cleared');
+                                // Auto-resize textarea after content change
+                                if (window.uiHelperFunctions && window.uiHelperFunctions.autoResizeTextarea) {
+                                    window.uiHelperFunctions.autoResizeTextarea(messageInput);
+                                }
+                            }
+                        }
+                        break;
+                        
+                    case 'remove':
+                        // Remove specific text from input
+                        {
+                            const { target } = commandData;
+                            if (target) {
+                                const messageInput = document.getElementById('messageInput');
+                                if (messageInput) {
+                                    const currentValue = messageInput.value;
+                                    // Remove all occurrences of target text
+                                    messageInput.value = currentValue.split(target).join('');
+                                    console.log(`[Renderer] Removed "${target}" from input`);
+                                    // Auto-resize textarea after content change
+                                    if (window.uiHelperFunctions && window.uiHelperFunctions.autoResizeTextarea) {
+                                        window.uiHelperFunctions.autoResizeTextarea(messageInput);
+                                    }
+                                }
+                            } else {
+                                console.error('[Renderer] Missing target for remove command');
+                            }
+                        }
+                        break;
+                        
+                    case 'edit':
+                        // Edit (diff) specific text in input - find oldText and replace with newText
+                        {
+                            const { oldText, newText } = commandData;
+                            if (oldText && newText !== undefined) {
+                                const messageInput = document.getElementById('messageInput');
+                                if (messageInput) {
+                                    const currentValue = messageInput.value;
+                                    // Replace first occurrence only (diff-style)
+                                    const index = currentValue.indexOf(oldText);
+                                    if (index !== -1) {
+                                        messageInput.value = currentValue.substring(0, index) + newText + currentValue.substring(index + oldText.length);
+                                        console.log(`[Renderer] Edited text: "${oldText}" → "${newText}"`);
+                                        // Auto-resize textarea after content change
+                                        if (window.uiHelperFunctions && window.uiHelperFunctions.autoResizeTextarea) {
+                                            window.uiHelperFunctions.autoResizeTextarea(messageInput);
+                                        }
+                                    } else {
+                                        console.warn(`[Renderer] oldText "${oldText}" not found in input`);
+                                    }
+                                }
+                            } else {
+                                console.error('[Renderer] Missing oldText or newText for edit command');
+                            }
+                        }
+                        break;
+                        
+                    case 'get':
+                        // Get current input box content and return it
+                        {
+                            const messageInput = document.getElementById('messageInput');
+                            if (messageInput) {
+                                const content = messageInput.value;
+                                console.log(`[Renderer] Retrieved input box content: "${content}"`);
+                                // Send the content back to main process
+                                if (window.electronAPI && window.electronAPI.sendFlowlockResponse) {
+                                    window.electronAPI.sendFlowlockResponse({
+                                        command: 'get',
+                                        success: true,
+                                        content: content
+                                    });
+                                }
+                            } else {
+                                console.error('[Renderer] Message input element not found');
+                                if (window.electronAPI && window.electronAPI.sendFlowlockResponse) {
+                                    window.electronAPI.sendFlowlockResponse({
+                                        command: 'get',
+                                        success: false,
+                                        error: 'Message input element not found'
+                                    });
+                                }
+                            }
+                        }
+                        break;
+                        
+                    default:
+                        console.error(`[Renderer] Unknown flowlock command: ${command}`);
+                }
+            } catch (error) {
+                console.error('[Renderer] Error executing flowlock command:', error);
+            }
+        });
+        console.log('[Renderer] Flowlock command listener initialized');
     }
 
 });

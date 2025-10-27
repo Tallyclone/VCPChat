@@ -5,6 +5,8 @@
 #currentChatAgentName.flowlock-active {
     position: relative;
     animation: flowlock-glow 2s ease-in-out infinite, flowlock-text-wave 3s ease-in-out infinite;
+    /* 保持颜色不变回原始 */
+    color: inherit !important;
 }
 
 /* 发光动画关键帧 */
@@ -27,44 +29,47 @@
     }
 }
 
-/* 文字正弦波动动画 - 轻微但可见 */
+/* 文字正弦波动动画 - 轻微但可见，带随机旋转 */
+/* 注意：实际旋转方向将通过JavaScript动态设置CSS变量 */
 @keyframes flowlock-text-wave {
     0%, 100% {
-        transform: translateY(0px);
+        transform: translateY(0px) rotate(0deg);
     }
     25% {
-        transform: translateY(-1.5px);
+        transform: translateY(-1.5px) rotate(calc(var(--flowlock-rotate-direction, 1) * 1deg));
     }
     50% {
-        transform: translateY(0px);
+        transform: translateY(0px) rotate(calc(var(--flowlock-rotate-direction, 1) * 2deg));
     }
     75% {
-        transform: translateY(1.5px);
+        transform: translateY(1.5px) rotate(calc(var(--flowlock-rotate-direction, 1) * 1deg));
     }
 }
 
-/* 心跳膨胀收缩动画 - 在续写开始时触发 */
+/* 心跳膨胀收缩动画 - 在续写开始时触发，带随机旋转 */
 @keyframes flowlock-heartbeat {
     0% {
-        transform: scale(1) translateY(0);
+        transform: scale(1) translateY(0) rotate(0deg);
     }
     14% {
-        transform: scale(1.08) translateY(0);
+        transform: scale(1.08) translateY(0) rotate(calc(var(--flowlock-heartbeat-rotate, 1) * 2deg));
     }
     28% {
-        transform: scale(1) translateY(0);
+        transform: scale(1) translateY(0) rotate(0deg);
     }
     42% {
-        transform: scale(1.08) translateY(0);
+        transform: scale(1.08) translateY(0) rotate(calc(var(--flowlock-heartbeat-rotate, 1) * 2deg));
     }
     70% {
-        transform: scale(1) translateY(0);
+        transform: scale(1) translateY(0) rotate(0deg);
     }
 }
 
-/* 心跳效果类 - 通过JS动态添加/移除 */
+/* 心跳效果类 - 通过JS动态添加/移除，保持颜色 */
 #currentChatAgentName.flowlock-heartbeat {
     animation: flowlock-heartbeat 0.8s ease-in-out !important;
+    /* 膨胀时保持颜色不变 */
+    color: inherit !important;
 }
 
 /* 为心流锁激活状态添加底色发光效果 */
@@ -98,14 +103,23 @@
     }
 }
 
-/* 深色主题下的优化 */
+/* 深色主题下的优化 - 保持发光颜色 */
 .dark-theme #currentChatAgentName.flowlock-active {
-    color: var(--highlight-text);
+    color: var(--highlight-text) !important;
 }
 
-/* 浅色主题下的优化 */
+/* 浅色主题下的优化 - 保持发光颜色 */
 .light-theme #currentChatAgentName.flowlock-active {
-    color: var(--accent-color);
+    color: var(--accent-color) !important;
+}
+
+/* 确保心跳动画时颜色也保持 */
+.dark-theme #currentChatAgentName.flowlock-heartbeat {
+    color: var(--highlight-text) !important;
+}
+
+.light-theme #currentChatAgentName.flowlock-heartbeat {
+    color: var(--accent-color) !important;
 }
 
 /* 心流锁状态指示器（可选） */
@@ -135,4 +149,52 @@
 #currentChatAgentName {
     position: relative;
     z-index: 1;
+}
+
+/* 播放emoji样式 - 独立随机运动 */
+.flowlock-playing-emoji {
+    display: inline-block;
+    position: relative;
+    /* 使用CSS变量控制随机运动参数 */
+    animation:
+        flowlock-emoji-float var(--emoji-float-duration, 3s) ease-in-out infinite,
+        flowlock-emoji-pulse 1.5s ease-in-out infinite;
+}
+
+/* emoji漂浮运动 - 随机8字形路径 */
+@keyframes flowlock-emoji-float {
+    0% {
+        transform: translate(0, 0) rotate(0deg) scale(1);
+    }
+    25% {
+        transform: translate(
+            calc(var(--emoji-move-x1, 3) * 1px),
+            calc(var(--emoji-move-y1, -2) * 1px)
+        ) rotate(calc(var(--emoji-rotate1, 5) * 1deg)) scale(1.05);
+    }
+    50% {
+        transform: translate(
+            calc(var(--emoji-move-x2, -2) * 1px),
+            calc(var(--emoji-move-y2, 3) * 1px)
+        ) rotate(calc(var(--emoji-rotate2, -5) * 1deg)) scale(0.95);
+    }
+    75% {
+        transform: translate(
+            calc(var(--emoji-move-x3, 2) * 1px),
+            calc(var(--emoji-move-y3, 2) * 1px)
+        ) rotate(calc(var(--emoji-rotate3, 3) * 1deg)) scale(1.05);
+    }
+    100% {
+        transform: translate(0, 0) rotate(0deg) scale(1);
+    }
+}
+
+/* emoji脉冲动画 */
+@keyframes flowlock-emoji-pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
 }

@@ -25,6 +25,7 @@ class DistributedServer {
         this.handleMusicControl = config.handleMusicControl; // Inject the music control handler
         this.handleDiceControl = config.handleDiceControl; // Inject the dice control handler
         this.handleCanvasControl = config.handleCanvasControl; // Inject the canvas control handler
+        this.handleFlowlockControl = config.handleFlowlockControl; // Inject the flowlock control handler
         this.ws = null;
         this.app = express(); // 创建 Express 应用
         this.server = http.createServer(this.app); // 创建 HTTP 服务器
@@ -382,6 +383,21 @@ class DistributedServer {
                 // The result from the dice roll is already structured, so we can pass it directly.
                 finalResult = resultFromMain.data;
 
+            } else if (toolName === 'Flowlock') {
+                // --- Special Handling for Flowlock ---
+                if (typeof this.handleFlowlockControl !== 'function') {
+                    throw new Error('Flowlock control handler is not configured for the Distributed Server.');
+                }
+                
+                // The toolArgs contain the command and parameters
+                const resultFromMain = await this.handleFlowlockControl(toolArgs);
+                
+                if (resultFromMain.status === 'error') {
+                    throw new Error(resultFromMain.message);
+                }
+                
+                finalResult = { message: resultFromMain.message };
+                
             } else {
                 // --- Default Handling for all other plugins ---
                 if (typeof result === 'object' && result !== null) {

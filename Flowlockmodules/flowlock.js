@@ -76,6 +76,9 @@ class FlowlockManager {
 
         console.log(`[Flowlock] Started for agent: ${agentId}, topic: ${topicId}`);
         
+        // 设置随机旋转方向
+        this.setRandomRotation();
+        
         // 更新UI状态 - 让标题发光
         this.updateUIGlowState(true);
 
@@ -263,6 +266,27 @@ class FlowlockManager {
     }
 
     /**
+     * 设置随机旋转方向
+     */
+    setRandomRotation() {
+        const chatNameElement = document.getElementById('currentChatAgentName');
+        if (!chatNameElement) {
+            console.warn('[Flowlock] Chat name element not found for rotation.');
+            return;
+        }
+        
+        // 随机选择顺时针(1)或逆时针(-1)
+        const direction = Math.random() < 0.5 ? 1 : -1;
+        chatNameElement.style.setProperty('--flowlock-rotate-direction', direction);
+        
+        // 为心跳动画也设置随机旋转
+        const heartbeatRotate = Math.random() < 0.5 ? 1 : -1;
+        chatNameElement.style.setProperty('--flowlock-heartbeat-rotate', heartbeatRotate);
+        
+        console.log(`[Flowlock] Random rotation set: wave=${direction > 0 ? 'clockwise' : 'counter-clockwise'}, heartbeat=${heartbeatRotate > 0 ? 'clockwise' : 'counter-clockwise'}`);
+    }
+
+    /**
      * 更新UI发光状态
      * @param {boolean} shouldGlow - 是否应该发光
      */
@@ -275,11 +299,96 @@ class FlowlockManager {
 
         if (shouldGlow) {
             chatNameElement.classList.add('flowlock-active');
+            
+            // 添加播放中的emoji
+            this.addPlayingEmoji(chatNameElement);
         } else {
             chatNameElement.classList.remove('flowlock-active');
+            
+            // 移除播放emoji
+            this.removePlayingEmoji(chatNameElement);
+            
+            // 清除旋转CSS变量
+            chatNameElement.style.removeProperty('--flowlock-rotate-direction');
+            chatNameElement.style.removeProperty('--flowlock-heartbeat-rotate');
         }
 
         console.log(`[Flowlock] UI glow state updated: ${shouldGlow}`);
+    }
+    
+    /**
+     * 添加播放中的emoji指示器
+     * @param {HTMLElement} element - 目标元素
+     */
+    addPlayingEmoji(element) {
+        // 检查是否已存在
+        if (element.querySelector('.flowlock-playing-emoji')) {
+            return;
+        }
+        
+        // 创建emoji元素
+        const emojiSpan = document.createElement('span');
+        emojiSpan.className = 'flowlock-playing-emoji';
+        emojiSpan.textContent = ' ▶️'; // 播放emoji
+        emojiSpan.style.marginLeft = '8px';
+        emojiSpan.style.fontSize = '0.9em';
+        emojiSpan.style.verticalAlign = 'middle';
+        
+        // 设置随机运动参数
+        this.setRandomEmojiMotion(emojiSpan);
+        
+        // 添加到元素末尾
+        element.appendChild(emojiSpan);
+        
+        console.log('[Flowlock] Playing emoji added with random motion');
+    }
+    
+    /**
+     * 为emoji设置随机运动参数
+     * @param {HTMLElement} emojiElement - emoji元素
+     */
+    setRandomEmojiMotion(emojiElement) {
+        // 随机持续时间 (2.5-4秒)
+        const duration = 2.5 + Math.random() * 1.5;
+        emojiElement.style.setProperty('--emoji-float-duration', `${duration}s`);
+        
+        // 随机X轴移动 (-4到4像素)
+        const moveX1 = Math.floor(Math.random() * 8) - 4;
+        const moveX2 = Math.floor(Math.random() * 8) - 4;
+        const moveX3 = Math.floor(Math.random() * 8) - 4;
+        emojiElement.style.setProperty('--emoji-move-x1', moveX1);
+        emojiElement.style.setProperty('--emoji-move-x2', moveX2);
+        emojiElement.style.setProperty('--emoji-move-x3', moveX3);
+        
+        // 随机Y轴移动 (-4到4像素)
+        const moveY1 = Math.floor(Math.random() * 8) - 4;
+        const moveY2 = Math.floor(Math.random() * 8) - 4;
+        const moveY3 = Math.floor(Math.random() * 8) - 4;
+        emojiElement.style.setProperty('--emoji-move-y1', moveY1);
+        emojiElement.style.setProperty('--emoji-move-y2', moveY2);
+        emojiElement.style.setProperty('--emoji-move-y3', moveY3);
+        
+        // 随机旋转角度 (-8到8度)
+        const rotate1 = Math.floor(Math.random() * 16) - 8;
+        const rotate2 = Math.floor(Math.random() * 16) - 8;
+        const rotate3 = Math.floor(Math.random() * 16) - 8;
+        emojiElement.style.setProperty('--emoji-rotate1', rotate1);
+        emojiElement.style.setProperty('--emoji-rotate2', rotate2);
+        emojiElement.style.setProperty('--emoji-rotate3', rotate3);
+        
+        console.log(`[Flowlock] Emoji motion params: duration=${duration.toFixed(2)}s, x=[${moveX1},${moveX2},${moveX3}], y=[${moveY1},${moveY2},${moveY3}], rotate=[${rotate1},${rotate2},${rotate3}]`);
+    }
+    
+    /**
+     * 移除播放emoji指示器
+     * @param {HTMLElement} element - 目标元素
+     */
+    removePlayingEmoji(element) {
+        const emojiSpan = element.querySelector('.flowlock-playing-emoji');
+        if (emojiSpan) {
+            emojiSpan.remove();
+            console.log('[Flowlock] Playing emoji removed');
+        }
     }
 
     /**

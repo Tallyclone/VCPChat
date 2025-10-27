@@ -647,9 +647,8 @@ if (!gotTheLock) {
                     rendererProcess: mainWindow.webContents, // Pass the renderer process object
                     handleMusicControl: musicHandlers.handleMusicControl, // Inject the music control handler
                     handleDiceControl: diceHandlers.handleDiceControl, // Inject the dice control handler
-                    handleMusicControl: musicHandlers.handleMusicControl, // Inject the music control handler
-                    handleDiceControl: diceHandlers.handleDiceControl, // Inject the dice control handler
-                    handleCanvasControl: handleCanvasControl // Inject the new canvas control handler
+                    handleCanvasControl: handleCanvasControl, // Inject the canvas control handler
+                    handleFlowlockControl: handleFlowlockControl // Inject the flowlock control handler
                 };
                 distributedServer = new DistributedServer(config);
                 distributedServer.initialize();
@@ -997,3 +996,100 @@ ipcMain.handle('interrupt-group-request', (event, messageId) => {
         return { success: false, error: 'Group chat module not initialized correctly.' };
     }
 });
+
+// --- Flowlock Control Handler (for Distributed Server) ---
+async function handleFlowlockControl(commandPayload) {
+    try {
+        const { command, agentId, topicId, prompt, promptSource, target, oldText, newText } = commandPayload;
+        
+        console.log(`[Main] handleFlowlockControl received command: ${command}`, commandPayload);
+        
+        if (!mainWindow || mainWindow.isDestroyed()) {
+            throw new Error('Main window is not available.');
+        }
+        
+        // For 'get' command, we need to wait for a response from renderer
+        if (command === 'get') {
+            return new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    reject(new Error('获取输入框内容超时'));
+                }, 5000); // 5 second timeout
+                
+                // Set up one-time listener for the response
+                const responseHandler = (event, responseData) => {
+                    clearTimeout(timeout);
+                    ipcMain.removeListener('flowlock-response', responseHandler);
+                    
+                    if (responseData.success) {
+                        resolve({
+                            status: 'success',
+                            message: `输入框当前内容为: "${responseData.content}"`,
+                            content: responseData.content
+                        });
+                    } else {
+                        reject(new Error(responseData.error || '获取输入框内容失败'));
+                    }
+                };
+                
+                ipcMain.on('flowlock-response', responseHandler);
+                
+                // Send command to renderer
+                mainWindow.webContents.send('flowlock-command', {
+                    command,
+                    agentId,
+                    topicId,
+                    prompt,
+                    promptSource,
+                    target,
+                    oldText,
+                    newText
+                });
+            });
+        }
+        
+        // For other commands, send and return immediately
+        mainWindow.webContents.send('flowlock-command', {
+            command,
+            agentId,
+            topicId,
+            prompt,
+            promptSource,
+            target,
+            oldText,
+            newText
+        });
+        
+        // Build natural language response for AI
+        let naturalResponse = '';
+        switch (command) {
+            case 'start':
+                naturalResponse = `已为 Agent "${agentId}" 的话题 "${topicId}" 启动心流锁。`;
+                break;
+            case 'stop':
+                naturalResponse = `已停止心流锁。`;
+                break;
+            case 'promptee':
+                naturalResponse = `已设置下次续写提示词为: "${prompt}"`;
+                break;
+            case 'prompter':
+                naturalResponse = `已从来源 "${promptSource}" 获取提示词。`;
+                break;
+            case 'clear':
+                naturalResponse = `已清空输入框中的所有提示词。`;
+                break;
+            case 'remove':
+                naturalResponse = `已从输入框中移除: "${target}"`;
+                break;
+            case 'edit':
+                naturalResponse = `已将 "${oldText}" 编辑为 "${newText}"`;
+                break;
+            default:
+                naturalResponse = `心流锁命令 "${command}" 已执行。`;
+        }
+        
+        return { status: 'success', message: naturalResponse };
+    } catch (error) {
+        console.error('[Main] handleFlowlockControl error:', error);
+        return { status: 'error', message: error.message };
+    }
+}
