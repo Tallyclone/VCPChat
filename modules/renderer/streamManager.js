@@ -314,20 +314,31 @@ function renderStreamFrame(messageId) {
                 
                 // 🟢 保留表情包修复的状态标记和事件处理器
                 if (fromEl.tagName === 'IMG') {
+                    // BUGFIX: 彻底阻止对已修复表情包的更新，防止闪烁
+                    // 检查DOM中的元素(fromEl)是否已经被修复过
+                    if (fromEl.dataset.emoticonFixAttempted === 'true' && refs.emoticonUrlFixer) {
+                        // 检查新渲染的元素(toEl)的URL修复后是否与DOM中的URL一致
+                        const fixedVersionOfToSrc = refs.emoticonUrlFixer.fixEmoticonUrl(toEl.src);
+                        if (fromEl.src === fixedVersionOfToSrc) {
+                            // 如果一致，说明流式渲染试图用旧的、错误的URL覆盖已修复的URL。
+                            // 返回false，告诉morphdom完全不要动这个DOM节点。
+                            return false;
+                        }
+                    }
+
+                    // 对于尚未修复或非表情包图片，保留状态
                     if (fromEl.dataset.emoticonHandlerAttached) {
                         toEl.dataset.emoticonHandlerAttached = 'true';
                     }
                     if (fromEl.dataset.emoticonFixAttempted) {
                         toEl.dataset.emoticonFixAttempted = 'true';
                     }
-                    // Preserve handlers to continue the loading/error process
                     if (fromEl.onerror && !toEl.onerror) {
                         toEl.onerror = fromEl.onerror;
                     }
                     if (fromEl.onload && !toEl.onload) {
                         toEl.onload = fromEl.onload;
                     }
-                    // Preserve visibility style to prevent flicker on re-renders
                     if (fromEl.style.visibility) {
                         toEl.style.visibility = fromEl.style.visibility;
                     }
