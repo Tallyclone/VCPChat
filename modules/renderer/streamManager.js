@@ -170,6 +170,22 @@ async function saveHistoryForContext(context, history) {
 function applyStreamingPreprocessors(text) {
     if (!text) return '';
     
+    // 🟢 在流式渲染前也修复一次（双重保险）
+    // 因为流式输出可能绕过 preprocessFullContent
+    if (refs.emoticonUrlFixer) {
+        // Markdown 语法
+        text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, url) => {
+            const fixedUrl = refs.emoticonUrlFixer.fixEmoticonUrl(url);
+            return `![${alt}](${fixedUrl})`;
+        });
+        
+        // HTML 标签
+        text = text.replace(/<img([^>]*?)src=["']([^"']+)["']([^>]*?)>/gi, (match, before, url, after) => {
+            const fixedUrl = refs.emoticonUrlFixer.fixEmoticonUrl(url);
+            return `<img${before}src="${fixedUrl}"${after}>`;
+        });
+    }
+    
     // 🟢 重置 lastIndex（全局正则）
     SPEAKER_TAG_REGEX.lastIndex = 0;
     NEWLINE_AFTER_CODE_REGEX.lastIndex = 0;
@@ -312,35 +328,32 @@ function renderStreamFrame(messageId) {
                     requestAnimationFrame(() => toEl.focus());
                 }
                 
-                // 🟢 保留表情包修复的状态标记和事件处理器
+                // 🟢 简化图片逻辑：只保留状态，不再做 URL 对比
                 if (fromEl.tagName === 'IMG') {
-                    // BUGFIX: 彻底阻止对已修复表情包的更新，防止闪烁
-                    // 检查DOM中的元素(fromEl)是否已经被修复过
-                    if (fromEl.dataset.emoticonFixAttempted === 'true' && refs.emoticonUrlFixer) {
-                        // 检查新渲染的元素(toEl)的URL修复后是否与DOM中的URL一致
-                        const fixedVersionOfToSrc = refs.emoticonUrlFixer.fixEmoticonUrl(toEl.src);
-                        if (fromEl.src === fixedVersionOfToSrc) {
-                            // 如果一致，说明流式渲染试图用旧的、错误的URL覆盖已修复的URL。
-                            // 返回false，告诉morphdom完全不要动这个DOM节点。
-                            return false;
-                        }
-                    }
-
-                    // 对于尚未修复或非表情包图片，保留状态
+                    // 保留加载状态标记
                     if (fromEl.dataset.emoticonHandlerAttached) {
                         toEl.dataset.emoticonHandlerAttached = 'true';
                     }
                     if (fromEl.dataset.emoticonFixAttempted) {
                         toEl.dataset.emoticonFixAttempted = 'true';
                     }
+                    
+                    // 保留事件处理器
                     if (fromEl.onerror && !toEl.onerror) {
                         toEl.onerror = fromEl.onerror;
                     }
                     if (fromEl.onload && !toEl.onload) {
                         toEl.onload = fromEl.onload;
                     }
+                    
+                    // 保留可见性状态
                     if (fromEl.style.visibility) {
                         toEl.style.visibility = fromEl.style.visibility;
+                    }
+                    
+                    // 🟢 如果图片已成功加载，不要更新它
+                    if (fromEl.complete && fromEl.naturalWidth > 0) {
+                        return false;
                     }
                 }
                 

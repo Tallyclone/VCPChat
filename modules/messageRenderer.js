@@ -556,8 +556,10 @@ function preprocessFullContent(text, settings = {}, messageRole = 'assistant', d
     if (agentConfig?.stripRegexes && Array.isArray(agentConfig.stripRegexes)) {
         text = applyFrontendRegexRules(text, agentConfig.stripRegexes, messageRole, depth);
     }
-    // --- 正则规则应用结束 ---
-
+    
+    // 🟢 新增：第一层修复 - Markdown 图片语法修复
+    text = fixEmoticonUrlsInMarkdown(text);
+    
     // 一次性处理 Mermaid（合并两种情况）
     text = text.replace(MERMAID_CODE_REGEX, (match, lang, code) => {
         const tempEl = document.createElement('textarea');
@@ -605,6 +607,40 @@ function preprocessFullContent(text, settings = {}, messageRole = 'assistant', d
         }
     }
 
+    return text;
+}
+
+/**
+ * 🟢 在 Markdown 文本中修复表情包URL
+ * 处理 ![alt](url) 和 <img src="url"> 两种形式
+ */
+function fixEmoticonUrlsInMarkdown(text) {
+    if (!text || typeof text !== 'string') return text;
+    
+    // 1. 修复 Markdown 图片语法: ![alt](url)
+    text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, url) => {
+        if (emoticonUrlFixer && emoticonUrlFixer.fixEmoticonUrl) {
+            const fixedUrl = emoticonUrlFixer.fixEmoticonUrl(url);
+            if (fixedUrl !== url) {
+                console.log(`[PreprocessFix] Markdown图片: ${url} → ${fixedUrl}`);
+            }
+            return `![${alt}](${fixedUrl})`;
+        }
+        return match;
+    });
+    
+    // 2. 修复 HTML img 标签: <img src="url" ...>
+    text = text.replace(/<img([^>]*?)src=["']([^"']+)["']([^>]*?)>/gi, (match, before, url, after) => {
+        if (emoticonUrlFixer && emoticonUrlFixer.fixEmoticonUrl) {
+            const fixedUrl = emoticonUrlFixer.fixEmoticonUrl(url);
+            if (fixedUrl !== url) {
+                console.log(`[PreprocessFix] HTML图片: ${url} → ${fixedUrl}`);
+            }
+            return `<img${before}src="${fixedUrl}"${after}>`;
+        }
+        return match;
+    });
+    
     return text;
 }
 
@@ -1023,22 +1059,9 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
         // 修复：清理 Markdown 解析器可能生成的损坏的 SVG viewBox 属性
         // 错误 "Unexpected end of attribute" 表明 viewBox 的值不完整, 例如 "0 "
         rawHtml = rawHtml.replace(/viewBox="0 "/g, 'viewBox="0 0 24 24"');
-        // Create a temporary div to apply emoticon fixes before setting innerHTML
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = rawHtml;
-        const images = tempDiv.querySelectorAll('img');
-        images.forEach(img => {
-            const originalSrc = img.getAttribute('src');
-            if (originalSrc) {
-                const fixedSrc = emoticonUrlFixer.fixEmoticonUrl(originalSrc);
-                if (originalSrc !== fixedSrc) {
-                    img.src = fixedSrc;
-                }
-            }
-        });
         
             // Synchronously set the base HTML content
-            const finalHtml = tempDiv.innerHTML;
+            const finalHtml = rawHtml;
             contentDiv.innerHTML = finalHtml;
 
             // Define the post-processing logic as a function.
@@ -1283,21 +1306,7 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId) {
     const processedFinalText = preprocessFullContent(fullContent, globalSettings, 'assistant');
     let rawHtml = markedInstance.parse(processedFinalText);
 
-    // Create a temporary div to apply emoticon fixes before setting innerHTML
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = rawHtml;
-    const images = tempDiv.querySelectorAll('img');
-    images.forEach(img => {
-        const originalSrc = img.getAttribute('src');
-        if (originalSrc) {
-            const fixedSrc = emoticonUrlFixer.fixEmoticonUrl(originalSrc);
-            if (originalSrc !== fixedSrc) {
-                img.src = fixedSrc;
-            }
-        }
-    });
-
-    setContentAndProcessImages(contentDiv, tempDiv.innerHTML, messageId);
+    setContentAndProcessImages(contentDiv, rawHtml, messageId);
 
     // Apply post-processing in two steps
     // Step 1: Synchronous processing
@@ -1340,23 +1349,10 @@ function updateMessageContent(messageId, newContent) {
     const processedContent = preprocessFullContent(textToRender, globalSettings, messageInHistory?.role || 'assistant', depthForUpdate);
     let rawHtml = markedInstance.parse(processedContent);
 
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = rawHtml;
-    const images = tempDiv.querySelectorAll('img');
-    images.forEach(img => {
-        const originalSrc = img.getAttribute('src');
-        if (originalSrc) {
-            const fixedSrc = emoticonUrlFixer.fixEmoticonUrl(originalSrc);
-            if (originalSrc !== fixedSrc) {
-                img.src = fixedSrc;
-            }
-        }
-    });
-
     // --- Post-Render Processing (aligned with renderMessage logic) ---
 
     // 1. Set content and process images
-    setContentAndProcessImages(contentDiv, tempDiv.innerHTML, messageId);
+    setContentAndProcessImages(contentDiv, rawHtml, messageId);
 
     // 2. Re-render attachments if they exist
     if (messageInHistory) {

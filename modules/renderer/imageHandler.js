@@ -28,24 +28,27 @@ export function initializeImageHandler(refs) {
  * @param {string} messageId - 消息ID。
  */
 export function setContentAndProcessImages(contentDiv, rawHtml, messageId) {
-
-    // 确保该消息有一个图片状态Map
     if (!messageImageStates.has(messageId)) {
         messageImageStates.set(messageId, new Map());
     }
     const imageStates = messageImageStates.get(messageId);
     let imageCounter = 0;
-    const loadedImagesToReplace = []; // 用于存储已加载图片的信息，以便在innerHTML后替换
+    const loadedImagesToReplace = [];
 
-    // 1. 替换HTML中的<img>标签，并启动新图片的加载过程
     const processedHtml = rawHtml.replace(/<img[^>]+>/g, (imgTagString) => {
         const srcMatch = imgTagString.match(/src="([^"]+)"/);
-        if (!srcMatch) return ''; // 忽略没有src的标签
+        if (!srcMatch) return '';
         
-        // --- Emoticon URL Fixer Integration ---
-        const originalSrc = srcMatch[1];
-        const src = fixEmoticonUrl(originalSrc);
-        // --- End Integration ---
+        let src = srcMatch[1];
+        
+        // 🟢 第三层兜底：如果前面都没修复成功，这里再修复一次
+        if (fixEmoticonUrl && src.includes('表情包')) {
+            const fixedSrc = fixEmoticonUrl(src);
+            if (fixedSrc !== src) {
+                console.warn(`[ImageHandler兜底] 前置修复遗漏，补救修复: ${src}`);
+                src = fixedSrc;
+            }
+        }
 
         const uniqueImageKey = `${src}-${imageCounter}`;
         const placeholderId = `img-placeholder-${messageId}-${imageCounter}`;
@@ -53,22 +56,24 @@ export function setContentAndProcessImages(contentDiv, rawHtml, messageId) {
 
         const state = imageStates.get(uniqueImageKey);
 
-        // 如果图片已经加载成功，记录下来以便稍后替换，并返回占位符
         if (state && state.status === 'loaded' && state.element) {
             loadedImagesToReplace.push({ placeholderId, element: state.element });
-            // 使用一个临时的div作为占位符
             return `<div id="${placeholderId}" class="image-placeholder-ready"></div>`;
         }
 
-        // 如果图片加载失败，返回错误占位符
         if (state && state.status === 'error') {
             return `<div class="image-placeholder" style="min-height: 50px; display: flex; align-items: center; justify-content: center;">图片加载失败</div>`;
         }
 
+        // 🟢 提取所有可能的属性
         const widthMatch = imgTagString.match(/width="([^"]+)"/);
+        const heightMatch = imgTagString.match(/height="([^"]+)"/);
+        const styleMatch = imgTagString.match(/style="([^"]+)"/);
+        const classMatch = imgTagString.match(/class="([^"]+)"/);
+        const altMatch = imgTagString.match(/alt="([^"]+)"/);
+        
         const displayWidth = widthMatch ? parseInt(widthMatch[1], 10) : 200;
 
-        // 如果是新图片，则启动加载
         if (!state) {
             imageStates.set(uniqueImageKey, { status: 'loading' });
 
@@ -82,8 +87,33 @@ export function setContentAndProcessImages(contentDiv, rawHtml, messageId) {
                 const finalImage = document.createElement('img');
                 finalImage.src = src;
                 finalImage.width = displayWidth;
-                finalImage.style.height = `${displayHeight}px`;
-                finalImage.style.cursor = 'pointer';
+                
+                // 🟢 保留原始 style 属性
+                if (styleMatch) {
+                    finalImage.setAttribute('style', styleMatch[1]);
+                }
+                
+                // 🟢 设置高度（如果原始没有指定 style）
+                if (!styleMatch || !styleMatch[1].includes('height')) {
+                    finalImage.style.height = `${displayHeight}px`;
+                }
+                
+                // 🟢 保留其他属性
+                if (heightMatch) {
+                    finalImage.height = parseInt(heightMatch[1], 10);
+                }
+                if (classMatch) {
+                    finalImage.className = classMatch[1];
+                }
+                if (altMatch) {
+                    finalImage.alt = altMatch[1];
+                }
+                
+                // 添加交互样式（不覆盖原有 cursor）
+                if (!styleMatch || !styleMatch[1].includes('cursor')) {
+                    finalImage.style.cursor = 'pointer';
+                }
+                
                 finalImage.title = `点击在新窗口预览: ${finalImage.alt || src}\n右键可复制图片`;
                 
                 finalImage.addEventListener('click', (e) => {
@@ -97,18 +127,17 @@ export function setContentAndProcessImages(contentDiv, rawHtml, messageId) {
                 });
 
                 finalImage.addEventListener('contextmenu', (e) => {
-                    e.preventDefault(); e.stopPropagation();
+                    e.preventDefault(); 
+                    e.stopPropagation();
                     imageHandlerRefs.electronAPI.showImageContextMenu(src);
                 });
 
-                // 更新状态
                 const currentState = imageStates.get(uniqueImageKey);
                 if (currentState) {
                     currentState.status = 'loaded';
                     currentState.element = finalImage;
                 }
 
-                // 替换DOM中的占位符
                 const placeholder = document.getElementById(placeholderId);
                 if (placeholder && document.body.contains(placeholder)) {
                     const messageContainer = placeholder.closest('.message-item');
@@ -134,14 +163,11 @@ export function setContentAndProcessImages(contentDiv, rawHtml, messageId) {
             };
         }
 
-        // 返回加载中占位符
         return `<div id="${placeholderId}" class="image-placeholder" style="width: ${displayWidth}px; min-height: 100px;"></div>`;
     });
 
-    // 2. 直接更新DOM内容
     contentDiv.innerHTML = processedHtml;
 
-    // 3. 替换那些已经加载好的图片的占位符
     if (loadedImagesToReplace.length > 0) {
         for (const item of loadedImagesToReplace) {
             const placeholder = document.getElementById(item.placeholderId);
@@ -149,10 +175,8 @@ export function setContentAndProcessImages(contentDiv, rawHtml, messageId) {
                 placeholder.replaceWith(item.element);
             }
         }
-    
     }
 }
-
 // Function to clear image state for a specific message
 export function clearImageState(messageId) {
     messageImageStates.delete(messageId);
