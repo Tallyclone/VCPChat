@@ -132,7 +132,7 @@ struct Config {
     rerank_model: String,
     rerank_max_tokens_per_batch: usize,
     rerank_top_n: usize,
-    blocked_keywords: HashSet<String>,
+    query_preset: String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -149,10 +149,64 @@ fn default_user_name() -> String {
     "主人".to_string()
 }
 
+
 #[derive(Deserialize, Debug, Clone)]
 struct HistoryEntry {
     role: String,
     content: String,
+}
+
+// --- AI-Powered Query Parser ---
+
+fn parse_ai_query_to_tantivy(query: &str) -> String {
+    let parts = query.split(|c| c == ',' || c == '，')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty());
+
+    let mut tantivy_parts = Vec::new();
+
+    for part in parts {
+        // Check for exact phrase: "exact phrase"
+        if part.starts_with('"') && part.ends_with('"') {
+            tantivy_parts.push(part.to_string());
+            continue;
+        }
+        // Check for weighted term: (term:weight)
+        if part.starts_with('(') && part.ends_with(')') {
+            if let Some(inner) = part.strip_prefix('(').and_then(|s| s.strip_suffix(')')) {
+                let mut split = inner.rsplitn(2, ':');
+                if let (Some(weight_str), Some(term)) = (split.next(), split.next()) {
+                     tantivy_parts.push(format!("{}^{}", term.trim(), weight_str.trim()));
+                     continue;
+                }
+            }
+        }
+        // Check for negated term: [term:weight]
+        if part.starts_with('[') && part.ends_with(']') {
+             if let Some(inner) = part.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
+                let term = inner.split(':').next().unwrap_or("").trim();
+                if !term.is_empty() {
+                    tantivy_parts.push(format!("-{}", term));
+                }
+                continue;
+            }
+        }
+        // Check for OR group: {term1|term2}
+        if part.starts_with('{') && part.ends_with('}') {
+            if let Some(inner) = part.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
+                let terms: Vec<&str> = inner.split('|').map(|s| s.trim()).collect();
+                if !terms.is_empty() {
+                    tantivy_parts.push(format!("({})", terms.join(" OR ")));
+                }
+                continue;
+            }
+        }
+        
+        // Normal term
+        tantivy_parts.push(part.to_string());
+    }
+
+    tantivy_parts.join(" ")
 }
 
 #[derive(Debug)]
@@ -206,14 +260,18 @@ async fn run() -> Result<()> {
     let args: ToolArgs = serde_json::from_str(&input_json)
         .with_context(|| format!("Invalid input format, failed to parse JSON. Input: {}", input_json))?;
 
-    let keywords = parse_keywords(&args.keyword);
-    let filtered_keywords: Vec<String> = keywords
-        .into_iter()
-        .filter(|kw| !config.blocked_keywords.contains(kw))
-        .collect();
+    // Combine user keywords with global blocked keywords (now a query preset)
+    let final_query = if config.query_preset.is_empty() {
+        args.keyword.clone()
+    } else if args.keyword.is_empty() {
+        config.query_preset.clone()
+    } else {
+        format!("{},{}", args.keyword, config.query_preset)
+    };
+    let final_query = final_query.trim();
 
-    if filtered_keywords.is_empty() {
-        return Err(anyhow!("Keywords are all blocked or empty."));
+    if final_query.is_empty() {
+        return Err(anyhow!("Query is empty after combining with presets."));
     }
 
     let agent_info = find_agent_info(&config.vchat_data_url, &args.maid)
@@ -224,7 +282,7 @@ async fn run() -> Result<()> {
     let mut memories = search_histories(
         &config.vchat_data_url,
         &agent_info.uuid,
-        &filtered_keywords,
+        final_query,
         args.window_size,
         &user_name,
         &agent_info.name,
@@ -233,7 +291,7 @@ async fn run() -> Result<()> {
 
     if config.rerank_search && !memories.is_empty() {
         eprintln!("[DEBUG] Starting rerank for {} memories...", memories.len());
-        memories = match rerank_memories(memories.clone(), &filtered_keywords.join(" "), &config).await {
+        memories = match rerank_memories(memories.clone(), final_query, &config).await {
             Ok(m) => {
                 eprintln!("[DEBUG] Rerank completed. Got {} memories back.", m.len());
                 m
@@ -256,7 +314,7 @@ async fn run() -> Result<()> {
     }
 
     if output.trim().is_empty() {
-        output = format!("[DeepMemo] 未找到与关键词“{}”相关的回忆。", filtered_keywords.join(", "));
+        output = format!("[DeepMemo] 未找到与关键词“{}”相关的回忆。", args.keyword);
     }
 
     let success_response = SuccessResponse {
@@ -273,7 +331,7 @@ async fn run() -> Result<()> {
 
 async fn process_single_history_file(
     file_path: PathBuf,
-    keywords: Arc<Vec<String>>,
+    query: Arc<String>,
     window_size: i32,
 ) -> Result<Vec<Vec<HistoryEntry>>> {
     let content = fs::read_to_string(&file_path).await?;
@@ -316,15 +374,17 @@ async fn process_single_history_file(
     }
     index_writer.commit()?;
 
+    let tantivy_query_str = parse_ai_query_to_tantivy(&query);
+    eprintln!("[QUERY] Executing Tantivy Query: {}", tantivy_query_str);
+
     let reader = index.reader()?;
     let searcher = reader.searcher();
     let query_parser = QueryParser::for_index(&index, vec![content_field]);
-
-    let combined_query_str = keywords.join(" ");
+    
     let mut file_memories = Vec::new();
     let mut used_indices = HashSet::new();
 
-    if let Ok(query) = query_parser.parse_query(&combined_query_str) {
+    if let Ok(query) = query_parser.parse_query(&tantivy_query_str) {
         let top_docs = searcher.search(&query, &TopDocs::with_limit(100))?;
         for (_score, doc_address) in top_docs {
             let retrieved_doc = searcher.doc(doc_address)?;
@@ -344,13 +404,14 @@ async fn process_single_history_file(
             }
         }
     }
+    
     Ok(file_memories)
 }
 
 async fn search_histories(
     vchat_path: &Path,
     agent_uuid: &str,
-    keywords: &[String],
+    keywords: &str,
     window_size: i32,
     user_name: &str,
     agent_name: &str,
@@ -373,13 +434,13 @@ async fn search_histories(
     history_files.sort_by_key(|k| k.1);
     history_files.reverse();
 
-    let keywords_arc = Arc::new(keywords.to_vec());
+    let query_arc = Arc::new(keywords.to_string());
     let mut tasks = Vec::new();
 
     for (file_path, _) in history_files.into_iter().skip(1) {
-        let keywords_clone = Arc::clone(&keywords_arc);
+        let query_clone = Arc::clone(&query_arc);
         tasks.push(tokio::spawn(async move {
-            process_single_history_file(file_path, keywords_clone, window_size).await
+            process_single_history_file(file_path, query_clone, window_size).await
         }));
     }
 
@@ -659,13 +720,6 @@ fn extract_text(html: &str) -> String {
     whitespace_re.replace_all(result.trim(), " ").to_string()
 }
 
-fn parse_keywords(raw: &str) -> Vec<String> {
-    let re = Regex::new(r#""[^"]+"|'[^']+'|[^,，\s]+"#).unwrap();
-    re.find_iter(raw)
-        .map(|m| m.as_str().trim_matches(|c| c == '"' || c == '\'').to_string())
-        .filter(|s| !s.is_empty())
-        .collect()
-}
 
 fn read_stdin() -> Result<String> {
     let mut buffer = String::new();
@@ -712,10 +766,6 @@ fn load_config() -> Result<Config> {
         rerank_model: std::env::var("RerankModel")?,
         rerank_max_tokens_per_batch: std::env::var("RerankMaxTokensPerBatch")?.parse()?,
         rerank_top_n: std::env::var("RerankTopN")?.parse()?,
-        blocked_keywords: std::env::var("BlockedKeywords")?
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect(),
+        query_preset: std::env::var("QueryPreset").unwrap_or_default(),
     })
 }
