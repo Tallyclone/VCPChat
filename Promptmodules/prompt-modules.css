@@ -208,6 +208,12 @@
     padding: 8px 12px;
     flex-shrink: 0;
     display: inline-flex !important;
+    height: 20px; /* 固定高度 */
+    min-height: 20px;
+    max-height: 20px;
+    align-items: center;
+    justify-content: center;
+    box-sizing: content-box;
 }
 
 /* 换行标记：强制换行 */
@@ -238,6 +244,41 @@
     transform: scale(1.05);
 }
 
+/* 拖拽插入指示器 */
+.prompt-block.drop-target-left::before,
+.prompt-block.drop-target-right::after {
+    content: '';
+    position: absolute;
+    top: -4px;
+    bottom: -4px;
+    width: 4px;
+    background-color: var(--user-bubble-bg);
+    box-shadow: 0 0 8px rgba(61, 90, 128, 0.6);
+    animation: drop-indicator-pulse 0.8s ease-in-out infinite;
+    z-index: 10;
+}
+
+.prompt-block.drop-target-left::before {
+    left: -6px;
+    border-radius: 4px 0 0 4px;
+}
+
+.prompt-block.drop-target-right::after {
+    right: -6px;
+    border-radius: 0 4px 4px 0;
+}
+
+@keyframes drop-indicator-pulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scaleY(1);
+    }
+    50% {
+        opacity: 0.6;
+        transform: scaleY(0.95);
+    }
+}
+
 .block-content {
     min-width: 20px;
     max-width: 400px;
@@ -247,6 +288,19 @@
     word-break: break-word;
     font-size: 0.9em;
     line-height: 1.4;
+    cursor: text;
+    transition: background-color 0.2s ease;
+}
+
+.block-content[contenteditable="false"] {
+    cursor: pointer;
+}
+
+.block-content[contenteditable="true"] {
+    background-color: var(--input-bg);
+    padding: 2px 4px;
+    border-radius: 3px;
+    cursor: text;
 }
 
 .block-content:empty:before {
@@ -262,28 +316,123 @@
     font-weight: bold;
 }
 
-/* 轮换文本 */
-.variants-container {
-    margin-top: 8px;
-    padding-top: 8px;
-    border-top: 1px solid var(--border-color);
+/* 轮换文本指示器（圆点样式） */
+.variant-indicator {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 8px;
+    height: 8px;
+    background-color: var(--user-bubble-bg);
+    border-radius: 50%;
+    opacity: 0.8;
+    cursor: help;
+    box-shadow: 0 0 0 2px rgba(61, 90, 128, 0.2);
+}
+
+.variant-indicator:hover {
+    opacity: 1;
+    transform: scale(1.2);
+    transition: all 0.2s ease;
+}
+
+/* 右键菜单分隔线 */
+.context-menu-separator {
+    height: 1px;
+    background-color: var(--border-color);
+    margin: 4px 0;
+}
+
+/* 轮换文本菜单项 */
+.context-menu-item.variant-item {
+    font-style: italic;
+    padding-left: 20px;
+}
+
+/* 编辑对话框中的内容条目列表 */
+.variants-edit-container {
+    margin-bottom: 16px;
+}
+
+.variants-edit-container > label {
+    display: block;
+    font-weight: 500;
+    color: var(--secondary-text);
+    font-size: 0.9em;
+    margin-bottom: 8px;
+}
+
+.variants-list {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 10px;
+    margin-bottom: 10px;
 }
 
-.variants-label {
-    font-size: 0.8em;
-    color: var(--secondary-text);
+.variant-item-edit {
+    position: relative;
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
 }
 
-.variants-select {
-    padding: 4px 8px;
-    border-radius: 4px;
+.variant-content-input {
+    flex: 1;
+    padding: 8px 10px;
+    border-radius: 6px;
     border: 1px solid var(--border-color);
     background-color: var(--input-bg);
     color: var(--primary-text);
-    font-size: 0.85em;
+    font-size: 0.9em;
+    font-family: inherit;
+    resize: vertical;
+    min-height: 60px;
+    line-height: 1.4;
+}
+
+.variant-content-input:focus {
+    outline: none;
+    border-color: var(--user-bubble-bg);
+    box-shadow: 0 0 0 2px rgba(61, 90, 128, 0.3);
+}
+
+.remove-variant-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1px solid var(--border-color);
+    background-color: var(--secondary-bg);
+    color: var(--danger-color);
+    font-size: 1.2em;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.remove-variant-btn:hover {
+    background-color: var(--danger-color);
+    color: white;
+    border-color: var(--danger-color);
+}
+
+.add-variant-btn {
+    padding: 8px 12px;
+    background-color: var(--button-bg);
+    border: 1px solid var(--button-bg);
+    color: var(--primary-text);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9em;
+    transition: all 0.2s ease;
+    width: fit-content;
+}
+
+.add-variant-btn:hover {
+    background-color: var(--button-hover-bg);
+    border-color: var(--button-hover-bg);
 }
 
 /* 右键菜单 */

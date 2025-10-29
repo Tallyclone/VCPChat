@@ -16,12 +16,6 @@ class OriginalPromptModule {
     render(container) {
         container.innerHTML = '';
 
-        // 创建标签
-        const label = document.createElement('label');
-        label.textContent = '系统提示词 (可使用 {{AgentName}} 占位符):';
-        label.className = 'prompt-label';
-        container.appendChild(label);
-
         // 创建文本域
         this.textarea = document.createElement('textarea');
         this.textarea.className = 'prompt-textarea original-prompt-textarea';

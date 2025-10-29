@@ -84,16 +84,21 @@ class ModularPromptModule {
         this.blocksContainer = document.createElement('div');
         this.blocksContainer.className = 'blocks-container';
         
-        // 为容器添加拖拽事件监听，支持从小仓拖入
+        // 为容器添加拖拽事件监听，支持从小仓拖入空容器
         this.blocksContainer.addEventListener('dragover', (e) => {
             e.preventDefault();
-            e.dataTransfer.dropEffect = 'copy';
+            // 根据拖拽源设置效果
+            if (this.draggedHiddenBlock) {
+                e.dataTransfer.dropEffect = 'copy';
+            } else if (this.draggedIndex !== null) {
+                e.dataTransfer.dropEffect = 'move';
+            }
         });
         
         this.blocksContainer.addEventListener('drop', (e) => {
             e.preventDefault();
-            // 如果是从小仓拖入到空容器，追加到末尾
-            if (this.draggedHiddenBlock) {
+            // 只处理从小仓拖入到空容器的情况（容器内没有积木块）
+            if (this.draggedHiddenBlock && this.blocks.length === 0) {
                 const { block } = this.draggedHiddenBlock;
                 const newBlock = {
                     ...block,
@@ -209,27 +214,66 @@ class ModularPromptModule {
                 blockEl.classList.add('disabled');
             }
 
+            // 如果有多个内容条目，显示当前选中的内容
+            const currentContent = this.getCurrentContent(block);
+            
             // 内容编辑区
             const contentEl = document.createElement('div');
             contentEl.className = 'block-content';
-            contentEl.contentEditable = !block.disabled;
-            contentEl.textContent = block.content || '';
-            contentEl.addEventListener('blur', () => {
-                block.content = contentEl.textContent;
-                this.save();
-            });
-            contentEl.addEventListener('keydown', (e) => {
-                if (e.shiftKey && e.key === 'Enter') {
-                    e.preventDefault();
-                    this.addBlock('newline', index + 1);
+            contentEl.contentEditable = false; // 默认不可编辑
+            contentEl.textContent = currentContent;
+            
+            // 双击进入编辑模式
+            contentEl.addEventListener('dblclick', () => {
+                if (!block.disabled) {
+                    contentEl.contentEditable = true;
+                    contentEl.focus();
+                    // 选中所有文本
+                    const range = document.createRange();
+                    range.selectNodeContents(contentEl);
+                    const selection = window.getSelection();
+                    selection.removeAllRanges();
+                    selection.addRange(range);
                 }
             });
+            
+            contentEl.addEventListener('blur', () => {
+                // 退出编辑模式
+                contentEl.contentEditable = false;
+                // 更新当前选中的内容条目
+                if (block.variants && block.variants.length > 0) {
+                    const selectedIndex = block.selectedVariant || 0;
+                    block.variants[selectedIndex] = contentEl.textContent;
+                } else {
+                    block.content = contentEl.textContent;
+                }
+                this.save();
+            });
+            
+            contentEl.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    if (e.shiftKey) {
+                        // Shift + Enter: 积木块内换行（默认行为，不阻止）
+                        // 不需要做任何处理，让浏览器处理换行
+                    } else {
+                        // Enter: 结束编辑
+                        e.preventDefault();
+                        contentEl.blur();
+                    }
+                } else if (e.key === 'Escape') {
+                    // ESC: 退出编辑
+                    contentEl.blur();
+                }
+            });
+            
             blockEl.appendChild(contentEl);
 
-            // 子积木块（轮换文本）
-            if (block.variants && block.variants.length > 0) {
-                const variantsEl = this.createVariantsElement(block);
-                blockEl.appendChild(variantsEl);
+            // 如果有多个内容条目，显示指示器（圆点）
+            if (block.variants && block.variants.length > 1) {
+                const indicator = document.createElement('div');
+                indicator.className = 'variant-indicator';
+                indicator.title = `此积木块有 ${block.variants.length} 个内容条目，当前为第 ${(block.selectedVariant || 0) + 1} 个`;
+                blockEl.appendChild(indicator);
             }
         }
 
@@ -251,37 +295,14 @@ class ModularPromptModule {
     }
 
     /**
-     * 创建轮换文本元素
+     * 获取积木块当前显示的内容
      */
-    createVariantsElement(block) {
-        const container = document.createElement('div');
-        container.className = 'variants-container';
-
-        const label = document.createElement('div');
-        label.className = 'variants-label';
-        label.textContent = '轮换选项:';
-        container.appendChild(label);
-
-        const select = document.createElement('select');
-        select.className = 'variants-select';
-        
-        block.variants.forEach((variant, index) => {
-            const option = document.createElement('option');
-            option.value = index;
-            option.textContent = variant.substring(0, 30) + (variant.length > 30 ? '...' : '');
-            if (index === (block.selectedVariant || 0)) {
-                option.selected = true;
-            }
-            select.appendChild(option);
-        });
-
-        select.onchange = () => {
-            block.selectedVariant = parseInt(select.value);
-            this.save();
-        };
-
-        container.appendChild(select);
-        return container;
+    getCurrentContent(block) {
+        if (block.variants && block.variants.length > 0) {
+            const selectedIndex = block.selectedVariant || 0;
+            return block.variants[selectedIndex] || '';
+        }
+        return block.content || '';
     }
 
     /**
@@ -299,34 +320,66 @@ class ModularPromptModule {
         menu.style.left = e.pageX + 'px';
         menu.style.top = e.pageY + 'px';
 
-        const menuItems = [
+        const menuItems = [];
+
+        // 如果有多个内容条目，置顶显示为可选项
+        if (block.variants && block.variants.length > 0 && block.type !== 'newline') {
+            block.variants.forEach((variant, variantIndex) => {
+                const preview = variant.substring(0, 30) + (variant.length > 30 ? '...' : '');
+                menuItems.push({
+                    label: `${variantIndex === (block.selectedVariant || 0) ? '✓ ' : ''}${preview}`,
+                    action: () => {
+                        block.selectedVariant = variantIndex;
+                        this.save();
+                        this.renderBlocks();
+                    },
+                    isVariant: true
+                });
+            });
+
+            // 添加分隔线
+            menuItems.push({ separator: true });
+        }
+
+        // 常规菜单项
+        menuItems.push(
             {
                 label: block.disabled ? '启用' : '禁用',
                 action: () => this.toggleBlockDisabled(index)
+            },
+            {
+                label: '编辑内容',
+                action: () => this.editBlock(block, index),
+                hidden: block.type === 'newline'
             },
             {
                 label: '隐藏到小仓',
                 action: () => this.hideBlock(index)
             },
             {
-                label: '添加轮换文本',
-                action: () => this.addVariant(index),
-                hidden: block.type === 'newline'
-            },
-            {
                 label: '删除',
                 action: () => this.deleteBlock(index),
                 danger: true
             }
-        ];
+        );
 
         menuItems.forEach(item => {
             if (item.hidden) return;
+            
+            if (item.separator) {
+                const separator = document.createElement('div');
+                separator.className = 'context-menu-separator';
+                menu.appendChild(separator);
+                return;
+            }
             
             const menuItem = document.createElement('div');
             menuItem.className = 'context-menu-item';
             if (item.danger) {
                 menuItem.classList.add('danger');
+            }
+            if (item.isVariant) {
+                menuItem.classList.add('variant-item');
             }
             menuItem.textContent = item.label;
             menuItem.onclick = () => {
@@ -348,6 +401,122 @@ class ModularPromptModule {
         setTimeout(() => {
             document.addEventListener('click', closeMenu);
         }, 0);
+    }
+
+    /**
+     * 编辑积木块内容（包括多内容条目）
+     */
+    editBlock(block, index) {
+        // 创建编辑对话框
+        const dialog = document.createElement('div');
+        dialog.className = 'edit-hidden-block-dialog';
+        
+        // 初始化 variants 数组
+        if (!block.variants || block.variants.length === 0) {
+            block.variants = [block.content || ''];
+            block.selectedVariant = 0;
+        }
+
+        let dialogHTML = `
+            <div class="dialog-overlay"></div>
+            <div class="dialog-content">
+                <h3>编辑积木块</h3>
+                <div class="dialog-field">
+                    <label>名称（可选）:</label>
+                    <input type="text" class="block-name-input" value="${block.name || ''}" placeholder="为积木块命名...">
+                </div>
+                <div class="variants-edit-container">
+                    <label>内容条目:</label>
+                    <div class="variants-list">`;
+
+        block.variants.forEach((variant, idx) => {
+            dialogHTML += `
+                        <div class="variant-item-edit" data-index="${idx}">
+                            <textarea class="variant-content-input" rows="3" placeholder="内容条目 ${idx + 1}">${variant}</textarea>
+                            ${block.variants.length > 1 ? `<button class="remove-variant-btn" data-index="${idx}">×</button>` : ''}
+                        </div>`;
+        });
+
+        dialogHTML += `
+                    </div>
+                    <button class="add-variant-btn">+ 添加内容条目</button>
+                </div>
+                <div class="dialog-buttons">
+                    <button class="dialog-btn dialog-btn-cancel">取消</button>
+                    <button class="dialog-btn dialog-btn-save">保存</button>
+                </div>
+            </div>
+        `;
+
+        dialog.innerHTML = dialogHTML;
+        document.body.appendChild(dialog);
+
+        const nameInput = dialog.querySelector('.block-name-input');
+        const variantsList = dialog.querySelector('.variants-list');
+        const addVariantBtn = dialog.querySelector('.add-variant-btn');
+        const saveBtn = dialog.querySelector('.dialog-btn-save');
+        const cancelBtn = dialog.querySelector('.dialog-btn-cancel');
+
+        // 添加内容条目
+        addVariantBtn.onclick = () => {
+            const newIndex = variantsList.children.length;
+            const variantItem = document.createElement('div');
+            variantItem.className = 'variant-item-edit';
+            variantItem.dataset.index = newIndex;
+            variantItem.innerHTML = `
+                <textarea class="variant-content-input" rows="3" placeholder="内容条目 ${newIndex + 1}"></textarea>
+                <button class="remove-variant-btn" data-index="${newIndex}">×</button>
+            `;
+            variantsList.appendChild(variantItem);
+            
+            // 更新删除按钮显示
+            updateRemoveButtons();
+        };
+
+        // 删除内容条目
+        const updateRemoveButtons = () => {
+            const items = variantsList.querySelectorAll('.variant-item-edit');
+            items.forEach(item => {
+                const removeBtn = item.querySelector('.remove-variant-btn');
+                if (removeBtn) {
+                    removeBtn.style.display = items.length > 1 ? 'block' : 'none';
+                }
+            });
+        };
+
+        variantsList.addEventListener('click', (e) => {
+            if (e.target.classList.contains('remove-variant-btn')) {
+                const item = e.target.closest('.variant-item-edit');
+                item.remove();
+                updateRemoveButtons();
+            }
+        });
+
+        const closeDialog = () => {
+            dialog.remove();
+        };
+
+        saveBtn.onclick = () => {
+            block.name = nameInput.value.trim();
+            
+            // 收集所有内容条目
+            const variantInputs = variantsList.querySelectorAll('.variant-content-input');
+            block.variants = Array.from(variantInputs).map(input => input.value);
+            
+            // 确保 selectedVariant 在有效范围内
+            if (!block.selectedVariant || block.selectedVariant >= block.variants.length) {
+                block.selectedVariant = 0;
+            }
+            
+            this.save();
+            this.renderBlocks();
+            closeDialog();
+        };
+
+        cancelBtn.onclick = closeDialog;
+        dialog.querySelector('.dialog-overlay').onclick = closeDialog;
+
+        nameInput.focus();
     }
 
     /**
@@ -403,21 +572,6 @@ class ModularPromptModule {
         this.renderWarehouse();
     }
 
-    /**
-     * 添加轮换文本
-     */
-    addVariant(index) {
-        const block = this.blocks[index];
-        if (!block.variants) {
-            block.variants = [];
-        }
-        const newVariant = prompt('请输入轮换文本:');
-        if (newVariant !== null && newVariant.trim()) {
-            block.variants.push(newVariant.trim());
-            this.save();
-            this.renderBlocks();
-        }
-    }
 
     /**
      * 渲染小仓
@@ -607,7 +761,14 @@ class ModularPromptModule {
         // 创建编辑对话框
         const dialog = document.createElement('div');
         dialog.className = 'edit-hidden-block-dialog';
-        dialog.innerHTML = `
+        
+        // 初始化 variants 数组
+        if (!block.variants || block.variants.length === 0) {
+            block.variants = [block.content || ''];
+            block.selectedVariant = 0;
+        }
+
+        let dialogHTML = `
             <div class="dialog-overlay"></div>
             <div class="dialog-content">
                 <h3>编辑积木块</h3>
@@ -615,9 +776,21 @@ class ModularPromptModule {
                     <label>名称（可选）:</label>
                     <input type="text" class="block-name-input" value="${block.name || ''}" placeholder="为积木块命名...">
                 </div>
-                <div class="dialog-field">
-                    <label>内容:</label>
-                    <textarea class="block-content-input" rows="8">${block.content || ''}</textarea>
+                <div class="variants-edit-container">
+                    <label>内容条目:</label>
+                    <div class="variants-list">`;
+
+        block.variants.forEach((variant, idx) => {
+            dialogHTML += `
+                        <div class="variant-item-edit" data-index="${idx}">
+                            <textarea class="variant-content-input" rows="3" placeholder="内容条目 ${idx + 1}">${variant}</textarea>
+                            ${block.variants.length > 1 ? `<button class="remove-variant-btn" data-index="${idx}">×</button>` : ''}
+                        </div>`;
+        });
+
+        dialogHTML += `
+                    </div>
+                    <button class="add-variant-btn">+ 添加内容条目</button>
                 </div>
                 <div class="dialog-buttons">
                     <button class="dialog-btn dialog-btn-cancel">取消</button>
@@ -625,31 +798,79 @@ class ModularPromptModule {
                 </div>
             </div>
         `;
-        
+
+        dialog.innerHTML = dialogHTML;
         document.body.appendChild(dialog);
-        
+
         const nameInput = dialog.querySelector('.block-name-input');
-        const contentInput = dialog.querySelector('.block-content-input');
+        const variantsList = dialog.querySelector('.variants-list');
+        const addVariantBtn = dialog.querySelector('.add-variant-btn');
         const saveBtn = dialog.querySelector('.dialog-btn-save');
         const cancelBtn = dialog.querySelector('.dialog-btn-cancel');
-        
+
+        // 添加内容条目
+        addVariantBtn.onclick = () => {
+            const newIndex = variantsList.children.length;
+            const variantItem = document.createElement('div');
+            variantItem.className = 'variant-item-edit';
+            variantItem.dataset.index = newIndex;
+            variantItem.innerHTML = `
+                <textarea class="variant-content-input" rows="3" placeholder="内容条目 ${newIndex + 1}"></textarea>
+                <button class="remove-variant-btn" data-index="${newIndex}">×</button>
+            `;
+            variantsList.appendChild(variantItem);
+            
+            // 更新删除按钮显示
+            updateRemoveButtons();
+        };
+
+        // 删除内容条目
+        const updateRemoveButtons = () => {
+            const items = variantsList.querySelectorAll('.variant-item-edit');
+            items.forEach(item => {
+                const removeBtn = item.querySelector('.remove-variant-btn');
+                if (removeBtn) {
+                    removeBtn.style.display = items.length > 1 ? 'block' : 'none';
+                }
+            });
+        };
+
+        variantsList.addEventListener('click', (e) => {
+            if (e.target.classList.contains('remove-variant-btn')) {
+                const item = e.target.closest('.variant-item-edit');
+                item.remove();
+                updateRemoveButtons();
+            }
+        });
+
         const closeDialog = () => {
             dialog.remove();
         };
-        
+
         saveBtn.onclick = () => {
             block.name = nameInput.value.trim();
-            block.content = contentInput.value;
+            
+            // 收集所有内容条目
+            const variantInputs = variantsList.querySelectorAll('.variant-content-input');
+            block.variants = Array.from(variantInputs).map(input => input.value);
+            
+            // 确保 selectedVariant 在有效范围内
+            if (!block.selectedVariant || block.selectedVariant >= block.variants.length) {
+                block.selectedVariant = 0;
+            }
+            
+            // 更新 content 字段以保持兼容性
+            block.content = block.variants[block.selectedVariant || 0];
+            
             this.save();
             this.renderWarehouse();
             closeDialog();
         };
-        
+
         cancelBtn.onclick = closeDialog;
         dialog.querySelector('.dialog-overlay').onclick = closeDialog;
-        
-        // 聚焦到内容输入框
-        contentInput.focus();
+
+        nameInput.focus();
     }
 
     /**
@@ -701,8 +922,20 @@ class ModularPromptModule {
             return;
         }
         
-        // 添加视觉提示
-        targetElement.classList.add('drop-target');
+        // 计算鼠标位置，判断是在左侧还是右侧
+        const rect = targetElement.getBoundingClientRect();
+        const midPoint = rect.left + rect.width / 2;
+        const isLeftSide = e.clientX < midPoint;
+        
+        // 移除所有指示器
+        this.removeDropIndicator();
+        
+        // 根据位置添加对应的指示器
+        if (isLeftSide) {
+            targetElement.classList.add('drop-target-left');
+        } else {
+            targetElement.classList.add('drop-target-right');
+        }
     }
 
     /**
@@ -719,8 +952,12 @@ class ModularPromptModule {
      * 移除所有drop指示器
      */
     removeDropIndicator() {
-        const targets = this.blocksContainer.querySelectorAll('.drop-target');
-        targets.forEach(el => el.classList.remove('drop-target'));
+        const targets = this.blocksContainer.querySelectorAll('.drop-target, .drop-target-left, .drop-target-right');
+        targets.forEach(el => {
+            el.classList.remove('drop-target');
+            el.classList.remove('drop-target-left');
+            el.classList.remove('drop-target-right');
+        });
     }
 
     /**
