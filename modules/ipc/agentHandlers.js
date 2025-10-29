@@ -270,6 +270,36 @@ function initialize(context) {
         }
     });
 
+    // 新增：更新Agent配置（部分更新）
+    ipcMain.handle('update-agent-config', async (event, agentId, updates) => {
+        try {
+            if (agentConfigManager) {
+                const result = await agentConfigManager.updateAgentConfig(agentId, existingConfig => ({
+                    ...existingConfig,
+                    ...updates
+                }));
+                return { success: true, message: `Agent ${agentId} 配置已更新。` };
+            } else {
+                // 回退方式
+                const agentDir = path.join(AGENT_DIR, agentId);
+                const configPath = path.join(agentDir, 'config.json');
+                
+                let existingConfig = {};
+                if (await fs.pathExists(configPath)) {
+                    existingConfig = await fs.readJson(configPath);
+                }
+                
+                const newConfig = { ...existingConfig, ...updates };
+                await fs.writeJson(configPath, newConfig, { spaces: 2 });
+                
+                return { success: true, message: `Agent ${agentId} 配置已更新。` };
+            }
+        } catch (error) {
+            console.error(`更新Agent ${agentId} 配置失败:`, error);
+            return { error: error.message };
+        }
+    });
+
     ipcMain.handle('save-avatar', async (event, agentId, avatarData) => {
         const listenerWasActive = context.getSelectionListenerStatus();
         if (listenerWasActive) context.stopSelectionListener();

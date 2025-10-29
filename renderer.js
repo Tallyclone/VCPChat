@@ -815,7 +815,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
                 agentNameInput: document.getElementById('agentNameInput'),
                 agentAvatarInput: document.getElementById('agentAvatarInput'),
                 agentAvatarPreview: document.getElementById('agentAvatarPreview'),
-                agentSystemPromptTextarea: document.getElementById('agentSystemPrompt'),
+                // agentSystemPromptTextarea removed - now using PromptManager
                 agentModelInput: document.getElementById('agentModel'),
                 agentTemperatureInput: document.getElementById('agentTemperature'),
                 agentContextTokenLimitInput: document.getElementById('agentContextTokenLimit'),

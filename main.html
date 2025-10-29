@@ -14,6 +14,7 @@
     <title>VCPChat</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="Flowlockmodules/flowlock.css">
+    <link rel="stylesheet" href="Promptmodules/prompt-modules.css">
     <link rel="stylesheet" href="vendor/katex.min.css" crossorigin="anonymous">
     <script defer src="vendor/katex.min.js" crossorigin="anonymous"></script>
     <script defer src="vendor/auto-render.min.js" crossorigin="anonymous"></script>
@@ -113,8 +114,10 @@
                             <img id="agentAvatarPreview" src="#" alt="头像预览" style="max-width: 80px; max-height: 80px; display: none; margin-top: 5px;">
                         </div>
                         <div>
-                            <label for="agentSystemPrompt">系统提示词 (可使用 `{{AgentName}}` 占位符):</label>
-                            <textarea id="agentSystemPrompt" name="systemPrompt" rows="6"></textarea>
+                            <label for="systemPromptContainer">系统提示词 (可使用 {{AgentName}} 占位符):</label>
+                            <div id="systemPromptContainer" class="system-prompt-container">
+                                <!-- Promptmodules will be initialized here -->
+                            </div>
                         </div>
                         <div>
                             <label for="agentModel">模型名称:</label>
@@ -588,6 +591,11 @@
     <script src="modules/settingsManager.js"></script>
     <script src="modules/filterManager.js"></script> <!-- 新增：过滤规则管理器 -->
     <script src="modules/ui-helpers.js"></script>
+    <!-- Promptmodules -->
+    <script src="Promptmodules/original-prompt-module.js"></script>
+    <script src="Promptmodules/modular-prompt-module.js"></script>
+    <script src="Promptmodules/preset-prompt-module.js"></script>
+    <script src="Promptmodules/prompt-manager.js"></script>
     <script src="vendor/Sortable.min.js"></script>
     <script src="Groupmodules/grouprenderer.js"></script>
     <script type="module" src="modules/renderer/colorUtils.js"></script>

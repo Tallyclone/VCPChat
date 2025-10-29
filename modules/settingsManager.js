@@ -47,8 +47,9 @@ const settingsManager = (() => {
     let agentSettingsContainer, groupSettingsContainer, selectItemPromptForSettings;
     let itemSettingsContainerTitle, selectedItemNameForSettingsSpan, deleteItemBtn;
     let agentSettingsForm, editingAgentIdInput, agentNameInput, agentAvatarInput, agentAvatarPreview;
-    let agentSystemPromptTextarea, agentModelInput, agentTemperatureInput;
+    let agentModelInput, agentTemperatureInput;
     let agentContextTokenLimitInput, agentMaxOutputTokensInput, agentTopPInput, agentTopKInput;
+    let promptManager = null; // PromptManager instance
     let openModelSelectBtn, modelSelectModal, modelList, modelSearchInput, refreshModelsBtn;
     let topicSummaryModelInput, openTopicSummaryModelSelectBtn; // New elements for topic summary model
     let agentTtsVoicePrimarySelect, agentTtsRegexPrimaryInput, agentTtsVoiceSecondarySelect, agentTtsRegexSecondaryInput, refreshTtsModelsBtn, agentTtsSpeedSlider, ttsSpeedValueSpan;
@@ -122,7 +123,24 @@ const settingsManager = (() => {
         
         editingAgentIdInput.value = agentId;
         agentNameInput.value = agentConfig.name || agentId;
-        agentSystemPromptTextarea.value = agentConfig.systemPrompt || '';
+        
+        // Initialize PromptManager
+        const systemPromptContainer = document.getElementById('systemPromptContainer');
+        if (systemPromptContainer && window.PromptManager) {
+            if (promptManager) {
+                // Save current state before switching
+                await promptManager.saveCurrentModeData();
+            }
+            
+            promptManager = new window.PromptManager();
+            promptManager.init({
+                agentId: agentId,
+                config: agentConfig,
+                containerElement: systemPromptContainer,
+                electronAPI: electronAPI
+            });
+        }
+        
         agentModelInput.value = agentConfig.model || '';
         agentTemperatureInput.value = agentConfig.temperature !== undefined ? agentConfig.temperature : 0.7;
         agentContextTokenLimitInput.value = agentConfig.contextTokenLimit !== undefined ? agentConfig.contextTokenLimit : 4000;
@@ -165,9 +183,17 @@ const settingsManager = (() => {
     async function saveCurrentAgentSettings(event) {
         event.preventDefault();
         const agentId = editingAgentIdInput.value;
+        // Get system prompt from PromptManager
+        let systemPromptData = {};
+        if (promptManager) {
+            await promptManager.saveCurrentModeData();
+            const currentPrompt = await promptManager.getCurrentSystemPrompt();
+            systemPromptData.systemPrompt = currentPrompt; // Keep for compatibility
+        }
+        
         const newConfig = {
             name: agentNameInput.value.trim(),
-            systemPrompt: agentSystemPromptTextarea.value.trim(),
+            ...systemPromptData,
             model: agentModelInput.value.trim() || 'gemini-pro',
             temperature: parseFloat(agentTemperatureInput.value),
             contextTokenLimit: parseInt(agentContextTokenLimitInput.value),
@@ -454,7 +480,7 @@ const settingsManager = (() => {
             agentNameInput = options.elements.agentNameInput;
             agentAvatarInput = options.elements.agentAvatarInput;
             agentAvatarPreview = options.elements.agentAvatarPreview;
-            agentSystemPromptTextarea = options.elements.agentSystemPromptTextarea;
+            // agentSystemPromptTextarea removed - now using PromptManager
             agentModelInput = options.elements.agentModelInput;
             agentTemperatureInput = options.elements.agentTemperatureInput;
             agentContextTokenLimitInput = options.elements.agentContextTokenLimitInput;
@@ -593,7 +619,39 @@ const settingsManager = (() => {
         displaySettingsForItem: displaySettingsForItem,
         populateAssistantAgentSelect: populateAssistantAgentSelect,
         // Expose for external use if needed, e.g., in the save function
-        completeVcpUrl: completeVcpUrl
+        completeVcpUrl: completeVcpUrl,
+        triggerAgentSave: async () => {
+            // 触发Agent设置保存（不含头像）
+            const agentId = editingAgentIdInput.value;
+            if (!agentId) return;
+            
+            let systemPromptData = {};
+            if (promptManager) {
+                await promptManager.saveCurrentModeData();
+                const currentPrompt = await promptManager.getCurrentSystemPrompt();
+                systemPromptData.systemPrompt = currentPrompt;
+            }
+            
+            const newConfig = {
+                name: agentNameInput.value.trim(),
+                ...systemPromptData,
+                model: agentModelInput.value.trim() || 'gemini-pro',
+                temperature: parseFloat(agentTemperatureInput.value),
+                contextTokenLimit: parseInt(agentContextTokenLimitInput.value),
+                maxOutputTokens: parseInt(agentMaxOutputTokensInput.value),
+                top_p: parseFloat(agentTopPInput.value) || undefined,
+                top_k: parseInt(agentTopKInput.value) || undefined,
+                streamOutput: document.getElementById('agentStreamOutputTrue').checked,
+                ttsVoicePrimary: agentTtsVoicePrimarySelect.value,
+                ttsRegexPrimary: agentTtsRegexPrimaryInput.value.trim(),
+                ttsVoiceSecondary: agentTtsVoiceSecondarySelect.value,
+                ttsRegexSecondary: agentTtsRegexSecondaryInput.value.trim(),
+                ttsSpeed: parseFloat(agentTtsSpeedSlider.value),
+                stripRegexes: currentAgentRegexes
+            };
+            
+            await electronAPI.saveAgentConfig(agentId, newConfig);
+        }
     };
 
     /**
