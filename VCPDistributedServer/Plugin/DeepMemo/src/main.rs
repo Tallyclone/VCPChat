@@ -181,12 +181,31 @@ fn parse_ai_query_to_tantivy(query: &str) -> String {
                 }
             }
         }
-        // Check for negated term: [term:weight]
+        // Check for negated term: [term:weight] or [term]
         if part.starts_with('[') && part.ends_with(']') {
-             if let Some(inner) = part.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
-                let term = inner.split(':').next().unwrap_or("").trim();
-                if !term.is_empty() {
-                    tantivy_parts.push(format!("-{}", term));
+            if let Some(inner) = part.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
+                if inner.contains(':') {
+                    let mut split = inner.rsplitn(2, ':');
+                    if let (Some(weight_str), Some(term_str)) = (split.next(), split.next()) {
+                        let term = term_str.trim();
+                        if !term.is_empty() {
+                            if let Ok(weight) = weight_str.trim().parse::<f32>() {
+                                // Parsed weight, clamp it to [-2.0, 0.0] as requested
+                                let clamped_weight = weight.max(-2.0).min(0.0);
+                                tantivy_parts.push(format!("{}^{}", term, clamped_weight));
+                            } else {
+                                // Invalid weight, fallback to simple negation of the term part
+                                tantivy_parts.push(format!("-{}", term));
+                            }
+                        }
+                        // If term is empty, do nothing, effectively ignoring malformed input like "[:0.5]"
+                    }
+                } else {
+                    // No colon, simple negation
+                    let term = inner.trim();
+                    if !term.is_empty() {
+                        tantivy_parts.push(format!("-{}", term));
+                    }
                 }
                 continue;
             }
