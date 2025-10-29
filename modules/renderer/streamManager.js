@@ -839,8 +839,8 @@ export async function finalizeStreamedMessage(messageId, finishReason, context) 
                     }
                 }, 0);
 
-                // Step 3: Process animations
-                if (globalSettings.enableAgentBubbleTheme && refs.processAnimationsInContent) {
+                // Step 3: Process animations, scripts, and 3D scenes
+                if (refs.processAnimationsInContent) {
                     refs.processAnimationsInContent(contentDiv);
                 }
             }

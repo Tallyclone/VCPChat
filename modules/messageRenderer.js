@@ -7,7 +7,7 @@ const enhancedRenderDebounceTimers = new WeakMap(); // For debouncing prettify c
 
 import { avatarColorCache, getDominantAvatarColor } from './renderer/colorUtils.js';
 import { initializeImageHandler, setContentAndProcessImages, clearImageState, clearAllImageStates } from './renderer/imageHandler.js';
-import { processAnimationsInContent } from './renderer/animation.js';
+import { processAnimationsInContent, cleanupAnimationsInContent } from './renderer/animation.js';
 import { createMessageSkeleton } from './renderer/domBuilder.js';
 import * as streamManager from './renderer/streamManager.js';
 import * as emoticonUrlFixer from './renderer/emoticonUrlFixer.js';
@@ -694,7 +694,14 @@ let mainRendererReferences = {
 
 function removeMessageById(messageId, saveHistory = false) {
     const item = mainRendererReferences.chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
-    if (item) item.remove();
+    if (item) {
+        // --- NEW: Cleanup dynamic content before removing from DOM ---
+        const contentDiv = item.querySelector('.md-content');
+        if (contentDiv) {
+            cleanupAnimationsInContent(contentDiv);
+        }
+        item.remove();
+    }
     
     const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
     const index = currentChatHistoryArray.findIndex(m => m.id === messageId);
@@ -719,7 +726,17 @@ function removeMessageById(messageId, saveHistory = false) {
 }
 
 function clearChat() {
-    if (mainRendererReferences.chatMessagesDiv) mainRendererReferences.chatMessagesDiv.innerHTML = '';
+    if (mainRendererReferences.chatMessagesDiv) {
+        // --- NEW: Cleanup all messages before clearing the container ---
+        const allMessages = mainRendererReferences.chatMessagesDiv.querySelectorAll('.message-item');
+        allMessages.forEach(item => {
+            const contentDiv = item.querySelector('.md-content');
+            if (contentDiv) {
+                cleanupAnimationsInContent(contentDiv);
+            }
+        });
+        mainRendererReferences.chatMessagesDiv.innerHTML = '';
+    }
     mainRendererReferences.currentChatHistoryRef.set([]); // Clear the history array via its ref
     clearAllImageStates(); // Clear all image loading states
 }
@@ -1082,10 +1099,8 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
                     }
                 }, 0);
 
-                // Finally, process any animations.
-                if (globalSettings.enableAgentBubbleTheme) {
-                    processAnimationsInContent(contentDiv);
-                }
+                // Finally, process any animations and execute scripts/3D scenes.
+                processAnimationsInContent(contentDiv);
             };
 
             // If we are appending directly to the DOM, schedule the processing immediately.
@@ -1320,10 +1335,8 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId) {
         }
     }, 0);
 
-    // After content is rendered, check if we need to run animations
-    if (globalSettings.enableAgentBubbleTheme) {
-        processAnimationsInContent(contentDiv);
-    }
+    // After content is rendered, run animations/scripts/3D scenes
+    processAnimationsInContent(contentDiv);
 
     mainRendererReferences.uiHelper.scrollToBottom();
 }
@@ -1372,10 +1385,8 @@ function updateMessageContent(messageId, newContent) {
         }
     }, 0);
 
-    // 5. Re-run animations
-    if (globalSettings.enableAgentBubbleTheme) {
-        processAnimationsInContent(contentDiv);
-    }
+    // 5. Re-run animations/scripts/3D scenes
+    processAnimationsInContent(contentDiv);
 }
 
 // Expose methods to renderer.js
