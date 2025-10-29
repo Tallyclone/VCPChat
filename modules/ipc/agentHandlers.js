@@ -131,7 +131,9 @@ function initialize(context) {
                             temperature: 0.7,
                             avatarCalculatedColor: null,
                             contextTokenLimit: 4000,
-                            maxOutputTokens: 1000
+                            maxOutputTokens: 1000,
+                            disableCustomColors: true,  // 默认启用：禁用自定义颜色（使用主题默认颜色）
+                            useThemeColorsInChat: true  // 默认启用：会话中使用主题颜色
                         };
                         try {
                             await fs.ensureDir(agentPath);
@@ -369,11 +371,13 @@ function initialize(context) {
                 configToSave = {
                     name: agentName,
                     systemPrompt: `你是 ${agentName}。`,
-                    model: 'gemini-2.5-flash-preview-05-20', 
+                    model: 'gemini-2.5-flash-preview-05-20',
                     temperature: 0.7,
-                    contextTokenLimit: 1000000, 
-                    maxOutputTokens: 60000, 
-                    topics: [{ id: "default", name: "主要对话", createdAt: Date.now() }] 
+                    contextTokenLimit: 1000000,
+                    maxOutputTokens: 60000,
+                    topics: [{ id: "default", name: "主要对话", createdAt: Date.now() }],
+                    disableCustomColors: true,  // 默认启用：禁用自定义颜色（使用主题默认颜色）
+                    useThemeColorsInChat: true  // 默认启用：会话中使用主题颜色
                 };
             }
             if (!configToSave.topics || !Array.isArray(configToSave.topics) || configToSave.topics.length === 0) {

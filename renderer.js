@@ -1338,6 +1338,30 @@ async function loadAndApplyGlobalSettings() {
     if (settings && !settings.error) {
         globalSettings = { ...globalSettings, ...settings }; // Merge with defaults
         document.getElementById('userName').value = globalSettings.userName || '用户';
+        
+        // Load user custom colors
+        const userAvatarBorderColorInput = document.getElementById('userAvatarBorderColor');
+        const userAvatarBorderColorTextInput = document.getElementById('userAvatarBorderColorText');
+        const userNameTextColorInput = document.getElementById('userNameTextColor');
+        const userNameTextColorTextInput = document.getElementById('userNameTextColorText');
+        
+        if (userAvatarBorderColorInput && userAvatarBorderColorTextInput) {
+            const borderColor = globalSettings.userAvatarBorderColor || '#3d5a80';
+            userAvatarBorderColorInput.value = borderColor;
+            userAvatarBorderColorTextInput.value = borderColor;
+        }
+        
+        if (userNameTextColorInput && userNameTextColorTextInput) {
+            const nameColor = globalSettings.userNameTextColor || '#ffffff';
+            userNameTextColorInput.value = nameColor;
+            userNameTextColorTextInput.value = nameColor;
+        }
+        
+        // Load userUseThemeColorsInChat setting
+        const userUseThemeColorsInChatCheckbox = document.getElementById('userUseThemeColorsInChat');
+        if (userUseThemeColorsInChatCheckbox) {
+            userUseThemeColorsInChatCheckbox.checked = globalSettings.userUseThemeColorsInChat || false;
+        }
         // Ensure the loaded URL is displayed in its complete form
         const completedUrl = window.settingsManager.completeVcpUrl(globalSettings.vcpServerUrl || '');
         document.getElementById('vcpServerUrl').value = completedUrl;

@@ -104,14 +104,101 @@
                     <h3 id="agentSettingsContainerTitle">助手设置: <span id="selectedAgentNameForSettings"></span></h3>
                     <form id="agentSettingsForm">
                         <input type="hidden" id="editingAgentId" name="agentId">
-                        <div>
-                            <label for="agentNameInput">Agent 名称:</label>
-                            <input type="text" id="agentNameInput" name="name" required>
-                        </div>
-                        <div>
-                            <label for="agentAvatarInput">Agent 头像 (留空不更改):</label>
-                            <input type="file" id="agentAvatarInput" name="avatar" accept="image/png, image/jpeg, image/gif">
-                            <img id="agentAvatarPreview" src="#" alt="头像预览" style="max-width: 80px; max-height: 80px; display: none; margin-top: 5px;">
+                        <!-- Agent名称和头像容器 -->
+                        <div class="agent-identity-container">
+                            <div class="agent-identity-main">
+                                <div class="agent-avatar-wrapper">
+                                    <img id="agentAvatarPreview" src="assets/default_avatar.png" alt="头像预览" class="agent-avatar-display" style="display: block;">
+                                    <label for="agentAvatarInput" class="avatar-upload-overlay">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                                            <circle cx="12" cy="13" r="4"></circle>
+                                        </svg>
+                                    </label>
+                                    <input type="file" id="agentAvatarInput" name="avatar" accept="image/png, image/jpeg, image/gif" style="display: none;">
+                                </div>
+                                <div class="agent-name-wrapper">
+                                    <label for="agentNameInput">Agent 名称</label>
+                                    <input type="text" id="agentNameInput" name="name" required>
+                                </div>
+                            </div>
+                            
+                            <!-- 自定义样式设置 - 可折叠 -->
+                            <div class="agent-style-collapsible-container collapsed">
+                                <div class="style-collapse-header" id="styleCollapseHeader">
+                                    <span class="style-collapse-icon">▶</span>
+                                    <span class="style-collapse-title">自定义样式设置</span>
+                                </div>
+                                <div class="agent-style-controls">
+                                    <!-- 禁用自定义颜色开关 -->
+                                    <div class="style-control-item full-width">
+                                        <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                            <label for="disableCustomColors" style="margin-bottom: 0;">助手页面中使用主题默认颜色</label>
+                                            <label class="switch" style="margin-bottom: 0;">
+                                                <input type="checkbox" id="disableCustomColors" name="disableCustomColors">
+                                                <span class="slider round"></span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- 会话中使用主题颜色开关 -->
+                                    <div class="style-control-item full-width">
+                                        <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                            <label for="useThemeColorsInChat" style="margin-bottom: 0;">会话界面中使用主题默认颜色</label>
+                                            <label class="switch" style="margin-bottom: 0;">
+                                                <input type="checkbox" id="useThemeColorsInChat" name="useThemeColorsInChat">
+                                                <span class="slider round"></span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="style-control-item">
+                                        <label for="agentAvatarBorderColor">头像外框颜色:</label>
+                                        <div class="color-input-group">
+                                            <input type="color" id="agentAvatarBorderColor" name="avatarBorderColor" value="#3d5a80">
+                                            <input type="text" id="agentAvatarBorderColorText" placeholder="#3d5a80" maxlength="7">
+                                        </div>
+                                    </div>
+                                    <div class="style-control-item">
+                                        <label for="agentNameTextColor">名称文字颜色:</label>
+                                        <div class="color-input-group">
+                                            <input type="color" id="agentNameTextColor" name="nameTextColor" value="#ffffff">
+                                            <input type="text" id="agentNameTextColorText" placeholder="#ffffff" maxlength="7">
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- 重置颜色按钮 -->
+                                    <div class="style-control-item full-width">
+                                        <button type="button" id="resetAvatarColorsBtn" class="reset-colors-btn">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
+                                                <path d="M21 3v5h-5"></path>
+                                                <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
+                                                <path d="M3 21v-5h5"></path>
+                                            </svg>
+                                            重置为头像默认颜色
+                                        </button>
+                                    </div>
+                                    
+                                    <div class="style-control-item full-width">
+                                        <label for="agentCustomCss">列表项自定义CSS:</label>
+                                        <textarea id="agentCustomCss" name="customCss" placeholder="例如: border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);" rows="3"></textarea>
+                                        <small style="color: var(--text-secondary); font-size: 0.85em;">提示：此CSS将应用于【助手】页面的Agent列表项容器</small>
+                                    </div>
+                                    
+                                    <div class="style-control-item full-width">
+                                        <label for="agentCardCss">名片样式CSS:</label>
+                                        <textarea id="agentCardCss" name="cardCss" placeholder="例如: border-radius: 15px; background: linear-gradient(135deg, rgba(138, 43, 226, 0.1), rgba(75, 0, 130, 0.05));" rows="3"></textarea>
+                                        <small style="color: var(--text-secondary); font-size: 0.85em;">提示：此CSS将应用于【设置】页面中Agent的名片区域（头像和名称）</small>
+                                    </div>
+                                    
+                                    <div class="style-control-item full-width">
+                                        <label for="agentChatCss">会话样式CSS:</label>
+                                        <textarea id="agentChatCss" name="chatCss" placeholder="例如: .message-avatar { filter: drop-shadow(0 0 10px rgba(100,150,255,0.8)); } .sender-name { text-shadow: 0 0 8px currentColor; }" rows="4"></textarea>
+                                        <small style="color: var(--text-secondary); font-size: 0.85em;">提示：此CSS将应用于【聊天会话】中Agent的头像和名称。可使用 .message-avatar 控制头像，.sender-name 控制名称</small>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                         <div>
                             <label for="systemPromptContainer">系统提示词（三个模块独立，编辑后注意保存以生效):</label>
@@ -130,81 +217,106 @@
                                 </button>
                             </div>
                         </div>
-                        <div>
-                            <label for="agentTemperature">Temperature (0-1):</label>
-                            <input type="number" id="agentTemperature" name="temperature" min="0" max="1" step="0.1">
-                        </div>
-                        <div>
-                            <label for="agentContextTokenLimit">上下文Token上限:</label>
-                            <input type="number" id="agentContextTokenLimit" name="contextTokenLimit" min="0" step="100">
-                        </div>
-                         <div>
-                            <label for="agentMaxOutputTokens">最大输出Token上限:</label>
-                            <input type="number" id="agentMaxOutputTokens" name="maxOutputTokens" min="0" step="50">
-                        </div>
-                        <div>
-                        <div>
-                            <label for="agentTopP">Top P (0-1):</label>
-                            <input type="number" id="agentTopP" name="top_p" min="0" max="0.95" step="0.05">
-                        </div>
-                        <div>
-                            <label for="agentTopK">Top K (0-64):</label>
-                            <input type="number" id="agentTopK" name="top_k" min="0" max="64" step="1">
-                        </div>
-                        <div class="form-group-inline">
-                            <label>输出模式:</label>
-                            <label for="agentStreamOutputTrue" style="margin-right: 15px;">
-                                <input type="radio" id="agentStreamOutputTrue" name="streamOutput" value="true" checked> 流式
-                            </label>
-                            <label for="agentStreamOutputFalse" style="margin-left: -10px;"> <!-- 调整负外边距以减小间距 -->
-                                <input type="radio" id="agentStreamOutputFalse" name="streamOutput" value="false"> 非流式
-                            </label>
+                        <!-- 参数设置可折叠容器 -->
+                        <div class="agent-params-collapsible-container">
+                            <div class="params-header" id="paramsToggleHeader">
+                                <span class="params-title">模型参数配置</span>
+                                <div class="params-summary" id="paramsSummary"></div>
+                                <button type="button" class="params-toggle-btn" id="paramsToggleBtn" aria-label="展开/折叠参数">
+                                    <svg class="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <polyline points="6 9 12 15 18 9"></polyline>
+                                    </svg>
+                                </button>
+                            </div>
+                            <div class="params-content" id="paramsContent">
+                                <div>
+                                    <label for="agentTemperature">Temperature (0-1):</label>
+                                    <input type="number" id="agentTemperature" name="temperature" min="0" max="1" step="0.1">
+                                </div>
+                                <div>
+                                    <label for="agentContextTokenLimit">上下文Token上限:</label>
+                                    <input type="number" id="agentContextTokenLimit" name="contextTokenLimit" min="0" step="100">
+                                </div>
+                                <div>
+                                    <label for="agentMaxOutputTokens">最大输出Token上限:</label>
+                                    <input type="number" id="agentMaxOutputTokens" name="maxOutputTokens" min="0" step="50">
+                                </div>
+                                <div>
+                                    <label for="agentTopP">Top P (0-1):</label>
+                                    <input type="number" id="agentTopP" name="top_p" min="0" max="0.95" step="0.05">
+                                </div>
+                                <div>
+                                    <label for="agentTopK">Top K (0-64):</label>
+                                    <input type="number" id="agentTopK" name="top_k" min="0" max="64" step="1">
+                                </div>
+                                <div class="form-group-inline">
+                                    <label>输出模式:</label>
+                                    <label for="agentStreamOutputTrue" style="margin-left: 10px;">
+                                        <input type="radio" id="agentStreamOutputTrue" name="streamOutput" value="true" checked> 流式
+                                    </label>
+                                    <label for="agentStreamOutputFalse" style="margin-left: 15px;">
+                                        <input type="radio" id="agentStreamOutputFalse" name="streamOutput" value="false"> 非流式
+                                    </label>
+                                </div>
+                            </div>
                         </div>
 
                         <hr class="form-divider">
                         
-                        <div class="form-section-title">语音设置 (Sovits TTS)</div>
-                        
-                        <div>
-                            <label for="agentTtsVoicePrimary">主语言模型:</label>
-                            <div class="model-input-container">
-                                <select id="agentTtsVoicePrimary" name="ttsVoicePrimary">
-                                    <option value="">不使用语音</option>
-                                </select>
-                                <button type="button" id="refreshTtsModelsBtn" class="small-button" title="刷新模型列表">
-                                    <svg data-slot="icon" fill="none" stroke-width="1.5" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="16" height="16">
-                                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 11.667 0l3.181-3.183m-4.991-2.691v-2.985h-4.992v2.985h4.992Zm-4.993 0v4.992h4.992v-4.992h-4.992Z"></path>
+                        <!-- 语音设置可折叠容器 -->
+                        <div class="agent-params-collapsible-container">
+                            <div class="params-header" id="ttsToggleHeader">
+                                <span class="params-title">语音设置 (Sovits TTS)</span>
+                                <div class="params-summary" id="ttsSummary"></div>
+                                <button type="button" class="params-toggle-btn" id="ttsToggleBtn" aria-label="展开/折叠语音设置">
+                                    <svg class="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <polyline points="6 9 12 15 18 9"></polyline>
                                     </svg>
                                 </button>
                             </div>
-                        </div>
-                        <div>
-                            <label for="agentTtsRegexPrimary">主语言正则 (留空则匹配全部):</label>
-                            <input type="text" id="agentTtsRegexPrimary" name="ttsRegexPrimary" placeholder="例如 [^\[\]]+">
-                        </div>
+                            <div class="params-content" id="ttsContent">
+                                <div>
+                                    <label for="agentTtsVoicePrimary">主语言模型:</label>
+                                    <div class="model-input-container">
+                                        <select id="agentTtsVoicePrimary" name="ttsVoicePrimary">
+                                            <option value="">不使用语音</option>
+                                        </select>
+                                        <button type="button" id="refreshTtsModelsBtn" class="small-button" title="刷新模型列表">
+                                            <svg data-slot="icon" fill="none" stroke-width="1.5" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="16" height="16">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 11.667 0l3.181-3.183m-4.991-2.691v-2.985h-4.992v2.985h4.992Zm-4.993 0v4.992h4.992v-4.992h-4.992Z"></path>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label for="agentTtsRegexPrimary">主语言正则 (留空则匹配全部):</label>
+                                    <input type="text" id="agentTtsRegexPrimary" name="ttsRegexPrimary" placeholder="例如 [^\[\]]+">
+                                </div>
 
-                        <hr class="form-divider-dashed">
+                                <hr class="form-divider-dashed">
 
-                        <div>
-                            <label for="agentTtsVoiceSecondary">副语言模型:</label>
-                            <div class="model-input-container">
-                                <select id="agentTtsVoiceSecondary" name="ttsVoiceSecondary">
-                                    <option value="">不使用</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div>
-                            <label for="agentTtsRegexSecondary">副语言正则:</label>
-                            <input type="text" id="agentTtsRegexSecondary" name="ttsRegexSecondary" placeholder="例如 \[(.*?)\]">
-                        </div>
+                                <div>
+                                    <label for="agentTtsVoiceSecondary">副语言模型:</label>
+                                    <div class="model-input-container">
+                                        <select id="agentTtsVoiceSecondary" name="ttsVoiceSecondary">
+                                            <option value="">不使用</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label for="agentTtsRegexSecondary">副语言正则:</label>
+                                    <input type="text" id="agentTtsRegexSecondary" name="ttsRegexSecondary" placeholder="例如 \[(.*?)\]">
+                                </div>
 
-                        <hr class="form-divider-dashed">
+                                <hr class="form-divider-dashed">
 
-                        <div>
-                            <label for="agentTtsSpeed">语速:</label>
-                            <div class="slider-container">
-                                <input type="range" id="agentTtsSpeed" name="ttsSpeed" min="0.5" max="2.0" step="0.1" value="1.0">
-                                <span id="ttsSpeedValue">1.0</span>
+                                <div>
+                                    <label for="agentTtsSpeed">语速:</label>
+                                    <div class="slider-container">
+                                        <input type="range" id="agentTtsSpeed" name="ttsSpeed" min="0.5" max="2.0" step="0.1" value="1.0">
+                                        <span id="ttsSpeedValue">1.0</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -329,15 +441,64 @@
             <span class="close-button" onclick="uiHelperFunctions.closeModal('globalSettingsModal')">×</span>
             <h2>全局设置</h2>
             <form id="globalSettingsForm">
-                <div>
-                    <label for="userName">用户名:</label>
-                    <input type="text" id="userName" name="userName" placeholder="您的用户名" required>
+                <!-- 用户身份容器 -->
+                <div class="agent-identity-container">
+                    <div class="agent-identity-main">
+                        <div class="agent-avatar-wrapper">
+                            <img id="userAvatarPreview" src="assets/default_user_avatar.png" alt="用户头像预览" class="agent-avatar-display" style="display: block;">
+                            <label for="userAvatarInput" class="avatar-upload-overlay">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                                    <circle cx="12" cy="13" r="4"></circle>
+                                </svg>
+                            </label>
+                            <input type="file" id="userAvatarInput" name="userAvatar" accept="image/png, image/jpeg, image/gif" style="display: none;">
+                        </div>
+                        <div class="agent-name-wrapper">
+                            <label for="userName">用户名:</label>
+                            <input type="text" id="userName" name="userName" placeholder="您的用户名" required>
+                        </div>
+                    </div>
+                    
+                    <!-- 用户自定义样式设置 - 可折叠 -->
+                    <div class="agent-style-collapsible-container collapsed">
+                        <div class="style-collapse-header" id="userStyleCollapseHeader">
+                            <span class="style-collapse-icon">▶</span>
+                            <span class="style-collapse-title">自定义样式设置</span>
+                        </div>
+                        <div class="agent-style-controls">
+                            <div class="style-control-item">
+                                <label for="userAvatarBorderColor">头像外框颜色:</label>
+                                <div class="color-input-group">
+                                    <input type="color" id="userAvatarBorderColor" name="userAvatarBorderColor" value="#3d5a80">
+                                    <input type="text" id="userAvatarBorderColorText" placeholder="#3d5a80" maxlength="7">
+                                </div>
+                            </div>
+                            <div class="style-control-item">
+                                <label for="userNameTextColor">名称文字颜色:</label>
+                                <div class="color-input-group">
+                                    <input type="color" id="userNameTextColor" name="userNameTextColor" value="#ffffff">
+                                    <input type="text" id="userNameTextColorText" placeholder="#ffffff" maxlength="7">
+                                </div>
+                            </div>
+                            
+                            <!-- 重置颜色按钮 -->
+                            <div class="style-control-item full-width">
+                                <button type="button" id="resetUserAvatarColorsBtn" class="reset-colors-btn">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
+                                        <path d="M21 3v5h-5"></path>
+                                        <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
+                                        <path d="M3 21v-5h5"></path>
+                                    </svg>
+                                    重置为头像默认颜色
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="form-group-inline-avatar"> <!-- New block for user avatar -->
-                    <label for="userAvatarInput">添加用户头像:</label>
-                    <input type="file" id="userAvatarInput" name="userAvatar" accept="image/png, image/jpeg, image/gif">
-                    <img id="userAvatarPreview" src="#" alt="用户头像预览" style="max-width: 60px; max-height: 60px; display: none; margin-top: 5px; border-radius: 50%;">
-                </div>
+                
+                <hr style="border: none; border-top: 1px solid var(--border-color); margin: 20px 0;">
                 <div>
                     <label for="vcpServerUrl">VCP 服务器 URL:</label>
                     <input type="url" id="vcpServerUrl" name="vcpServerUrl" placeholder="将自动补全 /v1/chat/completions" required>

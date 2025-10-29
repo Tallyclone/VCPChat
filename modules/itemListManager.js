@@ -212,6 +212,39 @@ window.itemListManager = (() => {
                     nameSpan.textContent += " (群)";
                 }
 
+                // 应用自定义样式（仅对agent类型）
+                if (item.type === 'agent' && item.config) {
+                    // 只有在未禁用自定义颜色时才应用颜色设置
+                    if (!item.config.disableCustomColors) {
+                        // 应用头像边框颜色
+                        if (item.config.avatarBorderColor) {
+                            avatarImg.style.borderColor = item.config.avatarBorderColor;
+                        }
+                        
+                        // 应用名称文字颜色
+                        if (item.config.nameTextColor) {
+                            nameSpan.style.color = item.config.nameTextColor;
+                        }
+                    }
+                    // 注意：当disableCustomColors为true时，头像边框和名称颜色将使用主题默认值
+                    
+                    // 自定义CSS始终应用（不受disableCustomColors影响）
+                    if (item.config.customCss) {
+                        try {
+                            // 解析并应用自定义CSS
+                            const cssRules = item.config.customCss.split(';').filter(rule => rule.trim());
+                            cssRules.forEach(rule => {
+                                const [property, value] = rule.split(':').map(s => s.trim());
+                                if (property && value) {
+                                    li.style.setProperty(property, value);
+                                }
+                            });
+                        } catch (error) {
+                            console.warn(`[ItemListManager] Failed to apply custom CSS for agent ${item.id}:`, error);
+                        }
+                    }
+                }
+
                 li.appendChild(avatarImg);
                 li.appendChild(nameSpan);
 
