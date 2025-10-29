@@ -181,41 +181,41 @@ fn parse_ai_query_to_tantivy(query: &str) -> String {
                 }
             }
         }
-        // Check for negated term: [term:weight] or [term]
+        // Check for negated term: [term:weight]
         if part.starts_with('[') && part.ends_with(']') {
-            if let Some(inner) = part.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
-                if inner.contains(':') {
-                    let mut split = inner.rsplitn(2, ':');
-                    if let (Some(weight_str), Some(term_str)) = (split.next(), split.next()) {
-                        let term = term_str.trim();
-                        if !term.is_empty() {
-                            if let Ok(weight) = weight_str.trim().parse::<f32>() {
-                                // Parsed weight, clamp it to [-2.0, 0.0] as requested
-                                let clamped_weight = weight.max(-2.0).min(0.0);
-                                tantivy_parts.push(format!("{}^{}", term, clamped_weight));
-                            } else {
-                                // Invalid weight, fallback to simple negation of the term part
-                                tantivy_parts.push(format!("-{}", term));
-                            }
-                        }
-                        // If term is empty, do nothing, effectively ignoring malformed input like "[:0.5]"
-                    }
-                } else {
-                    // No colon, simple negation
-                    let term = inner.trim();
-                    if !term.is_empty() {
-                        tantivy_parts.push(format!("-{}", term));
-                    }
+             if let Some(inner) = part.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
+                let term = inner.split(':').next().unwrap_or("").trim();
+                if !term.is_empty() {
+                    tantivy_parts.push(format!("-{}", term));
                 }
                 continue;
             }
         }
-        // Check for OR group: {term1|term2}
+        // Check for OR group: {term1|term2} or {term1|term2:weight}
         if part.starts_with('{') && part.ends_with('}') {
             if let Some(inner) = part.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
-                let terms: Vec<&str> = inner.split('|').map(|s| s.trim()).collect();
+                let mut weight_str: Option<&str> = None;
+                let mut terms_part = inner;
+
+                if let Some(pos) = inner.rfind(':') {
+                    // To avoid splitting a term that contains a colon, check if the part after the colon is a valid number.
+                    let (potential_terms, potential_weight) = inner.split_at(pos);
+                    let potential_weight_val = &potential_weight[1..];
+                    if potential_weight_val.trim().parse::<f32>().is_ok() {
+                        terms_part = potential_terms;
+                        weight_str = Some(potential_weight_val);
+                    }
+                }
+
+                let terms: Vec<&str> = terms_part.split('|').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+
                 if !terms.is_empty() {
-                    tantivy_parts.push(format!("({})", terms.join(" OR ")));
+                    let group_query = format!("({})", terms.join(" OR "));
+                    if let Some(w_str) = weight_str {
+                        tantivy_parts.push(format!("{}^{}", group_query, w_str.trim()));
+                    } else {
+                        tantivy_parts.push(group_query);
+                    }
                 }
                 continue;
             }
