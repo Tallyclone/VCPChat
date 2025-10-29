@@ -29,6 +29,97 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- Start: Ported Pre-processing functions from messageRenderer ---
 
+    /**
+     * Generates a unique ID for scoping CSS.
+     * @returns {string} A unique ID string (e.g., 'vcp-viewer-1a2b3c4d').
+     */
+    function generateUniqueId() {
+        const timestampPart = Date.now().toString(36);
+        const randomPart = Math.random().toString(36).substring(2, 9);
+        return `vcp-viewer-${timestampPart}${randomPart}`;
+    }
+
+    /**
+     * Scopes a single CSS selector.
+     * @param {string} selector - The CSS selector.
+     * @param {string} scopeId - The unique ID to scope to.
+     * @returns {string} The scoped selector.
+     */
+    function scopeSelector(selector, scopeId) {
+        if (selector.match(/^(@|from|to|\d+%|:root|html|body)/)) {
+            return selector;
+        }
+        if (selector.match(/^::?[\w-]+$/)) {
+            return `#${scopeId}${selector}`;
+        }
+        return `#${scopeId} ${selector}`;
+    }
+
+    /**
+     * Scopes an entire string of CSS rules.
+     * @param {string} cssString - The raw CSS text.
+     * @param {string} scopeId - The unique ID.
+     * @returns {string} The scoped CSS text.
+     */
+    function scopeCss(cssString, scopeId) {
+        let css = cssString.replace(/\/\*[\s\S]*?\*\//g, '');
+        const rules = [];
+        let depth = 0;
+        let currentRule = '';
+        for (let i = 0; i < css.length; i++) {
+            const char = css[i];
+            currentRule += char;
+            if (char === '{') depth++;
+            else if (char === '}') {
+                depth--;
+                if (depth === 0) {
+                    rules.push(currentRule.trim());
+                    currentRule = '';
+                }
+            }
+        }
+        return rules.map(rule => {
+            const match = rule.match(/^([^{]+)\{(.+)\}$/s);
+            if (!match) return rule;
+            const [, selectors, body] = match;
+            const scopedSelectors = selectors.split(',').map(s => scopeSelector(s.trim(), scopeId)).join(', ');
+            return `${scopedSelectors} { ${body} }`;
+        }).join('\n');
+    }
+
+    /**
+     * Extracts, scopes, and injects CSS from the content.
+     * @param {string} content - The raw message content.
+     * @param {string} scopeId - The unique ID for scoping.
+     * @returns {{processedContent: string, styleInjected: boolean}}
+     */
+    function processAndInjectScopedCss(content, scopeId) {
+        let cssContent = '';
+        let styleInjected = false;
+        const styleRegex = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
+
+        const processedContent = content.replace(styleRegex, (match, css) => {
+            cssContent += css.trim() + '\n';
+            return ''; // Remove style tag
+        });
+
+        if (cssContent.length > 0) {
+            try {
+                const scopedCss = scopeCss(cssContent, scopeId);
+                const styleElement = document.createElement('style');
+                styleElement.type = 'text/css';
+                styleElement.setAttribute('data-vcp-scope-id', scopeId);
+                styleElement.textContent = scopedCss;
+                document.head.appendChild(styleElement);
+                styleInjected = true;
+            } catch (error) {
+                console.error(`[ScopedCSS] Failed to scope or inject CSS for ID: ${scopeId}`, error);
+            }
+        }
+        return { processedContent, styleInjected };
+    }
+
+
     function deIndentHtml(text) {
         const lines = text.split('\n');
         let inFence = false;
@@ -234,12 +325,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         return result;
     }
 
-    function preprocessFullContent(text) {
+    function preprocessFullContent(text, scopeId) {
+        // --- Scoped CSS: Extract, scope, and inject styles ---
+        const { processedContent: contentWithoutStyles } = processAndInjectScopedCss(text, scopeId);
+        let processed = contentWithoutStyles;
+
         const codeBlockMap = new Map();
         let placeholderId = 0;
 
         // Step 1: Find and protect all fenced code blocks.
-        let processed = text.replace(/```\w*([\s\S]*?)```/g, (match) => {
+        processed = processed.replace(/```\w*([\s\S]*?)```/g, (match) => {
             const placeholder = `__VCP_CODE_BLOCK_PLACEHOLDER_${placeholderId}__`;
             codeBlockMap.set(placeholder, match);
             placeholderId++;
@@ -600,6 +695,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.title = decodedTitle;
     document.getElementById('viewer-title-text').textContent = decodedTitle;
     const contentDiv = document.getElementById('textContent');
+    
+    // --- NEW: Scoped CSS Implementation ---
+    const scopeId = generateUniqueId();
+    contentDiv.id = scopeId; // Assign the unique ID to the content container
+    // --- END Scoped CSS Implementation ---
+
     const editAllButton = document.getElementById('editAllButton'); // Get the new button
     const shareToNotesButton = document.getElementById('shareToNotesButton');
 
@@ -726,48 +827,42 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // First pass: Separate Mermaid and Draw.io blocks from regular code blocks
         container.querySelectorAll('pre code').forEach((codeBlock) => {
-            const firstLine = (codeBlock.textContent.trim().split('\n')[0] || '').trim().toLowerCase();
-            const isMermaidByClass = codeBlock.classList.contains('language-mermaid');
-            const isMermaidByContent = firstLine === 'mermaid';
-            const isDrawioByClass = codeBlock.classList.contains('language-drawio');
-            const isDrawioByContent = codeBlock.textContent.trim().startsWith('<mxfile');
+            const languageClass = Array.from(codeBlock.classList).find(c => c.startsWith('language-'));
+            const language = languageClass ? languageClass.replace('language-', '') : '';
+            const code = codeBlock.textContent || '';
 
-            if (isMermaidByClass || isMermaidByContent) {
-                mermaidBlocksToRender.push({ codeBlock, isMermaidByContent });
-            } else if (isDrawioByClass || isDrawioByContent) {
+            const isMermaid = ['mermaid', 'graph', 'flowchart'].includes(language);
+            const isDrawio = language === 'drawio' || code.trim().startsWith('<mxfile');
+
+            if (isMermaid) {
+                mermaidBlocksToRender.push(codeBlock);
+            } else if (isDrawio) {
                 drawioBlocksToRender.push(codeBlock);
-            }
-            else {
+            } else {
                 codeBlocksToProcess.push(codeBlock);
             }
         });
 
-        // --- RENDER MERMAID ---
+        // --- RENDER MERMAID (ENHANCED) ---
         if (window.mermaid && mermaidBlocksToRender.length > 0) {
-            const mermaidElements = [];
-            mermaidBlocksToRender.forEach(({ codeBlock, isMermaidByContent }) => {
+            const elementsToRender = [];
+            mermaidBlocksToRender.forEach(codeBlock => {
                 const preElement = codeBlock.parentElement;
                 const mermaidContainer = document.createElement('div');
                 mermaidContainer.className = 'mermaid';
-
-                let mermaidText = codeBlock.textContent;
-                if (isMermaidByContent) {
-                    const newlineIndex = mermaidText.indexOf('\n');
-                    mermaidText = newlineIndex !== -1 ? mermaidText.substring(newlineIndex + 1) : '';
-                }
-                
-                mermaidContainer.textContent = mermaidText.trim();
-                
+                const code = codeBlock.textContent.trim();
+                mermaidContainer.textContent = code;
                 preElement.parentNode.replaceChild(mermaidContainer, preElement);
-                mermaidElements.push(mermaidContainer);
+                elementsToRender.push(mermaidContainer);
             });
 
-            try {
-                mermaid.run({ nodes: mermaidElements });
-            } catch(e) {
-                console.error("Mermaid rendering error:", e);
-                mermaidElements.forEach(block => {
-                    block.innerHTML = `Mermaid Error: ${e.message}`;
+            if (elementsToRender.length > 0) {
+                mermaid.run({ nodes: elementsToRender }).catch(error => {
+                    console.error("Error rendering Mermaid diagrams:", error);
+                    elementsToRender.forEach(el => {
+                        const originalCode = el.textContent;
+                        el.innerHTML = `<div class="mermaid-error">Mermaid render error: ${error.message}</div><pre>${escapeHtml(originalCode)}</pre>`;
+                    });
                 });
             }
         }
@@ -1079,8 +1174,8 @@ ${codeContent}
             }
             originalRawContent = decodedText; // Store the raw source content
 
-            // Render with the full pre-processing pipeline
-            const processedContent = preprocessFullContent(originalRawContent);
+            // Render with the full pre-processing pipeline, including the scopeId
+            const processedContent = preprocessFullContent(originalRawContent, scopeId);
             const renderedHtml = window.marked.parse(processedContent);
             contentDiv.innerHTML = renderedHtml;
 
