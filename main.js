@@ -126,7 +126,6 @@ const NOTES_AGENT_ID = 'notes_attachments_agent';
 
 let audioEngineProcess = null; // To hold the python audio engine process
 let mainWindow;
-// Native splash screen is now used, removing the Electron-based splashWindow.
 let tray = null;
 let vcpLogWebSocket;
 let vcpLogReconnectInterval;
@@ -199,9 +198,6 @@ function stopAudioEngine() {
     }
 }
 
-
-// --- Splash Screen Window Creation (REMOVED) ---
-// The native Rust splash screen is now used instead of an Electron window.
 
 // --- Main Window Creation ---
 function createWindow() {
