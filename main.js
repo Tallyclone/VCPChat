@@ -126,6 +126,7 @@ const NOTES_AGENT_ID = 'notes_attachments_agent';
 
 let audioEngineProcess = null; // To hold the python audio engine process
 let mainWindow;
+let splashWindow = null; // To hold the splash screen window
 let tray = null;
 let vcpLogWebSocket;
 let vcpLogReconnectInterval;
@@ -199,6 +200,27 @@ function stopAudioEngine() {
 }
 
 
+// --- Splash Screen Window Creation ---
+function createSplashWindow() {
+    splashWindow = new BrowserWindow({
+        width: 500, // Wider for the banner layout
+        height: 130, // Shorter for the banner layout
+        frame: false,
+        transparent: true,
+        alwaysOnTop: true,
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'), // Reuse the existing preload
+            contextIsolation: true,
+            nodeIntegration: false,
+        }
+    });
+    // This will be handled by the new logic in app.whenReady
+    // splashWindow.loadFile('splash.html');
+    splashWindow.on('closed', () => {
+        splashWindow = null;
+    });
+}
+
 // --- Main Window Creation ---
 function createWindow() {
     mainWindow = new BrowserWindow({
@@ -229,7 +251,17 @@ function createWindow() {
     });
 
     mainWindow.once('ready-to-show', () => {
-        mainWindow.show();
+        if (splashWindow) {
+            // Optional: add a small delay for a smoother transition
+            setTimeout(() => {
+                if (splashWindow && !splashWindow.isDestroyed()) {
+                    splashWindow.close();
+                }
+                mainWindow.show();
+            }, 200); // 200ms delay
+        } else {
+            mainWindow.show();
+        }
     });
 
     mainWindow.setMenu(null); // 移除应用程序菜单栏
@@ -299,6 +331,37 @@ if (!gotTheLock) {
 
 
   app.whenReady().then(async () => { // Make the function async
+    // Handle the emergency close request from the splash screen
+    ipcMain.on('close-app', () => {
+        console.log('[Main] Received close-app request from splash screen. Quitting.');
+        app.quit();
+    });
+
+    createSplashWindow(); // Create and show splash screen first
+
+    // --- Read theme for splash screen ---
+    let theme = 'dark'; // Default to dark
+    try {
+        if (fs.existsSync(SETTINGS_FILE)) {
+            const settings = await fs.readJson(SETTINGS_FILE);
+            if (settings.currentThemeMode) {
+                theme = settings.currentThemeMode;
+            }
+        }
+    } catch (e) {
+        console.error('[Main] Could not read settings for splash screen theme, defaulting to dark.', e);
+    }
+    
+    // Load splash.html with theme as a query parameter
+    if (splashWindow && !splashWindow.isDestroyed()) {
+        const splashUrl = `file://${path.join(__dirname, 'splash.html')}?theme=${theme}`;
+        splashWindow.loadURL(splashUrl);
+        // Wait for the splash screen to be fully loaded and visible before starting heavy tasks
+        await new Promise(resolve => {
+            splashWindow.webContents.once('did-finish-load', resolve);
+        });
+    }
+
     // Pre-warm the audio engine in the background. This doesn't block the main window.
     startAudioEngine().catch(err => {
         console.error('[Main] Failed to pre-warm audio engine on startup:', err);

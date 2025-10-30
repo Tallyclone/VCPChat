@@ -219,6 +219,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onWindowMaximized: (callback) => ipcRenderer.on('window-maximized', (_event) => callback()),
     onWindowUnmaximized: (callback) => ipcRenderer.on('window-unmaximized', (_event) => callback()),
     minimizeToTray: () => ipcRenderer.send('minimize-to-tray'),
+    // Splash Screen Close
+    closeApp: () => ipcRenderer.send('close-app'),
  
      // Image Context Menu
      showImageContextMenu: (imageUrl) => ipcRenderer.send('show-image-context-menu', imageUrl),
