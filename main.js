@@ -126,7 +126,7 @@ const NOTES_AGENT_ID = 'notes_attachments_agent';
 
 let audioEngineProcess = null; // To hold the python audio engine process
 let mainWindow;
-let splashWindow = null; // To hold the splash screen window
+// Native splash screen is now used, removing the Electron-based splashWindow.
 let tray = null;
 let vcpLogWebSocket;
 let vcpLogReconnectInterval;
@@ -200,28 +200,8 @@ function stopAudioEngine() {
 }
 
 
-// --- Splash Screen Window Creation ---
-function createSplashWindow() {
-    splashWindow = new BrowserWindow({
-        width: 500,
-        height: 130,
-        frame: false,
-        transparent: true,
-        alwaysOnTop: true,
-        skipTaskbar: true, // ✅ 不在任务栏显示
-        resizable: false,
-        webPreferences: {
-            nodeIntegration: false,
-        }
-    });
-
-    // ✅ 直接加载静态 HTML（所有资源内联）
-    splashWindow.loadFile('splash.html');
-    
-    splashWindow.on('closed', () => {
-        splashWindow = null;
-    });
-}
+// --- Splash Screen Window Creation (REMOVED) ---
+// The native Rust splash screen is now used instead of an Electron window.
 
 // --- Main Window Creation ---
 function createWindow() {
@@ -253,17 +233,18 @@ function createWindow() {
     });
 
     mainWindow.once('ready-to-show', () => {
-        if (splashWindow) {
-            // Optional: add a small delay for a smoother transition
-            setTimeout(() => {
-                if (splashWindow && !splashWindow.isDestroyed()) {
-                    splashWindow.close();
-                }
-                mainWindow.show();
-            }, 200); // 200ms delay
-        } else {
-            mainWindow.show();
-        }
+        // Signal the native splash screen to close by creating the ready file.
+        const readyFile = path.join(__dirname, '.vcp_ready');
+        fs.ensureFileSync(readyFile);
+        
+        // Clean up the file after a few seconds to prevent it from lingering.
+        setTimeout(() => {
+            if (fs.existsSync(readyFile)) {
+                fs.unlinkSync(readyFile);
+            }
+        }, 3000); // 3-second delay
+
+        mainWindow.show();
     });
 
     mainWindow.setMenu(null); // 移除应用程序菜单栏
@@ -339,7 +320,7 @@ if (!gotTheLock) {
         app.quit();
     });
 
-    createSplashWindow(); // Create and show splash screen first
+    // The native splash screen is started by the batch file, so no action is needed here.
 
     // Pre-warm the audio engine in the background. This doesn't block the main window.
     startAudioEngine().catch(err => {
@@ -772,6 +753,12 @@ app.on('window-all-closed', () => {
 });
 
 app.on('will-quit', () => {
+    // 0. Clean up the ready signal file for the native splash screen
+    const readyFile = path.join(__dirname, '.vcp_ready');
+    if (fs.existsSync(readyFile)) {
+        fs.unlinkSync(readyFile);
+    }
+
     // 1. 停止所有底层监听器
     console.log('[Main] App is quitting. Stopping all listeners...');
     assistantHandlers.stopSelectionListener();

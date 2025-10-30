@@ -1,6 +1,6 @@
 Option Explicit
 
-Dim WshShell, commandToRun, projectPath
+Dim WshShell, commandToRun, projectPath, splashPath
 
 ' 获取脚本所在的目录，假设 .vbs 文件在项目根目录
 projectPath = CreateObject("Scripting.FileSystemObject").GetParentFolderName(WScript.ScriptFullName)
@@ -10,11 +10,14 @@ projectPath = CreateObject("Scripting.FileSystemObject").GetParentFolderName(WSc
 ' 确保 electron 在你的 PATH 环境变量中，或者使用 electron 的完整路径
 ' 如果 electron 是作为项目依赖安装的 (node_modules/.bin/electron)，可以使用 npx
 commandToRun = "cmd /c cd /d """ & projectPath & """ && npx electron ."
+splashPath = """" & projectPath & "\NativeSplash.exe"""
 
 Set WshShell = CreateObject("WScript.Shell")
 
-' 参数 0 表示隐藏窗口
-' 参数 False 表示不等待命令完成
+' 先以隐藏窗口方式启动原生启动器
+WshShell.Run splashPath, 0, False
+
+' 然后再启动主应用
 WshShell.Run commandToRun, 0, False
 
 Set WshShell = Nothing
