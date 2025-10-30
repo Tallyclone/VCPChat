@@ -341,6 +341,20 @@ export function setupEventListeners(deps) {
 
     if (chatMessagesDiv) {
         chatMessagesDiv.addEventListener('click', (event) => {
+            // Stop TTS playback when clicking a speaking avatar
+            const avatar = event.target.closest('.chat-avatar');
+            if (avatar && avatar.classList.contains('speaking')) {
+                console.log('[UI] Speaking avatar clicked. Requesting TTS stop via sovitsStop.');
+                event.preventDefault();
+                event.stopPropagation();
+                if (window.electronAPI && window.electronAPI.sovitsStop) {
+                    // This sends the stop request to the main process
+                    window.electronAPI.sovitsStop();
+                }
+                return;
+            }
+
+            // Handle external links
             const target = event.target.closest('a');
             if (target && target.href) {
                 const href = target.href;
