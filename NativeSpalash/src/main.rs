@@ -20,10 +20,15 @@ const READY_SIGNAL_FILE: &str = ".vcp_ready";
 const WINDOW_WIDTH: u32 = 500;
 const WINDOW_HEIGHT: u32 = 130;
 const ICON_SIZE: u32 = 96; // Resized icon dimension
-const ANIMATION_DURATION_SECS: f32 = 20.0; // Pseudo-load duration
+const ANIMATION_DURATION_SECS: f32 = 2.8; // Pseudo-load duration (Speed increased by 2x)
 const FONT_SIZE: f32 = 24.0;
 const TEXT_TO_RENDER: &str = "VChat正在启动中！~";
 
+// 缓动函数：ease_out_quad(t) = t * (2 - t)
+fn ease_out_quad(t: f32) -> f32 {
+    t * (2.0 - t)
+}
+ 
 fn main() {
     // --- 1. Setup Event Loop and Window ---
     let event_loop = EventLoopBuilder::<()>::with_user_event().build().unwrap();
@@ -166,10 +171,11 @@ fn main() {
                     canvas.fill_rect(bg_bar_rect, &bg_bar_paint, Transform::identity(), None);
 
                     let elapsed = start_time.elapsed().as_secs_f32();
-                    let progress = (elapsed / ANIMATION_DURATION_SECS).min(0.95); // Stop at 95% to wait for app
+                    let t = (elapsed / ANIMATION_DURATION_SECS).min(1.0);
+                    let progress = ease_out_quad(t).min(0.95);
                     let bar_rect = Rect::from_xywh(progress_x, progress_y, progress_width * progress, progress_height).unwrap();
                     let mut bar_paint = Paint::default();
-                    bar_paint.set_color_rgba8(64, 169, 255, 255);
+                    bar_paint.set_color_rgba8(255, 215, 0, 255); // VCP Cyber Gold
                     canvas.fill_rect(bar_rect, &bar_paint, Transform::identity(), None);
 
                     // Copy canvas to buffer, converting RGBA to BGRA for softbuffer
