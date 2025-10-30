@@ -891,8 +891,6 @@ class WebNowPlayingAdapter {
         if (!window.electron) return;
 
         addFolderBtn.addEventListener('click', () => {
-            playlist = [];
-            renderPlaylist();
             loadingIndicator.style.display = 'flex';
             scanProgressContainer.style.display = 'none';
             scanProgressBar.style.width = '0%';
@@ -917,12 +915,17 @@ class WebNowPlayingAdapter {
 
         window.electron.on('scan-finished', (newlyScannedFiles) => {
             loadingIndicator.style.display = 'none';
-            playlist = newlyScannedFiles;
-            renderPlaylist();
-            window.electron.send('save-music-playlist', playlist);
-            if (playlist.length > 0) {
-                loadTrack(0, false); // Load first track but don't play
+            // Only update playlist if new files were actually scanned.
+            // This prevents clearing the list if the user cancels the folder selection.
+            if (newlyScannedFiles && newlyScannedFiles.length > 0) {
+                playlist = newlyScannedFiles;
+                renderPlaylist();
+                window.electron.send('save-music-playlist', playlist);
+                if (playlist.length > 0) {
+                    loadTrack(0, false); // Load first track but don't play
+                }
             }
+            // If newlyScannedFiles is empty or null, do nothing, preserving the old playlist.
         });
         
         // Listen for errors from the main process (e.g., engine connection failed)
