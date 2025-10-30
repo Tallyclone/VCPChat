@@ -181,6 +181,76 @@ function setupHandlers() {
             return { success: false, error: error.message };
         }
     });
+
+    // 程序化切换提示词模式（用于插件调用）
+    ipcMain.handle('programmatic-set-prompt-mode', async (event, agentId, mode) => {
+        try {
+            if (!['original', 'modular', 'preset'].includes(mode)) {
+                return { success: false, error: `Invalid mode: ${mode}` };
+            }
+
+            const configPath = path.join(AGENT_DIR, `${agentId}.json`);
+            
+            if (!await fs.pathExists(configPath)) {
+                return { success: false, error: 'Agent配置不存在' };
+            }
+
+            const config = await fs.readJson(configPath);
+            config.promptMode = mode;
+            
+            // 更新 systemPrompt 字段
+            let systemPrompt = '';
+            switch (mode) {
+                case 'original':
+                    systemPrompt = config.originalSystemPrompt || config.systemPrompt || '';
+                    break;
+                case 'modular':
+                    if (config.advancedSystemPrompt && typeof config.advancedSystemPrompt === 'object') {
+                        const blocks = config.advancedSystemPrompt.blocks || [];
+                        systemPrompt = blocks
+                            .filter(block => !block.disabled)
+                            .map(block => {
+                                if (block.type === 'newline') {
+                                    return '\n';
+                                } else {
+                                    let content = block.content || '';
+                                    if (block.variants && block.variants.length > 0) {
+                                        const selectedIndex = block.selectedVariant || 0;
+                                        content = block.variants[selectedIndex] || content;
+                                    }
+                                    return content;
+                                }
+                            })
+                            .join('');
+                    }
+                    break;
+                case 'preset':
+                    systemPrompt = config.presetSystemPrompt || '';
+                    break;
+            }
+            
+            config.systemPrompt = systemPrompt;
+            await fs.writeJson(configPath, config, { spaces: 2 });
+
+            console.log(`[PromptHandlers] Programmatically switched agent ${agentId} to mode: ${mode}`);
+            
+            // 触发渲染进程的设置界面刷新
+            if (event.sender && !event.sender.isDestroyed()) {
+                event.sender.send('reload-agent-settings', { agentId });
+                console.log(`[PromptHandlers] Sent reload-agent-settings event to renderer for agent: ${agentId}`);
+            }
+            
+            return {
+                success: true,
+                mode,
+                systemPrompt,
+                message: `模式已切换到: ${mode}`
+            };
+        } catch (error) {
+            console.error('[PromptHandlers] Error in programmatic-set-prompt-mode:', error);
+            return { success: false, error: error.message };
+        }
+    });
 }
 
 module.exports = {

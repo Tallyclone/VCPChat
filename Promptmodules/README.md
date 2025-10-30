@@ -1,215 +1,609 @@
 # Promptmodules - 系统提示词模块
 
-VCPChat 的系统提示词管理模块，提供三种不同的提示词编辑模式。
+VCPChat 的系统提示词管理模块，提供三种不同的提示词编辑模式，满足从简单到复杂的各种使用场景。
+
+## 📋 目录
+
+- [功能概述](#功能概述)
+- [文件结构](#文件结构)
+- [三种模式详解](#三种模式详解)
+  - [原始富文本模式](#1-原始富文本模式)
+  - [模块化积木块模式](#2-模块化积木块模式)
+  - [临时与预制模式](#3-临时与预制模式)
+- [数据结构](#数据结构)
+- [使用方法](#使用方法)
+- [API 接口](#api-接口)
+- [集成说明](#集成说明)
+- [样式定制](#样式定制)
+
+---
 
 ## 功能概述
 
-此模块将系统提示词功能扩展为三个独立的模块，每个模块都有独特的使用场景：
+Promptmodules 将系统提示词功能扩展为三个独立的模块，每个模块都有独特的使用场景和功能特点：
 
-### 1. 原始富文本系统提示词模块
-- **字段**: `originalSystemPrompt`
-- **特点**: 保持与原有系统完全一致的富文本编辑体验
-- **适用场景**: 简单直接的提示词编辑
+| 模式 | 存储字段 | 适用场景 | 核心特性 |
+|------|---------|---------|---------|
+| **原始富文本** | `originalSystemPrompt` | 简单直接的提示词编辑 | 传统文本域，自动调整高度 |
+| **模块化积木块** | `advancedSystemPrompt` | 复杂的、需要频繁调整组合的提示词 | 拖拽排序、多内容条目、小仓管理 |
+| **临时与预制** | `presetSystemPrompt` | 使用预制模板或快速切换场景 | 预设文件夹、占位符替换 |
 
-### 2. 模块化系统提示词模块（积木块功能）
-- **字段**: `advancedSystemPrompt`
-- **特点**: 
-  - 积木块式编辑，每个积木块独立管理
-  - 支持拖拽调整顺序
-  - 支持禁用/启用单个积木块
-  - 支持隐藏积木块到小仓
-  - 支持轮换文本（一个积木块多个可选内容）
-  - TILE_MODE 控制视觉布局
-  - View 模式预览最终格式化结果
-- **适用场景**: 复杂的、需要频繁调整组合的提示词
-
-### 3. 临时与预制系统提示词模块
-- **字段**: `presetSystemPrompt`
-- **特点**:
-  - 支持从预设文件夹加载预设提示词
-  - 默认路径: `./AppData/systemPromptPresets`
-  - 支持 .md 和 .txt 格式
-  - 支持自定义预设路径
-- **适用场景**: 使用预制模板或快速切换不同场景的提示词
+---
 
 ## 文件结构
 
 ```
 Promptmodules/
-├── prompt-manager.js           # 主管理器，负责模式切换
-├── original-prompt-module.js   # 原始富文本模块
-├── modular-prompt-module.js    # 模块化积木块模块
-├── preset-prompt-module.js     # 临时与预制模块
-├── prompt-modules.css          # 样式文件
-└── README.md                   # 说明文档
+├── prompt-manager.js              # 主管理器，负责三种模式的切换和协调
+├── original-prompt-module.js      # 原始富文本模块实现
+├── modular-prompt-module.js       # 模块化积木块模块实现
+├── preset-prompt-module.js        # 临时与预制模块实现
+├── prompt-modules.css             # 统一样式文件（支持主题自适应）
+└── README.md                      # 本文档
 ```
+
+---
+
+## 三种模式详解
+
+### 1. 原始富文本模式
+
+**类名：** `OriginalPromptModule`  
+**存储字段：** `originalSystemPrompt`
+
+#### 特点
+- 保持与原有系统完全一致的富文本编辑体验
+- 简单直观的文本域输入
+- 自动高度调整功能
+- 向后兼容旧的 `systemPrompt` 字段
+
+#### 使用场景
+适合简单、直接的提示词编辑，无需复杂的组合和管理。
+
+#### 主要方法
+- [`render(container)`](Promptmodules/original-prompt-module.js:16) - 渲染模块 UI
+- [`save()`](Promptmodules/original-prompt-module.js:49) - 保存数据
+- [`getPrompt()`](Promptmodules/original-prompt-module.js:63) - 获取提示词内容
+
+---
+
+### 2. 模块化积木块模式
+
+**类名：** `ModularPromptModule`  
+**存储字段：** `advancedSystemPrompt`
+
+#### 核心特性
+
+##### 积木块类型
+1. **文本积木块** ([`type: 'text'`](Promptmodules/modular-prompt-module.js:528))
+   - 可编辑内容（双击进入编辑模式）
+   - 支持多内容条目（variants）功能
+   - 支持禁用/启用状态
+   - 可隐藏到小仓库
+   - 右键菜单操作
+
+2. **换行积木块** ([`type: 'newline'`](Promptmodules/modular-prompt-module.js:208))
+   - 特殊的圆形样式标记（显示 `\n`）
+   - 强制换行功能
+   - 不透明度 60%
+   - 固定高度 20px
+
+##### 多内容条目功能（Variants）
+- 一个积木块可以包含多个可选内容（[`variants`](Promptmodules/modular-prompt-module.js:244)）
+- 通过右键菜单快速切换当前显示的内容
+- 积木块右上角显示圆点指示器
+- 支持添加、删除、编辑多个内容条目
+
+##### 小仓库系统
+- 支持多个仓库分类存储隐藏的积木块
+- `default` 仓库始终存在且位于第一位
+- 仓库可以重命名、删除（除 default 外）
+- 仓库可以拖拽调整顺序
+- 从小仓拖拽积木块到编辑区为**复制**操作（不删除原积木块）
+
+##### 拖拽功能
+- **编辑区内部拖拽**：调整积木块顺序（[`handleDragStart`](Promptmodules/modular-prompt-module.js:899)）
+- **从小仓拖入**：复制积木块到编辑区（[`draggedHiddenBlock`](Promptmodules/modular-prompt-module.js:680)）
+- **拖拽指示器**：左右侧动画指示插入位置
+- **仓库拖拽**：调整仓库顺序（除 default 外）
+
+##### 编辑操作
+- **双击积木块**：进入内容编辑模式
+- **Shift+Enter**：积木块内换行
+- **Enter**：结束编辑
+- **Escape**：取消编辑
+
+##### 右键菜单
+- 切换内容条目（如果有多个）
+- 启用/禁用积木块
+- 编辑内容（打开编辑对话框）
+- 隐藏到小仓
+- 删除
+
+##### 预览模式
+- 切换 View 模式查看格式化后的最终文本
+- 隐藏小仓库和编辑功能
+- 以 `<pre>` 标签显示格式化结果
+
+#### 格式化规则
+[`formatBlocks()`](Promptmodules/modular-prompt-module.js:1058) 方法按以下规则格式化：
+1. 跳过所有 `disabled: true` 的积木块
+2. 换行块转换为 `\n`
+3. 文本块使用当前选中的内容条目（[`selectedVariant`](Promptmodules/modular-prompt-module.js:1068)）
+4. 按顺序拼接所有内容，不添加额外间隔
+
+#### 数据结构
+```javascript
+{
+  blocks: [
+    {
+      id: "block_1234567890_abc123",  // 唯一ID
+      type: "text",                    // "text" | "newline"
+      content: "主要内容",             // 主内容（向后兼容）
+      name: "积木块名称",              // 可选的名称
+      disabled: false,                 // 是否禁用
+      variants: [                      // 多内容条目数组
+        "内容选项1",
+        "内容选项2",
+        "内容选项3"
+      ],
+      selectedVariant: 0               // 当前选中的内容条目索引
+    }
+  ],
+  hiddenBlocks: {
+    "default": [],                     // 默认仓库
+    "常用模板": [],                    // 自定义仓库
+    "实验性内容": []
+  },
+  warehouseOrder: [                    // 仓库显示顺序
+    "default",
+    "常用模板",
+    "实验性内容"
+  ]
+}
+```
+
+#### 主要方法
+- [`render(container)`](Promptmodules/modular-prompt-module.js:74) - 渲染模块 UI
+- [`addBlock(type, position)`](Promptmodules/modular-prompt-module.js:525) - 添加积木块
+- [`deleteBlock(index)`](Promptmodules/modular-prompt-module.js:546) - 删除积木块
+- [`hideBlock(index)`](Promptmodules/modular-prompt-module.js:564) - 隐藏积木块到小仓
+- [`restoreBlock(index)`](Promptmodules/modular-prompt-module.js:879) - 从小仓恢复积木块
+- [`editBlock(block, index)`](Promptmodules/modular-prompt-module.js:409) - 编辑积木块内容
+- [`toggleViewMode(enabled)`](Promptmodules/modular-prompt-module.js:1027) - 切换预览模式
+- [`formatBlocks()`](Promptmodules/modular-prompt-module.js:1058) - 格式化积木块为文本
+- [`createWarehouse()`](Promptmodules/modular-prompt-module.js:1103) - 创建新仓库
+- [`renameWarehouse(oldName)`](Promptmodules/modular-prompt-module.js:1232) - 重命名仓库
+- [`deleteWarehouse(warehouseName)`](Promptmodules/modular-prompt-module.js:1321) - 删除仓库
+
+---
+
+### 3. 临时与预制模式
+
+**类名：** `PresetPromptModule`  
+**存储字段：** `presetSystemPrompt`, `presetPromptPath`, `selectedPreset`
+
+#### 特点
+- 从预设文件夹加载预制提示词模板
+- 默认路径：`./AppData/systemPromptPresets`
+- 支持 `.md` 和 `.txt` 格式文件
+- 支持自定义预设路径（可浏览选择目录）
+- 支持刷新预设列表
+- 文本域支持占位符（如 `{{AgentName}}`）
+
+#### 预设文件结构
+预设文件应放置在指定的预设文件夹中：
+```
+AppData/systemPromptPresets/
+├── 角色扮演模板.md
+├── 代码助手.txt
+├── 翻译专家.md
+└── 更多预设...
+```
+
+#### 占位符功能
+在预设内容中可使用占位符，系统会自动替换：
+- `{{AgentName}}` - 替换为当前 Agent 名称
+- 更多占位符可按需扩展
+
+#### 主要方法
+- [`render(container)`](Promptmodules/preset-prompt-module.js:49) - 渲染模块 UI
+- [`loadPresets()`](Promptmodules/preset-prompt-module.js:31) - 加载预设列表
+- [`loadSelectedPreset()`](Promptmodules/preset-prompt-module.js:242) - 加载选中的预设
+- [`save()`](Promptmodules/preset-prompt-module.js:285) - 保存数据
+- [`getPrompt()`](Promptmodules/preset-prompt-module.js:300) - 获取提示词内容
+
+---
 
 ## 数据结构
 
 ### Agent 配置新增字段
 
-```json
+```javascript
 {
-  "promptMode": "original|modular|preset",
-  "originalSystemPrompt": "原始提示词内容...",
+  // 模式选择
+  "promptMode": "original|modular|preset",  // 当前激活的模式
+  
+  // 原始富文本模式
+  "originalSystemPrompt": "直接的文本内容...",
+  
+  // 模块化积木块模式
   "advancedSystemPrompt": {
     "blocks": [
       {
-        "id": "block_xxx",
-        "type": "text|newline",
+        "id": "block_1234567890_abc123",
+        "type": "text",
         "content": "积木块内容",
+        "name": "积木块名称（可选）",
         "disabled": false,
-        "variants": ["选项1", "选项2"],
+        "variants": ["选项1", "选项2", "选项3"],
         "selectedVariant": 0
+      },
+      {
+        "id": "block_1234567891_def456",
+        "type": "newline",
+        "content": "",
+        "disabled": false
       }
     ],
     "hiddenBlocks": {
       "default": [],
-      "warehouse1": []
+      "自定义仓库名": []
     },
-    "tileMode": true
+    "warehouseOrder": ["default", "自定义仓库名"]
   },
-  "presetSystemPrompt": "预设提示词内容...",
+  
+  // 临时与预制模式
+  "presetSystemPrompt": "预设或临时提示词内容...",
   "presetPromptPath": "./AppData/systemPromptPresets",
   "selectedPreset": "/path/to/preset.md"
 }
 ```
 
+---
+
 ## 使用方法
 
 ### 前端集成
 
-在 Agent 设置页面中，原有的 `agentSystemPrompt` textarea 被替换为 Promptmodules：
+#### 1. 在 HTML 中引入必要的文件
 
 ```html
-<!-- 在 main.html 中引入 -->
+<!-- 样式文件 -->
 <link rel="stylesheet" href="Promptmodules/prompt-modules.css">
+
+<!-- 脚本文件（按顺序加载） -->
 <script src="Promptmodules/original-prompt-module.js"></script>
-<script src="Promptmodules/modular-prompt-module.js"></script>
+<script 
+src="Promptmodules/modular-prompt-module.js"></script>
 <script src="Promptmodules/preset-prompt-module.js"></script>
 <script src="Promptmodules/prompt-manager.js"></script>
 ```
 
-### 初始化
+#### 2. 在 HTML 中准备容器元素
 
-```javascript
-// 在 settingsManager.js 中初始化
-const promptManager = new window.PromptManager();
-promptManager.init({
-    agentId: 'agent_id',
-    config: agentConfig,
-    containerElement: document.getElementById('systemPromptContainer'),
-    electronAPI: window.electronAPI
-});
+```html
+<div>
+    <label for="systemPromptContainer">系统提示词:</label>
+    <div id="systemPromptContainer" class="system-prompt-container">
+        <!-- Promptmodules 将在这里初始化 -->
+    </div>
+</div>
 ```
 
-### 获取当前激活的系统提示词
+#### 3. 初始化 PromptManager
+
+在 [`settingsManager.js`](modules/settingsManager.js:131) 中初始化：
 
 ```javascript
-// 在发送消息时
+// 初始化 PromptManager
+const systemPromptContainer = document.getElementById('systemPromptContainer');
+if (systemPromptContainer && window.PromptManager) {
+    if (promptManager) {
+        // 保存当前状态
+        await promptManager.saveCurrentModeData();
+    }
+    
+    promptManager = new window.PromptManager();
+    promptManager.init({
+        agentId: agentId,
+        config: agentConfig,
+        containerElement: systemPromptContainer,
+        electronAPI: window.electronAPI
+    });
+}
+```
+
+#### 4. 获取当前激活的系统提示词
+
+在发送消息时调用：
+
+```javascript
+// 获取当前激活的系统提示词
 const systemPrompt = await promptManager.getCurrentSystemPrompt();
 ```
 
-### 外部接口（用于插件）
+---
+
+## API 接口
+
+### PromptManager（主管理器）
+
+#### 初始化方法
+
+**[`init(options)`](Promptmodules/prompt-manager.js:20)**
+
+初始化提示词管理器。
+
+**参数：**
+```javascript
+{
+    agentId: string,              // Agent ID
+    config: object,               // Agent 配置对象
+    containerElement: HTMLElement, // 容器元素
+    electronAPI: object           // Electron API 对象
+}
+```
+
+#### 公共方法
+
+**[`getCurrentSystemPrompt()`](Promptmodules/prompt-manager.js:222)**  
+获取当前激活模式的格式化系统提示词。
 
 ```javascript
-// 切换到指定模式
-await promptManager.setMode('modular');
+const systemPrompt = await promptManager.getCurrentSystemPrompt();
+// 返回: string - 格式化后的提示词文本
+```
 
-// 获取当前模式
+**[`setMode(mode)`](Promptmodules/prompt-manager.js:239)**  
+切换到指定模式（用于插件调用）。
+
+```javascript
+await promptManager.setMode('modular'); // 'original' | 'modular' | 'preset'
+```
+
+**[`getMode()`](Promptmodules/prompt-manager.js:249)**  
+获取当前模式。
+
+```javascript
 const currentMode = promptManager.getMode();
+// 返回: 'original' | 'modular' | 'preset'
 ```
 
-## 后端支持
-
-### IPC 处理器
-
-在 `modules/ipc/promptHandlers.js` 中实现了以下处理器：
-
-- `load-preset-prompts`: 加载预设列表
-- `load-preset-content`: 加载预设内容
-- `select-directory`: 选择目录
-- `get-active-system-prompt`: 获取当前激活的系统提示词
-- `update-agent-config`: 更新 Agent 配置
-
-### 使用示例
+**[`saveCurrentModeData()`](Promptmodules/prompt-manager.js:198)**  
+保存当前模式的数据。
 
 ```javascript
-// 前端调用
-const presets = await electronAPI.loadPresetPrompts('./AppData/systemPromptPresets');
-const content = await electronAPI.loadPresetContent('/path/to/preset.md');
-const systemPrompt = await electronAPI.getActiveSystemPrompt('agent_id');
+await promptManager.saveCurrentModeData();
 ```
 
-## 模块化积木块详细说明
+### 三个子模块的公共接口
 
-### 积木块类型
+每个子模块都实现了以下方法：
 
-1. **文本积木块** (`type: 'text'`)
-   - 可编辑内容
-   - 支持轮换文本
-   - 可禁用/启用
-   - 可隐藏到小仓
+- **`render(container)`** - 渲染模块 UI
+- **`save()`** - 保存数据到配置
+- **`getPrompt()` / `getFormattedPrompt()`** - 获取格式化后的提示词
 
-2. **换行积木块** (`type: 'newline'`)
-   - 特殊的圆形样式
-   - 不透明度60%
-   - TILE_MODE 关闭时隐藏
+---
 
-### 积木块操作
+## 集成说明
 
-- **拖拽**: 在 TILE_MODE 下可拖拽调整顺序
-- **右键菜单**: 
-  - 禁用/启用
-  - 隐藏到小仓
-  - 添加轮换文本
-  - 删除
-- **快捷键**: `Shift+Enter` 快速插入换行块
+### 后端 IPC 处理器
 
-### 小仓功能
+需要在 `modules/ipc/promptHandlers.js` 中实现以下处理器：
 
-- 支持多个仓库分类
-- 拖拽从小仓恢复积木块
-- `Alt/Option + 拖拽` 复制积木块
+1. **`load-preset-prompts`** - 加载预设列表
+2. **`load-preset-content`** - 加载预设内容
+3. **`select-directory`** - 选择目录对话框
+4. **`update-agent-config`** - 更新 Agent 配置
 
-### 格式化规则
+### 前端调用示例
 
-积木块格式化时：
-1. 跳过禁用的积木块
-2. 换行块转换为 `\n`
-3. 有轮换文本的块使用选中的版本
-4. 按顺序拼接所有内容
+```javascript
+// 加载预设列表
+const presets = await electronAPI.loadPresetPrompts('./AppData/systemPromptPresets');
 
-## 样式自适应
+// 加载预设内容
+const content = await electronAPI.loadPresetContent('/path/to/preset.md');
 
-模块完全适配 VCPChat 的主题系统，支持：
-- 亮色/暗色主题自动切换
-- 响应式设计（移动端适配）
-- 自定义 CSS 变量
+// 更新 Agent 配置
+await electronAPI.updateAgentConfig(agentId, {
+    promptMode: 'modular',
+    advancedSystemPrompt: data
+});
+
+// 选择目录
+const result = await electronAPI.selectDirectory();
+if (result.success && result.path) {
+    // 处理选中的路径
+}
+```
+
+### 保存触发
+
+在 [`settingsManager.js`](modules/settingsManager.js:766) 中提供了 `triggerAgentSave()` 方法，用于在模式切换或预设选择时自动触发保存：
+
+```javascript
+// 在切换模式后自动保存
+if (window.settingsManager && typeof window.settingsManager.triggerAgentSave === 'function') {
+    await window.settingsManager.triggerAgentSave();
+}
+```
+
+### 数据兼容性
+
+- **向后兼容**：模块会自动检测并兼容旧的 `systemPrompt` 字段
+- **数据迁移**：首次使用会自动将旧数据迁移到 `originalSystemPrompt`
+- **默认模式**：未设置时默认使用 `original` 模式
+
+---
+
+## 样式定制
+
+### CSS 变量支持
+
+[`prompt-modules.css`](Promptmodules/prompt-modules.css) 完全适配 VCPChat 的主题系统，使用以下 CSS 变量：
+
+```css
+--primary-text       /* 主要文字颜色 */
+--secondary-text     /* 次要文字颜色 */
+--border-color       /* 边框颜色 */
+--input-bg           /* 输入框背景 */
+--secondary-bg       /* 次要背景 */
+--button-bg          /* 按钮背景 */
+--button-hover-bg    /* 按钮悬停背景 */
+--user-bubble-bg     /* 用户气泡背景（强调色） */
+--accent-bg          /* 强调背景 */
+--danger-color       /* 危险操作颜色 */
+--panel-bg           /* 面板背景 */
+```
+
+### 主题自适应
+
+- **亮色/暗色主题**：自动切换
+- **响应式设计**：支持移动端适配（@media 断点：768px, 500px）
+- **自定义样式**：可通过覆盖 CSS 类来定制外观
+
+### 主要 CSS 类
+
+#### 模式选择器
+- `.prompt-mode-selector` - 模式选择器容器
+- `.prompt-mode-button` - 模式按钮
+- `.prompt-mode-button.active` - 激活的模式按钮
+
+#### 模块化积木块
+- `.blocks-container` - 积木块容器
+- `.prompt-block` - 积木块
+- `.prompt-block.text-block` - 文本积木块
+- `.prompt-block.newline-block` - 换行积木块
+- `.prompt-block.disabled` - 禁用的积木块
+- `.block-content` - 积木块内容
+- `.variant-indicator` - 多内容条目指示器
+- `.warehouse-container` - 小仓容器
+- `.hidden-block` - 隐藏的积木块
+
+#### 预览模式
+- `.preview-container` - 预览容器
+- `.preview-text` - 预览文本
+
+#### 预设模式
+- `.preset-prompt-container` - 预设模式容器
+- `.preset-path-section` - 路径设置区域
+- `.preset-select` - 预设选择器
+
+---
 
 ## 注意事项
 
-1. **向后兼容**: 模块会自动检测并兼容旧的 `systemPrompt` 字段
-2. **数据迁移**: 首次使用会自动将旧数据迁移到 `originalSystemPrompt`
-3. **默认模式**: 未设置时默认使用 `original` 模式
-4. **预设路径**: 默认预设路径会自动创建
+### 使用建议
+
+1. **模式选择**：
+   - 简单场景使用原始富文本模式
+   - 需要频繁调整组合时使用模块化模式
+   - 有固定模板库时使用预设模式
+
+2. **积木块命名**：
+   - 为积木块添加有意义的名称，便于在小仓中识别
+   - 多内容条目建议命名不同的变体版本
+
+3. **小仓管理**：
+   - 合理分类创建多个仓库
+   - 定期清理不再使用的积木块
+   - `default` 仓库不可删除，建议用于临时存储
+
+4. **预设文件**：
+   - 使用 UTF-8 编码
+   - 文件名清晰表达用途
+   - 可使用 Markdown 格式增强可读性
+
+### 性能优化
+
+- 积木块数量建议控制在 100 个以内
+- 避免单个积木块内容过长（建议小于 1000 字符）
+- 小仓中的积木块总数建议不超过 200 个
+
+### 已知限制
+
+1. 预设模式目前仅支持 `{{AgentName}}` 占位符
+2. 积木块拖拽在移动端体验有限
+3. 换行块在某些极端布局下可能显示异常
+
+---
 
 ## 开发状态
 
-✅ 核心功能已完成
-✅ 后端 IPC 处理器已实现
-✅ 前端三个模块已实现
-✅ 样式文件已创建
-⏳ 前端集成待完成（需要修改 settingsManager.js 和 main.html）
-⏳ 测试待完成
+- ✅ 核心功能已完成
+- ✅ 后端 IPC 处理器已实现
+- ✅ 前端三个模块已实现
+- ✅ 样式文件已创建并适配主题
+- ✅ 前端集成已完成（已集成到 settingsManager.js 和 main.html）
+- ✅ 多内容条目（Variants）功能已实现
+- ✅ 多仓库系统已实现
+- ✅ 预览模式已实现
 
-## 待集成工作
+---
 
-1. 修改 `modules/settingsManager.js` 中的 `populateAgentSettingsForm` 函数
-2. 修改 `main.html` 中的系统提示词输入区域
-3. 在 `modules/chatManager.js` 中使用新的 API 获取系统提示词
-4. 创建默认预设文件夹和示例预设
+## 更新日志
+
+### v1.2.0（当前版本）
+- ✨ 新增多内容条目（Variants）功能
+- ✨ 新增多仓库系统
+- ✨ 优化拖拽体验，添加动画指示器
+- 🐛 修复小仓拖拽复制逻辑
+- 🎨 优化 UI 样式和交互体验
+
+### v1.1.0
+- ✨ 完成三个模块的基础实现
+- ✨ 实现模式切换功能
+- ✨ 集成到 settingsManager
+- 🎨 完善样式和主题适配
+
+### v1.0.0
+- 🎉 初始版本发布
+- ✨ 实现基础架构
+
+---
 
 ## 许可证
 
 与 VCPChat 主项目相同
+
+---
+
+## 贡献指南
+
+欢迎提交 Issue 和 Pull Request 来改进此模块！
+
+### 开发环境
+
+- Node.js 14+
+- Electron 相关依赖
+- 遵循项目代码规范
+
+### 测试
+
+在修改代码后，请确保：
+1. 三种模式都能正常切换
+2. 数据保存和加载正常
+3. 主题切换后样式正常
+4. 不影响其他功能模块
+
+---
+
+## 常见问题
+
+**Q: 如何在积木块中使用换行？**  
+A: 双击进入编辑模式后，使用 Shift+Enter 可以在积木块内换行。
+
+**Q: 小仓的积木块会被删除吗？**  
+A: 不会，从小仓拖拽到编辑区是复制操作，原积木块保留在小仓中。
+
+**Q: 如何快速创建多个相似的积木块？**  
+A: 可以创建一个积木块并添加多个内容条目，或者将积木块隐藏到小仓后多次拖拽复制。
+
+**Q: 预设文件支持哪些格式？**  
+A: 目前支持 .md（Markdown）和 .txt（纯文本）格式。
+
+**Q: 切换模式后原来的数据会丢失吗？**  
+A: 不会，每种模式的数据独立保存，切换模式不影响其他模式的数据。

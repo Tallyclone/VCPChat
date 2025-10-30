@@ -959,6 +959,23 @@ import { setupEventListeners } from './modules/event-listeners.js';
 
     console.log('[Renderer DOMContentLoaded END] createNewGroupBtn textContent:', document.getElementById('createNewGroupBtn')?.textContent);
     
+    // --- Agent Settings Reload Listener ---
+    if (window.electronAPI && window.electronAPI.onReloadAgentSettings) {
+        window.electronAPI.onReloadAgentSettings(async ({ agentId }) => {
+            console.log('[Renderer] Received reload-agent-settings event for agent:', agentId);
+            if (window.settingsManager && typeof window.settingsManager.reloadAgentSettings === 'function') {
+                const result = await window.settingsManager.reloadAgentSettings(agentId);
+                if (result.success && !result.skipped) {
+                    console.log('[Renderer] Agent settings reloaded successfully');
+                    uiHelperFunctions.showToastNotification('设置已自动更新', 'success');
+                } else if (result.skipped) {
+                    console.log('[Renderer] Agent settings reload skipped (not currently editing)');
+                }
+            }
+        });
+        console.log('[Renderer] Agent settings reload listener initialized');
+    }
+    
     // --- TTS Audio Playback and Visuals ---
     setupTtsListeners();
     // --- File Watcher Listener ---

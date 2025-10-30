@@ -80,6 +80,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     loadPresetContent: (filePath) => ipcRenderer.invoke('load-preset-content', filePath),
     selectDirectory: () => ipcRenderer.invoke('select-directory'),
     getActiveSystemPrompt: (agentId) => ipcRenderer.invoke('get-active-system-prompt', agentId),
+    programmaticSetPromptMode: (agentId, mode) => ipcRenderer.invoke('programmatic-set-prompt-mode', agentId, mode),
+    onReloadAgentSettings: (callback) => ipcRenderer.on('reload-agent-settings', (_event, data) => callback(data)),
 
     // Topic related
     getAgentTopics: (agentId) => ipcRenderer.invoke('get-agent-topics', agentId),

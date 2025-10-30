@@ -293,7 +293,20 @@ const uiManager = (() => {
                         }
                     } else if (targetTab === 'settings') {
                         if (window.settingsManager) {
-                            window.settingsManager.displaySettingsForItem();
+                            // 检查是否有待刷新的 Agent
+                            const pendingAgentId = sessionStorage.getItem('pendingAgentReload');
+                            if (pendingAgentId) {
+                                console.log('[UIManager] Detected pending agent reload, reloading:', pendingAgentId);
+                                sessionStorage.removeItem('pendingAgentReload');
+                                // 延迟执行以确保标签页切换完成
+                                setTimeout(() => {
+                                    if (window.settingsManager && typeof window.settingsManager.reloadAgentSettings === 'function') {
+                                        window.settingsManager.reloadAgentSettings(pendingAgentId);
+                                    }
+                                }, 50);
+                            } else {
+                                window.settingsManager.displaySettingsForItem();
+                            }
                         }
                     } else if (targetTab === 'agents') { // Assuming 'agents' is the ID for the items list tab content
                         // 重置鼠标事件状态，确保双击功能正常工作
