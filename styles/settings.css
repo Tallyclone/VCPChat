@@ -1453,3 +1453,444 @@ body.light-theme #globalSettingsModal .modal-content::-webkit-scrollbar-thumb:ho
 body.light-theme #globalSettingsModal .modal-content {
     scrollbar-color: var(--scrollbar-thumb-light, #b0b0b0) var(--scrollbar-track-light, #e5e5e5);
 }
+
+/* ========================================
+   Agent参数可折叠容器
+   ======================================== */
+.agent-params-collapsible-container {
+    margin: 10px 0;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background-color: var(--input-bg);
+    overflow: hidden;
+}
+
+.params-header {
+    display: flex;
+    align-items: center;
+    padding: 12px 15px;
+    cursor: pointer;
+    background-color: var(--input-bg);
+    transition: background-color 0.2s ease;
+    user-select: none;
+}
+
+.params-header:hover {
+    background-color: var(--accent-bg);
+}
+
+.params-title {
+    font-weight: 500;
+    color: var(--highlight-text);
+    font-size: 1em;
+    margin-right: 15px;
+    flex-shrink: 0;
+}
+
+.params-summary {
+    flex-grow: 1;
+    font-size: 0.85em;
+    color: var(--secondary-text);
+    overflow: visible;
+    white-space: normal;
+    word-wrap: break-word;
+    line-height: 1.4;
+}
+
+.params-toggle-btn {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--secondary-text);
+    transition: transform 0.3s ease, color 0.2s ease;
+    margin-left: 10px;
+}
+
+.params-toggle-btn:hover {
+    color: var(--highlight-text);
+}
+
+.params-toggle-btn .toggle-icon {
+    transition: transform 0.3s ease;
+}
+
+.agent-params-collapsible-container.collapsed .params-toggle-btn .toggle-icon {
+    transform: rotate(-90deg);
+}
+
+.params-content {
+    max-height: 1000px;
+    overflow: hidden;
+    transition: max-height 0.3s ease, opacity 0.3s ease;
+    opacity: 1;
+    padding: 0 15px 15px 15px;
+}
+
+.agent-params-collapsible-container.collapsed .params-content {
+    max-height: 0;
+    opacity: 0;
+    padding: 0 15px;
+}
+
+.params-content > div {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+.params-content > div:last-child {
+    margin-bottom: 0;
+}
+
+.params-content label {
+    font-size: 0.9em;
+    font-weight: 500;
+    color: var(--secondary-text);
+}
+
+.params-content input[type="number"] {
+    width: 100%;
+    padding: 9px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background-color: var(--secondary-bg);
+    color: var(--primary-text);
+    font-size: 0.95em;
+    box-sizing: border-box;
+}
+
+.params-content .form-group-inline {
+    flex-direction: row !important;
+    align-items: center;
+    gap: 0;
+}
+
+.params-content .form-group-inline label {
+    margin-bottom: 0;
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.params-content .form-group-inline input[type="radio"] {
+    width: 16px;
+    height: 16px;
+    margin-right: 5px;
+    accent-color: var(--user-bubble-bg);
+}
+
+/* ========================================
+   Agent身份容器样式 (名称+头像)
+   ======================================== */
+.agent-identity-container {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    padding: 15px;
+    background-color: var(--input-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    margin: 10px 0;
+}
+
+.agent-identity-main {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+/* 头像包装器 */
+.agent-avatar-wrapper {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.agent-avatar-display {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    object-fit: cover;
+    object-position: center;
+    border: 3px solid var(--button-bg);
+    transition: border-color 0.3s ease, transform 0.2s ease;
+    cursor: pointer;
+    /* 高质量图片渲染 */
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+    image-rendering: high-quality;
+}
+
+.agent-avatar-display:hover {
+    transform: scale(1.05);
+    border-color: var(--user-bubble-bg);
+}
+
+/* 头像上传覆盖层 */
+.avatar-upload-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background-color: rgba(0, 0, 0, 0);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    opacity: 0;
+}
+
+.agent-avatar-wrapper:hover .avatar-upload-overlay {
+    background-color: rgba(0, 0, 0, 0.5);
+    opacity: 1;
+}
+
+.avatar-upload-overlay svg {
+    width: 32px;
+    height: 32px;
+    color: white;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+}
+
+/* 名称输入包装器 */
+.agent-name-wrapper {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.agent-name-wrapper label {
+    font-size: 0.9em;
+    font-weight: 500;
+    color: var(--secondary-text);
+}
+
+.agent-name-wrapper input[type="text"] {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background-color: var(--secondary-bg);
+    color: var(--primary-text);
+    font-size: 1em;
+    box-sizing: border-box;
+}
+
+/* ========================================
+   自定义样式控制区域 - 可折叠
+   ======================================== */
+.agent-style-collapsible-container {
+    margin-top: 0; /* 与上方名片接壤，无间隙 */
+    border-top: 1px solid var(--border-color);
+    background-color: var(--input-bg);
+    transition: all 0.3s ease;
+}
+
+.style-collapse-header {
+    display: flex;
+    align-items: center;
+    padding: 12px 15px;
+    cursor: pointer;
+    background-color: var(--input-bg);
+    transition: background-color 0.2s ease;
+    user-select: none;
+}
+
+.style-collapse-header:hover {
+    background-color: var(--accent-bg);
+}
+
+.style-collapse-icon {
+    margin-right: 8px;
+    font-size: 0.8em;
+    color: var(--secondary-text);
+    transition: transform 0.3s ease;
+}
+
+.agent-style-collapsible-container:not(.collapsed) .style-collapse-icon {
+    transform: rotate(90deg);
+}
+
+.style-collapse-title {
+    font-weight: 500;
+    color: var(--secondary-text);
+    font-size: 0.9em;
+}
+
+.agent-style-controls {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    padding: 15px;
+    max-height: 800px; /* 增加最大高度 */
+    overflow-y: auto; /* 改为auto，允许滚动 */
+    overflow-x: hidden;
+    opacity: 1;
+    transition: max-height 0.3s ease, opacity 0.3s ease, padding 0.3s ease;
+}
+
+/* 样式控制区域的滚动条样式 */
+.agent-style-controls::-webkit-scrollbar {
+    width: 8px;
+}
+
+.agent-style-controls::-webkit-scrollbar-track {
+    background: var(--scrollbar-track, #f1f1f1);
+    border-radius: 4px;
+}
+
+.agent-style-controls::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb, #c1c1c1);
+    border-radius: 4px;
+}
+
+.agent-style-controls::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover, #a8a8a8);
+}
+
+/* Firefox 滚动条 */
+.agent-style-controls {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb, #c1c1c1) var(--scrollbar-track, #f1f1f1);
+}
+
+.agent-style-collapsible-container.collapsed .agent-style-controls {
+    max-height: 0;
+    opacity: 0;
+    padding: 0 15px;
+}
+
+.style-control-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.style-control-item.full-width {
+    grid-column: 1 / -1;
+}
+
+.style-control-item label {
+    font-size: 0.85em;
+    font-weight: 500;
+    color: var(--secondary-text);
+}
+
+/* 颜色输入组 */
+.color-input-group {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.color-input-group input[type="color"] {
+    width: 50px;
+    height: 38px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    padding: 2px;
+    background-color: var(--secondary-bg);
+}
+
+.color-input-group input[type="text"] {
+    flex-grow: 1;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background-color: var(--secondary-bg);
+    color: var(--primary-text);
+    font-size: 0.9em;
+    font-family: monospace;
+}
+
+/* 自定义CSS文本框 */
+.style-control-item textarea {
+    width: 100%;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background-color: var(--secondary-bg);
+    color: var(--primary-text);
+    font-size: 0.9em;
+    font-family: 'Consolas', 'Monaco', monospace;
+    resize: vertical;
+    box-sizing: border-box;
+}
+
+.style-control-item textarea::placeholder {
+    color: var(--placeholder-text);
+    opacity: 0.6;
+}
+
+/* 重置颜色按钮 */
+.reset-colors-btn {
+    width: 100%;
+    padding: 10px 15px;
+    background-color: var(--button-bg);
+    color: var(--primary-text);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.reset-colors-btn:hover {
+    background-color: var(--button-hover-bg);
+    border-color: var(--button-hover-bg);
+}
+
+.reset-colors-btn svg {
+    flex-shrink: 0;
+}
+
+/* ========================================
+   头像裁剪器优化 - 高质量渲染
+   ======================================== */
+#avatarCanvas {
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+    image-rendering: high-quality;
+    /* 防止图片压缩 */
+    image-rendering: -moz-crisp-edges;
+    image-rendering: pixelated;
+}
+
+/* 确保裁剪后的头像也使用高质量渲染 */
+.agent-list img.avatar,
+.topic-list .topic-item img.avatar {
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: high-quality;
+    image-rendering: crisp-edges;
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+    .agent-identity-main {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+    }
+    
+    .agent-style-controls {
+        grid-template-columns: 1fr;
+    }
+    
+    .style-control-item.full-width {
+        grid-column: 1;
+    }
+}

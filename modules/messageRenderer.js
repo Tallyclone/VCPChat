@@ -1011,19 +1011,55 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
     // 先确定颜色值（但不应用）
     let avatarColorToUse;
     let avatarUrlToUse; // This was the missing variable
+    let customBorderColor = null; // 自定义边框颜色
+    let customNameColor = null; // 自定义名称颜色
+    let shouldApplyColorToName = false; // 是否应该将头像颜色也应用到名称
+    let useThemeColors = false; // 是否使用主题颜色
+    
     if (message.role === 'user') {
         avatarColorToUse = globalSettings.userAvatarCalculatedColor;
         avatarUrlToUse = globalSettings.userAvatarUrl;
+        // 检查用户是否启用了"会话中使用主题颜色"
+        useThemeColors = globalSettings.userUseThemeColorsInChat || false;
+        
+        if (!useThemeColors) {
+            // 用户消息：获取自定义颜色（仅在未启用主题颜色时应用）
+            customBorderColor = globalSettings.userAvatarBorderColor;
+            customNameColor = globalSettings.userNameTextColor;
+        }
+        // 用户消息：头像颜色也应用到名称
+        shouldApplyColorToName = true;
     } else if (message.role === 'assistant') {
         if (message.isGroupMessage) {
             avatarColorToUse = message.avatarColor;
             avatarUrlToUse = message.avatarUrl;
+            // 群组消息中的Agent，获取其自定义颜色
+            if (message.agentId) {
+                const agentConfig = currentSelectedItem?.config?.agents?.find(a => a.id === message.agentId);
+                if (agentConfig) {
+                    useThemeColors = agentConfig.useThemeColorsInChat || false;
+                    if (!useThemeColors) {
+                        customBorderColor = agentConfig.avatarBorderColor;
+                        customNameColor = agentConfig.nameTextColor;
+                    }
+                }
+            }
         } else if (currentSelectedItem) {
             avatarColorToUse = currentSelectedItem.config?.avatarCalculatedColor
                             || currentSelectedItem.avatarCalculatedColor
                             || currentSelectedItem.config?.avatarColor
                             || currentSelectedItem.avatarColor;
             avatarUrlToUse = currentSelectedItem.avatarUrl;
+            
+            // 非群组消息，获取当前Agent的设置
+            const agentConfig = currentSelectedItem.config || currentSelectedItem;
+            if (agentConfig) {
+                useThemeColors = agentConfig.useThemeColorsInChat || false;
+                if (!useThemeColors) {
+                    customBorderColor = agentConfig.avatarBorderColor;
+                    customNameColor = agentConfig.nameTextColor;
+                }
+            }
         }
     }
 
@@ -1128,13 +1164,35 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
                     avatarImg.style.borderWidth = '2px';
                     avatarImg.style.borderStyle = 'solid';
                 }
+                
+                // 如果需要，也应用到名称
+                if (shouldApplyColorToName && senderNameDiv) {
+                    senderNameDiv.style.color = colorStr;
+                }
             } else {
                 console.log(`[DEBUG] No color to apply, using default`);
                 messageItem.style.removeProperty('--dynamic-avatar-color');
             }
         };
 
-        if (avatarColorToUse) {
+        // 如果启用了主题颜色模式，不应用任何自定义颜色，让CSS主题接管
+        if (useThemeColors) {
+            console.log(`[DEBUG] Using theme colors for message ${messageItem.dataset.messageId}`);
+            messageItem.style.removeProperty('--dynamic-avatar-color');
+            if (avatarImg) {
+                avatarImg.style.removeProperty('border-color');
+            }
+            if (senderNameDiv) {
+                senderNameDiv.style.removeProperty('color');
+            }
+        } else if (customBorderColor && avatarImg) {
+            // 优先应用自定义颜色（如果启用且未启用主题颜色）
+            console.log(`[DEBUG] Applying custom border color ${customBorderColor} to avatar`);
+            avatarImg.style.borderColor = customBorderColor;
+            avatarImg.style.borderWidth = '2px';
+            avatarImg.style.borderStyle = 'solid';
+        } else if (avatarColorToUse) {
+            // 没有自定义颜色或禁用时，使用计算的颜色
             applyColorToElements(avatarColorToUse);
         } else if (avatarUrlToUse && !avatarUrlToUse.includes('default_')) { // No persisted color, try to extract
             // 🟢 Non-blocking color calculation
@@ -1145,7 +1203,13 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
 
             getDominantAvatarColorCached(avatarUrlToUse).then(dominantColor => {
                 if (dominantColor && messageItem.isConnected) {
-                    applyColorToElements(dominantColor);
+                    // 只有在没有自定义边框颜色时才应用提取的颜色到边框
+                    if (!customBorderColor) {
+                        applyColorToElements(dominantColor);
+                    } else if (shouldApplyColorToName && senderNameDiv) {
+                        // 如果有自定义边框颜色但需要应用颜色到名称，单独处理
+                        senderNameDiv.style.color = dominantColor;
+                    }
                     
                     // Persist the extracted color
                     let typeToSave, idToSaveFor;
@@ -1178,9 +1242,55 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
                 console.warn(`[Color] Failed to extract dominant color for ${avatarUrlToUse}:`, err);
                 // The default border is already applied, so no further action is needed on error.
             });
-        } else { // Default avatar or no URL, reset to theme defaults
+        } else if (!customBorderColor) { // Default avatar or no URL, reset to theme defaults (only if no custom color)
             // Remove the custom property. The CSS will automatically use its fallback values.
             messageItem.style.removeProperty('--dynamic-avatar-color');
+        }
+        
+        // 应用自定义名称文字颜色
+        if (customNameColor && senderNameDiv) {
+            console.log(`[DEBUG] Applying custom name color ${customNameColor} to sender name`);
+            senderNameDiv.style.color = customNameColor;
+        }
+        
+        // 应用会话样式CSS到聊天消息
+        if (message.role === 'assistant') {
+            let chatCss = '';
+            
+            if (message.isGroupMessage && message.agentId) {
+                // 群组消息中的Agent
+                const agentConfig = currentSelectedItem?.config?.agents?.find(a => a.id === message.agentId);
+                chatCss = agentConfig?.chatCss || '';
+            } else if (currentSelectedItem) {
+                // 非群组消息
+                const agentConfig = currentSelectedItem.config || currentSelectedItem;
+                chatCss = agentConfig?.chatCss || '';
+            }
+            
+            // 通过动态注入<style>标签应用会话CSS
+            if (chatCss && chatCss.trim()) {
+                console.log(`[DEBUG] Applying chat CSS to message ${message.id}:`, chatCss);
+                
+                // 为此消息创建唯一的scope ID
+                const chatScopeId = `vcp-chat-${message.id}`;
+                messageItem.setAttribute('data-chat-scope', chatScopeId);
+                
+                // 检查是否已存在相同的style标签
+                let existingStyle = document.head.querySelector(`style[data-chat-scope-id="${chatScopeId}"]`);
+                if (existingStyle) {
+                    existingStyle.remove();
+                }
+                
+                // 创建scoped CSS（为当前消息添加作用域）
+                const scopedChatCss = `[data-chat-scope="${chatScopeId}"] ${chatCss}`;
+                
+                // 注入到<head>
+                const styleElement = document.createElement('style');
+                styleElement.type = 'text/css';
+                styleElement.setAttribute('data-chat-scope-id', chatScopeId);
+                styleElement.textContent = scopedChatCss;
+                document.head.appendChild(styleElement);
+            }
         }
     }
 

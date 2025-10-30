@@ -23,6 +23,7 @@ const regexHandlers = require('./modules/ipc/regexHandlers'); // Import regex ha
 const chatHandlers = require('./modules/ipc/chatHandlers'); // Import chat handlers
 const groupChatHandlers = require('./modules/ipc/groupChatHandlers'); // Import group chat handlers
 const sovitsHandlers = require('./modules/ipc/sovitsHandlers'); // Import SovitsTTS IPC handlers
+const promptHandlers = require('./modules/ipc/promptHandlers'); // Import prompt handlers
 const notesHandlers = require('./modules/ipc/notesHandlers'); // Import notes handlers
 const assistantHandlers = require('./modules/ipc/assistantHandlers'); // Import assistant handlers
 const musicHandlers = require('./modules/ipc/musicHandlers'); // Import music handlers
@@ -626,6 +627,7 @@ if (!gotTheLock) {
     emoticonHandlers.initialize({ SETTINGS_FILE, APP_DATA_ROOT_IN_PROJECT });
     emoticonHandlers.setupEmoticonHandlers();
     canvasHandlers.initialize({ mainWindow, openChildWindows, CANVAS_CACHE_DIR });
+    promptHandlers.initialize({ AGENT_DIR, APP_DATA_ROOT_IN_PROJECT });
 
     ipcMain.on('minimize-to-tray', () => {
         if (mainWindow) {

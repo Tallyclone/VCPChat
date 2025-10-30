@@ -448,14 +448,161 @@ export function setupEventListeners(deps) {
                     setCroppedFile('user', croppedFile);
                     const userAvatarPreview = document.getElementById('userAvatarPreview');
                     if (userAvatarPreview) {
-                        userAvatarPreview.src = URL.createObjectURL(croppedFile);
+                        const previewUrl = URL.createObjectURL(croppedFile);
+                        userAvatarPreview.src = previewUrl;
                         userAvatarPreview.style.display = 'block';
+                        
+                        // 裁切完成后立即计算颜色并填充到输入框
+                        if (window.getDominantAvatarColor) {
+                            window.getDominantAvatarColor(previewUrl).then((avgColor) => {
+                                const userAvatarBorderColorInput = document.getElementById('userAvatarBorderColor');
+                                const userAvatarBorderColorTextInput = document.getElementById('userAvatarBorderColorText');
+                                const userNameTextColorInput = document.getElementById('userNameTextColor');
+                                const userNameTextColorTextInput = document.getElementById('userNameTextColorText');
+                                
+                                if (avgColor && userAvatarBorderColorInput && userNameTextColorInput) {
+                                    const rgbMatch = avgColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+                                    if (rgbMatch) {
+                                        const r = parseInt(rgbMatch[1]);
+                                        const g = parseInt(rgbMatch[2]);
+                                        const b = parseInt(rgbMatch[3]);
+                                        const hexColor = '#' + [r, g, b].map(x => {
+                                            const hex = x.toString(16);
+                                            return hex.length === 1 ? '0' + hex : hex;
+                                        }).join('');
+                                        
+                                        userAvatarBorderColorInput.value = hexColor;
+                                        userAvatarBorderColorTextInput.value = hexColor;
+                                        userNameTextColorInput.value = hexColor;
+                                        userNameTextColorTextInput.value = hexColor;
+                                        userAvatarPreview.style.borderColor = hexColor;
+                                        
+                                        console.log('[EventListeners] Auto-filled user colors from avatar:', hexColor);
+                                    }
+                                }
+                            }).catch(err => {
+                                console.error('[EventListeners] Error extracting user avatar color:', err);
+                            });
+                        }
                     }
                 }, 'user');
             } else {
                 const userAvatarPreview = document.getElementById('userAvatarPreview');
                 if (userAvatarPreview) userAvatarPreview.style.display = 'none';
                 setCroppedFile('user', null);
+            }
+        });
+    }
+    
+    // 用户样式设置折叠功能
+    const userStyleCollapseHeader = document.getElementById('userStyleCollapseHeader');
+    if (userStyleCollapseHeader) {
+        userStyleCollapseHeader.addEventListener('click', () => {
+            const container = userStyleCollapseHeader.closest('.agent-style-collapsible-container');
+            if (container) {
+                container.classList.toggle('collapsed');
+            }
+        });
+    }
+    
+    // 用户颜色选择器同步
+    const userAvatarBorderColorInput = document.getElementById('userAvatarBorderColor');
+    const userAvatarBorderColorTextInput = document.getElementById('userAvatarBorderColorText');
+    const userNameTextColorInput = document.getElementById('userNameTextColor');
+    const userNameTextColorTextInput = document.getElementById('userNameTextColorText');
+    
+    if (userAvatarBorderColorInput && userAvatarBorderColorTextInput) {
+        userAvatarBorderColorInput.addEventListener('input', (e) => {
+            userAvatarBorderColorTextInput.value = e.target.value;
+            const userAvatarPreview = document.getElementById('userAvatarPreview');
+            if (userAvatarPreview) {
+                userAvatarPreview.style.borderColor = e.target.value;
+            }
+        });
+        
+        userAvatarBorderColorTextInput.addEventListener('input', (e) => {
+            const color = e.target.value.trim();
+            if (/^#[0-9A-F]{6}$/i.test(color)) {
+                userAvatarBorderColorInput.value = color;
+                const userAvatarPreview = document.getElementById('userAvatarPreview');
+                if (userAvatarPreview) {
+                    userAvatarPreview.style.borderColor = color;
+                }
+            }
+        });
+        
+        userAvatarBorderColorTextInput.addEventListener('blur', (e) => {
+            const color = e.target.value.trim();
+            if (!/^#[0-9A-F]{6}$/i.test(color)) {
+                e.target.value = userAvatarBorderColorInput.value;
+                uiHelperFunctions.showToastNotification('颜色格式无效，请使用 #RRGGBB 格式', 'warning');
+            }
+        });
+    }
+    
+    if (userNameTextColorInput && userNameTextColorTextInput) {
+        userNameTextColorInput.addEventListener('input', (e) => {
+            userNameTextColorTextInput.value = e.target.value;
+        });
+        
+        userNameTextColorTextInput.addEventListener('input', (e) => {
+            const color = e.target.value.trim();
+            if (/^#[0-9A-F]{6}$/i.test(color)) {
+                userNameTextColorInput.value = color;
+            }
+        });
+        
+        userNameTextColorTextInput.addEventListener('blur', (e) => {
+            const color = e.target.value.trim();
+            if (!/^#[0-9A-F]{6}$/i.test(color)) {
+                e.target.value = userNameTextColorInput.value;
+                uiHelperFunctions.showToastNotification('颜色格式无效，请使用 #RRGGBB 格式', 'warning');
+            }
+        });
+    }
+    
+    // 用户重置颜色按钮
+    const resetUserAvatarColorsBtn = document.getElementById('resetUserAvatarColorsBtn');
+    if (resetUserAvatarColorsBtn) {
+        resetUserAvatarColorsBtn.addEventListener('click', () => {
+            const userAvatarPreview = document.getElementById('userAvatarPreview');
+            
+            if (!userAvatarPreview || !userAvatarPreview.src || userAvatarPreview.src === '#' || userAvatarPreview.src.includes('default_user_avatar.png')) {
+                uiHelperFunctions.showToastNotification('请先上传头像后再重置颜色', 'warning');
+                return;
+            }
+            
+            if (window.getDominantAvatarColor) {
+                window.getDominantAvatarColor(userAvatarPreview.src).then((avgColor) => {
+                    if (avgColor && userAvatarBorderColorInput && userNameTextColorInput) {
+                        const rgbMatch = avgColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+                        if (rgbMatch) {
+                            const r = parseInt(rgbMatch[1]);
+                            const g = parseInt(rgbMatch[2]);
+                            const b = parseInt(rgbMatch[3]);
+                            const hexColor = '#' + [r, g, b].map(x => {
+                                const hex = x.toString(16);
+                                return hex.length === 1 ? '0' + hex : hex;
+                            }).join('');
+                            
+                            userAvatarBorderColorInput.value = hexColor;
+                            userAvatarBorderColorTextInput.value = hexColor;
+                            userNameTextColorInput.value = hexColor;
+                            userNameTextColorTextInput.value = hexColor;
+                            userAvatarPreview.style.borderColor = hexColor;
+                            
+                            uiHelperFunctions.showToastNotification('已重置为头像默认颜色', 'success');
+                            console.log('[EventListeners] User colors reset to avatar default:', hexColor);
+                        }
+                    } else {
+                        uiHelperFunctions.showToastNotification('无法从头像提取颜色', 'error');
+                    }
+                }).catch(err => {
+                    console.error('[EventListeners] Error extracting user avatar color:', err);
+                    uiHelperFunctions.showToastNotification('提取颜色时出错', 'error');
+                });
+            } else {
+                uiHelperFunctions.showToastNotification('颜色提取功能不可用', 'error');
             }
         });
     }

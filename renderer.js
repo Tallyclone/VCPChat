@@ -815,7 +815,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
                 agentNameInput: document.getElementById('agentNameInput'),
                 agentAvatarInput: document.getElementById('agentAvatarInput'),
                 agentAvatarPreview: document.getElementById('agentAvatarPreview'),
-                agentSystemPromptTextarea: document.getElementById('agentSystemPrompt'),
+                // agentSystemPromptTextarea removed - now using PromptManager
                 agentModelInput: document.getElementById('agentModel'),
                 agentTemperatureInput: document.getElementById('agentTemperature'),
                 agentContextTokenLimitInput: document.getElementById('agentContextTokenLimit'),
@@ -958,6 +958,23 @@ import { setupEventListeners } from './modules/event-listeners.js';
     }
 
     console.log('[Renderer DOMContentLoaded END] createNewGroupBtn textContent:', document.getElementById('createNewGroupBtn')?.textContent);
+    
+    // --- Agent Settings Reload Listener ---
+    if (window.electronAPI && window.electronAPI.onReloadAgentSettings) {
+        window.electronAPI.onReloadAgentSettings(async ({ agentId }) => {
+            console.log('[Renderer] Received reload-agent-settings event for agent:', agentId);
+            if (window.settingsManager && typeof window.settingsManager.reloadAgentSettings === 'function') {
+                const result = await window.settingsManager.reloadAgentSettings(agentId);
+                if (result.success && !result.skipped) {
+                    console.log('[Renderer] Agent settings reloaded successfully');
+                    uiHelperFunctions.showToastNotification('设置已自动更新', 'success');
+                } else if (result.skipped) {
+                    console.log('[Renderer] Agent settings reload skipped (not currently editing)');
+                }
+            }
+        });
+        console.log('[Renderer] Agent settings reload listener initialized');
+    }
     
     // --- TTS Audio Playback and Visuals ---
     setupTtsListeners();
@@ -1338,6 +1355,30 @@ async function loadAndApplyGlobalSettings() {
     if (settings && !settings.error) {
         globalSettings = { ...globalSettings, ...settings }; // Merge with defaults
         document.getElementById('userName').value = globalSettings.userName || '用户';
+        
+        // Load user custom colors
+        const userAvatarBorderColorInput = document.getElementById('userAvatarBorderColor');
+        const userAvatarBorderColorTextInput = document.getElementById('userAvatarBorderColorText');
+        const userNameTextColorInput = document.getElementById('userNameTextColor');
+        const userNameTextColorTextInput = document.getElementById('userNameTextColorText');
+        
+        if (userAvatarBorderColorInput && userAvatarBorderColorTextInput) {
+            const borderColor = globalSettings.userAvatarBorderColor || '#3d5a80';
+            userAvatarBorderColorInput.value = borderColor;
+            userAvatarBorderColorTextInput.value = borderColor;
+        }
+        
+        if (userNameTextColorInput && userNameTextColorTextInput) {
+            const nameColor = globalSettings.userNameTextColor || '#ffffff';
+            userNameTextColorInput.value = nameColor;
+            userNameTextColorTextInput.value = nameColor;
+        }
+        
+        // Load userUseThemeColorsInChat setting
+        const userUseThemeColorsInChatCheckbox = document.getElementById('userUseThemeColorsInChat');
+        if (userUseThemeColorsInChatCheckbox) {
+            userUseThemeColorsInChatCheckbox.checked = globalSettings.userUseThemeColorsInChat || false;
+        }
         // Ensure the loaded URL is displayed in its complete form
         const completedUrl = window.settingsManager.completeVcpUrl(globalSettings.vcpServerUrl || '');
         document.getElementById('vcpServerUrl').value = completedUrl;

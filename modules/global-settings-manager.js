@@ -18,6 +18,9 @@ export async function handleSaveGlobalSettings(e, deps) {
 
     const newSettings = {
         userName: document.getElementById('userName').value.trim() || '用户',
+        userAvatarBorderColor: document.getElementById('userAvatarBorderColor')?.value || '#3d5a80',
+        userNameTextColor: document.getElementById('userNameTextColor')?.value || '#ffffff',
+        userUseThemeColorsInChat: document.getElementById('userUseThemeColorsInChat')?.checked || false,
         continueWritingPrompt: document.getElementById('continueWritingPrompt').value.trim() || '请继续',
         flowlockContinueDelay: parseInt(document.getElementById('flowlockContinueDelay').value, 10) || 5,
         enableMiddleClickQuickAction: document.getElementById('enableMiddleClickQuickAction').checked,
