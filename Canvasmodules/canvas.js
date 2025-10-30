@@ -440,6 +440,8 @@ document.addEventListener('DOMContentLoaded', () => {
         switch (extension) {
             case 'js':
                 return 'javascript';
+            case 'ts':
+                return 'text/typescript';
             case 'py':
                 return 'python';
             case 'css':
@@ -450,6 +452,34 @@ document.addEventListener('DOMContentLoaded', () => {
                 return 'application/json';
             case 'md':
                 return 'markdown';
+            case 'rs':
+                return 'rust';
+            case 'cpp':
+            case 'h':
+                return 'text/x-c++src';
+            case 'cs':
+                return 'text/x-csharp';
+            case 'java':
+                return 'text/x-java';
+            case 'go':
+                return 'text/x-go';
+            case 'rb':
+                return 'text/x-ruby';
+            case 'php':
+                return 'application/x-httpd-php';
+            case 'swift':
+                return 'text/x-swift';
+            case 'kt':
+                return 'text/x-kotlin';
+            case 'sh':
+                return 'text/x-sh';
+            case 'yml':
+            case 'yaml':
+                return 'text/x-yaml';
+            case 'toml':
+                return 'text/x-toml';
+            case 'xml':
+                return 'application/xml';
             case 'txt':
             default:
                 return 'text/plain';

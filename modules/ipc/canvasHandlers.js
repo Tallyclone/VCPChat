@@ -8,7 +8,11 @@ const CANVAS_CACHE_DIR = path.join(__dirname, '..', '..', 'AppData', 'Canvas');
 let canvasWindow = null;
 let fileWatcher = null;
 let initialFilePath = null;
-const SUPPORTED_EXTENSIONS = ['.txt', '.js', '.py', '.css', '.html', '.json', '.md'];
+const SUPPORTED_EXTENSIONS = [
+    '.txt', '.js', '.py', '.css', '.html', '.json', '.md', '.rs', '.ts',
+    '.cpp', '.h', '.cs', '.java', '.go', '.rb', '.php', '.swift', '.kt',
+    '.sh', '.yml', '.yaml', '.toml', '.xml'
+];
  
 function initialize(config) {
     mainWindow = config.mainWindow;
