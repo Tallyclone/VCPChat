@@ -1,6 +1,6 @@
 // modules/ipc/assistantHandlers.js
 
-const { ipcMain, BrowserWindow, screen, nativeTheme } = require('electron');
+const { ipcMain, BrowserWindow, screen, nativeTheme, globalShortcut, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs-extra');
 const { GlobalKeyboardListener } = require('node-global-key-listener');
@@ -8,16 +8,6 @@ const { getAgentConfigById } = require('./agentHandlers'); // Assuming agentHand
 const notesHandlers = require('./notesHandlers');
 
 let SelectionHook = null;
-try {
-    if (process.platform === 'win32') {
-        SelectionHook = require('selection-hook');
-        console.log('selection-hook loaded successfully in assistantHandlers.');
-    } else {
-        console.log('selection-hook is only available on Windows, text selection feature will be disabled.');
-    }
-} catch (error) {
-    console.error('Failed to load selection-hook in assistantHandlers:', error);
-}
 
 let assistantWindow = null;
 let assistantBarWindow = null;
@@ -28,7 +18,28 @@ let mouseListener = null;
 let hideBarTimeout = null;
 let SETTINGS_FILE;
 
+// Defensive logic variables
+let suspendUntil = 0; // 暂停到某个时间戳
+let lastClipboardContent = '';
+let clipChecker = null;
+
 function processSelectedText(selectionData) {
+    // 🔥 关键：检查是否应该暂停
+    if (Date.now() < suspendUntil) {
+        console.log('[Assistant] Suspended, ignoring selection');
+        return;
+    }
+    
+    
+    // 检测是否在截图（常见截图工具的进程名）
+    const foregroundApp = getForegroundAppName();
+    const screenshotApps = ['SnippingTool', 'Snipaste', 'ShareX', 'QQ', 'WeChat'];
+    if (screenshotApps.some(app => foregroundApp.includes(app))) {
+        console.log('[Assistant] Screenshot tool active, suspending for 3s');
+        suspendUntil = Date.now() + 3000;
+        return;
+    }
+
     const selectedText = selectionData.text;
     if (!selectedText || selectedText.trim() === '') {
         if (assistantBarWindow && !assistantBarWindow.isDestroyed() && assistantBarWindow.isVisible()) {
@@ -86,6 +97,41 @@ function processSelectedText(selectionData) {
     });
 }
 
+// 获取前台应用名称（Windows）
+function getForegroundAppName() {
+    if (process.platform !== 'win32') return '';
+    try {
+        const { execSync } = require('child_process');
+        const result = execSync(
+            'powershell "Get-Process | Where-Object {$_.MainWindowHandle -ne 0} | Select-Object -First 1 ProcessName"',
+            { encoding: 'utf8' }
+        );
+        return result.trim();
+    } catch {
+        return '';
+    }
+}
+
+
+// 检测剪贴板是否被其他程序使用
+function detectClipboardConflict() {
+    const currentClip = clipboard.readText();
+    if (currentClip !== lastClipboardContent) {
+        // 剪贴板被外部改变，暂停1秒
+        console.log('[Assistant] External clipboard change, suspending');
+        suspendUntil = Date.now() + 1000;
+        lastClipboardContent = currentClip;
+    }
+}
+
+// 注册全局快捷键：Ctrl+Shift+P 临时暂停
+function registerSuspendHotkey() {
+    globalShortcut.register('CommandOrControl+Shift+P', () => {
+        suspendUntil = Date.now() + 10000; // 暂停10秒
+        console.log('[Assistant] Manually suspended for 10s');
+    });
+}
+
 function startGlobalMouseListener() {
     if (mouseListener) return;
     mouseListener = new GlobalKeyboardListener();
@@ -121,9 +167,25 @@ function startSelectionListener() {
         selectionHookInstance = new SelectionHook();
         selectionHookInstance.on('text-selection', processSelectedText);
         selectionHookInstance.on('error', (error) => console.error('Error in SelectionHook:', error));
+
+        // 🔥 启动时初始化剪贴板状态
+        lastClipboardContent = clipboard.readText();
+        
+        
+        // 每500ms检测剪贴板冲突
+        clipChecker = setInterval(() => {
+            if (!selectionListenerActive) {
+                clearInterval(clipChecker);
+                clipChecker = null;
+                return;
+            }
+            detectClipboardConflict();
+        }, 500);
+
         if (selectionHookInstance.start({ debug: false })) {
             selectionListenerActive = true;
-            console.log('[Assistant] selection-hook listener started.');
+            registerSuspendHotkey();
+            console.log('[Assistant] Listener started with smart suspension');
         } else {
             console.error('[Assistant] Failed to start selection-hook listener.');
             selectionHookInstance = null;
@@ -140,6 +202,11 @@ function stopSelectionListener() {
     }
     try {
         selectionHookInstance.stop();
+        globalShortcut.unregister('CommandOrControl+Shift+P');
+        if (clipChecker) {
+            clearInterval(clipChecker);
+            clipChecker = null;
+        }
         console.log('[Assistant] selection-hook listener stopped.');
     } catch (e) {
         console.error('[Assistant] Failed to stop selection-hook listener:', e);
@@ -214,8 +281,23 @@ function createAssistantWindow(data) {
     });
 }
 
-function initialize(options) {
+async function initialize(options) {
     SETTINGS_FILE = options.SETTINGS_FILE;
+
+    // Asynchronously load selection-hook at startup
+    if (process.platform === 'win32') {
+        try {
+            // Dynamic import returns a promise
+            const selectionHookModule = await import('selection-hook');
+            SelectionHook = selectionHookModule.default || selectionHookModule;
+            console.log('selection-hook loaded asynchronously.');
+        } catch (error) {
+            console.error('Failed to load selection-hook asynchronously:', error);
+            SelectionHook = null; // Ensure it's null on failure
+        }
+    } else {
+        console.log('selection-hook is only available on Windows, text selection feature will be disabled.');
+    }
 
     createAssistantBarWindow();
 

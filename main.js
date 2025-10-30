@@ -559,7 +559,7 @@ if (!gotTheLock) {
     });
 
     windowHandlers.initialize(mainWindow, openChildWindows);
-    assistantHandlers.initialize({ SETTINGS_FILE });
+    await assistantHandlers.initialize({ SETTINGS_FILE });
     fileDialogHandlers.initialize(mainWindow, {
         getSelectionListenerStatus: assistantHandlers.getSelectionListenerStatus,
         stopSelectionListener: assistantHandlers.stopSelectionListener,
