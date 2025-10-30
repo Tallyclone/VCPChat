@@ -203,19 +203,21 @@ function stopAudioEngine() {
 // --- Splash Screen Window Creation ---
 function createSplashWindow() {
     splashWindow = new BrowserWindow({
-        width: 500, // Wider for the banner layout
-        height: 130, // Shorter for the banner layout
+        width: 500,
+        height: 130,
         frame: false,
         transparent: true,
         alwaysOnTop: true,
+        skipTaskbar: true, // ✅ 不在任务栏显示
+        resizable: false,
         webPreferences: {
-            preload: path.join(__dirname, 'preload.js'), // Reuse the existing preload
-            contextIsolation: true,
             nodeIntegration: false,
         }
     });
-    // This will be handled by the new logic in app.whenReady
-    // splashWindow.loadFile('splash.html');
+
+    // ✅ 直接加载静态 HTML（所有资源内联）
+    splashWindow.loadFile('splash.html');
+    
     splashWindow.on('closed', () => {
         splashWindow = null;
     });
@@ -338,29 +340,6 @@ if (!gotTheLock) {
     });
 
     createSplashWindow(); // Create and show splash screen first
-
-    // --- Read theme for splash screen ---
-    let theme = 'dark'; // Default to dark
-    try {
-        if (fs.existsSync(SETTINGS_FILE)) {
-            const settings = await fs.readJson(SETTINGS_FILE);
-            if (settings.currentThemeMode) {
-                theme = settings.currentThemeMode;
-            }
-        }
-    } catch (e) {
-        console.error('[Main] Could not read settings for splash screen theme, defaulting to dark.', e);
-    }
-    
-    // Load splash.html with theme as a query parameter
-    if (splashWindow && !splashWindow.isDestroyed()) {
-        const splashUrl = `file://${path.join(__dirname, 'splash.html')}?theme=${theme}`;
-        splashWindow.loadURL(splashUrl);
-        // Wait for the splash screen to be fully loaded and visible before starting heavy tasks
-        await new Promise(resolve => {
-            splashWindow.webContents.once('did-finish-load', resolve);
-        });
-    }
 
     // Pre-warm the audio engine in the background. This doesn't block the main window.
     startAudioEngine().catch(err => {

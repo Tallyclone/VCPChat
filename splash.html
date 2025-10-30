@@ -6,13 +6,9 @@
     <title>VCP Chat 正在载入...</title>
     <style>
         :root {
-            --splash-bg-color-light: #f0f2f5;
-            --splash-text-color-light: #333;
-            --splash-border-color-light: #d9d9d9;
             --splash-bg-color-dark: #2a2a2a;
             --splash-text-color-dark: #e0e0e0;
             --splash-border-color-dark: #424242;
-            --progress-bar-color-light: #1890ff;
             --progress-bar-color-dark: #40a9ff;
         }
 
@@ -31,14 +27,6 @@
             opacity: 0;
             animation: fadeInBody 0.5s ease-in-out forwards;
             -webkit-app-region: drag; /* Make the whole window draggable */
-        }
-
-        body.light-theme {
-            background-color: var(--splash-bg-color-light);
-            color: var(--splash-text-color-light);
-        }
-
-        body.dark-theme {
             background-color: var(--splash-bg-color-dark);
             color: var(--splash-text-color-dark);
         }
@@ -52,11 +40,9 @@
             box-sizing: border-box;
             border: 1px solid;
             border-radius: 8px;
+            border-color: var(--splash-border-color-dark);
         }
         
-        body.light-theme .splash-banner { border-color: var(--splash-border-color-light); }
-        body.dark-theme .splash-banner { border-color: var(--splash-border-color-dark); }
-
         .logo {
             width: 64px;
             height: 64px;
@@ -81,35 +67,16 @@
             height: 4px;
             border-radius: 2px;
             overflow: hidden;
+            background-color: #4f4f4f;
         }
-        body.light-theme .progress-bar-container { background-color: #e6e6e6; }
-        body.dark-theme .progress-bar-container { background-color: #4f4f4f; }
 
         .progress-bar {
             width: 100%;
             height: 100%;
             transform-origin: left;
             animation: pseudo-load 20s cubic-bezier(0.1, 0.8, 0.2, 1) infinite;
+            background-color: var(--progress-bar-color-dark);
         }
-        body.light-theme .progress-bar { background-color: var(--progress-bar-color-light); }
-        body.dark-theme .progress-bar { background-color: var(--progress-bar-color-dark); }
-
-        .close-btn {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            width: 24px;
-            height: 24px;
-            font-size: 20px;
-            line-height: 24px;
-            text-align: center;
-            cursor: pointer;
-            border-radius: 50%;
-            transition: background-color 0.2s ease;
-            -webkit-app-region: no-drag; /* Make button clickable */
-        }
-        body.light-theme .close-btn:hover { background-color: #e0e0e0; }
-        body.dark-theme .close-btn:hover { background-color: #555; }
 
         @keyframes fadeInBody {
             from { opacity: 0; }
@@ -141,26 +108,5 @@
             </div>
         </div>
     </div>
-    <div class="close-btn" id="closeBtn" title="退出">&times;</div>
-
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            // Apply theme from URL
-            const params = new URLSearchParams(window.location.search);
-            const theme = params.get('theme') || 'dark';
-            document.body.classList.add(theme === 'dark' ? 'dark-theme' : 'light-theme');
-
-            // Setup close button
-            const closeBtn = document.getElementById('closeBtn');
-            closeBtn.addEventListener('click', () => {
-                // This will be exposed from preload.js
-                if (window.electronAPI && typeof window.electronAPI.closeApp === 'function') {
-                    window.electronAPI.closeApp();
-                } else {
-                    console.error('closeApp function not found on electronAPI.');
-                }
-            });
-        });
-    </script>
 </body>
 </html>
