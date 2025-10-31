@@ -1,12 +1,14 @@
 const { ipcMain, BrowserWindow } = require('electron');
 const path = require('path');
 const fs = require('fs-extra');
+const chokidar = require('chokidar');
 
 let mainWindow;
 let openChildWindows;
 const CANVAS_CACHE_DIR = path.join(__dirname, '..', '..', 'AppData', 'Canvas');
 let canvasWindow = null;
 let fileWatcher = null;
+const internalSaveInProgress = new Set(); // Track internal saves
 let initialFilePath = null;
 const SUPPORTED_EXTENSIONS = [
     '.txt', '.js', '.py', '.css', '.html', '.json', '.md', '.rs', '.ts',
@@ -120,13 +122,22 @@ async function createCanvasWindow(filePath = null) {
     });
 
     // Start watching the directory for changes
+    // Start watching the directory for changes
     if (!fileWatcher) {
-        fileWatcher = fs.watch(CANVAS_CACHE_DIR, (eventType, filename) => {
-            if (filename && canvasWindow && !canvasWindow.isDestroyed()) {
-                const filePath = path.join(CANVAS_CACHE_DIR, filename);
-                console.log(`File changed: ${filePath}`);
+        fileWatcher = chokidar.watch(CANVAS_CACHE_DIR, {
+            persistent: true,
+            ignoreInitial: true,
+        }).on('change', (filePath) => {
+            if (internalSaveInProgress.has(filePath)) {
+                console.log(`Internal save detected for ${filePath}. Ignoring watch event.`);
+                return; // It's an internal save, do nothing.
+            }
+
+            if (canvasWindow && !canvasWindow.isDestroyed()) {
+                console.log(`External file change detected: ${filePath}`);
                 getCanvasFileContent(filePath).then(fileContent => {
-                    canvasWindow.webContents.send('canvas-file-changed', fileContent);
+                    // Send a specific event for external changes
+                    canvasWindow.webContents.send('external-file-changed', fileContent);
                 }).catch(err => console.error(`Error reading changed file ${filePath}:`, err));
             }
         });
@@ -187,9 +198,18 @@ async function handleLoadCanvasFile(event, filePath) {
 
 async function handleSaveCanvasFile(event, file) {
     try {
+        // Flag this path as an internal save before writing
+        internalSaveInProgress.add(file.path);
         await fs.writeFile(file.path, file.content);
+        console.log(`Internal save successful for: ${file.path}`);
     } catch (error) {
         console.error(`Failed to save canvas file ${file.path}:`, error);
+    } finally {
+        // After a short delay, remove the flag.
+        // This gives chokidar time to fire its event, which we will then ignore.
+        setTimeout(() => {
+            internalSaveInProgress.delete(file.path);
+        }, 100);
     }
 }
 
