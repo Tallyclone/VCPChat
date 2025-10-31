@@ -20,8 +20,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const renderMdBtn = document.getElementById('render-md-btn');
     const renderHtmlBtn = document.getElementById('render-html-btn');
     const toggleWrapBtn = document.getElementById('toggle-wrap-btn');
+    const externalChangeBar = document.getElementById('external-change-bar');
+    const viewDiffBtn = document.getElementById('view-diff-btn');
+    const dismissChangeBtn = document.getElementById('dismiss-change-btn');
+    const diffModal = document.getElementById('diff-modal');
+    const diffViewContainer = document.getElementById('diff-view');
+    const acceptChangesBtn = document.getElementById('accept-changes-btn');
+    const rejectChangesBtn = document.getElementById('reject-changes-btn');
 
     let editor;
+    let externalFileContent = null; // To store content from AI
+    let diffView = null;
     const editorContextMenu = document.getElementById('editor-context-menu');
     let filesHistory = {}; // Object to store history arrays, keyed by file path
 
@@ -173,9 +182,81 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
  
+        window.electronAPI.onExternalFileChanged((file) => {
+            if (editor && editor.getValue() !== file.content) {
+                console.log('External change detected, showing notification bar.');
+                externalFileContent = file.content; // Store the new content
+                externalChangeBar.style.display = 'flex';
+            }
+        });
+ 
         // Inform main process that the window is ready to receive data
         window.electronAPI.canvasReady();
     }
+
+    // --- Diff View Logic ---
+    function initializeDiffView(originalContent, modifiedContent) {
+        if (diffView) {
+            // If it exists, just update contents
+            diffView.edit.setValue(originalContent);
+            diffView.right.orig.setValue(modifiedContent);
+            return;
+        }
+        
+        diffViewContainer.innerHTML = ''; // Clear previous view if any
+        diffView = CodeMirror.MergeView(diffViewContainer, {
+            value: originalContent,          // Original content on the left
+            origRight: modifiedContent,      // Modified content on the right
+            lineNumbers: true,
+            mode: editor.getOption('mode'),  // Use the same mode as the main editor
+            theme: editor.getOption('theme'),
+            lineWrapping: editor.getOption('lineWrapping'), // Sync line wrapping with main editor
+            revertButtons: false,            // We have our own buttons
+            connect: 'align',
+            collapseIdentical: true,
+        });
+    }
+
+    viewDiffBtn.addEventListener('click', () => {
+        if (editor && externalFileContent !== null) {
+            const originalContent = editor.getValue();
+            initializeDiffView(originalContent, externalFileContent);
+            diffModal.style.display = 'flex';
+            // Refresh the diff view after it becomes visible
+            setTimeout(() => {
+                if (diffView) {
+                   diffView.edit.refresh();
+                   diffView.right.orig.refresh();
+                }
+            }, 10);
+        }
+    });
+
+    function closeDiffViewAndBar() {
+        diffModal.style.display = 'none';
+        externalChangeBar.style.display = 'none';
+        externalFileContent = null;
+    }
+
+    acceptChangesBtn.addEventListener('click', () => {
+        if (editor && externalFileContent !== null) {
+            editor.setValue(externalFileContent); // This will trigger the auto-save
+        }
+        closeDiffViewAndBar();
+    });
+
+    function rejectChanges() {
+        if (editor && window.electronAPI) {
+            const userContent = editor.getValue();
+            const path = filePathSpan.textContent;
+            // Force save the user's current content back to the file system
+            window.electronAPI.saveCanvasFile({ path, content: userContent });
+        }
+        closeDiffViewAndBar();
+    }
+
+    rejectChangesBtn.addEventListener('click', rejectChanges);
+    dismissChangeBtn.addEventListener('click', rejectChanges);
 
     // --- UI Event Listeners ---
     newCanvasBtn.addEventListener('click', () => {

@@ -306,6 +306,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     saveCanvasFile: (file) => ipcRenderer.send('save-canvas-file', file),
     onCanvasLoadData: (callback) => ipcRenderer.on('canvas-load-data', (_event, data) => callback(data)),
     onCanvasFileChanged: (callback) => ipcRenderer.on('canvas-file-changed', (_event, file) => callback(file)),
+    onExternalFileChanged: (callback) => ipcRenderer.on('external-file-changed', (_event, file) => callback(file)), // Add this line
     onCanvasContentUpdate: (callback) => ipcRenderer.on('canvas-content-update', (_event, data) => callback(data)),
     onLoadCanvasFileByPath: (callback) => ipcRenderer.on('load-canvas-file-by-path', (_event, filePath) => callback(filePath)),
     onCanvasWindowClosed: (callback) => ipcRenderer.on('canvas-window-closed', (_event) => callback()),
