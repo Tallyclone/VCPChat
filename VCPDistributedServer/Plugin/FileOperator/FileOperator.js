@@ -968,6 +968,46 @@ async function updateHistory(filePath, searchString, replaceString, encoding = '
   }
 }
  
+async function applyDiff(parameters) {
+  try {
+    const { filePath, diffContent, searchString, replaceString, encoding } = parameters;
+
+    const readResult = await readFile(filePath, encoding);
+    if (!readResult.success) {
+      throw new Error(`Failed to read file for applying diff: ${readResult.error}`);
+    }
+    // We can only apply diff to string content.
+    if (typeof readResult.data.content !== 'string') {
+        throw new Error('ApplyDiff can only be used on plain text files.');
+    }
+    const originalContent = readResult.data.content;
+    let newContent;
+
+    if (diffContent) {
+      // Use the existing diff logic if diffContent is provided
+      newContent = applyDiffLogic(originalContent, diffContent);
+    } else if (searchString !== undefined && replaceString !== undefined) {
+      // Handle the legacy format with searchString and replaceString
+      if (!originalContent.includes(searchString)) {
+        // Make error more specific for debugging
+        throw new Error(`Diff application failed: searchString content not found in the original file. Content not found: "${searchString}"`);
+      }
+      // Per user feedback, use .replace() to only replace the first occurrence.
+      newContent = originalContent.replace(searchString, replaceString);
+    } else {
+      throw new Error('ApplyDiff requires either "diffContent" or both "searchString" and "replaceString" parameters.');
+    }
+    
+    const editResult = await editFile(filePath, newContent, encoding);
+    if (editResult.success) {
+      editResult.data.message = '文件编辑已经提交等待用户确认';
+    }
+    return editResult;
+  } catch (error) {
+    return { success: false, error: `Failed to apply diff: ${error.message}` };
+  }
+}
+ 
 // Batch processing for legacy format with robust content and action aggregation
 async function processBatchRequest(request) {
   debugLog('Processing legacy batch request with robust aggregation', { request });
@@ -1016,6 +1056,9 @@ async function processBatchRequest(request) {
           break;
         case 'DeleteFile':
           result = await deleteFile(parameters.filePath);
+          break;
+        case 'ApplyDiff':
+          result = await applyDiff(parameters);
           break;
         default:
           result = { success: false, error: `Unsupported batch command: ${command}` };
@@ -1114,39 +1157,7 @@ async function processRequest(request) {
     case 'UpdateHistory':
         return await updateHistory(parameters.filePath, parameters.searchString, parameters.replaceString, parameters.encoding);
     case 'ApplyDiff':
-      try {
-        const { filePath, diffContent, searchString, replaceString, encoding } = parameters;
-
-        const readResult = await readFile(filePath, encoding);
-        if (!readResult.success) {
-          throw new Error(`Failed to read file for applying diff: ${readResult.error}`);
-        }
-        // We can only apply diff to string content.
-        if (typeof readResult.data.content !== 'string') {
-            throw new Error('ApplyDiff can only be used on plain text files.');
-        }
-        const originalContent = readResult.data.content;
-        let newContent;
-
-        if (diffContent) {
-          // Use the existing diff logic if diffContent is provided
-          newContent = applyDiffLogic(originalContent, diffContent);
-        } else if (searchString !== undefined && replaceString !== undefined) {
-          // Handle the legacy format with searchString and replaceString
-          if (!originalContent.includes(searchString)) {
-            // Make error more specific for debugging
-            throw new Error(`Diff application failed: searchString content not found in the original file. Content not found: "${searchString}"`);
-          }
-          // Per user feedback, use .replace() to only replace the first occurrence.
-          newContent = originalContent.replace(searchString, replaceString);
-        } else {
-          throw new Error('ApplyDiff requires either "diffContent" or both "searchString" and "replaceString" parameters.');
-        }
-        
-        return await editFile(filePath, newContent, encoding);
-      } catch (error) {
-        return { success: false, error: `Failed to apply diff: ${error.message}` };
-      }
+      return await applyDiff(parameters);
     default:
       return {
         success: false,
