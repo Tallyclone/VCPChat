@@ -136,7 +136,7 @@ body.light-theme .sidebar-button:hover {
 
 .chat-actions .header-button#voiceChatBtn svg {
     position: relative;
-    top: 1.5px; /* Adjust the icon itself */
+    top: 1.8px; /* Adjust the icon itself */
 }
 
 .chat-actions .header-button:hover {
