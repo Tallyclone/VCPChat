@@ -472,7 +472,7 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
     // Get the correct history for this message's context
     let historyForThisMessage;
     // For assistant chat, always use a temporary in-memory history
-    if (context.topicId === 'assistant_chat') {
+    if (context.topicId === 'assistant_chat' || context.topicId?.startsWith('voicechat_')) {
         historyForThisMessage = currentChatHistoryRef.get();
     } else if (isForCurrentView) {
         // For current view, use in-memory history
@@ -771,7 +771,7 @@ export async function finalizeStreamedMessage(messageId, finishReason, context) 
     // Get the correct history
     let historyForThisMessage;
     // For assistant chat, always use the in-memory history from the ref
-    if (storedContext.topicId === 'assistant_chat') {
+    if (storedContext.topicId === 'assistant_chat' || storedContext.topicId?.startsWith('voicechat_')) {
         historyForThisMessage = refs.currentChatHistoryRef.get();
     } else {
         // For all other chats, always fetch the latest history from the source of truth
