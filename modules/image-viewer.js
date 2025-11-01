@@ -493,15 +493,25 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    // 复制功能（原图）
+    // 复制功能（合并编辑后的图）
     copyButton.addEventListener('click', async () => {
         if (!imgElement.src) return;
-        
+
         const originalText = copyButton.innerHTML;
         try {
-            const response = await fetch(imgElement.src);
-            const blob = await response.blob();
-            const item = new ClipboardItem({ [blob.type]: blob });
+            // 创建合成画布
+            const mergedCanvas = document.createElement('canvas');
+            mergedCanvas.width = imgElement.naturalWidth;
+            mergedCanvas.height = imgElement.naturalHeight;
+            const mergedCtx = mergedCanvas.getContext('2d');
+            
+            // 绘制原图和编辑层
+            mergedCtx.drawImage(imgElement, 0, 0);
+            mergedCtx.drawImage(canvas, 0, 0);
+            
+            // 转换为 blob 并复制
+            const blob = await new Promise(resolve => mergedCanvas.toBlob(resolve, 'image/png'));
+            const item = new ClipboardItem({ 'image/png': blob });
             await navigator.clipboard.write([item]);
             
             copyButton.innerHTML = '<svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:currentColor;"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"></path></svg> 已复制';
@@ -516,9 +526,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 下载功能
     downloadButton.addEventListener('click', () => {
         if (!imgElement.src) return;
-        
+
+        // 创建合成画布
+        const mergedCanvas = document.createElement('canvas');
+        mergedCanvas.width = imgElement.naturalWidth;
+        mergedCanvas.height = imgElement.naturalHeight;
+        const mergedCtx = mergedCanvas.getContext('2d');
+
+        // 绘制原图和编辑层
+        mergedCtx.drawImage(imgElement, 0, 0);
+        mergedCtx.drawImage(canvas, 0, 0);
+
+        // 创建下载链接并点击
         const link = document.createElement('a');
-        link.href = imgElement.src;
+        link.href = mergedCanvas.toDataURL('image/png');
         link.download = decodeURIComponent(imageTitle) || 'image.png';
         link.click();
     });
