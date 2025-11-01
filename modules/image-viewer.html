@@ -171,7 +171,22 @@
         .color-picker-wrapper {
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 8px;
+            padding: 0 4px;
+        }
+
+        #colorCodeDisplay {
+            font-family: monospace;
+            font-size: 13px;
+            background-color: var(--button-bg);
+            padding: 5px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            user-select: none;
+            transition: background-color 0.2s;
+        }
+        #colorCodeDisplay:hover {
+            background-color: var(--button-hover-bg);
         }
 
         #colorPicker {
@@ -324,6 +339,66 @@
             background-color: #e81123;
             color: white;
         }
+
+        /* OCR Modal Styles */
+        .ocr-modal {
+            display: none;
+            position: fixed;
+            z-index: 1001;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.6);
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+        }
+        .ocr-modal-content {
+            background-color: var(--secondary-bg);
+            margin: 10% auto;
+            padding: 20px;
+            border: 1px solid var(--image-viewer-border-transparent);
+            width: 60%;
+            max-width: 700px;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+            display: flex;
+            flex-direction: column;
+        }
+        .ocr-modal-close {
+            color: var(--secondary-text);
+            align-self: flex-end;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .ocr-modal-close:hover,
+        .ocr-modal-close:focus {
+            color: var(--primary-text);
+            text-decoration: none;
+        }
+        .ocr-modal h3 {
+            margin-top: 0;
+            color: var(--primary-text);
+        }
+        #ocrResultText {
+            width: 100%;
+            height: 250px;
+            margin-top: 10px;
+            margin-bottom: 15px;
+            background-color: var(--primary-bg);
+            color: var(--primary-text);
+            border: 1px solid var(--image-viewer-border-transparent);
+            border-radius: 4px;
+            padding: 10px;
+            font-family: monospace;
+            resize: vertical;
+            box-sizing: border-box; /* 修复溢出问题 */
+        }
+        #copyOcrText {
+            align-self: flex-end;
+        }
     </style>
 </head>
 <body>
@@ -381,7 +456,10 @@
 
         <!-- 颜色和画笔大小 -->
         <div class="toolbar-section">
-            <input type="color" id="colorPicker" value="#ff0000" title="选择颜色">
+            <div class="color-picker-wrapper">
+                <input type="color" id="colorPicker" value="#ff0000" title="选择颜色">
+                <span id="colorCodeDisplay">#FF0000</span>
+            </div>
             <div class="brush-size-wrapper">
                 <input type="range" id="brushSize" min="1" max="50" value="5" title="画笔大小">
                 <div class="brush-preview">
@@ -424,10 +502,25 @@
             <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"></path></svg>
             下载
         </button>
+        <button id="ocrButton" class="control-button">
+            <svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:currentColor;"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zM4 18V6h16v12H4zm2-8h2v2H6v-2zm4 0h8v2h-8v-2zm0 4h6v2h-6v-2z"></path></svg>
+            识别文字
+        </button>
     </div>
 
     <div id="errorMessage" class="error-message" style="display:none;">无法加载图片。</div>
     
+    <!-- OCR Result Modal -->
+    <div id="ocrResultModal" class="ocr-modal">
+        <div class="ocr-modal-content">
+            <span class="ocr-modal-close" id="ocrModalClose">&times;</span>
+            <h3>识别结果</h3>
+            <textarea id="ocrResultText" readonly></textarea>
+            <button id="copyOcrText" class="control-button">复制文本</button>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <script src="image-viewer.js"></script>
 </body>
 </html>
