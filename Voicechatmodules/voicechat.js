@@ -224,19 +224,31 @@ document.addEventListener('DOMContentLoaded', () => {
             window.messageRenderer.appendStreamChunk(messageId, chunk, context);
         } else if (type === 'end') {
             window.messageRenderer.finalizeStreamedMessage(messageId, 'completed', context).then(() => {
-                const messageElement = document.getElementById(`message-item-${messageId}`);
-                let textToSpeak = '';
-                if (messageElement) {
-                    const contentElement = messageElement.querySelector('.md-content');
-                    if (contentElement) {
-                        const contentClone = contentElement.cloneNode(true);
-                        contentClone.querySelectorAll('.vcp-tool-use-bubble').forEach(el => el.remove());
-                        textToSpeak = contentClone.innerText || '';
-                    } else {
-                        textToSpeak = messageElement.textContent || messageElement.innerText;
+                // 🟢 修复：使用 requestAnimationFrame 来确保在DOM完全更新和渲染后才提取文本
+                requestAnimationFrame(() => {
+                    const messageElement = document.getElementById(`message-item-${messageId}`);
+                    let textToSpeak = '';
+                    if (messageElement) {
+                        const contentElement = messageElement.querySelector('.md-content');
+                        if (contentElement) {
+                            // 克隆节点以避免修改实时DOM
+                            const contentClone = contentElement.cloneNode(true);
+                            // 移除所有不需要朗读的工具提示气泡
+                            contentClone.querySelectorAll('.vcp-tool-use-bubble').forEach(el => el.remove());
+                            // 提取纯文本
+                            textToSpeak = contentClone.innerText || '';
+                        } else {
+                            // 作为备用方案，从整个消息元素中提取文本
+                            textToSpeak = messageElement.textContent || messageElement.innerText;
+                        }
                     }
-                }
-                playTTS(textToSpeak.trim(), messageId);
+                    
+                    if (textToSpeak.trim()) {
+                        playTTS(textToSpeak.trim(), messageId);
+                    } else {
+                        console.warn(`[VoiceChat] TTS skipped for message ${messageId} because no text could be extracted from the final DOM.`);
+                    }
+                });
             });
 
             activeStreams.delete(messageId);
