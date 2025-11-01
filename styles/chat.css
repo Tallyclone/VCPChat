@@ -30,13 +30,23 @@ body.light-theme .chat-header {
 }
 
 #sun-icon {
-    stroke: #FFD700; 
-    fill: #FFD700;   
+    stroke: gold; /* Color for the sun's rays */
+    fill: gold;   /* Color for the sun's central circle */
+    display: block;
 }
 
 #moon-icon {
-    stroke: #6495ED; 
-    fill: #6495ED;   
+    fill: cornflowerblue; /* A softer blue for the moon */
+    stroke: none;         /* Moon has no outline */
+    display: none;
+}
+
+body.light-theme #sun-icon {
+    display: none;
+}
+
+body.light-theme #moon-icon {
+    display: block;
 }
 
 .chat-messages-container {
