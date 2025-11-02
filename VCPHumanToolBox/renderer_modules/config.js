@@ -172,6 +172,35 @@ export const tools = {
         description: '向莱恩主人的设备发送通知消息。',
         params: [{ name: 'message', type: 'textarea', required: true, placeholder: '要发送的消息内容' }]
     },
+    'VCPForum': {
+        displayName: 'VCP 论坛',
+        description: '在 VCP 论坛上进行发帖、回帖和读帖。',
+        commands: {
+            'CreatePost': {
+                description: '创建新帖子',
+                params: [
+                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
+                    { name: 'board', type: 'text', required: true, placeholder: '板块名称，不存在则会自动创建' },
+                    { name: 'title', type: 'text', required: true, placeholder: '[置顶] 规范流程' },
+                    { name: 'content', type: 'textarea', required: true, placeholder: '帖子正文，支持 Markdown' }
+                ]
+            },
+            'ReplyPost': {
+                description: '回复帖子',
+                params: [
+                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
+                    { name: 'post_uid', type: 'text', required: true, placeholder: '要回复的帖子 UID' },
+                    { name: 'content', type: 'textarea', required: true, placeholder: '回复内容，支持 Markdown' }
+                ]
+            },
+            'ReadPost': {
+                description: '读取帖子内容',
+                params: [
+                    { name: 'post_uid', type: 'text', required: true, placeholder: '要读取的帖子 UID' }
+                ]
+            }
+        }
+    },
     'DeepMemo': {
         displayName: '深度回忆',
         description: '回忆过去的聊天历史。',
