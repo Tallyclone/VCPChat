@@ -247,6 +247,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                     option.textContent = opt || `(${param.name})`;
                     input.appendChild(option);
                 });
+
+                // Add listener for dependency changes on select elements
+                input.addEventListener('change', () => {
+                    dependencyListeners.forEach(listener => listener());
+                });
             } else if (param.type === 'radio') {
                 input = document.createElement('div');
                 input.className = 'radio-group';
@@ -341,11 +346,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (param.dependsOn) {
                 const dependencyCheck = () => {
                     const dependencyField = toolForm.querySelector(`[name="${param.dependsOn.field}"]:checked`) || toolForm.querySelector(`[name="${param.dependsOn.field}"]`);
-                    if (dependencyField && dependencyField.value === param.dependsOn.value) {
-                        paramGroup.style.display = '';
-                    } else {
-                        paramGroup.style.display = 'none';
+                    let isMatch = false;
+                    if (dependencyField) {
+                        const dependencyValue = param.dependsOn.value;
+                        if (Array.isArray(dependencyValue)) {
+                            isMatch = dependencyValue.includes(dependencyField.value);
+                        } else {
+                            isMatch = dependencyField.value === dependencyValue;
+                        }
                     }
+                    paramGroup.style.display = isMatch ? '' : 'none';
                 };
                 dependencyListeners.push(dependencyCheck);
             }
@@ -845,14 +855,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         for (let [key, value] of formData.entries()) {
-            if (key !== 'command') {
-                // Handle checkbox
-                const inputElement = toolForm.querySelector(`[name="${key}"]`);
-                if (inputElement && inputElement.type === 'checkbox') {
-                    args[key] = inputElement.checked;
-                } else if (value) {
-                    args[key] = value;
-                }
+            // For tools with a 'commands' object, the 'command' from the dropdown is part of the tool name, not an argument.
+            if (tool.commands && key === 'command') {
+                continue;
+            }
+
+            // Handle checkbox
+            const inputElement = toolForm.querySelector(`[name="${key}"]`);
+            if (inputElement && inputElement.type === 'checkbox') {
+                args[key] = inputElement.checked;
+            } else if (value) {
+                args[key] = value;
             }
         }
 
