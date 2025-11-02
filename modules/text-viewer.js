@@ -1206,7 +1206,7 @@ ${codeContent}
     const contextMenuCopyAllButton = document.getElementById('contextMenuCopyAll');
     const contextMenuShareScreenshotButton = document.getElementById('contextMenuShareScreenshot');
     const contextMenuShareNoteButton = document.getElementById('contextMenuShareNote');
-    const mainContentDiv = document.getElementById('textContent'); // Renamed for clarity from previous contentDiv
+    const mainContentDiv = contentDiv; // Use the existing reference to the content container
  
      if (contextMenu && contextMenuCopyButton && contextMenuCutButton && contextMenuDeleteButton && contextMenuEditAllButton && contextMenuCopyAllButton && contextMenuShareScreenshotButton && contextMenuShareNoteButton && mainContentDiv) {
         document.addEventListener('contextmenu', (event) => {
