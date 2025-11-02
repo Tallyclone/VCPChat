@@ -326,14 +326,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function preprocessFullContent(text, scopeId) {
-        // --- Scoped CSS: Extract, scope, and inject styles ---
-        const { processedContent: contentWithoutStyles } = processAndInjectScopedCss(text, scopeId);
-        let processed = contentWithoutStyles;
+        // Step 1: Ensure any raw HTML documents are properly fenced first. This is critical.
+        let processed = ensureHtmlFenced(text);
 
         const codeBlockMap = new Map();
         let placeholderId = 0;
 
-        // Step 1: Find and protect all fenced code blocks.
+        // Step 2: Now, find and protect ALL fenced code blocks (including the ones we just added).
+        // This prevents the CSS processor from touching styles inside code blocks.
         processed = processed.replace(/```\w*([\s\S]*?)```/g, (match) => {
             const placeholder = `__VCP_CODE_BLOCK_PLACEHOLDER_${placeholderId}__`;
             codeBlockMap.set(placeholder, match);
@@ -341,10 +341,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             return placeholder;
         });
 
-        // Step 2: Run existing pre-processing on the modified text.
+        // Step 3: Process and scope CSS from the main content (outside code blocks).
+        const { processedContent: contentWithoutStyles } = processAndInjectScopedCss(processed, scopeId);
+        processed = contentWithoutStyles;
+
+        // Step 4: Run other pre-processing on the text (which still has placeholders).
         processed = deIndentHtml(processed);
         processed = transformSpecialBlocksForViewer(processed);
-        processed = ensureHtmlFenced(processed);
         
         // Basic content processors from contentProcessor.js
         processed = processed.replace(/^(\s*```)(?![\r\n])/gm, '$1\n'); // ensureNewlineAfterCodeBlock
@@ -352,7 +355,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         processed = processed.replace(/^(\s*)(```.*)/gm, '$2'); // removeIndentationFromCodeBlockMarkers
         processed = processed.replace(/(<img[^>]+>)\s*(```)/g, '$1\n\n<!-- VCP-Renderer-Separator -->\n\n$2'); // ensureSeparatorBetweenImgAndCode
 
-        // Step 3: Restore the protected code blocks.
+        // Step 5: Restore the protected code blocks.
         if (codeBlockMap.size > 0) {
             for (const [placeholder, block] of codeBlockMap.entries()) {
                 processed = processed.replace(placeholder, block);
@@ -962,7 +965,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const previewContainer = document.createElement('div');
                     previewContainer.className = 'html-preview-container';
                     const iframe = document.createElement('iframe');
-                    iframe.sandbox = 'allow-scripts allow-same-origin';
+                    iframe.sandbox = 'allow-scripts allow-same-origin allow-modals';
                     const exitButton = document.createElement('button');
                     exitButton.innerHTML = codeIconSVG + ' 返回代码';
                     exitButton.className = 'exit-preview-button';
@@ -974,8 +977,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     previewContainer.appendChild(iframe);
                     previewContainer.appendChild(exitButton);
                     preElement.parentNode.insertBefore(previewContainer, preElement.nextSibling);
-                    const iframeDoc = iframe.contentWindow.document;
-                    iframeDoc.open();
                     let finalHtml = codeContent;
                     const trimmedCode = codeContent.trim().toLowerCase();
                     if (!trimmedCode.startsWith('<!doctype') && !trimmedCode.startsWith('<html>')) {
@@ -987,8 +988,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                         // If it's a full document, inject anime.js before the closing </head> tag
                         finalHtml = finalHtml.replace('</head>', '<script src="../vendor/anime.min.js"><\/script></head>');
                     }
-                    iframeDoc.write(finalHtml);
-                    iframeDoc.close();
+                    // Use srcdoc for better security and reliability
+                    iframe.srcdoc = finalHtml;
                 });
             } else if (isPython) {
                 const pyPlayButton = document.createElement('button');
@@ -1030,7 +1031,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const previewContainer = document.createElement('div');
                     previewContainer.className = 'html-preview-container';
                     const iframe = document.createElement('iframe');
-                    iframe.sandbox = 'allow-scripts allow-same-origin';
+                    iframe.sandbox = 'allow-scripts allow-same-origin allow-modals';
                     const exitButton = document.createElement('button');
                     exitButton.innerHTML = codeIconSVG + ' 返回代码';
                     exitButton.className = 'exit-preview-button';
@@ -1042,8 +1043,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     previewContainer.appendChild(iframe);
                     previewContainer.appendChild(exitButton);
                     preElement.parentNode.insertBefore(previewContainer, preElement.nextSibling);
-                    const iframeDoc = iframe.contentWindow.document;
-                    iframeDoc.open();
                     const threeJsHtml = `
                         <!DOCTYPE html>
                         <html>
@@ -1070,8 +1069,8 @@ ${codeContent}
                         </body>
                         </html>
                     `;
-                    iframeDoc.write(threeJsHtml);
-                    iframeDoc.close();
+                    // Use srcdoc for better security and reliability
+                    iframe.srcdoc = threeJsHtml;
                 });
             }
 
@@ -1152,50 +1151,83 @@ ${codeContent}
         applyBoldFormatting(container);
     }
 
-    if (textContent) {
-        try {
-            let decodedText;
-            if (encoding === 'base64') {
-                try {
-                    // This is a more robust way to decode base64 with UTF-8 characters.
-                    const binaryString = atob(textContent);
-                    const bytes = new Uint8Array(binaryString.length);
-                    for (let i = 0; i < binaryString.length; i++) {
-                        bytes[i] = binaryString.charCodeAt(i);
-                    }
-                    decodedText = new TextDecoder('utf-8').decode(bytes);
-                } catch (e) {
-                    console.error("Base64 decoding failed:", e);
-                    // Fallback to the old method for simpler cases, just in case.
-                    decodedText = decodeURIComponent(escape(window.atob(textContent)));
+    /**
+     * Waits for all images within a container to finish loading (or erroring).
+     * @param {HTMLElement} container The container element to search for images.
+     * @returns {Promise<void>} A promise that resolves when all images are settled.
+     */
+    function waitForImages(container) {
+        const images = Array.from(container.querySelectorAll('img'));
+        const promises = images.map(img => {
+            return new Promise((resolve) => {
+                if (img.complete) {
+                    resolve();
+                } else {
+                    img.addEventListener('load', resolve, { once: true });
+                    img.addEventListener('error', resolve, { once: true }); // Resolve on error too, so one broken image doesn't block everything.
                 }
-            } else {
-                decodedText = decodeURIComponent(textContent);
-            }
-            originalRawContent = decodedText; // Store the raw source content
-
-            // Render with the full pre-processing pipeline, including the scopeId
-            const processedContent = preprocessFullContent(originalRawContent, scopeId);
-            const renderedHtml = window.marked.parse(processedContent);
-            contentDiv.innerHTML = renderedHtml;
-
-            // After rendering, enhance the content with interactivity
-            enhanceRenderedContent(contentDiv);
-
-        } catch (error) {
-            console.error("Error rendering content:", error);
-            contentDiv.innerHTML = `
-                <h3 style="color: #e06c75;">内容渲染失败</h3>
-                <p>在处理文本时发生错误，这可能是由于文本包含了格式不正确的编码字符。</p>
-                <p><strong>错误详情:</strong></p>
-                <pre style="white-space: pre-wrap; word-wrap: break-word;">${error.toString()}</pre>
-                <p><strong>原始文本内容:</strong></p>
-                <pre style="white-space: pre-wrap; word-wrap: break-word;">${textContent}</pre>
-            `;
-        }
-    } else {
-        contentDiv.textContent = '没有提供文本内容。';
+            });
+        });
+        return Promise.all(promises);
     }
+
+    // Wrap the main content rendering in an async IIFE to handle all async operations gracefully.
+    (async () => {
+        if (textContent) {
+            try {
+                let decodedText;
+                if (encoding === 'base64') {
+                    try {
+                        const binaryString = atob(textContent);
+                        const bytes = new Uint8Array(binaryString.length);
+                        for (let i = 0; i < binaryString.length; i++) {
+                            bytes[i] = binaryString.charCodeAt(i);
+                        }
+                        decodedText = new TextDecoder('utf-8').decode(bytes);
+                    } catch (e) {
+                        console.error("Base64 decoding failed:", e);
+                        decodedText = decodeURIComponent(escape(window.atob(textContent)));
+                    }
+                } else {
+                    decodedText = decodeURIComponent(textContent);
+                }
+                originalRawContent = decodedText;
+
+                const processedContent = preprocessFullContent(originalRawContent, scopeId);
+                const renderedHtml = window.marked.parse(processedContent);
+                contentDiv.innerHTML = renderedHtml;
+
+                // Wait for async enhancements (Mermaid, etc.) AND image loading to complete.
+                await enhanceRenderedContent(contentDiv);
+                await waitForImages(contentDiv);
+
+                // --- FIX for scroll height race condition ---
+                // After ALL dynamic content has loaded and rendered, force a reflow
+                // using a more reliable requestAnimationFrame-based approach.
+                const originalOverflow = document.body.style.overflowY || 'auto';
+                document.body.style.overflowY = 'hidden';
+                requestAnimationFrame(() => {
+                    // This nested rAF ensures the 'hidden' style has been applied and flushed by the browser.
+                    requestAnimationFrame(() => {
+                        document.body.style.overflowY = originalOverflow;
+                    });
+                });
+
+            } catch (error) {
+                console.error("Error rendering content:", error);
+                contentDiv.innerHTML = `
+                    <h3 style="color: #e06c75;">内容渲染失败</h3>
+                    <p>在处理文本时发生错误，这可能是由于文本包含了格式不正确的编码字符。</p>
+                    <p><strong>错误详情:</strong></p>
+                    <pre style="white-space: pre-wrap; word-wrap: break-word;">${error.toString()}</pre>
+                    <p><strong>原始文本内容:</strong></p>
+                    <pre style="white-space: pre-wrap; word-wrap: break-word;">${textContent}</pre>
+                `;
+            }
+        } else {
+            contentDiv.textContent = '没有提供文本内容。';
+        }
+    })();
 
     // Custom Context Menu Logic
     const contextMenu = document.getElementById('customContextMenu');

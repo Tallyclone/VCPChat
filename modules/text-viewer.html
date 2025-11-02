@@ -93,15 +93,20 @@
             color: var(--viewer-heading-color-light); /* Blue for headings in light theme */
         }
 
+        /* --- CRITICAL FIX for external stylesheet override --- */
+        /* Force html and body to have natural height based on content, overriding any external `height: 100%` */
+        html, body {
+            height: auto !important;
+            overflow-y: auto !important; /* Ensure the main viewport is scrollable */
+        }
+
         body {
             font-family: var(--font-family-sans-serif, sans-serif);
             background-color: var(--viewer-bg-color);
             color: var(--viewer-primary-text);
-            padding: 20px 20px 80px 20px;
+            padding: 50px 20px 80px 20px; /* Adjust top padding for the 40px fixed title bar */
             margin: 0;
-            overflow-y: auto;
             line-height: 1.6;
-            padding-top: 30px; /* Add padding for title bar */
             box-sizing: border-box;
         }
         .content-container {
