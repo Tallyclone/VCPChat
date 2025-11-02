@@ -99,7 +99,7 @@ window.topicListManager = (() => {
                  topicsToProcess.push(defaultAgentTopic);
             }
 
-            topicsToProcess.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+            // topicsToProcess.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
             
             if (searchTerm) {
                 let frontendFilteredTopics = topicsToProcess.filter(topic => {

@@ -9,7 +9,7 @@ const path = require('path');
  * @param {string} paths.SETTINGS_FILE - The path to the settings.json file.
  * @param {string} paths.USER_AVATAR_FILE - The path to the user_avatar.png file.
  * @param {string} paths.AGENT_DIR - The path to the agents directory.
- * @param {object} paths.settingsManager - The SettingsManager instance.
+ * @param {object} paths.settingsManager - The AppSettingsManager instance.
  */
 function initialize(paths) {
     const { SETTINGS_FILE, USER_AVATAR_FILE, AGENT_DIR, settingsManager, agentConfigManager } = paths;

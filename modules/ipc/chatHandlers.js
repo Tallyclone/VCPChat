@@ -261,12 +261,12 @@ function initialize(mainWindow, context) {
             if (agentConfigManager) {
                 const result = await agentConfigManager.updateAgentConfig(agentId, existingConfig => ({
                     ...existingConfig,
-                    topics: [...(existingConfig.topics || []), newTopic]
+                    topics: [newTopic, ...(existingConfig.topics || [])]
                 }));
                 const updatedConfig = await agentConfigManager.readAgentConfig(agentId);
                 config.topics = updatedConfig.topics;
             } else {
-                config.topics.push(newTopic);
+                config.topics.unshift(newTopic);
                 await fs.writeJson(configPath, config, { spaces: 2 });
             }
 

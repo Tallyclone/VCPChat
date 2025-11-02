@@ -60,7 +60,7 @@ async function getAgentConfigById(agentId) {
  * @param {function} context.getSelectionListenerStatus - Function to get the current status of the selection listener.
  * @param {function} context.stopSelectionListener - Function to stop the selection listener.
  * @param {function} context.startSelectionListener - Function to start the selection listener.
- * @param {object} context.settingsManager - The SettingsManager instance.
+ * @param {object} context.settingsManager - The AppSettingsManager instance.
  */
 function initialize(context) {
     const { AGENT_DIR, USER_DATA_DIR, SETTINGS_FILE, USER_AVATAR_FILE, settingsManager, agentConfigManager } = context;
