@@ -247,11 +247,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     option.textContent = opt || `(${param.name})`;
                     input.appendChild(option);
                 });
-
-                // Add listener for dependency changes on select elements
-                input.addEventListener('change', () => {
-                    dependencyListeners.forEach(listener => listener());
-                });
             } else if (param.type === 'radio') {
                 input = document.createElement('div');
                 input.className = 'radio-group';
@@ -346,16 +341,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (param.dependsOn) {
                 const dependencyCheck = () => {
                     const dependencyField = toolForm.querySelector(`[name="${param.dependsOn.field}"]:checked`) || toolForm.querySelector(`[name="${param.dependsOn.field}"]`);
-                    let isMatch = false;
-                    if (dependencyField) {
-                        const dependencyValue = param.dependsOn.value;
-                        if (Array.isArray(dependencyValue)) {
-                            isMatch = dependencyValue.includes(dependencyField.value);
-                        } else {
-                            isMatch = dependencyField.value === dependencyValue;
-                        }
+                    if (dependencyField && dependencyField.value === param.dependsOn.value) {
+                        paramGroup.style.display = '';
+                    } else {
+                        paramGroup.style.display = 'none';
                     }
-                    paramGroup.style.display = isMatch ? '' : 'none';
                 };
                 dependencyListeners.push(dependencyCheck);
             }
@@ -849,17 +839,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         let finalToolName = toolName;
 
         const tool = tools[toolName];
-        if (tool.commands) {
-            const command = formData.get('command');
-            finalToolName = `${toolName}.${command}`;
-        }
+        // The finalToolName is always the toolName. The 'command' is an argument.
 
         for (let [key, value] of formData.entries()) {
-            // For tools with a 'commands' object, the 'command' from the dropdown is part of the tool name, not an argument.
-            if (tool.commands && key === 'command') {
-                continue;
-            }
-
             // Handle checkbox
             const inputElement = toolForm.querySelector(`[name="${key}"]`);
             if (inputElement && inputElement.type === 'checkbox') {

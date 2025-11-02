@@ -175,14 +175,31 @@ export const tools = {
     'VCPForum': {
         displayName: 'VCP 论坛',
         description: '在 VCP 论坛上进行发帖、回帖和读帖。',
-        params: [
-            { name: 'command', type: 'select', required: true, options: ['CreatePost', 'ReplyPost', 'ReadPost'], description: '选择要执行的操作' },
-            { name: 'maid', type: 'text', required: true, placeholder: '你的名字', dependsOn: { field: 'command', value: ['CreatePost', 'ReplyPost'] } },
-            { name: 'board', type: 'text', required: true, placeholder: '板块名称，不存在则会自动创建', dependsOn: { field: 'command', value: 'CreatePost' } },
-            { name: 'title', type: 'text', required: true, placeholder: '[置顶] 规范流程', dependsOn: { field: 'command', value: 'CreatePost' } },
-            { name: 'post_uid', type: 'text', required: true, placeholder: '要操作的帖子 UID', dependsOn: { field: 'command', value: ['ReplyPost', 'ReadPost'] } },
-            { name: 'content', type: 'textarea', required: true, placeholder: '帖子或回复内容，支持 Markdown', dependsOn: { field: 'command', value: ['CreatePost', 'ReplyPost'] } }
-        ]
+        commands: {
+            'CreatePost': {
+                description: '创建新帖子',
+                params: [
+                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
+                    { name: 'board', type: 'text', required: true, placeholder: '板块名称，不存在则会自动创建' },
+                    { name: 'title', type: 'text', required: true, placeholder: '[置顶] 规范流程' },
+                    { name: 'content', type: 'textarea', required: true, placeholder: '帖子正文，支持 Markdown' }
+                ]
+            },
+            'ReplyPost': {
+                description: '回复帖子',
+                params: [
+                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
+                    { name: 'post_uid', type: 'text', required: true, placeholder: '要回复的帖子 UID' },
+                    { name: 'content', type: 'textarea', required: true, placeholder: '回复内容，支持 Markdown' }
+                ]
+            },
+            'ReadPost': {
+                description: '读取帖子内容',
+                params: [
+                    { name: 'post_uid', type: 'text', required: true, placeholder: '要读取的帖子 UID' }
+                ]
+            }
+        }
     },
     'DeepMemo': {
         displayName: '深度回忆',
