@@ -898,7 +898,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
             chatMessagesDiv, sendMessageBtn, messageInput, attachFileBtn, globalSettingsBtn,
             globalSettingsForm, userAvatarInput, createNewAgentBtn, createNewGroupBtn,
             currentItemActionBtn, clearNotificationsBtn, openAdminPanelBtn, toggleNotificationsBtn,
-            notificationsSidebar, agentSearchInput, minimizeToTrayBtn,
+            notificationsSidebar, agentSearchInput, minimizeToTrayBtn, leftSidebar,
             openTranslatorBtn: document.getElementById('openTranslatorBtn'),
             openNotesBtn: document.getElementById('openNotesBtn'),
             openMusicBtn: document.getElementById('openMusicBtn'),

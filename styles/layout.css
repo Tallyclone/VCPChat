@@ -101,7 +101,7 @@ body.light-theme .resizer {
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    transition: width 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+    transition: width 0.3s ease, min-width 0.3s ease, padding 0.3s ease, opacity 0.3s ease;
     overflow-x: hidden;
     flex-shrink: 0;
     text-shadow: var(--panel-text-shadow);
@@ -121,7 +121,7 @@ body.light-theme .sidebar {
     /* 关键修改：确保主内容区完全透明，让body的背景透出来 */
     background-color: transparent;
     overflow: hidden;
-    transition: width 0.3s ease-out;
+    transition: none; /* 移除 margin-left 动画，让 Flexbox 自动处理 */
 }
 
 /* --- Notifications Sidebar --- */
@@ -227,4 +227,29 @@ body.light-theme .notifications-sidebar {
        这样羽化条的中心就精准地对齐了接缝。
     */
     top: 22px; 
+}
+
+/* --- Sidebar Hide/Show Logic --- */
+.sidebar:not(.active) {
+    width: 0 !important;
+    min-width: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    opacity: 0;
+    overflow-x: hidden; /* Hide content while shrinking */
+}
+
+.main-content:not(.sidebar-active) {
+    /* Flexbox should handle this automatically */
+}
+
+.main-content.sidebar-active {
+    /* Flexbox should handle this automatically */
+}
+
+/* 隐藏侧边栏时，同时隐藏分隔条 */
+.sidebar:not(.active) + #resizerLeft {
+    width: 0 !important;
+    min-width: 0 !important;
+    pointer-events: none;
 }
