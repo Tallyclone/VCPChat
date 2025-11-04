@@ -935,6 +935,50 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
             return { success: false, error: error.message };
         }
     });
+
+    ipcMain.handle('get-unread-topic-counts', async () => {
+        const counts = {};
+        try {
+            const agentDirs = await fs.readdir(AGENT_DIR, { withFileTypes: true });
+            for (const dirent of agentDirs) {
+                if (dirent.isDirectory()) {
+                    const agentId = dirent.name;
+                    let unreadCount = 0;
+                    const configPath = path.join(AGENT_DIR, agentId, 'config.json');
+
+                    if (await fs.pathExists(configPath)) {
+                        const config = await fs.readJson(configPath);
+                        if (config.topics && Array.isArray(config.topics)) {
+                            for (const topic of config.topics) {
+                                const historyPath = path.join(USER_DATA_DIR, agentId, 'topics', topic.id, 'history.json');
+                                if (await fs.pathExists(historyPath)) {
+                                    try {
+                                        const history = await fs.readJson(historyPath);
+                                        // 检查整个历史记录中是否没有任何一条消息的 role 是 'user'
+                                        if (Array.isArray(history) && history.length > 0) {
+                                            const hasUserMessage = history.some(message => message.role === 'user');
+                                            if (!hasUserMessage) {
+                                                unreadCount++;
+                                            }
+                                        }
+                                    } catch (readJsonError) {
+                                        console.error(`读取 history.json 失败: ${historyPath}`, readJsonError);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (unreadCount > 0) {
+                        counts[agentId] = unreadCount;
+                    }
+                }
+            }
+            return { success: true, counts };
+        } catch (error) {
+            console.error('获取未读话题计数时出错:', error);
+            return { success: false, error: error.message, counts: {} };
+        }
+    });
 }
 
 module.exports = {

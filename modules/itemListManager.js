@@ -248,6 +248,7 @@ window.itemListManager = (() => {
                 li.appendChild(avatarImg);
                 li.appendChild(nameSpan);
 
+
                 // 为每个项目添加独立的状态管理
                 li._lastClickTime = 0;
                 li._middleClickHandled = false;
@@ -313,6 +314,13 @@ window.itemListManager = (() => {
                 console.warn('[ItemListManager] SortableJS library not found. Item list drag-and-drop ordering will not be available.');
             }
         }
+
+        // Asynchronously fetch and update unread counts to avoid blocking initial render
+        electronAPI.getUnreadTopicCounts().then(result => {
+            if (result && result.success) {
+                updateUnreadBadges(result.counts);
+            }
+        }).catch(err => console.error('[ItemListManager] Failed to fetch unread counts:', err));
     }
 
     /**
@@ -461,6 +469,32 @@ window.itemListManager = (() => {
             return null;
         }
         return loadedItemsCache.find(item => item.id === itemId && item.type === itemType) || null;
+    }
+
+    /**
+     * Updates the DOM with unread count badges.
+     * @param {object} counts - An object mapping agentId to its unread count.
+     */
+    function updateUnreadBadges(counts) {
+        // First, remove all existing badges to handle refreshes correctly
+        document.querySelectorAll('#agentList .unread-badge').forEach(badge => badge.remove());
+
+        // Then, add the new ones
+        for (const agentId in counts) {
+            const count = counts[agentId];
+            if (count > 0) {
+                const listItem = itemListUl.querySelector(`li[data-item-id="${agentId}"][data-item-type="agent"]`);
+                if (listItem) {
+                    // Avoid adding a badge if one already exists (defensive)
+                    if (listItem.querySelector('.unread-badge')) continue;
+                    
+                    const unreadBadge = document.createElement('span');
+                    unreadBadge.className = 'unread-badge';
+                    unreadBadge.textContent = count;
+                    listItem.appendChild(unreadBadge);
+                }
+            }
+        }
     }
 
     // --- Public API ---

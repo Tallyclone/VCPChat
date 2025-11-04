@@ -88,6 +88,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     createNewTopicForAgent: (agentId, topicName, refreshTimestamp) => ipcRenderer.invoke('create-new-topic-for-agent', agentId, topicName, refreshTimestamp),
     saveAgentTopicTitle: (agentId, topicId, newTitle) => ipcRenderer.invoke('save-agent-topic-title', agentId, topicId, newTitle),
     deleteTopic: (agentId, topicId) => ipcRenderer.invoke('delete-topic', agentId, topicId),
+    getUnreadTopicCounts: () => ipcRenderer.invoke('get-unread-topic-counts'),
 
     // Chat History
     getChatHistory: (agentId, topicId) => ipcRenderer.invoke('get-chat-history', agentId, topicId),
