@@ -78,7 +78,7 @@ const deleteItemBtn = document.getElementById('deleteAgentBtn'); // Will be dele
 
 const currentItemActionBtn = document.getElementById('currentAgentSettingsBtn'); // Text will change (e.g. "New Topic" / "New Group Topic")
 const clearCurrentChatBtn = document.getElementById('clearCurrentChatBtn');
-const openAdminPanelBtn = document.getElementById('openAdminPanelBtn');
+const openForumBtn = document.getElementById('openForumBtn');
 const themeToggleBtn = document.getElementById('themeToggleBtn');
 const toggleNotificationsBtn = document.getElementById('toggleNotificationsBtn');
 
@@ -897,7 +897,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
         setupEventListeners({
             chatMessagesDiv, sendMessageBtn, messageInput, attachFileBtn, globalSettingsBtn,
             globalSettingsForm, userAvatarInput, createNewAgentBtn, createNewGroupBtn,
-            currentItemActionBtn, clearNotificationsBtn, openAdminPanelBtn, toggleNotificationsBtn,
+            currentItemActionBtn, clearNotificationsBtn, openForumBtn, toggleNotificationsBtn,
             notificationsSidebar, agentSearchInput, minimizeToTrayBtn, leftSidebar,
             openTranslatorBtn: document.getElementById('openTranslatorBtn'),
             openNotesBtn: document.getElementById('openNotesBtn'),

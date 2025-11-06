@@ -11,7 +11,7 @@ export function setupEventListeners(deps) {
         // DOM Elements from a future dom-elements.js or passed directly
         chatMessagesDiv, sendMessageBtn, messageInput, attachFileBtn, globalSettingsBtn,
         globalSettingsForm, userAvatarInput, createNewAgentBtn, createNewGroupBtn,
-        currentItemActionBtn, clearNotificationsBtn, openAdminPanelBtn, toggleNotificationsBtn,
+        currentItemActionBtn, clearNotificationsBtn, openForumBtn, toggleNotificationsBtn,
         notificationsSidebar, agentSearchInput, minimizeToTrayBtn, addNetworkPathBtn,
         openTranslatorBtn, openNotesBtn, openMusicBtn, openCanvasBtn, toggleAssistantBtn,
         leftSidebar, toggleSidebarBtn,
@@ -655,8 +655,8 @@ export function setupEventListeners(deps) {
         document.getElementById('notificationsList').innerHTML = '';
     });
 
-    if (openAdminPanelBtn) {
-        openAdminPanelBtn.style.display = 'inline-block';
+    if (openForumBtn) {
+        openForumBtn.style.display = 'inline-block';
         const enableMiddleClickCheckbox = document.getElementById('enableMiddleClickQuickAction');
         const middleClickContainer = document.getElementById('middleClickQuickActionContainer');
         const middleClickAdvancedContainer = document.getElementById('middleClickAdvancedContainer');
@@ -711,29 +711,12 @@ export function setupEventListeners(deps) {
             });
         }
 
-        openAdminPanelBtn.addEventListener('click', async () => {
-            const globalSettings = refs.globalSettings.get();
-            if (globalSettings.vcpServerUrl) {
-                if (window.electronAPI && window.electronAPI.sendOpenExternalLink) {
-                    try {
-                        const apiUrl = new URL(globalSettings.vcpServerUrl);
-                        let adminPanelUrl = `${apiUrl.protocol}//${apiUrl.host}`;
-                        if (!adminPanelUrl.endsWith('/')) {
-                            adminPanelUrl += '/';
-                        }
-                        adminPanelUrl += 'AdminPanel/';
-                        window.electronAPI.sendOpenExternalLink(adminPanelUrl);
-                    } catch (e) {
-                        console.error('构建管理面板URL失败:', e);
-                        uiHelperFunctions.showToastNotification('无法构建管理面板URL。请检查VCP服务器URL。', 'error');
-                    }
-                } else {
-                    console.warn('[Renderer] electronAPI.sendOpenExternalLink is not available.');
-                    uiHelperFunctions.showToastNotification('无法打开管理面板：功能不可用。', 'error');
-                }
+        openForumBtn.addEventListener('click', async () => {
+            if (window.electronAPI && window.electronAPI.openForumWindow) {
+                await window.electronAPI.openForumWindow();
             } else {
-                uiHelperFunctions.showToastNotification('请先在全局设置中配置VCP服务器URL！', 'error');
-                uiHelperFunctions.openModal('globalSettingsModal');
+                console.warn('[Renderer] electronAPI.openForumWindow is not available.');
+                uiHelperFunctions.showToastNotification('无法打开论坛：功能不可用。', 'error');
             }
         });
     }

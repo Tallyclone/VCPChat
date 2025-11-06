@@ -303,6 +303,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     stopSpeechRecognition: () => ipcRenderer.send('stop-speech-recognition'),
     onSpeechRecognitionResult: (callback) => ipcRenderer.on('speech-recognition-result', (_event, text) => callback(text)),
 
+    // Forum Module
+    openForumWindow: () => ipcRenderer.send('open-forum-window'),
+    loadForumConfig: () => ipcRenderer.invoke('load-forum-config'),
+    saveForumConfig: (config) => ipcRenderer.invoke('save-forum-config', config),
+    loadAgentsList: () => ipcRenderer.invoke('load-agents-list'),
+    loadUserAvatar: () => ipcRenderer.invoke('load-user-avatar'),
+    loadAgentAvatar: (folderName) => ipcRenderer.invoke('load-agent-avatar', folderName),
+
     // Canvas Module
     openCanvasWindow: () => ipcRenderer.invoke('open-canvas-window'),
     canvasReady: () => ipcRenderer.send('canvas-ready'),

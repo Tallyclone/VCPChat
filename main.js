@@ -30,6 +30,7 @@ const musicHandlers = require('./modules/ipc/musicHandlers'); // Import music ha
 const diceHandlers = require('./modules/ipc/diceHandlers'); // Import dice handlers
 const themeHandlers = require('./modules/ipc/themeHandlers'); // Import theme handlers
 const emoticonHandlers = require('./modules/ipc/emoticonHandlers'); // Import emoticon handlers
+const forumHandlers = require('./modules/ipc/forumHandlers'); // Import forum handlers
 const musicMetadata = require('music-metadata');
 const speechRecognizer = require('./modules/speechRecognizer'); // Import the new speech recognizer
 const canvasHandlers = require('./modules/ipc/canvasHandlers'); // Import canvas handlers
@@ -578,6 +579,7 @@ if (!gotTheLock) {
     });
 
     windowHandlers.initialize(mainWindow, openChildWindows);
+    forumHandlers.initialize({ USER_DATA_DIR }); // Initialize forum handlers
     await assistantHandlers.initialize({ SETTINGS_FILE });
     fileDialogHandlers.initialize(mainWindow, {
         getSelectionListenerStatus: assistantHandlers.getSelectionListenerStatus,
