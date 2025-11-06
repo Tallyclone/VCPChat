@@ -746,3 +746,14 @@ img[src*="file://"] {
     75% { transform: translateX(-3px); }
     100% { transform: translateX(0); }
 }
+
+
+/* --- Post Content Enhancements --- */
+.highlighted-quote {
+    color: var(--highlight-text, #E8B95A);
+}
+
+.post-preview strong, .reply-content strong {
+    font-weight: 600; /* Ensure strong is bolder than default */
+    color: var(--primary-text);
+}

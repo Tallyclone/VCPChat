@@ -641,6 +641,35 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
+function enhanceMarkdown(markdown) {
+    // To prevent breaking HTML attributes, temporarily replace all HTML tags with placeholders.
+    const htmlTags = [];
+    const htmlTagRegex = /<[^>]+>/g;
+
+    let processed = markdown.replace(htmlTagRegex, (match) => {
+        htmlTags.push(match);
+        return `__HTML_PLACEHOLDER_${htmlTags.length - 1}__`;
+    });
+
+    // Step 1: On the text-only content, wrap quoted text in a span for highlighting.
+    processed = processed.replace(/([“"][^”]+?[”"]|"[^"]+")/g, '<span class="highlighted-quote">$1</span>');
+
+    // Step 2: Manually fix bolding for quoted text that was wrapped in a span.
+    processed = processed.replace(/\*\*(<span class="highlighted-quote">.+?<\/span>)\*\*/g, '<strong>$1</strong>');
+    
+    // Step 3: Fallback for any other bolded quotes.
+    processed = processed.replace(/\*\*([“"][^”]+?[”"]|"[^"]+")\*\*/g, '<strong>$1</strong>');
+
+    // Restore the original HTML tags.
+    if (htmlTags.length > 0) {
+        processed = processed.replace(/__HTML_PLACEHOLDER_(\d+)__/g, (match, index) => {
+            return htmlTags[parseInt(index, 10)] || match;
+        });
+    }
+
+    return processed;
+}
+
 function renderFullContent(container, markdown, uid) {
     const previewEl = container.querySelector('.post-preview');
     const replyDelimiter = '\n\n---\n\n## 评论区\n---';
@@ -682,7 +711,7 @@ function renderFullContent(container, markdown, uid) {
     const postContentMd = mainMd.replace(/^(.|\n)*?---\n?/, '');
     // --- END NEW ---
 
-    previewEl.innerHTML = window.marked ? marked.parse(postContentMd) : `<pre>${escapeHtml(postContentMd)}</pre>`;
+    previewEl.innerHTML = window.marked ? marked.parse(enhanceMarkdown(postContentMd)) : `<pre>${escapeHtml(postContentMd)}</pre>`;
     
     // Setup emoticon fixer for main content
     setupEmoticonFixer(previewEl);
@@ -732,7 +761,7 @@ function renderFullContent(container, markdown, uid) {
                     </div>
                     <button class="delete-floor-btn" data-uid="${uid}" data-floor="${floor}">删除此楼层</button>
                 </div>
-                <div class="reply-content">${window.marked ? marked.parse(replyMd.trim()) : `<pre>${escapeHtml(replyMd.trim())}</pre>`}</div>
+                <div class="reply-content">${window.marked ? marked.parse(enhanceMarkdown(replyMd.trim())) : `<pre>${escapeHtml(replyMd.trim())}</pre>`}</div>
             `;
             replyList.appendChild(replyItem);
             
