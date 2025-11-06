@@ -689,8 +689,7 @@ function renderFullContent(container, markdown, uid) {
 
     // Add delete post button after main content
     const deletePostBtn = document.createElement('button');
-    deletePostBtn.className = 'jelly-btn';
-    deletePostBtn.style.cssText = 'width: auto; padding: 10px 25px; background: var(--danger-color); margin-top: 20px;';
+    deletePostBtn.className = 'jelly-btn delete-post-btn';
     deletePostBtn.innerHTML = '🗑️ 删除整个帖子';
     deletePostBtn.addEventListener('click', () => handleDeletePost(uid));
     previewEl.appendChild(deletePostBtn);

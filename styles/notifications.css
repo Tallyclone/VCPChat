@@ -623,3 +623,8 @@ body.light-theme .floating-toast-notification {
     border-radius: 12px;
     background-color: var(--secondary-bg);
 }
+
+.notifications-header #openForumBtn {
+    position: relative;
+    top: 1px;
+}

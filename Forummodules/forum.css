@@ -647,32 +647,40 @@ img[src*="file://"] {
     color: var(--text-secondary);
 }
 
+/* --- Differentiated Delete Buttons --- */
 .delete-floor-btn {
-    background: var(--danger-color);
-    color: white;
-    border: none;
+    background: rgba(229, 115, 115, 0.15); /* Subtle red glass background */
+    color: var(--danger-color);
+    border: 1px solid var(--danger-color);
     padding: 5px 12px;
     border-radius: 8px;
     cursor: pointer;
     font-size: 0.75rem;
     transition: all 0.3s ease;
-    opacity: 0.8;
+    opacity: 0.8; /* Slightly more visible */
 }
 
 .delete-floor-btn:hover {
+    background: var(--danger-color);
+    color: white;
     opacity: 1;
     transform: scale(1.05);
     box-shadow: 0 4px 12px rgba(229, 115, 115, 0.4);
 }
 
-.delete-post-btn {
-    background: var(--danger-color) !important;
+/* A more robust selector for the delete button, overriding the base .jelly-btn styles without !important */
+.jelly-btn.delete-post-btn {
+    width: auto;
+    padding: 10px 25px;
     margin-top: 20px;
+    background: var(--danger-color, #e57373); /* Provide a fallback color */
+    color: white;
 }
 
-.delete-post-btn:hover {
-    background: var(--danger-hover-bg, #c0392b) !important;
-    box-shadow: 0 0 30px rgba(229, 115, 115, 0.5) !important;
+.jelly-btn.delete-post-btn:hover {
+    background: var(--danger-hover-bg, #ef5350); /* Provide a fallback color */
+    box-shadow: 0 0 30px rgba(229, 115, 115, 0.5);
+    transform: scale(1.05); /* Keep consistent hover effect */
 }
 
 /* --- Create Post Modal (Unified Glass Style) --- */
