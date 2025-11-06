@@ -608,6 +608,8 @@ async function expandPost(post, originalCard) {
         previewEl.innerHTML = '<div style="text-align:center; padding: 20px;">Loading content...</div>';
         previewEl.style.maskImage = 'none';
         previewEl.style.maxHeight = 'none';
+        previewEl.style.fontStyle = 'normal'; // <-- 修正：移除内联斜体
+        previewEl.style.opacity = '1';       // <-- 修正：恢复不透明度
 
         const data = await apiFetch(`/post/${post.uid}`);
         renderFullContent(expanded, data.content, post.uid);
@@ -643,10 +645,44 @@ function renderFullContent(container, markdown, uid) {
     const previewEl = container.querySelector('.post-preview');
     const replyDelimiter = '\n\n---\n\n## 评论区\n---';
     const parts = markdown.split(replyDelimiter);
-    const mainMd = parts[0];
+    let mainMd = parts[0];
     const repliesMd = parts[1] || '';
 
-    previewEl.innerHTML = window.marked ? marked.parse(mainMd) : `<pre>${escapeHtml(mainMd)}</pre>`;
+    // --- NEW: Precisely extract and display specific meta fields as per user request ---
+    const metaItems = [];
+    const authorMatch = markdown.match(/\*\*作者[:：]\*\*\s*(.*)/);
+    const uidMatch = markdown.match(/\*\*UID[:：]\*\*\s*(.*)/);
+    const timestampMatch = markdown.match(/\*\*时间戳[:：]\*\*\s*(.*)/);
+
+    if (authorMatch) {
+        metaItems.push(`<span class="meta-item"><span class="meta-key">作者:</span> <span class="meta-value">${escapeHtml(authorMatch[1].trim())}</span></span>`);
+    }
+    if (uidMatch) {
+        metaItems.push(`<span class="meta-item"><span class="meta-key">UID:</span> <span class="meta-value">${escapeHtml(uidMatch[1].trim())}</span></span>`);
+    }
+    if (timestampMatch) {
+        metaItems.push(`<span class="meta-item"><span class="meta-key">时间戳:</span> <span class="meta-value">${escapeHtml(timestampMatch[1].trim())}</span></span>`);
+    }
+
+    // Remove any existing meta header before adding a new one
+    const existingMetaHeader = container.querySelector('.post-meta-header');
+    if (existingMetaHeader) {
+        existingMetaHeader.remove();
+    }
+
+    // If we found any meta items, create and insert the header
+    if (metaItems.length > 0) {
+        const metaHeaderEl = document.createElement('div');
+        metaHeaderEl.className = 'post-meta-header';
+        metaHeaderEl.innerHTML = metaItems.join('&nbsp;&nbsp;');
+        container.insertBefore(metaHeaderEl, previewEl);
+    }
+
+    // Prepare the main content by stripping the entire meta block
+    const postContentMd = mainMd.replace(/^(.|\n)*?---\n?/, '');
+    // --- END NEW ---
+
+    previewEl.innerHTML = window.marked ? marked.parse(postContentMd) : `<pre>${escapeHtml(postContentMd)}</pre>`;
     
     // Setup emoticon fixer for main content
     setupEmoticonFixer(previewEl);
@@ -663,7 +699,7 @@ function renderFullContent(container, markdown, uid) {
         const replyList = document.createElement('div');
         replyList.className = 'reply-list';
         replyList.innerHTML = '<h3>💬 评论</h3>';
-        repliesMd.split('\n\n---\n').forEach((replyMd, i) => {
+        repliesMd.split('\n\n---\n').filter(r => r.trim()).forEach((replyMd, i) => {
             if (!replyMd.trim()) return;
             const floor = i + 1;
             
@@ -717,7 +753,10 @@ function renderFullContent(container, markdown, uid) {
             const deleteBtn = replyItem.querySelector('.delete-floor-btn');
             deleteBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                handleDeleteFloor(uid, floor, container);
+                const button = e.currentTarget;
+                const postUid = button.dataset.uid;
+                const floorNum = button.dataset.floor;
+                handleDeleteFloor(postUid, floorNum, container);
             });
         });
         container.appendChild(replyList);
@@ -728,7 +767,7 @@ function renderFullContent(container, markdown, uid) {
     replyBox.innerHTML = `
         <input type="text" id="quick-reply-name" class="glass-input" placeholder="昵称" style="width: 120px; margin-bottom:0;">
         <input type="text" id="quick-reply-text" class="glass-input reply-input" placeholder="写下你的评论..." style="margin-bottom:0;">
-        <button id="quick-reply-btn" class="jelly-btn" style="width: auto; padding: 0 25px;">发送</button>
+        <button id="quick-reply-btn" class="jelly-btn" style="width: auto; padding: 15px 25px;">发送</button>
     `;
     container.appendChild(replyBox);
     const nameInput = container.querySelector('#quick-reply-name');

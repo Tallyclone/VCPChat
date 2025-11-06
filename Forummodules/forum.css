@@ -418,6 +418,16 @@ body.light-theme #board-filter:focus {
     border-top: 1px solid var(--glass-border);
 }
 .meta-left { display: flex; gap: 10px; align-items: center; }
+.meta-left span {
+    font-weight: 500; /* Make author name slightly bolder */
+    color: var(--text-primary);
+}
+.post-meta > span {
+    font-variant-numeric: tabular-nums;
+    background: rgba(0,0,0,0.1);
+    padding: 2px 6px;
+    border-radius: 6px;
+}
 .author-avatar, .reply-avatar {
     width: 32px;
     height: 32px;
@@ -512,6 +522,8 @@ body.light-theme #board-filter:focus {
     font-size: 1.1rem;
     line-height: 1.8;
     color: var(--text-primary);
+    font-style: normal; /* Reset font style to normal */
+    opacity: 1; /* Ensure full opacity */
     margin-bottom: 20px;
 }
 
@@ -573,6 +585,38 @@ img[src*="file://"] {
     display: flex; align-items: center; justify-content: center;
     transition: all 0.3s;
     z-index: 10;
+}
+
+/* --- Meta Header in Expanded View --- */
+.post-meta-header {
+    background: rgba(0,0,0,0.2);
+    padding: 15px 25px;
+    border-radius: 15px;
+    margin-bottom: 25px;
+    border: 1px solid var(--glass-border);
+    font-size: 0.85rem;
+    line-height: 1.7;
+}
+.meta-item {
+    display: inline-flex; /* Changed to inline-flex for single-line layout */
+    align-items: baseline;
+    padding: 0; /* Remove vertical spacing */
+}
+.meta-key {
+    font-weight: 700; /* Bolder key */
+    color: var(--text-primary);
+    margin-right: 12px; /* Increased spacing */
+    flex-shrink: 0;
+    opacity: 0.9;
+}
+.meta-value {
+    color: var(--text-secondary);
+    word-break: break-all;
+    font-family: 'Courier New', Courier, monospace; /* Monospaced for IDs/timestamps */
+    background: rgba(0,0,0,0.2);
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 0.9em;
 }
 .expanded-close-btn:hover { background: var(--danger-color); transform: rotate(90deg); }
 
