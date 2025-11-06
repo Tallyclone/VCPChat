@@ -34,33 +34,45 @@ class ModularPromptModule {
         this.loadData();
     }
 
-    /**
-     * 加载保存的数据
+      /**
+     * [修改后] 加载保存的数据（包括私有和全局）
      */
-    loadData() {
+    async loadData() {
+        // 1. 加载Agent私有数据（逻辑不变）
         const savedData = this.config.advancedSystemPrompt;
         if (savedData && typeof savedData === 'object') {
             this.blocks = savedData.blocks || [];
             this.hiddenBlocks = savedData.hiddenBlocks || { default: [] };
             this.warehouseOrder = savedData.warehouseOrder || ['default'];
-            // tileMode 始终为 true，不再从保存的数据加载
         } else if (typeof savedData === 'string') {
-            // 兼容旧格式：纯文本
             this.blocks = savedData ? [{ id: this.generateId(), type: 'text', content: savedData, disabled: false }] : [];
         }
+
+        // 2. [新增] 加载全局仓库数据
+        try {
+            const response = await this.electronAPI.getGlobalWarehouse();
+            if (response.success) {
+                this.hiddenBlocks['global'] = response.data || [];
+            } else {
+                console.error('Failed to load global warehouse:', response.error);
+                this.hiddenBlocks['global'] = [];
+            }
+        } catch (error) {
+            console.error('Error invoking get-global-warehouse:', error);
+            this.hiddenBlocks['global'] = [];
+        }
+
+        // 3. [新增] 强制重排仓库顺序，确保 global 和 default 在最前
+        // 从已加载的顺序中移除 global 和 default，防止重复
+        let privateOrder = this.warehouseOrder.filter(w => w !== 'global' && w !== 'default');
+        // 以固定的顺序重建
+        this.warehouseOrder = ['global', 'default', ...privateOrder];
         
-        // 确保default仓库存在且在第一位
+        // 确保 default 仓库存在
         if (!this.hiddenBlocks.default) {
             this.hiddenBlocks.default = [];
         }
-        if (!this.warehouseOrder.includes('default')) {
-            this.warehouseOrder.unshift('default');
-        } else if (this.warehouseOrder[0] !== 'default') {
-            this.warehouseOrder = this.warehouseOrder.filter(w => w !== 'default');
-            this.warehouseOrder.unshift('default');
-        }
     }
-
     /**
      * 生成唯一ID
      */
@@ -612,14 +624,19 @@ class ModularPromptModule {
             // 仓库名称按钮
             const btn = document.createElement('button');
             btn.className = 'warehouse-btn';
-            btn.textContent = name;
+            // [修改] 为 global 仓库添加图标
+            if (name === 'global') {
+                btn.innerHTML = '🌐 全局';
+            } else {
+                btn.textContent = name;
+            }
             btn.onclick = () => {
                 this.currentWarehouse = name;
                 this.renderWarehouse();
             };
             
-            // 仓库拖拽（default除外）
-            if (name !== 'default') {
+            // [修改] 仓库拖拽（default和global除外）
+            if (name !== 'default' && name !== 'global') {
                 warehouseItem.draggable = true;
                 warehouseItem.dataset.warehouseName = name;
                 warehouseItem.addEventListener('dragstart', (e) => this.handleWarehouseDragStart(e, name, index));
@@ -630,8 +647,8 @@ class ModularPromptModule {
             
             warehouseItem.appendChild(btn);
             
-            // 右键菜单（default除外）
-            if (name !== 'default') {
+            // [修改] 右键菜单（default和global除外）
+            if (name !== 'default' && name !== 'global') {
                 warehouseItem.addEventListener('contextmenu', (e) => {
                     e.preventDefault();
                     this.showWarehouseContextMenu(e, name);
@@ -1082,21 +1099,33 @@ class ModularPromptModule {
     }
 
     /**
-     * 保存数据
+     * [修改后] 保存数据（分流保存私有和全局数据）
      */
     async save() {
-        const data = {
+        // 1. [新增] 提取全局仓库数据并独立保存
+        const globalBlocksToSave = this.hiddenBlocks['global'] || [];
+        try {
+            await this.electronAPI.saveGlobalWarehouse(globalBlocksToSave);
+        } catch (error) {
+            console.error('Error saving global warehouse:', error);
+        }
+
+        // 2. [修改] 准备要保存到Agent配置的私有数据
+        const privateDataToSave = {
             blocks: this.blocks,
-            hiddenBlocks: this.hiddenBlocks,
+            hiddenBlocks: { ...this.hiddenBlocks }, // 创建一个副本进行操作
             warehouseOrder: this.warehouseOrder
-            // 不再保存 tileMode，因为它始终为 true
         };
 
+        // 3. [新增] 从私有数据副本中移除全局仓库，避免冗余存储
+        delete privateDataToSave.hiddenBlocks['global'];
+
+        // 4. 保存私有数据到Agent配置文件（逻辑不变）
         await this.electronAPI.updateAgentConfig(this.agentId, {
-            advancedSystemPrompt: data
+            advancedSystemPrompt: privateDataToSave
         });
     }
-
+    
     /**
      * 新建仓库
      */

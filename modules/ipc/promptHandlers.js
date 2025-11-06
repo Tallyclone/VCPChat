@@ -18,7 +18,42 @@ function initialize(options) {
     // 确保预设目录存在
     const defaultPresetDir = path.join(APP_DATA_ROOT, 'systemPromptPresets');
     fs.ensureDirSync(defaultPresetDir);
+    // --- [修正后] 新增全局仓库IPC处理器 ---
 
+    // 定义全局仓库文件的路径
+    const GLOBAL_WAREHOUSE_PATH = path.join(APP_DATA_ROOT, 'global_prompt_warehouse.json');
+
+    // 处理器：读取全局仓库
+    ipcMain.handle('get-global-warehouse', async () => {
+        try {
+            // 检查文件是否存在，不存在则创建一个空的
+            if (!await fs.pathExists(GLOBAL_WAREHOUSE_PATH)) {
+                await fs.writeJson(GLOBAL_WAREHOUSE_PATH, []); // 写入一个空数组
+                return { success: true, data: [] };
+            }
+            // 读取并返回文件内容
+            const data = await fs.readJson(GLOBAL_WAREHOUSE_PATH);
+            return { success: true, data: data };
+        } catch (error) {
+            console.error('[PromptHandlers] Error getting global warehouse:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // 处理器：保存全局仓库
+    ipcMain.handle('save-global-warehouse', async (event, data) => {
+        try {
+            // 将接收到的数据写入文件，格式化以方便阅读
+            await fs.writeJson(GLOBAL_WAREHOUSE_PATH, data, { spaces: 2 });
+            return { success: true };
+        } catch (error) {
+            console.error('[PromptHandlers] Error saving global warehouse:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // --- [修正结束] ---
+    
     setupHandlers();
 }
 
