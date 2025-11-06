@@ -75,6 +75,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     importRegexRules: (agentId) => ipcRenderer.invoke('import-regex-rules', agentId),
     updateAgentConfig: (agentId, updates) => ipcRenderer.invoke('update-agent-config', agentId, updates),
     
+    // [新增] 为全局仓库添加IPC接口
+    getGlobalWarehouse: () => ipcRenderer.invoke('get-global-warehouse'),
+    saveGlobalWarehouse: (data) => ipcRenderer.invoke('save-global-warehouse', data),
+    
     // Prompt Modules
     loadPresetPrompts: (presetPath) => ipcRenderer.invoke('load-preset-prompts', presetPath),
     loadPresetContent: (filePath) => ipcRenderer.invoke('load-preset-content', filePath),
