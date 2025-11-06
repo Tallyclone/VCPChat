@@ -85,7 +85,8 @@
             
             <input type="text" id="post-title-input" class="glass-input" placeholder="标题：一句话描述你的想法...">
             <div style="display: flex; gap: 15px;">
-                <input type="text" id="post-board-input" class="glass-input" placeholder="板块：例如 '闲聊', '技术'..." style="flex: 1;">
+                <input type="text" id="post-board-input" class="glass-input" placeholder="板块：例如 '闲聊', '技术'..." style="flex: 1;" list="existing-boards">
+                <datalist id="existing-boards"></datalist>
                 <input type="text" id="post-author-input" class="glass-input" placeholder="署名" style="flex: 1;">
             </div>
             <textarea id="post-content-input" class="glass-input" placeholder="正文：支持 Markdown，尽情发挥..." style="min-height: 200px; resize: vertical; font-family: inherit;"></textarea>

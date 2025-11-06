@@ -462,6 +462,7 @@ async function loadPosts() {
         const data = await apiFetch('/posts');
         allPosts = data.posts || [];
         updateBoardFilter(allPosts);
+        updateBoardDatalist(allPosts);
         renderWaterfall(allPosts);
     } catch (error) {
         console.error('Load posts failed:', error);
@@ -482,6 +483,18 @@ function updateBoardFilter(posts) {
     });
     boardFilter.value = currentVal;
     if (boardFilter.value === '') boardFilter.value = 'all';
+}
+
+function updateBoardDatalist(posts) {
+    const boardsDatalist = document.getElementById('existing-boards');
+    if (!boardsDatalist) return;
+    const boards = [...new Set(posts.map(p => p.board).filter(Boolean))].sort();
+    boardsDatalist.innerHTML = '';
+    boards.forEach(b => {
+        const opt = document.createElement('option');
+        opt.value = b;
+        boardsDatalist.appendChild(opt);
+    });
 }
 
 function renderWaterfall(postsToRender) {
@@ -618,6 +631,12 @@ function closeExpandedPost() {
 
 activePostOverlay.addEventListener('click', (e) => {
     if (e.target === activePostOverlay) closeExpandedPost();
+});
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && activePostOverlay.classList.contains('active')) {
+        closeExpandedPost();
+    }
 });
 
 function renderFullContent(container, markdown, uid) {
