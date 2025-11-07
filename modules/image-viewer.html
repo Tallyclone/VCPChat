@@ -96,6 +96,13 @@
             -webkit-backdrop-filter: blur(10px) saturate(110%);
             border: 1px solid var(--image-viewer-border-transparent);
             z-index: 100;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+
+        .toolbar.hidden {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
         }
 
         .toolbar-section {
@@ -457,8 +464,8 @@
         <!-- 颜色和画笔大小 -->
         <div class="toolbar-section">
             <div class="color-picker-wrapper">
-                <input type="color" id="colorPicker" value="#ff0000" title="选择颜色">
-                <span id="colorCodeDisplay">#FF0000</span>
+                <input type="color" id="colorPicker" value="#498094" title="选择颜色">
+                <span id="colorCodeDisplay">#498094</span>
             </div>
             <div class="brush-size-wrapper">
                 <input type="range" id="brushSize" min="1" max="50" value="5" title="画笔大小">
@@ -489,7 +496,7 @@
     </div>
 
     <!-- 底部控制栏 -->
-    <div class="controls" id="imageControls" style="display:none;">
+    <div class="controls active" id="imageControls" style="display:none;">
         <button id="copyButton" class="control-button">
             <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"></path></svg>
             复制

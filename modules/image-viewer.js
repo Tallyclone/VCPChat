@@ -38,7 +38,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let currentTool = 'select';
     let isDrawing = false;
     let startX, startY;
-    let currentColor = '#ff0000';
+    let currentColor = '#498094ff';
     let currentBrushSize = 5;
     let history = [];
     let historyStep = -1;
@@ -364,16 +364,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             // 默认选择选择工具
             setTool('select');
 
-            // 控制栏显示/隐藏
-            let controlsTimeout;
-            document.addEventListener('mousemove', () => {
-                imageControls.classList.add('active');
-                clearTimeout(controlsTimeout);
-                controlsTimeout = setTimeout(() => {
-                    if (currentTool === 'select') {
-                        imageControls.classList.remove('active');
-                    }
-                }, 3000);
+            // 右键单击可切换UI可见性
+            imageContainer.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                toolbar.classList.toggle('hidden');
+                imageControls.classList.toggle('active');
             });
 
             // ========== 缩放和拖拽功能 ==========
