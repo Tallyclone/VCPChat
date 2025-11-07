@@ -357,6 +357,28 @@ function setupEmoticonFixer(container) {
         }, { once: true }); // Only try once per image
     });
 }
+
+function setupImageViewer(container) {
+    const images = container.querySelectorAll('img');
+    images.forEach(img => {
+        // Exclude avatars from the image viewer functionality
+        if (img.closest('.author-avatar, .reply-avatar')) {
+            return;
+        }
+
+        img.style.cursor = 'pointer';
+        img.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent the post from closing or other parent events
+            if (window.electronAPI?.openImageViewer) {
+                window.electronAPI.openImageViewer({
+                    src: img.src,
+                    title: '图片查看' // A generic title for the viewer window
+                });
+            }
+        });
+    });
+}
+
 async function getAvatarForUser(username) {
     if (!username) return null;
     
@@ -731,6 +753,7 @@ function renderFullContent(container, markdown, uid) {
     
     // Setup emoticon fixer for main content
     setupEmoticonFixer(previewEl);
+    setupImageViewer(previewEl);
 
     // Add delete post button after main content
     const deletePostBtn = document.createElement('button');
@@ -791,6 +814,7 @@ function renderFullContent(container, markdown, uid) {
             const replyContent = replyItem.querySelector('.reply-content');
             if (replyContent) {
                 setupEmoticonFixer(replyContent);
+                setupImageViewer(replyContent);
             }
             
             // Add event listener for delete floor button
