@@ -782,7 +782,7 @@ function renderFullContent(container, markdown, uid) {
     const postActions = document.createElement('div');
     postActions.className = 'post-actions';
     postActions.innerHTML = `
-        <button class="jelly-btn delete-post-btn">🗑️ 删除整个帖子</button>
+        <button class="jelly-btn delete-post-btn">🗑️ 删除帖子</button>
         <button class="edit-btn">✏️ 编辑正文</button>
     `;
     postActions.querySelector('.delete-post-btn').addEventListener('click', () => handleDeletePost(uid));

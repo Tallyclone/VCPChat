@@ -671,10 +671,12 @@ img[src*="file://"] {
 /* A more robust selector for the delete button, overriding the base .jelly-btn styles without !important */
 .jelly-btn.delete-post-btn {
     width: auto;
-    padding: 10px 25px;
-    margin-top: 20px;
+    padding: 8px 20px;
+    margin-top: 0;
     background: var(--danger-color, #e57373); /* Provide a fallback color */
     color: white;
+    font-size: 0.9rem;
+    border-radius: 8px;
 }
 
 .jelly-btn.delete-post-btn:hover {
@@ -774,10 +776,11 @@ img[src*="file://"] {
     background: rgba(74, 144, 226, 0.15); /* Subtle blue glass background */
     color: var(--accent-color);
     border: 1px solid var(--accent-color);
-    padding: 5px 12px;
+    padding: 8px 20px;
     border-radius: 8px;
     cursor: pointer;
-    font-size: 0.75rem;
+    font-size: 0.9rem;
+    font-weight: bold;
     transition: all 0.3s ease;
     opacity: 0.8;
     margin-left: 10px; /* Space from delete button */
