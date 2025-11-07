@@ -652,10 +652,11 @@ img[src*="file://"] {
     background: rgba(229, 115, 115, 0.15); /* Subtle red glass background */
     color: var(--danger-color);
     border: 1px solid var(--danger-color);
-    padding: 5px 12px;
+    padding: 8px 20px;
     border-radius: 8px;
     cursor: pointer;
-    font-size: 0.75rem;
+    font-size: 0.9rem;
+    font-weight: bold;
     transition: all 0.3s ease;
     opacity: 0.8; /* Slightly more visible */
 }
