@@ -697,7 +697,17 @@ activePostOverlay.addEventListener('click', (e) => {
 
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && activePostOverlay.classList.contains('active')) {
-        closeExpandedPost();
+        const activeEditingArea = activePostOverlay.querySelector('.edit-textarea');
+        if (activeEditingArea) {
+            // If in edit mode, find the corresponding cancel button and trigger it
+            const cancelButton = activeEditingArea.parentElement.querySelector('.cancel-edit-btn');
+            if (cancelButton) {
+                cancelButton.click();
+            }
+        } else {
+            // Otherwise, close the post
+            closeExpandedPost();
+        }
     }
 });
 
