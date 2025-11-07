@@ -457,18 +457,34 @@ settingsModal.addEventListener('click', e => {
 
 // ========== Masonry Posts Logic ==========
 async function loadPosts() {
-    refreshBtn.style.animation = 'spin 1s infinite linear';
-    try {
-        const data = await apiFetch('/posts');
-        allPosts = data.posts || [];
-        updateBoardFilter(allPosts);
-        updateBoardDatalist(allPosts);
-        renderWaterfall(allPosts);
-    } catch (error) {
-        console.error('Load posts failed:', error);
-    } finally {
-        refreshBtn.style.animation = '';
-    }
+    refreshBtn.classList.add('spinning');
+
+    // The API call promise will handle data processing as soon as it resolves.
+    const apiCallPromise = apiFetch('/posts')
+        .then(data => {
+            // This block executes immediately when data is fetched, updating the UI without delay.
+            allPosts = data.posts || [];
+            updateBoardFilter(allPosts);
+            updateBoardDatalist(allPosts);
+            renderWaterfall(allPosts);
+        })
+        .catch(error => {
+            // Log errors immediately as well.
+            console.error('Load posts failed:', error);
+            // We re-throw the error to ensure Promise.all can catch it if needed,
+            // but the main goal is immediate logging.
+            throw error;
+        });
+
+    // The minimum duration promise ensures the animation lasts at least 1 second.
+    const minDurationPromise = new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Use Promise.allSettled to wait for both promises to complete (either success or failure)
+    // before removing the spinning class. This ensures the animation is visible for at least
+    // 1 second, and also waits for a long API call to finish.
+    Promise.allSettled([apiCallPromise, minDurationPromise]).finally(() => {
+        refreshBtn.classList.remove('spinning');
+    });
 }
 
 function updateBoardFilter(posts) {

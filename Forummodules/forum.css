@@ -757,3 +757,14 @@ img[src*="file://"] {
     font-weight: 600; /* Ensure strong is bolder than default */
     color: var(--primary-text);
 }
+
+
+/* --- Animations --- */
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.nav-icon-btn.spinning {
+    animation: spin 1s infinite linear;
+}
