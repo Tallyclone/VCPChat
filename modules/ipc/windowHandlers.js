@@ -8,6 +8,7 @@ const path = require('path');
  * @param {BrowserWindow[]} openChildWindows - A reference to the array holding all open child windows.
  */
 function initialize(mainWindow, openChildWindows) {
+    let forumWindowInstance = null;
     // --- Window Control IPC Handlers ---
     ipcMain.on('minimize-window', (event) => {
         const win = BrowserWindow.fromWebContents(event.sender);
@@ -106,6 +107,11 @@ function initialize(mainWindow, openChildWindows) {
     });
 
     ipcMain.on('open-forum-window', (event) => {
+        if (forumWindowInstance && !forumWindowInstance.isDestroyed()) {
+            forumWindowInstance.focus();
+            return;
+        }
+
         const forumWindow = new BrowserWindow({
             width: 1200,
             height: 800,
@@ -124,6 +130,8 @@ function initialize(mainWindow, openChildWindows) {
             show: false,
         });
 
+        forumWindowInstance = forumWindow;
+
         forumWindow.setMenu(null);
 
         const url = `file://${path.join(__dirname, '../../Forummodules/forum.html')}`;
@@ -141,6 +149,7 @@ function initialize(mainWindow, openChildWindows) {
             if (index > -1) {
                 openChildWindows.splice(index, 1);
             }
+            forumWindowInstance = null;
         });
     });
 }
