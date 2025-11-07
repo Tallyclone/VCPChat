@@ -825,3 +825,36 @@ img[src*="file://"] {
     padding-top: 20px;
     border-top: 1px solid var(--glass-border);
 }
+
+
+/* --- Markdown Table Styles --- */
+.post-preview table, .reply-content table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+    font-size: 0.95rem;
+    background: rgba(0,0,0,0.1);
+    border-radius: 12px;
+    overflow: hidden; /* Ensures border-radius is respected */
+}
+
+.post-preview th, .reply-content th,
+.post-preview td, .reply-content td {
+    border: 1px solid var(--glass-border);
+    padding: 12px 15px;
+    text-align: left;
+}
+
+.post-preview th, .reply-content th {
+    background-color: rgba(0,0,0,0.2);
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.post-preview tr:nth-child(even), .reply-content tr:nth-child(even) {
+    background-color: rgba(0,0,0,0.05);
+}
+
+.post-preview tr:hover, .reply-content tr:hover {
+    background-color: var(--glass-shine);
+}
