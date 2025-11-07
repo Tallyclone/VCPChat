@@ -273,12 +273,17 @@ function extractEmoticonInfo(url) {
 }
 
 function fixEmoticonUrl(originalSrc) {
-    if (emoticonLibrary.length === 0) return originalSrc;
+    console.log(`[Forum Debug] Starting fix for: ${originalSrc}. Library size: ${emoticonLibrary.length}`);
+    if (emoticonLibrary.length === 0) {
+        console.log('[Forum Debug] Library is empty. Aborting.');
+        return originalSrc;
+    }
 
     // Quick check: if URL is already perfect
     try {
         const decodedOriginalSrc = decodeURIComponent(originalSrc);
         if (emoticonLibrary.some(item => decodeURIComponent(item.url) === decodedOriginalSrc)) {
+            console.log('[Forum Debug] Perfect match found. Aborting.');
             return originalSrc;
         }
     } catch (e) { /* ignore */ }
@@ -286,6 +291,7 @@ function fixEmoticonUrl(originalSrc) {
     // Check if it's likely an emoticon URL
     try {
         if (!decodeURIComponent(originalSrc).includes('表情包')) {
+            console.log('[Forum Debug] URL does not contain "表情包". Aborting.');
             return originalSrc;
         }
     } catch (e) {
@@ -294,7 +300,11 @@ function fixEmoticonUrl(originalSrc) {
 
     // Extract info and find best match
     const searchInfo = extractEmoticonInfo(originalSrc);
-    if (!searchInfo.filename) return originalSrc;
+    if (!searchInfo.filename) {
+        console.log('[Forum Debug] Could not extract filename. Aborting.');
+        return originalSrc;
+    }
+    console.log(`[Forum Debug] Searching for package: "${searchInfo.packageName}", filename: "${searchInfo.filename}"`);
 
     let bestMatch = null;
     let highestScore = -1;
@@ -319,12 +329,15 @@ function fixEmoticonUrl(originalSrc) {
             bestMatch = item;
         }
     }
+    
+    console.log(`[Forum Debug] Best match: ${bestMatch ? bestMatch.filename : 'None'}. Score: ${highestScore.toFixed(2)}`);
 
     if (bestMatch && highestScore > 0.6) {
         console.log('[Forum] Fixed emoticon URL:', originalSrc, '->', bestMatch.url);
         return bestMatch.url;
     }
-
+    
+    console.log('[Forum Debug] No suitable match found.');
     return originalSrc;
 }
 
@@ -347,7 +360,16 @@ function setupEmoticonFixer(container) {
         // Then set up error handling for emoticon fixing
         img.addEventListener('error', function() {
             const originalSrc = this.src;
-            if (originalSrc && originalSrc.includes('表情包')) {
+            let isEmoticonUrl = false;
+            try {
+                // Decode the URL first, as the browser might have encoded special characters.
+                isEmoticonUrl = decodeURIComponent(originalSrc).includes('表情包');
+            } catch (e) {
+                // Fallback for malformed URIs, check for the encoded version of "表情包"
+                isEmoticonUrl = originalSrc.includes('%E8%A1%A8%E6%83%85%E5%8C%85');
+            }
+
+            if (originalSrc && isEmoticonUrl) {
                 const fixedSrc = fixEmoticonUrl(originalSrc);
                 if (fixedSrc !== originalSrc) {
                     console.log('[Forum] Attempting to fix broken emoticon:', originalSrc);
@@ -750,17 +772,23 @@ function renderFullContent(container, markdown, uid) {
     // --- END NEW ---
 
     previewEl.innerHTML = window.marked ? marked.parse(enhanceMarkdown(postContentMd)) : `<pre>${escapeHtml(postContentMd)}</pre>`;
+    previewEl.dataset.rawContent = postContentMd; // Store raw content for editing
     
     // Setup emoticon fixer for main content
     setupEmoticonFixer(previewEl);
     setupImageViewer(previewEl);
 
-    // Add delete post button after main content
-    const deletePostBtn = document.createElement('button');
-    deletePostBtn.className = 'jelly-btn delete-post-btn';
-    deletePostBtn.innerHTML = '🗑️ 删除整个帖子';
-    deletePostBtn.addEventListener('click', () => handleDeletePost(uid));
-    previewEl.appendChild(deletePostBtn);
+    // Add post actions (edit/delete)
+    const postActions = document.createElement('div');
+    postActions.className = 'post-actions';
+    postActions.innerHTML = `
+        <button class="jelly-btn delete-post-btn">🗑️ 删除整个帖子</button>
+        <button class="edit-btn">✏️ 编辑正文</button>
+    `;
+    postActions.querySelector('.delete-post-btn').addEventListener('click', () => handleDeletePost(uid));
+    postActions.querySelector('.edit-btn').addEventListener('click', (e) => toggleEditMode(e.currentTarget.closest('.expanded-card'), previewEl, uid));
+    previewEl.appendChild(postActions);
+
 
     if (repliesMd.trim()) {
         const replyList = document.createElement('div');
@@ -771,15 +799,11 @@ function renderFullContent(container, markdown, uid) {
             const floor = i + 1;
             
             // Extract username from reply markdown
-            // Format: "**回复者:** 小吉" (bold text followed by username)
             let replyUsername = '';
-            
-            // Try to match "**回复者:** username" format
             const replyerMatch = replyMd.match(/\*\*回复者[：:]\*\*\s*([^\s\n*]+)/);
             if (replyerMatch) {
                 replyUsername = replyerMatch[1];
             } else {
-                // Fallback: try to match any bold text that might be a username
                 const boldMatch = replyMd.match(/\*\*([^*]+)\*\*/);
                 if (boldMatch && !boldMatch[1].includes('回复者') && !boldMatch[1].includes('时间')) {
                     replyUsername = boldMatch[1];
@@ -792,16 +816,24 @@ function renderFullContent(container, markdown, uid) {
             const replyItem = document.createElement('div');
             replyItem.className = 'reply-item glass';
             replyItem.style.animationDelay = `${i * 0.1}s`;
+
+            const metadataEndIndex = replyMd.indexOf('\n\n');
+            const replyRawContent = metadataEndIndex !== -1 ? replyMd.substring(metadataEndIndex + 2) : replyMd;
+
             replyItem.innerHTML = `
                 <div class="reply-header">
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <div class="reply-avatar loading-avatar" style="background: ${avatarColor}" data-author="${escapeHtml(replyUsername)}">${replyUsername ? replyUsername.slice(0,1).toUpperCase() : '#'}</div>
                         <span>#${floor}</span>
                     </div>
-                    <button class="delete-floor-btn" data-uid="${uid}" data-floor="${floor}">删除此楼层</button>
+                    <div>
+                        <button class="delete-floor-btn" data-uid="${uid}" data-floor="${floor}">删除</button>
+                        <button class="edit-btn" data-uid="${uid}" data-floor="${floor}">编辑</button>
+                    </div>
                 </div>
                 <div class="reply-content">${window.marked ? marked.parse(enhanceMarkdown(replyMd.trim())) : `<pre>${escapeHtml(replyMd.trim())}</pre>`}</div>
             `;
+            replyItem.querySelector('.reply-content').dataset.rawContent = replyRawContent; // Store raw content
             replyList.appendChild(replyItem);
             
             // Load avatar for reply
@@ -811,21 +843,15 @@ function renderFullContent(container, markdown, uid) {
             }
             
             // Setup emoticon fixer for reply content
-            const replyContent = replyItem.querySelector('.reply-content');
-            if (replyContent) {
-                setupEmoticonFixer(replyContent);
-                setupImageViewer(replyContent);
+            const replyContentEl = replyItem.querySelector('.reply-content');
+            if (replyContentEl) {
+                setupEmoticonFixer(replyContentEl);
+                setupImageViewer(replyContentEl);
             }
             
-            // Add event listener for delete floor button
-            const deleteBtn = replyItem.querySelector('.delete-floor-btn');
-            deleteBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const button = e.currentTarget;
-                const postUid = button.dataset.uid;
-                const floorNum = button.dataset.floor;
-                handleDeleteFloor(postUid, floorNum, container);
-            });
+            // Add event listeners for action buttons
+            replyItem.querySelector('.delete-floor-btn').addEventListener('click', (e) => handleDeleteFloor(uid, floor, container));
+            replyItem.querySelector('.edit-btn').addEventListener('click', (e) => toggleEditMode(e.currentTarget.closest('.expanded-card'), replyContentEl, uid, floor));
         });
         container.appendChild(replyList);
     }
@@ -844,6 +870,82 @@ function renderFullContent(container, markdown, uid) {
     
     container.querySelector('#quick-reply-btn').addEventListener('click', () => handleQuickReply(uid, container));
 }
+
+// ========== Edit, Delete, Reply Logic ==========
+
+function toggleEditMode(card, contentEl, uid, floor = null) {
+    const isEditing = contentEl.querySelector('.edit-textarea');
+    if (isEditing) return; // Already in edit mode
+
+    const rawContent = contentEl.dataset.rawContent || '';
+    const originalHtml = contentEl.innerHTML;
+
+    // Store the parent of the content element before we change it
+    const contentParent = contentEl.parentNode;
+
+    contentEl.innerHTML = `
+        <textarea class="edit-textarea">${escapeHtml(rawContent)}</textarea>
+        <div class="edit-controls">
+            <button class="jelly-btn cancel-edit-btn" style="width: auto; padding: 8px 20px; background: var(--glass-bg);">取消</button>
+            <button class="jelly-btn save-edit-btn" style="width: auto; padding: 8px 20px;">确认</button>
+        </div>
+    `;
+
+    contentEl.querySelector('.cancel-edit-btn').addEventListener('click', () => {
+        contentEl.innerHTML = originalHtml;
+        // After restoring HTML, we MUST re-find the button and re-attach the listener
+        // because the old button element was destroyed.
+        let editBtn;
+        if (floor) {
+            // Find the specific edit button for this floor
+            editBtn = contentParent.querySelector(`.edit-btn[data-floor="${floor}"]`);
+        } else {
+            // Find the main post's edit button
+            editBtn = contentParent.querySelector('.post-actions .edit-btn');
+        }
+        
+        if (editBtn) {
+            editBtn.addEventListener('click', (e) => toggleEditMode(card, contentEl, uid, floor));
+        }
+    });
+
+    contentEl.querySelector('.save-edit-btn').addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        btn.textContent = '保存中...';
+        btn.disabled = true;
+        const newContent = contentEl.querySelector('.edit-textarea').value;
+        await handleSaveEdit(uid, newContent, floor, card);
+    });
+}
+
+async function handleSaveEdit(uid, content, floor, card) {
+    try {
+        const payload = { content };
+        if (floor) {
+            payload.floor = floor;
+        }
+        await apiFetch(`/post/${uid}`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload)
+        });
+        
+        // Reload the entire post content to reflect changes
+        const data = await apiFetch(`/post/${uid}`);
+        card.querySelectorAll('.reply-list, .reply-area-fixed').forEach(e => e.remove());
+        renderFullContent(card, data.content, uid);
+        await customAlert('内容已成功更新', '✅ 编辑成功');
+
+    } catch (error) {
+        await customAlert('保存失败: ' + error.message, '❌ 编辑失败');
+        // Re-enable button on failure
+        const btn = card.querySelector('.save-edit-btn');
+        if (btn) {
+            btn.textContent = '确认';
+            btn.disabled = false;
+        }
+    }
+}
+
 
 async function handleDeletePost(uid) {
     const confirmed = await customConfirm('您确定要删除整个帖子吗？此操作无法撤销！', '⚠️ 删除帖子');

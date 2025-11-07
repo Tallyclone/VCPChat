@@ -768,3 +768,60 @@ img[src*="file://"] {
 .nav-icon-btn.spinning {
     animation: spin 1s infinite linear;
 }
+
+/* --- Edit Mode Styles --- */
+.edit-btn {
+    background: rgba(74, 144, 226, 0.15); /* Subtle blue glass background */
+    color: var(--accent-color);
+    border: 1px solid var(--accent-color);
+    padding: 5px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    transition: all 0.3s ease;
+    opacity: 0.8;
+    margin-left: 10px; /* Space from delete button */
+}
+
+.edit-btn:hover {
+    background: var(--accent-color);
+    color: white;
+    opacity: 1;
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(74, 144, 226, 0.4);
+}
+
+.edit-textarea {
+    width: 100%;
+    min-height: 150px;
+    padding: 15px;
+    margin-bottom: 15px;
+    background: var(--glass-bg);
+    border: 1px solid var(--accent-color); /* Highlight that it's in edit mode */
+    border-radius: 12px;
+    color: var(--text-primary);
+    font-size: 1rem;
+    resize: vertical;
+    font-family: inherit;
+}
+
+.edit-textarea:focus {
+    outline: none;
+    background: var(--glass-shine);
+}
+
+.edit-controls {
+    display: flex;
+    justify-content: flex-end;
+    gap: 15px;
+    margin-top: 10px;
+}
+
+.post-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid var(--glass-border);
+}
