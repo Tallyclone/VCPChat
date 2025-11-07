@@ -882,7 +882,14 @@ searchInput.addEventListener('input', applyFilters);
 boardFilter.addEventListener('change', applyFilters);
 refreshBtn.addEventListener('click', loadPosts);
 
-createPostBtn.addEventListener('click', () => createPostModal.style.display = 'flex');
+createPostBtn.addEventListener('click', () => {
+    const authorInput = document.getElementById('post-author-input');
+    if (authorInput) {
+        // Pre-fill author name from settings, prioritizing reply name
+        authorInput.value = forumConfig.replyUsername || forumConfig.username || '';
+    }
+    createPostModal.style.display = 'flex';
+});
 document.querySelectorAll('.modal-close-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
         e.target.closest('.modal').style.display = 'none';
