@@ -69,6 +69,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (settings?.currentThemeMode) applyTheme(settings.currentThemeMode);
         window.electronAPI?.onThemeUpdated(applyTheme); // Listen for live theme changes
     } catch (e) { /* ignore */ }
+
+    // Intercept external links and open them in the default browser
+    document.body.addEventListener('click', (event) => {
+        const link = event.target.closest('a');
+        // Check if it's an external link
+        if (link && (link.protocol === 'http:' || link.protocol === 'https:')) {
+            event.preventDefault();
+            window.electronAPI?.openExternal(link.href);
+        }
+    });
 });
 
 function handleResize() {
