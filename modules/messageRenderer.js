@@ -591,6 +591,7 @@ function preprocessFullContent(text, settings = {}, messageRole = 'assistant', d
     }
 
     // The order of the remaining operations is critical.
+    text = contentProcessor.deIndentMisinterpretedCodeBlocks(text); // 🟢 新增：修复错误的缩进代码块
     text = deIndentHtml(text);
     text = contentProcessor.deIndentToolRequestBlocks(text);
     text = transformSpecialBlocks(text);
@@ -871,6 +872,7 @@ function initializeMessageRenderer(refs) {
         ensureNewlineAfterCodeBlock: contentProcessor.ensureNewlineAfterCodeBlock,
         ensureSpaceAfterTilde: contentProcessor.ensureSpaceAfterTilde,
         removeIndentationFromCodeBlockMarkers: contentProcessor.removeIndentationFromCodeBlockMarkers,
+        deIndentMisinterpretedCodeBlocks: contentProcessor.deIndentMisinterpretedCodeBlocks, // 🟢 传递新函数
         ensureSeparatorBetweenImgAndCode: contentProcessor.ensureSeparatorBetweenImgAndCode,
         processAnimationsInContent: processAnimationsInContent,
         emoticonUrlFixer: emoticonUrlFixer, // 🟢 Pass emoticon fixer for live updates

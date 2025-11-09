@@ -193,7 +193,14 @@ function applyStreamingPreprocessors(text) {
     CODE_MARKER_INDENT_REGEX.lastIndex = 0;
     IMG_CODE_SEPARATOR_REGEX.lastIndex = 0;
     
-    return text
+    let processedText = text;
+
+    // 🟢 新增：在流式处理中也修复错误的缩进代码块
+    if (refs.deIndentMisinterpretedCodeBlocks) {
+        processedText = refs.deIndentMisinterpretedCodeBlocks(processedText);
+    }
+    
+    return processedText
         .replace(SPEAKER_TAG_REGEX, '')
         .replace(NEWLINE_AFTER_CODE_REGEX, '$1\n')
         .replace(SPACE_AFTER_TILDE_REGEX, '$1~ ')

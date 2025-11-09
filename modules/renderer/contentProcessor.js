@@ -672,6 +672,37 @@ function applyContentProcessors(text) {
 }
 
 
+/**
+ * 智能地移除被错误解析为代码块的行首缩进。
+ * 它会跳过代码围栏 (```) 内部的内容和 Markdown 列表项。
+ * @param {string} text 输入文本。
+ * @returns {string} 处理后的文本。
+ */
+function deIndentMisinterpretedCodeBlocks(text) {
+    if (typeof text !== 'string') return text;
+
+    const lines = text.split('\n');
+    let inFence = false;
+    // 匹配 Markdown 列表标记，例如 *, -, 1.
+    const listRegex = /^\s*([-*]|\d+\.)\s+/;
+
+    return lines.map(line => {
+        if (line.trim().startsWith('```')) {
+            inFence = !inFence;
+            return line; // 代码围栏行本身不应被修改
+        }
+
+        // 如果不在代码块内，且行首有空格，但不是一个列表项
+        if (!inFence && line.startsWith(' ') && !listRegex.test(line)) {
+            // 只要不是列表，任何行首的缩进都可能导致问题，直接移除
+            return line.trimStart();
+        }
+
+        return line;
+    }).join('\n');
+}
+
+
 export {
     initializeContentProcessor,
     ensureNewlineAfterCodeBlock,
@@ -680,6 +711,7 @@ export {
     removeSpeakerTags,
     ensureSeparatorBetweenImgAndCode,
     deIndentToolRequestBlocks,
+    deIndentMisinterpretedCodeBlocks,
     processAllPreBlocksInContentDiv,
     processRenderedContent,
     processInteractiveButtons,
