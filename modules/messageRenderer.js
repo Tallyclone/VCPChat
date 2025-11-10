@@ -573,6 +573,11 @@ function preprocessFullContent(text, settings = {}, messageRole = 'assistant', d
         return `<div class="mermaid-placeholder" data-mermaid-code="${encodedCode}"></div>`;
     });
 
+    // 🔴 关键修复：在提取代码块之前先处理缩进
+    // 这样 deIndentMisinterpretedCodeBlocks 才能正确识别代码围栏
+    text = contentProcessor.deIndentMisinterpretedCodeBlocks(text);
+    text = deIndentHtml(text);
+    
     // 保护代码块（优化：只在需要时创建 Map）
     let codeBlockMap = null;
     let placeholderId = 0;
@@ -591,8 +596,6 @@ function preprocessFullContent(text, settings = {}, messageRole = 'assistant', d
     }
 
     // The order of the remaining operations is critical.
-    text = contentProcessor.deIndentMisinterpretedCodeBlocks(text); // 🟢 新增：修复错误的缩进代码块
-    text = deIndentHtml(text);
     text = contentProcessor.deIndentToolRequestBlocks(text);
     text = transformSpecialBlocks(text);
     text = ensureHtmlFenced(text);

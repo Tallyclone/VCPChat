@@ -190,12 +190,12 @@ function applyStreamingPreprocessors(text) {
     SPEAKER_TAG_REGEX.lastIndex = 0;
     NEWLINE_AFTER_CODE_REGEX.lastIndex = 0;
     SPACE_AFTER_TILDE_REGEX.lastIndex = 0;
-    CODE_MARKER_INDENT_REGEX.lastIndex = 0;
     IMG_CODE_SEPARATOR_REGEX.lastIndex = 0;
     
     let processedText = text;
 
     // 🟢 新增：在流式处理中也修复错误的缩进代码块
+    // 🟢 使用精细化的缩进处理，只处理HTML标签
     if (refs.deIndentMisinterpretedCodeBlocks) {
         processedText = refs.deIndentMisinterpretedCodeBlocks(processedText);
     }
@@ -204,7 +204,6 @@ function applyStreamingPreprocessors(text) {
         .replace(SPEAKER_TAG_REGEX, '')
         .replace(NEWLINE_AFTER_CODE_REGEX, '$1\n')
         .replace(SPACE_AFTER_TILDE_REGEX, '$1~ ')
-        .replace(CODE_MARKER_INDENT_REGEX, '$2')
         .replace(IMG_CODE_SEPARATOR_REGEX, '$1\n\n<!-- VCP-Renderer-Separator -->\n\n$2');
 }
 
