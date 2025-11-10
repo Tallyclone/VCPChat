@@ -714,17 +714,17 @@ function deIndentMisinterpretedCodeBlocks(text) {
     // 匹配 Markdown 列表标记，例如 *, -, 1.
     const listRegex = /^\s*([-*]|\d+\.)\s+/;
     
-    // 🟢 精细化处理：只匹配可能导致Markdown解析问题的HTML标签
-    // 这些标签如果有缩进，会被Markdown误认为是缩进代码块
-    // 匹配开始标签（如 <div>）和闭合标签（如 </div>）
+    // 匹配可能导致Markdown解析问题的HTML标签
     const htmlTagRegex = /^\s*<\/?(div|p|img|span|a|h[1-6]|ul|ol|li|table|tr|td|th|section|article|header|footer|nav|aside|main|figure|figcaption|blockquote|pre|code|style|script|button|form|input|textarea|select|label|iframe|video|audio|canvas|svg)[\s>\/]/i;
+
+    // 匹配中文字符开头，用于识别首行缩进的段落
+    const chineseParagraphRegex = /^[\u4e00-\u9fa5]/;
 
     return lines.map(line => {
         // 检测代码围栏
         if (line.trim().startsWith('```')) {
             inFence = !inFence;
-            // 🟢 关键修复：移除代码围栏标记本身的缩进
-            // 这样 Markdown 解析器才能正确识别它们
+            // 移除代码围栏标记本身的缩进
             return line.trimStart();
         }
 
@@ -733,16 +733,19 @@ function deIndentMisinterpretedCodeBlocks(text) {
             return line;
         }
 
-        // 如果不在代码块内，检查是否是需要处理的HTML标签
-        if (line.startsWith(' ')) {
-            // 如果是列表项，不处理
+        const trimmedStartLine = line.trimStart();
+        const hasIndentation = line.length > trimmedStartLine.length;
+
+        // 只处理有缩进的行
+        if (hasIndentation) {
+            // 如果是列表项，则不处理
             if (listRegex.test(line)) {
                 return line;
             }
             
-            // 🟢 只有当行是HTML标签时，才移除缩进
-            if (htmlTagRegex.test(line)) {
-                return line.trimStart();
+            // 🟢 如果是HTML标签或中文段落，则移除缩进
+            if (htmlTagRegex.test(line) || chineseParagraphRegex.test(trimmedStartLine)) {
+                return trimmedStartLine;
             }
         }
 
