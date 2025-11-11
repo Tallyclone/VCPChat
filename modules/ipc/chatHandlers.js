@@ -32,7 +32,11 @@ function initialize(mainWindow, context) {
         const agentConfigPath = path.join(AGENT_DIR, agentId, 'config.json');
         try {
             const agentConfig = await fs.readJson(agentConfigPath);
-            if (!Array.isArray(agentConfig.topics)) agentConfig.topics = [];
+            // 增加对损坏配置的检查
+            if (!agentConfig.topics || !Array.isArray(agentConfig.topics)) {
+                console.error(`保存Agent ${agentId} 的话题顺序失败: 配置文件损坏或缺少话题列表。`);
+                return { success: false, error: '配置文件损坏或缺少话题列表。' };
+            }
             
             const newTopicsArray = [];
             const topicMap = new Map(agentConfig.topics.map(topic => [topic.id, topic]));
@@ -217,27 +221,29 @@ function initialize(mainWindow, context) {
         try {
             const configPath = path.join(AGENT_DIR, agentId, 'config.json');
             if (await fs.pathExists(configPath)) {
-                const config = await fs.readJson(configPath);
-                if (config.topics && Array.isArray(config.topics) && config.topics.length > 0) {
-                    return config.topics;
-                } else { 
-                    const defaultTopics = [{ id: "default", name: "主要对话", createdAt: Date.now() }];
-                    if (agentConfigManager) {
-                        await agentConfigManager.updateAgentConfig(agentId, existingConfig => ({
-                            ...existingConfig,
-                            topics: defaultTopics
-                        }));
-                    } else {
-                        config.topics = defaultTopics;
-                        await fs.writeJson(configPath, config, { spaces: 2 });
-                    }
-                    return defaultTopics;
+                // 增加更稳健的读取和错误处理
+                let config;
+                try {
+                    config = await fs.readJson(configPath);
+                } catch (readError) {
+                    console.error(`读取Agent ${agentId} 的 config.json 失败:`, readError);
+                    // 返回一个带错误的数组，让前端知道出了问题，而不是覆盖它
+                    return { error: `读取配置文件失败: ${readError.message}` };
                 }
+    
+                // 仅当 topics 确实存在且为数组时返回它，否则返回空数组
+                if (config && config.topics && Array.isArray(config.topics)) {
+                    return config.topics;
+                }
+                // 如果没有 topics 字段或格式不正确，返回空数组，让前端处理
+                return [];
             }
-            return [{ id: "default", name: "主要对话", createdAt: Date.now() }];
+            // 如果配置文件不存在，也返回空数组
+            return [];
         } catch (error) {
-            console.error(`获取Agent ${agentId} 话题列表失败:`, error);
-            return [{ id: "default", name: "主要对话", createdAt: Date.now(), error: error.message }];
+            // 捕获 fs.pathExists 等操作的意外错误
+            console.error(`获取Agent ${agentId} 话题列表时发生意外错误:`, error);
+            return { error: error.message };
         }
     });
 
@@ -253,7 +259,15 @@ function initialize(mainWindow, context) {
                 console.error(`读取Agent ${agentId} 配置文件失败 (create-new-topic-for-agent):`, e);
                 return { error: `读取配置文件失败: ${e.message}` };
             }
-            if (!config.topics || !Array.isArray(config.topics)) config.topics = [];
+            // 增加对损坏配置的检查
+            if (config.topics && !Array.isArray(config.topics)) {
+                console.error(`Agent ${agentId} 的配置文件已损坏: 'topics' 字段不是一个数组。`);
+                return { error: `配置文件已损坏: 'topics' 字段不是一个数组。` };
+            }
+            // 如果 'topics' 字段不存在，则安全地创建它
+            if (!config.topics) {
+                config.topics = [];
+            }
 
             const newTopicId = `topic_${Date.now()}`;
             const newTopic = { id: newTopicId, name: topicName || `新话题 ${config.topics.length + 1}`, createdAt: Date.now() };
@@ -293,7 +307,10 @@ function initialize(mainWindow, context) {
                 console.error(`读取Agent ${agentId} 配置文件失败 (delete-topic):`, e);
                 return { error: `读取配置文件失败: ${e.message}` };
             }
-            if (!config.topics || !Array.isArray(config.topics)) return { error: `Agent ${agentId} 没有话题列表可供删除。` };
+            if (!config.topics || !Array.isArray(config.topics)) {
+                console.error(`删除Agent ${agentId} 的话题失败: 配置文件损坏或缺少话题列表。`);
+                return { error: `配置文件损坏或缺少话题列表。` };
+            }
 
             const initialTopicCount = config.topics.length;
             config.topics = config.topics.filter(topic => topic.id !== topicIdToDelete);
