@@ -54,7 +54,11 @@ ipcMain.handle('fs:readFile', async (event, relativePath) => {
         const fullPath = path.join(__dirname, '..', relativePath);
         return await fs.readFile(fullPath, 'utf-8');
     } catch (error) {
-        console.error(`Error reading file ${relativePath}:`, error);
+        // If the file doesn't exist (ENOENT), we return null silently,
+        // as this is expected behavior for optional files (like history.json)
+        if (error.code !== 'ENOENT') {
+            console.error(`Error reading file ${relativePath}:`, error);
+        }
         return null;
     }
 });

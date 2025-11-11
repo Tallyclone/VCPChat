@@ -24,6 +24,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let searchResults = [];
     let currentPage = 1;
     const resultsPerPage = 15;
+    let consistencyChecker = null;
+    let lastCheckResults = null;
 
     // --- Data Fetching and Initial Rendering ---
     async function fetchData() {
@@ -670,11 +672,205 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // --- Consistency Check Functions ---
+    function setupConsistencyCheck() {
+        const consistencyBtn = document.getElementById('consistency-check-btn');
+        const consistencyModal = document.getElementById('consistency-modal');
+        const closeConsistencyModal = document.getElementById('close-consistency-modal');
+        const runCheckBtn = document.getElementById('run-check-btn');
+        const applyFixesBtn = document.getElementById('apply-fixes-btn');
+
+        consistencyBtn.addEventListener('click', () => {
+            consistencyModal.style.display = 'flex';
+        });
+
+        closeConsistencyModal.addEventListener('click', () => {
+            consistencyModal.style.display = 'none';
+        });
+
+        consistencyModal.addEventListener('click', (e) => {
+            if (e.target === consistencyModal) {
+                consistencyModal.style.display = 'none';
+            }
+        });
+
+        runCheckBtn.addEventListener('click', async () => {
+            await performConsistencyCheck();
+        });
+
+        applyFixesBtn.addEventListener('click', async () => {
+            await applyConsistencyFixes();
+        });
+    }
+
+    async function performConsistencyCheck() {
+        const statusEl = document.getElementById('consistency-status');
+        const resultsEl = document.getElementById('consistency-results');
+        const summaryEl = document.getElementById('consistency-summary');
+        const issuesListEl = document.getElementById('consistency-issues-list');
+        const actionsEl = document.getElementById('consistency-actions');
+
+        statusEl.innerHTML = '<p>🔍 Checking consistency... Please wait.</p>';
+        resultsEl.style.display = 'none';
+
+        try {
+            // Initialize consistency checker
+            consistencyChecker = new ConsistencyChecker(AppDataPath, window.api);
+            
+            // Perform check
+            lastCheckResults = await consistencyChecker.performCheck(allAgents, allGroups);
+            
+            // Generate report
+            const report = consistencyChecker.generateReport(lastCheckResults);
+            
+            // Display results
+            statusEl.innerHTML = '';
+            resultsEl.style.display = 'block';
+            
+            summaryEl.innerHTML = `<h4>${report.summary}</h4>`;
+            
+            if (lastCheckResults.totalIssues === 0) {
+                issuesListEl.innerHTML = '<p style="color: green;">✓ All topic lists are consistent with chat history files.</p>';
+                actionsEl.style.display = 'none';
+            } else {
+                // Display issues
+                issuesListEl.innerHTML = '<h4>Issues Found:</h4>';
+                const issuesList = document.createElement('div');
+                issuesList.classList.add('issues-list');
+                
+                lastCheckResults.issues.forEach((issue, index) => {
+                    const issueEl = document.createElement('div');
+                    issueEl.classList.add('issue-item');
+                    issueEl.dataset.issueIndex = index;
+                    
+                    let issueHtml = `
+                        <div class="issue-header">
+                            <input type="checkbox" class="issue-checkbox" data-index="${index}" checked>
+                            <strong>[${issue.itemType.toUpperCase()}] ${issue.itemName}</strong>
+                        </div>
+                        <div class="issue-details">
+                            <p>${issue.message}</p>
+                    `;
+                    
+                    if (issue.type === 'orphaned_files') {
+                        issueHtml += '<ul class="topic-list">';
+                        issue.orphanedTopics.forEach(topic => {
+                            issueHtml += `<li>📁 ${topic.id} - ${topic.name} (${topic.messageCount} messages)</li>`;
+                        });
+                        issueHtml += '</ul>';
+                    } else if (issue.type === 'missing_files') {
+                        issueHtml += '<ul class="topic-list">';
+                        issue.missingTopics.forEach(topic => {
+                            issueHtml += `<li>❌ ${topic.id} - ${topic.name}</li>`;
+                        });
+                        issueHtml += '</ul>';
+                    }
+                    
+                    issueHtml += '</div>';
+                    issueEl.innerHTML = issueHtml;
+                    issuesList.appendChild(issueEl);
+                });
+                
+                issuesListEl.appendChild(issuesList);
+                actionsEl.style.display = 'block';
+            }
+            
+        } catch (error) {
+            console.error('Error during consistency check:', error);
+            statusEl.innerHTML = `<p style="color: red;">❌ Error during check: ${error.message}</p>`;
+            resultsEl.style.display = 'none';
+        }
+    }
+
+    async function applyConsistencyFixes() {
+        const applyFixesBtn = document.getElementById('apply-fixes-btn');
+        const addOrphaned = document.getElementById('fix-add-orphaned').checked;
+        const removeMissing = document.getElementById('fix-remove-missing').checked;
+        
+        if (!lastCheckResults || lastCheckResults.totalIssues === 0) {
+            alert('No issues to fix.');
+            return;
+        }
+        
+        // Get selected issues
+        const checkboxes = document.querySelectorAll('.issue-checkbox:checked');
+        const selectedIssues = Array.from(checkboxes).map(cb => {
+            const index = parseInt(cb.dataset.index);
+            return lastCheckResults.issues[index];
+        });
+        
+        if (selectedIssues.length === 0) {
+            alert('Please select at least one issue to fix.');
+            return;
+        }
+        
+        const confirmMsg = `Apply fixes to ${selectedIssues.length} issue(s)?\n\n` +
+            `Options:\n` +
+            `- Add orphaned topics: ${addOrphaned ? 'YES' : 'NO'}\n` +
+            `- Remove missing topics: ${removeMissing ? 'YES' : 'NO'}\n\n` +
+            `This will modify agent/group config files.`;
+        
+        if (!confirm(confirmMsg)) {
+            return;
+        }
+        
+        applyFixesBtn.disabled = true;
+        applyFixesBtn.textContent = 'Applying fixes...';
+        
+        try {
+            const results = await consistencyChecker.fixIssues(selectedIssues, {
+                addOrphaned,
+                removeMissing
+            });
+            
+            // Show results
+            let successCount = 0;
+            let failCount = 0;
+            let messages = [];
+            
+            results.forEach(result => {
+                if (result.success) {
+                    successCount++;
+                    if (result.modified) {
+                        messages.push(`✓ ${result.itemType} ${result.itemId}: Updated (${result.topicsCount} topics)`);
+                    } else {
+                        messages.push(`○ ${result.itemType} ${result.itemId}: No changes needed`);
+                    }
+                } else {
+                    failCount++;
+                    messages.push(`✗ ${result.itemType} ${result.itemId}: ${result.error}`);
+                }
+            });
+            
+            alert(`Fixes applied!\n\nSuccess: ${successCount}\nFailed: ${failCount}\n\n${messages.join('\n')}`);
+            
+            // Reload data to reflect changes
+            const data = await fetchData();
+            if (data) {
+                allAgents = data.agents;
+                allGroups = data.groups;
+                allSettings = data.settings;
+                renderSidebar(data);
+            }
+            
+            // Re-run check to show updated status
+            await performConsistencyCheck();
+            
+        } catch (error) {
+            console.error('Error applying fixes:', error);
+            alert(`Error applying fixes: ${error.message}`);
+        } finally {
+            applyFixesBtn.disabled = false;
+            applyFixesBtn.textContent = 'Apply Fixes';
+        }
+    }
+
     // --- Initialization ---
     async function initialize() {
         setupThemeToggle();
         setupResizer();
         setupSearch();
+        setupConsistencyCheck();
         const data = await fetchData();
         if (data) {
             renderSidebar(data);
