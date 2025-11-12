@@ -19,10 +19,16 @@
  * @param {HTMLElement} vcpLogConnectionStatusDiv - The DOM element for status display.
  */
 function updateVCPLogStatus(statusUpdate, vcpLogConnectionStatusDiv) {
-    if (!vcpLogConnectionStatusDiv) return;
-    const prefix = statusUpdate.source || 'VCPLog';
-    vcpLogConnectionStatusDiv.textContent = `${prefix}: ${statusUpdate.message}`;
-    vcpLogConnectionStatusDiv.className = `notifications-status status-${statusUpdate.status}`;
+    if (!vcpLogConnectionStatusDiv || !statusUpdate) return; // 增加对 statusUpdate 自身的检查
+
+    // 安全地从 statusUpdate 对象中提取数据，无论其内部结构如何
+    const source = statusUpdate.source;
+    const message = statusUpdate.message;
+    const status = statusUpdate.status;
+
+    const prefix = source || 'VCPLog';
+    vcpLogConnectionStatusDiv.textContent = `${prefix}: ${message || '状态未知'}`;
+    vcpLogConnectionStatusDiv.className = `notifications-status status-${status || 'unknown'}`;
 }
 
 /**

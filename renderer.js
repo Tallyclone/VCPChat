@@ -319,7 +319,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
             window.notificationRenderer.updateVCPLogStatus(statusUpdate, vcpLogConnectionStatusDiv);
         }
     });
-    window.electronAPI.onVCPLogMessage((logData, originalRawMessage) => {
+    window.electronAPI.onVCPLogMessage((logData) => {
         if (window.notificationRenderer) {
             const computedStyle = getComputedStyle(document.body);
             const themeColors = {
@@ -330,7 +330,8 @@ import { setupEventListeners } from './modules/event-listeners.js';
                 primaryText: computedStyle.getPropertyValue('--primary-text').trim(),
                 secondaryText: computedStyle.getPropertyValue('--secondary-text').trim()
             };
-            window.notificationRenderer.renderVCPLogNotification(logData, originalRawMessage, notificationsListUl, themeColors);
+            // 修复：只传递一个 logData 参数，第二个参数显式传递 null，以匹配 preload 定义
+            window.notificationRenderer.renderVCPLogNotification(logData, null, notificationsListUl, themeColors);
         }
     });
 
