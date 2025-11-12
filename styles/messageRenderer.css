@@ -938,3 +938,32 @@ body:not(.light-theme) .mermaid-error {
     background-color: rgba(0,0,0,0.1);
     border-radius: 4px;
 }
+
+
+/* --- Stream Fade-in Animation --- */
+@keyframes vcp-stream-fade-in {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Class to apply the animation to newly added stream elements */
+.vcp-stream-element-fade-in {
+  animation: vcp-stream-fade-in 0.5s ease-out forwards;
+}
+
+
+/* --- Fix for streaming EMOTICON size flickering --- */
+/* Specifically constrain emoticons in a streaming message to prevent flashing */
+.message-item.streaming .md-content img[src*="表情包"] {
+    max-width: 150px;  /* A sensible max size for emoticons */
+    max-height: 150px;
+    height: auto;     /* Maintain aspect ratio */
+    display: inline-block; /* Emoticons are usually inline */
+    vertical-align: middle; /* Align nicely with text */
+}

@@ -372,6 +372,18 @@ function renderStreamFrame(messageId) {
                     return false;
                 }
                 return true;
+            },
+            
+            onNodeAdded: function(node) {
+                // Animate block-level elements as they are added to the DOM
+                if (node.nodeType === 1 && /^(P|DIV|UL|OL|PRE|BLOCKQUOTE|H[1-6]|TABLE|FIGURE)$/.test(node.tagName)) {
+                    node.classList.add('vcp-stream-element-fade-in');
+                    // Clean up the class after the animation completes to prevent re-triggering
+                    node.addEventListener('animationend', () => {
+                        node.classList.remove('vcp-stream-element-fade-in');
+                    }, { once: true });
+                }
+                return node;
             }
         });
     } else {
