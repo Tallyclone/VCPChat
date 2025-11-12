@@ -862,3 +862,32 @@ img[src*="file://"] {
 .post-preview tr:hover, .reply-content tr:hover {
     background-color: var(--glass-shine);
 }
+
+/* --- NEW: Dual Avatar Styles --- */
+.author-info-with-time {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+}
+
+.time-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.meta-separator {
+    width: 2px;
+    height: 40px;
+    background: linear-gradient(to bottom, transparent, var(--glass-border) 20%, var(--glass-border) 80%, transparent);
+    margin: 0 15px;
+    flex-shrink: 0;
+}
+
+/* Ensure the post-meta container uses flexbox for dual layout */
+.post-card .post-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}

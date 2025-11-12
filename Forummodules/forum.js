@@ -603,14 +603,54 @@ function createPostCard(post, index) {
     const delay = index < 20 ? index * 0.05 : 0;
     el.style.animationDelay = `${delay}s`;
     
-    const hue = post.author.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 360;
-    const avatarColor = `hsl(${hue}, 70%, 60%)`;
-
+    // Backend returns lastReplyBy and lastReplyAt
     const displayDate = post.mtime || post.lastReplyAt || post.timestamp;
-    let timestampLabel = '发帖于';
-    // If lastReplyAt exists and is different from the original timestamp, it's a reply.
-    if (post.lastReplyAt && post.timestamp && post.lastReplyAt !== post.timestamp) {
-        timestampLabel = '最后回复';
+    const hasReply = post.lastReplyAt && post.timestamp && post.lastReplyAt !== post.timestamp;
+    
+    // Use lastReplyBy from backend API
+    const lastReplier = post.lastReplyBy;
+    const hasNewReplier = hasReply && lastReplier && lastReplier !== post.author;
+
+    let metaHTML = '';
+
+    if (hasNewReplier) {
+        const authorHue = post.author.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 360;
+        const authorAvatarColor = `hsl(${authorHue}, 70%, 60%)`;
+        const replierHue = lastReplier.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 360;
+        const replierAvatarColor = `hsl(${replierHue}, 70%, 60%)`;
+
+        metaHTML = `
+            <div class="author-info-with-time">
+                <div class="author-avatar loading-avatar" style="background: ${authorAvatarColor}" data-author="${escapeHtml(post.author)}">${post.author.slice(0,1).toUpperCase()}</div>
+                <div class="time-info">
+                    <div style="font-size: 0.8em; opacity: 0.7;">发帖于</div>
+                    <div>${formatDate(post.timestamp)}</div>
+                </div>
+            </div>
+            <div class="meta-separator"></div>
+            <div class="author-info-with-time">
+                <div class="author-avatar loading-avatar" style="background: ${replierAvatarColor}" data-author="${escapeHtml(lastReplier)}">${lastReplier.slice(0,1).toUpperCase()}</div>
+                <div class="time-info">
+                    <div style="font-size: 0.8em; opacity: 0.7;">最后回复</div>
+                    <div>${formatDate(displayDate)}</div>
+                </div>
+            </div>
+        `;
+    } else {
+        const authorHue = post.author.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 360;
+        const authorAvatarColor = `hsl(${authorHue}, 70%, 60%)`;
+        const timestampLabel = hasReply ? '最后回复' : '发帖于';
+
+        metaHTML = `
+            <div class="meta-left">
+                <div class="author-avatar loading-avatar" style="background: ${authorAvatarColor}" data-author="${escapeHtml(post.author)}">${post.author.slice(0,1).toUpperCase()}</div>
+                <span>${escapeHtml(post.author)}</span>
+            </div>
+            <div style="text-align: right;">
+                <div style="font-size: 0.8em; opacity: 0.7;">${timestampLabel}</div>
+                <div>${formatDate(displayDate)}</div>
+            </div>
+        `;
     }
 
     el.innerHTML = `
@@ -622,21 +662,17 @@ function createPostCard(post, index) {
             点击展开查看详情...
         </div>
         <div class="post-meta">
-            <div class="meta-left">
-                <div class="author-avatar loading-avatar" style="background: ${avatarColor}" data-author="${escapeHtml(post.author)}">${post.author.slice(0,1).toUpperCase()}</div>
-                <span>${escapeHtml(post.author)}</span>
-            </div>
-            <div style="text-align: right;">
-                <div style="font-size: 0.8em; opacity: 0.7;">${timestampLabel}</div>
-                <div>${formatDate(displayDate)}</div>
-            </div>
+            ${metaHTML}
         </div>
     `;
 
     el.addEventListener('click', (e) => expandPost(post, el));
     
-    // Async load avatar
-    loadAvatarForElement(el.querySelector('.author-avatar'), post.author);
+    // Async load avatar(s)
+    const avatars = el.querySelectorAll('.author-avatar');
+    avatars.forEach(avatarEl => {
+        loadAvatarForElement(avatarEl, avatarEl.dataset.author);
+    });
     
     return el;
 }
