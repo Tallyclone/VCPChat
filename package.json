@@ -64,6 +64,7 @@
     "puppeteer": "^24.15.0",
     "selection-hook": "^0.9.23",
     "sharp": "^0.34.2",
+    "stylelint": "^16.25.0",
     "tesseract.js": "^6.0.1",
     "three": "^0.178.0",
     "tmp": "^0.2.5",
