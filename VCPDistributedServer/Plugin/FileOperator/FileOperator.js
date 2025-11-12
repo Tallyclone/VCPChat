@@ -7,6 +7,7 @@ const pdf = require('pdf-parse');
 const mammoth = require('mammoth');
 const ExcelJS = require('exceljs');
 const axios = require('axios');
+const { validateCode } = require('./CodeValidator');
 
 // Load environment variables
 require('dotenv').config();
@@ -127,6 +128,18 @@ function applyDiffLogic(originalContent, diffContent) {
   }
 
   return modifiedContent;
+}
+
+// Helper function to run validation and attach results
+async function runValidationAndAttachResults(result, filePath, fileContent) {
+  if (result.success && fileContent) {
+    const validationResults = await validateCode(filePath, fileContent);
+    if (validationResults && validationResults.length > 0) {
+      result.data.validation = validationResults;
+      result.data.message += ' (with validation)';
+    }
+  }
+  return result;
 }
  
 // File operation functions
@@ -304,12 +317,12 @@ async function writeFile(filePath, content, encoding = 'utf8') {
 
     await fs.writeFile(newPath, content, encoding);
     const stats = await fs.stat(newPath);
-
+ 
     const message = renamed
       ? `已存在同名文件 "${path.basename(filePath)}"，已为您创建为 "${path.basename(newPath)}"`
       : '文件写入成功';
-
-    return {
+ 
+    let result = {
       success: true,
       data: {
         message: message,
@@ -321,6 +334,8 @@ async function writeFile(filePath, content, encoding = 'utf8') {
         lastModified: stats.mtime.toISOString(),
       },
     };
+
+    return await runValidationAndAttachResults(result, newPath, content);
   } catch (error) {
     debugLog('Error writing file', { filePath, error: error.message });
     return {
@@ -354,8 +369,8 @@ async function appendFile(filePath, content, encoding = 'utf8') {
 
     await fs.appendFile(filePath, content, encoding);
     const stats = await fs.stat(filePath);
-
-    return {
+ 
+    let result = {
       success: true,
       data: {
         message: 'Content appended successfully',
@@ -364,6 +379,10 @@ async function appendFile(filePath, content, encoding = 'utf8') {
         lastModified: stats.mtime.toISOString(),
       },
     };
+
+    // For append, we need to read the whole file to validate
+    const updatedContent = await fs.readFile(filePath, encoding);
+    return await runValidationAndAttachResults(result, filePath, updatedContent);
   } catch (error) {
     debugLog('Error appending to file', { filePath, error: error.message });
     return {
@@ -400,8 +419,8 @@ async function editFile(filePath, content, encoding = 'utf8') {
 
     await fs.writeFile(filePath, content, encoding);
     const stats = await fs.stat(filePath);
-
-    return {
+ 
+    let result = {
       success: true,
       data: {
         message: 'File edited successfully',
@@ -411,6 +430,8 @@ async function editFile(filePath, content, encoding = 'utf8') {
         lastModified: stats.mtime.toISOString(),
       },
     };
+
+    return await runValidationAndAttachResults(result, filePath, content);
   } catch (error) {
     debugLog('Error editing file', { filePath, error: error.message });
     return {
@@ -1001,8 +1022,10 @@ async function applyDiff(parameters) {
     const editResult = await editFile(filePath, newContent, encoding);
     if (editResult.success) {
       editResult.data.message = '文件编辑已经提交等待用户确认';
+      // Since editFile now returns the validation, we just pass it along.
+      // The validation was already run inside editFile.
     }
-    return editResult;
+    return await runValidationAndAttachResults(editResult, filePath, newContent);
   } catch (error) {
     return { success: false, error: `Failed to apply diff: ${error.message}` };
   }

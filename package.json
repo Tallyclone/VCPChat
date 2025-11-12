@@ -37,6 +37,7 @@
     "codemirror": "^5.65.19",
     "diff-match-patch": "^1.0.5",
     "dotenv": "^17.2.3",
+    "eslint": "^9.39.1",
     "exceljs": "^4.4.0",
     "express": "^5.1.0",
     "flexsearch": "^0.8.212",
