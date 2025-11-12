@@ -358,7 +358,7 @@ function setupEmoticonFixer(container) {
         // First, clean up any malformed URLs (e.g., extra backslashes from AI output)
         if (img.src) {
             // Remove escaped quotes and backslashes that might appear in URLs
-            let cleanedSrc = img.src.replace(/\\"/g, '"').replace(/\\\\/g, '/').replace(/\\/g, '');
+            let cleanedSrc = img.src.replace(/\\"/g, '"').replace(/\\\\/g, '/').replace(/\\/g, '/');
             
             // If the URL was cleaned, update it immediately
             if (cleanedSrc !== img.src) {
@@ -393,6 +393,15 @@ function setupEmoticonFixer(container) {
 function setupImageViewer(container) {
     const images = container.querySelectorAll('img');
     images.forEach(img => {
+        // NEW: Universal URL cleaning for file paths (e.g., Windows backslashes)
+        if (img.src && img.src.includes('\\')) {
+            let cleanedSrc = img.src.replace(/\\/g, '/');
+            if (cleanedSrc !== img.src) {
+                console.log('[Forum] Universal URL cleaning:', img.src, '->', cleanedSrc);
+                img.src = cleanedSrc;
+            }
+        }
+        
         // Exclude avatars from the image viewer functionality
         if (img.closest('.author-avatar, .reply-avatar')) {
             return;
@@ -722,11 +731,29 @@ document.addEventListener('keydown', (e) => {
 });
 
 function enhanceMarkdown(markdown) {
+    // NEW: Fix local file path images by replacing backslashes with forward slashes.
+    markdown = markdown.replace(/(!\[[^\]]*?\]\()(file:\/\/.*?)(\))/g, (match, prefix, url, suffix) => {
+        return prefix + url.replace(/\\/g, '/') + suffix;
+    });
+
+    // NEW: Prevent indented HTML tags from being treated as code blocks
+    const htmlTagRegex = /^\s*<\/?(div|p|img|span|a|h[1-6]|ul|ol|li|table|tr|td|th|section|article|header|footer|nav|aside|main|figure|figcaption|blockquote|pre|code|style|script|button|form|input|textarea|select|label|iframe|video|audio|canvas|svg)[\s>\/]/i;
+    
+    let lines = markdown.split('\n');
+    let deIndentedMarkdown = lines.map(line => {
+        // Check if the line starts with whitespace followed by a known HTML tag
+        if (htmlTagRegex.test(line)) {
+            // Remove leading whitespace
+            return line.trimStart();
+        }
+        return line;
+    }).join('\n');
+
     // To prevent breaking HTML attributes, temporarily replace all HTML tags with placeholders.
     const htmlTags = [];
-    const htmlTagRegex = /<[^>]+>/g;
+    const htmlTagRegexGlobal = /<[^>]+>/g;
 
-    let processed = markdown.replace(htmlTagRegex, (match) => {
+    let processed = deIndentedMarkdown.replace(htmlTagRegexGlobal, (match) => {
         htmlTags.push(match);
         return `__HTML_PLACEHOLDER_${htmlTags.length - 1}__`;
     });
