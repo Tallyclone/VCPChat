@@ -46,9 +46,10 @@ export async function handleSaveGlobalSettings(e, deps) {
         enableVcpToolInjection: document.getElementById('enableVcpToolInjection').checked,
         enableContextSanitizer: document.getElementById('enableContextSanitizer').checked,
         contextSanitizerDepth: parseInt(document.getElementById('contextSanitizerDepth').value, 10) || 0,
+        enableAiMessageButtons: document.getElementById('enableAiMessageButtons').checked,
     };
-
-    const userAvatarCropped = getCroppedFile('user');
+ 
+     const userAvatarCropped = getCroppedFile('user');
     if (userAvatarCropped) {
         try {
             const arrayBuffer = await userAvatarCropped.arrayBuffer();

@@ -363,8 +363,13 @@ function processAllPreBlocksInContentDiv(contentDiv) {
  * Processes interactive buttons in AI messages
  * @param {HTMLElement} contentDiv The message content element.
  */
-function processInteractiveButtons(contentDiv) {
+function processInteractiveButtons(contentDiv, settings = {}) {
     if (!contentDiv) return;
+
+    // 如果在全局设置中禁用了AI消息按钮，则直接返回
+    if (settings.enableAiMessageButtons === false) {
+        return;
+    }
 
     // Find all button elements
     const buttons = contentDiv.querySelectorAll('button');
@@ -574,7 +579,7 @@ function showErrorNotification(message) {
  * that do not depend on a fully stable DOM tree from complex innerHTML.
  * @param {HTMLElement} contentDiv The message content element.
  */
-function processRenderedContent(contentDiv) {
+function processRenderedContent(contentDiv, settings = {}) {
     if (!contentDiv) return;
 
     // KaTeX rendering
@@ -591,8 +596,8 @@ function processRenderedContent(contentDiv) {
     // Special block formatting (VCP/Diary)
     processAllPreBlocksInContentDiv(contentDiv);
 
-    // Process interactive buttons
-    processInteractiveButtons(contentDiv);
+    // Process interactive buttons, passing settings
+    processInteractiveButtons(contentDiv, settings);
 
     // Apply syntax highlighting to code blocks
     if (window.hljs) {

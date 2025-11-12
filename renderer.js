@@ -1468,9 +1468,13 @@ async function loadAndApplyGlobalSettings() {
         document.getElementById('contextSanitizerDepth').value = globalSettings.contextSanitizerDepth !== undefined ? globalSettings.contextSanitizerDepth : 2;  
         // 同时更新深度容器的显示状态  
         const contextSanitizerDepthContainer = document.getElementById('contextSanitizerDepthContainer');  
-        if (contextSanitizerDepthContainer) {  
-            contextSanitizerDepthContainer.style.display = globalSettings.enableContextSanitizer === true ? 'block' : 'none';  
+        if (contextSanitizerDepthContainer) {
+            contextSanitizerDepthContainer.style.display = globalSettings.enableContextSanitizer === true ? 'block' : 'none';
         }
+
+        // Load AI message button setting
+        document.getElementById('enableAiMessageButtons').checked = globalSettings.enableAiMessageButtons !== false; // Default to true
+
         // Load filter mode setting (migrate from old doNotDisturbLogMode if exists)
         let filterEnabled = globalSettings.filterEnabled;
         if (filterEnabled === undefined) {

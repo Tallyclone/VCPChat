@@ -23,6 +23,7 @@
     <script src="vendor/anime.min.js"></script>
     <script src="vendor/mermaid.min.js"></script>
     <script src="vendor/three.min.js"></script> <!-- 全局引入 three.js -->
+    <script src="vendor/morphdom.min.js"></script>
 </head>
 <body>
     <div class="seam-fixer" id="title-bar-seam-fixer"></div>
@@ -585,10 +586,18 @@
                         <span class="slider round"></span>
                     </label>
                 </div>
-                <hr style="border: none; border-top: 1px solid var(--border-color); margin: 20px 0;">
 
-                <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                    <label for="enableContextSanitizer" title="开启后，在提交给AI的上下文中，较早的AI消息的HTML将被转换为Markdown以节省Token。">上下文HTML标签转MD净化器</label>
+                <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <label for="enableAiMessageButtons" title="开启后，AI回复中的按钮将可以点击并自动发送消息">启用AI消息快捷按钮</label>
+                    <label class="switch">
+                        <input type="checkbox" id="enableAiMessageButtons" name="enableAiMessageButtons">
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+                <hr style="border: none; border-top: 1px solid var(--border-color); margin: 20px 0;">
+ 
+                 <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                     <label for="enableContextSanitizer" title="开启后，在提交给AI的上下文中，较早的AI消息的HTML将被转换为Markdown以节省Token。">上下文HTML标签转MD净化器</label>
                     <label class="switch">
                         <input type="checkbox" id="enableContextSanitizer" name="enableContextSanitizer">
                         <span class="slider round"></span>
