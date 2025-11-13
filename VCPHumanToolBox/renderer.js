@@ -190,8 +190,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             buttonContainer.appendChild(settingsButton);
         }
         
-        // 为 NanoBananaGenOR 工具添加文件名设置按钮
-        if (toolName === 'NanoBananaGenOR') {
+        // 为 NanoBananaGen 工具添加文件名设置按钮
+        if (toolName === 'NanoBananaGen') {
             const filenameSettingsButton = document.createElement('button');
             filenameSettingsButton.type = 'button';
             filenameSettingsButton.innerHTML = '⚙️ 设置';
@@ -225,8 +225,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         container.innerHTML = '';
         const dependencyListeners = [];
 
-        // 检查是否为 NanoBananaGenOR 的 compose 命令
-        const isNanoBananaCompose = toolName === 'NanoBananaGenOR' && commandName === 'compose';
+        // 检查是否为 NanoBananaGen 的 compose 命令
+        const isNanoBananaCompose = toolName === 'NanoBananaGen' && commandName === 'compose';
         let imageUrlCounter = 1; // 用于动态图片输入框的计数器
 
         params.forEach(param => {
@@ -645,8 +645,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             btn.style.display = 'none';
         });
         
-        // 5. 清空动态图片区域（仅限 NanoBananaGenOR compose 模式）
-        if (toolName === 'NanoBananaGenOR') {
+        // 5. 清空动态图片区域（仅限 NanoBananaGen compose 模式）
+        if (toolName === 'NanoBananaGen') {
             const dynamicContainer = toolForm.querySelector('.dynamic-images-container');
             if (dynamicContainer) {
                 const imagesList = dynamicContainer.querySelector('.sortable-images-list');
