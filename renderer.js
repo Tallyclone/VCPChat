@@ -1553,9 +1553,13 @@ let markedInstance;
 if (window.marked && typeof window.marked.Marked === 'function') { // Ensure Marked is a constructor
     try {
         markedInstance = new window.marked.Marked({
-            sanitize: false,
-            gfm: true,
-            breaks: true,
+            gfm: true,              // 启用 GitHub Flavored Markdown
+            tables: true,           // 启用表格支持
+            breaks: false,          // 🟢 不自动将换行符转换为 <br>，保持标准 Markdown 行为
+            pedantic: false,        // 不使用严格的 Markdown 规则
+            sanitize: false,        // 不清理 HTML（允许内嵌 HTML）
+            smartLists: true,       // 使用更智能的列表行为
+            smartypants: false,     // 不使用智能标点符号
             highlight: function(code, lang) {
                 if (window.hljs) {
                     const language = window.hljs.getLanguage(lang) ? lang : 'plaintext';
