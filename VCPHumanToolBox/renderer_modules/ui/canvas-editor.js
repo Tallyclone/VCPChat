@@ -4,7 +4,7 @@
 // --- 画板编辑器功能 ---
 
 // DataURL 转 Blob 工具函数
-function dataURLToBlob(dataURL) {
+export function dataURLToBlob(dataURL) {
     const arr = dataURL.split(',');
     const mime = arr[0].match(/:(.*?);/)[1];
     const bstr = atob(arr[1]);
@@ -17,7 +17,7 @@ function dataURLToBlob(dataURL) {
 }
 
 // 打开画板编辑器
-function openCanvasEditor(backgroundImageSrc, onComplete) {
+export function openCanvasEditor(backgroundImageSrc, onComplete) {
     console.log('[画板编辑器] 开始创建模态框');
     try {
         const modal = createCanvasEditorModal(backgroundImageSrc, onComplete);
@@ -1453,9 +1453,3 @@ function showCanvasNotification(message, type = 'info') {
         }, 300);
     }, 2000);
 }
-
-// --- 模块导出 ---
-module.exports = {
-    dataURLToBlob,
-    openCanvasEditor
-};

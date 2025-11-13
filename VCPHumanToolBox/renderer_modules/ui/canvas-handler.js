@@ -1,5 +1,5 @@
 // VCPHumanToolBox/renderer_modules/ui/canvas-handler.js
-const { dataURLToBlob, openCanvasEditor } = require('./canvas-editor.js');
+import { dataURLToBlob, openCanvasEditor } from './canvas-editor.js';
 
 let MAX_FILENAME_LENGTH = 400; // Default value
 
@@ -7,7 +7,7 @@ let MAX_FILENAME_LENGTH = 400; // Default value
  * 设置用于截断文件名的最大长度。
  * @param {number} length - 新的最大长度。
  */
-function setMaxFilenameLength(length) {
+export function setMaxFilenameLength(length) {
     if (length && typeof length === 'number') {
         MAX_FILENAME_LENGTH = length;
     }
@@ -18,7 +18,7 @@ function setMaxFilenameLength(length) {
  * @param {string} message - 要显示的消息。
  * @param {'info' | 'success' | 'warning' | 'error'} type - 通知类型。
  */
-function showNotification(message, type = 'info') {
+export function showNotification(message, type = 'info') {
     const notification = document.createElement('div');
     notification.className = `${type}-notification`;
     
@@ -68,7 +68,7 @@ function showNotification(message, type = 'info') {
  * @param {HTMLElement} canvasButtonsContainer - 画板相关按钮的容器。
  * @param {HTMLButtonElement} editCanvasButton - 幕布编辑按钮。
  */
-function handleImageFile(file, textInput, dropZone, previewArea, clearButton, canvasButtonsContainer, editCanvasButton) {
+export function handleImageFile(file, textInput, dropZone, previewArea, clearButton, canvasButtonsContainer, editCanvasButton) {
     if (!file) {
         console.error('没有提供文件对象。');
         return;
@@ -157,7 +157,7 @@ function handleImageFile(file, textInput, dropZone, previewArea, clearButton, ca
 /**
  * 清空图片输入框的状态和显示。
  */
-function clearImageInput(textInput, dropZone, previewArea, clearButton, canvasButtonsContainer, editCanvasButton) {
+export function clearImageInput(textInput, dropZone, previewArea, clearButton, canvasButtonsContainer, editCanvasButton) {
     textInput.value = '';
     textInput.dataset.fullValue = '';
     
@@ -215,7 +215,7 @@ async function pasteImageFromClipboard(textInput, dropZone, previewArea, clearBu
  * @param {object} param - 组件的配置参数。
  * @returns {HTMLElement} 创建的组件容器元素。
  */
-function createDragDropImageInput(param) {
+export function createDragDropImageInput(param) {
     const container = document.createElement('div');
     container.className = 'dragdrop-image-container';
     container.style.cssText = `
@@ -386,11 +386,3 @@ function createDragDropImageInput(param) {
 
     return container;
 }
-
-module.exports = {
-    createDragDropImageInput,
-    showNotification,
-    setMaxFilenameLength,
-    handleImageFile,
-    clearImageInput
-};

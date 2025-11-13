@@ -1,18 +1,228 @@
 // VCPHumanToolBox/renderer_modules/ui/dynamic-image-handler.js
-const canvasHandler = require('./canvas-handler.js');
+import * as canvasHandler from './canvas-handler.js';
 
-// --- 占位函数 ---
-// 稍后需要找到这些函数的正确实现
-function makeSortable(element) {
-    console.warn('makeSortable is not yet implemented.');
-    // 在这里添加拖拽排序的逻辑
+/**
+ * 获取拖拽后应该插入的位置元素。
+ * @param {HTMLElement} container - 容器元素。
+ * @param {number} y - 鼠标Y坐标。
+ * @returns {HTMLElement|null} 应该插入在此元素之前，如果为null则插入到末尾。
+ */
+function getDragAfterElement(container, y) {
+    const draggableElements = [...container.querySelectorAll('.dynamic-image-item:not(.dragging)')];
+    
+    return draggableElements.reduce((closest, child) => {
+        const box = child.getBoundingClientRect();
+        const offset = y - box.top - box.height / 2;
+        
+        if (offset < 0 && offset > closest.offset) {
+            return { offset: offset, element: child };
+        } else {
+            return closest;
+        }
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
 }
 
+/**
+ * 拖拽排序后更新图片序号。
+ * @param {HTMLElement} container - 图片列表容器。
+ */
 function updateImageIndicesAfterSort(container) {
-    console.warn('updateImageIndicesAfterSort is not yet implemented.');
-    // 在这里添加拖拽排序后的索引更新逻辑
+    const items = container.querySelectorAll('.dynamic-image-item');
+    items.forEach((item, index) => {
+        const newIndex = index + 2; // 从 image_url_2 开始
+        item.dataset.index = newIndex;
+        
+        const label = item.querySelector('label');
+        label.textContent = `图片 ${newIndex}`;
+        
+        const input = item.querySelector('input[type="text"]');
+        input.name = `image_url_${newIndex}`;
+        
+        const placeholder = `第${newIndex}张图片`;
+        input.placeholder = placeholder;
+        
+        // 更新拖拽输入框内的占位符
+        const dragDropContainer = item.querySelector('.dragdrop-image-container');
+        if (dragDropContainer) {
+            const textInput = dragDropContainer.querySelector('input[type="text"]');
+            if (textInput) {
+                textInput.name = `image_url_${newIndex}`;
+                textInput.placeholder = placeholder;
+            }
+        }
+    });
 }
-// --- 占位函数结束 ---
+
+/**
+ * 实现拖拽排序功能。
+ * @param {HTMLElement} container - 支持拖拽排序的容器。
+ */
+function makeSortable(container) {
+    let draggedElement = null;
+    let isDraggingForSort = false;
+    let startY = 0;
+    let startX = 0;
+    const threshold = 5; // 拖拽阀值，超过这个距离才认为是排序拖拽
+
+    // 使用鼠标事件而不是 HTML5 拖拽 API，避免冲突
+    container.addEventListener('mousedown', (e) => {
+        const dragHandle = e.target.closest('.drag-handle');
+        if (dragHandle && e.button === 0) { // 只处理左键
+            e.preventDefault();
+            draggedElement = dragHandle.closest('.dynamic-image-item');
+            if (draggedElement) {
+                startY = e.clientY;
+                startX = e.clientX;
+                isDraggingForSort = false;
+                
+                // 添加全局事件监听
+                document.addEventListener('mousemove', handleMouseMove);
+                document.addEventListener('mouseup', handleMouseUp);
+                
+                // 禁止选中文本
+                document.body.style.userSelect = 'none';
+            }
+        }
+    });
+
+    function handleMouseMove(e) {
+        if (!draggedElement) return;
+        
+        const deltaY = Math.abs(e.clientY - startY);
+        const deltaX = Math.abs(e.clientX - startX);
+        
+        // 只有当鼠标移动超过阀值时才开始拖拽排序
+        if (!isDraggingForSort && (deltaY > threshold || deltaX > threshold)) {
+            isDraggingForSort = true;
+            
+            // 增强拖拽元素的视觉效果
+            draggedElement.style.opacity = '0.8';
+            draggedElement.style.transform = 'rotate(2deg) scale(1.02)';
+            draggedElement.style.zIndex = '1000';
+            draggedElement.style.boxShadow = '0 8px 32px rgba(59, 130, 246, 0.3), 0 0 0 2px rgba(59, 130, 246, 0.5)';
+            draggedElement.style.borderRadius = '8px';
+            draggedElement.classList.add('dragging');
+            
+            // 创建一个可视化的拖拽指示器
+            const indicator = document.createElement('div');
+            indicator.className = 'drag-indicator';
+            indicator.style.cssText = `
+                position: absolute;
+                background: linear-gradient(90deg,
+                    transparent 0%,
+                    rgba(59, 130, 246, 0.8) 20%,
+                    rgba(59, 130, 246, 1) 50%,
+                    rgba(59, 130, 246, 0.8) 80%,
+                    transparent 100%);
+                border-radius: 2px;
+                z-index: 1001;
+                transition: all 0.2s ease;
+                pointer-events: none;
+                animation: dragPulse 1.5s ease-in-out infinite;
+            `;
+            container.appendChild(indicator);
+        }
+        
+        if (isDraggingForSort) {
+            // 更新拖拽指示器位置
+            const indicator = container.querySelector('.drag-indicator');
+            const afterElement = getDragAfterElement(container, e.clientY);
+            
+            // 清除之前的高亮效果
+            container.querySelectorAll('.dynamic-image-item').forEach(item => {
+                if (item !== draggedElement) {
+                    item.classList.remove('drag-target-hover');
+                }
+            });
+            
+            if (afterElement) {
+                const rect = afterElement.getBoundingClientRect();
+                const containerRect = container.getBoundingClientRect();
+                indicator.style.top = (rect.top - containerRect.top - 2) + 'px';
+                indicator.style.left = '10px';
+                indicator.style.width = 'calc(100% - 20px)';
+                indicator.style.height = '4px';
+                
+                // 高亮目标元素
+                afterElement.classList.add('drag-target-hover');
+            } else {
+                // 在最后一个元素之后
+                const lastItem = container.querySelector('.dynamic-image-item:last-child');
+                if (lastItem && lastItem !== draggedElement) {
+                    const rect = lastItem.getBoundingClientRect();
+                    const containerRect = container.getBoundingClientRect();
+                    indicator.style.top = (rect.bottom - containerRect.top + 2) + 'px';
+                    indicator.style.left = '10px';
+                    indicator.style.width = 'calc(100% - 20px)';
+                    indicator.style.height = '4px';
+                    
+                    // 高亮最后一个元素
+                    lastItem.classList.add('drag-target-hover');
+                }
+            }
+        }
+    }
+
+    function handleMouseUp(e) {
+        if (draggedElement && isDraggingForSort) {
+            // 执行拖拽排序
+            const afterElement = getDragAfterElement(container, e.clientY);
+            if (afterElement) {
+                container.insertBefore(draggedElement, afterElement);
+            } else {
+                container.appendChild(draggedElement);
+            }
+            
+            // 更新序号
+            updateImageIndicesAfterSort(container);
+        }
+        
+        // 清理
+        if (draggedElement) {
+            draggedElement.style.opacity = '';
+            draggedElement.style.transform = '';
+            draggedElement.style.zIndex = '';
+            draggedElement.style.boxShadow = '';
+            draggedElement.style.borderRadius = '';
+            draggedElement.classList.remove('dragging');
+        }
+        
+        // 清除所有高亮效果
+        container.querySelectorAll('.dynamic-image-item').forEach(item => {
+            item.classList.remove('drag-target-hover');
+        });
+        
+        const indicator = container.querySelector('.drag-indicator');
+        if (indicator) {
+            indicator.remove();
+        }
+        
+        draggedElement = null;
+        isDraggingForSort = false;
+        document.body.style.userSelect = '';
+        
+        // 移除全局事件监听
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+    }
+
+    // 为新添加的元素设置样式
+    const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            mutation.addedNodes.forEach((node) => {
+                if (node.nodeType === 1 && node.classList.contains('dynamic-image-item')) {
+                    const dragHandle = node.querySelector('.drag-handle');
+                    if (dragHandle) {
+                        dragHandle.style.cursor = 'move';
+                        dragHandle.title = '拖拽调整顺序';
+                    }
+                }
+            });
+        });
+    });
+    
+    observer.observe(container, { childList: true });
+}
 
 
 /**
@@ -212,7 +422,7 @@ function addDynamicImageInput(container, index) {
  * 创建并初始化动态图片管理容器。
  * @param {HTMLElement} parentContainer - 将要容纳此组件的父元素。
  */
-function createDynamicImageContainer(parentContainer) {
+export function createDynamicImageContainer(parentContainer) {
     const dynamicContainer = document.createElement('div');
     dynamicContainer.className = 'dynamic-images-container';
     dynamicContainer.innerHTML = `
@@ -247,7 +457,3 @@ function createDynamicImageContainer(parentContainer) {
     
     parentContainer.appendChild(dynamicContainer);
 }
-
-module.exports = {
-    createDynamicImageContainer
-};

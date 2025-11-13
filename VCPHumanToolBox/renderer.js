@@ -1,5 +1,7 @@
 // VCPHumanToolBox/renderer.js
 import { tools } from './renderer_modules/config.js';
+import * as canvasHandler from './renderer_modules/ui/canvas-handler.js';
+import * as dynamicImageHandler from './renderer_modules/ui/dynamic-image-handler.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
     // --- 元素获取 ---
@@ -60,8 +62,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         // 动态加载模块并传递配置
         // 注意：由于移除了 require，模块需要重构为浏览器兼容的格式
-        // const canvasHandler = await import('./renderer_modules/ui/canvas-handler.js');
-        // canvasHandler.setMaxFilenameLength(MAX_FILENAME_LENGTH);
+        canvasHandler.setMaxFilenameLength(MAX_FILENAME_LENGTH);
 
         if (!VCP_SERVER_URL || !VCP_API_KEY) {
             toolGrid.innerHTML = `<div class="error">错误：无法加载配置文件 (settings.json)。请确保文件存在且格式正确。<br>未能从 settings.json 中找到 vcpServerUrl 或 vcpApiKey</div>`;
@@ -189,8 +190,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             buttonContainer.appendChild(settingsButton);
         }
         
-        // 为 NanoBananaGenOR 工具添加文件名设置按钮
-        if (toolName === 'NanoBananaGenOR') {
+        // 为 NanoBananaGen 工具添加文件名设置按钮
+        if (toolName === 'NanoBananaGen') {
             const filenameSettingsButton = document.createElement('button');
             filenameSettingsButton.type = 'button';
             filenameSettingsButton.innerHTML = '⚙️ 设置';
@@ -224,8 +225,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         container.innerHTML = '';
         const dependencyListeners = [];
 
-        // 检查是否为 NanoBananaGenOR 的 compose 命令
-        const isNanoBananaCompose = toolName === 'NanoBananaGenOR' && commandName === 'compose';
+        // 检查是否为 NanoBananaGen 的 compose 命令
+        const isNanoBananaCompose = toolName === 'NanoBananaGen' && commandName === 'compose';
         let imageUrlCounter = 1; // 用于动态图片输入框的计数器
 
         params.forEach(param => {
@@ -269,10 +270,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 });
             } else if (param.type === 'dragdrop_image') {
                 // 创建拖拽上传图片输入框
-                // input = canvasHandler.createDragDropImageInput(param);
-                input = document.createElement('input');
-                input.type = 'text';
-                input.placeholder = 'Drag and drop is currently disabled.';
+                input = canvasHandler.createDragDropImageInput(param);
 
             } else if (param.type === 'checkbox') {
                 input = document.createElement('div');
@@ -353,7 +351,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // 如果是 NanoBanana compose 模式，添加动态图片管理区域
         if (isNanoBananaCompose) {
-            // dynamicImageHandler.createDynamicImageContainer(container);
+            dynamicImageHandler.createDynamicImageContainer(container);
         }
 
         dependencyListeners.forEach(listener => listener());
@@ -647,8 +645,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             btn.style.display = 'none';
         });
         
-        // 5. 清空动态图片区域（仅限 NanoBananaGenOR compose 模式）
-        if (toolName === 'NanoBananaGenOR') {
+        // 5. 清空动态图片区域（仅限 NanoBananaGen compose 模式）
+        if (toolName === 'NanoBananaGen') {
             const dynamicContainer = toolForm.querySelector('.dynamic-images-container');
             if (dynamicContainer) {
                 const imagesList = dynamicContainer.querySelector('.sortable-images-list');

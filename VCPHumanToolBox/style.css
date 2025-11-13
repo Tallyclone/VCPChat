@@ -290,6 +290,16 @@ header p {
     100% { transform: rotate(360deg); }
 }
 
+/* --- 拖拽排序动画 --- */
+@keyframes dragPulse {
+    0%, 100% {
+        box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+    }
+    50% {
+        box-shadow: 0 0 20px rgba(59, 130, 246, 0.8), 0 0 30px rgba(59, 130, 246, 0.4);
+    }
+}
+
 /* 确保 <pre> 标签内的内容也能正确换行 */
 .result-container pre {
     white-space: pre-wrap;   /* CSS3, 允许换行，同时保留空白符序列 */
