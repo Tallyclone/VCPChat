@@ -322,8 +322,8 @@ function renderStreamFrame(messageId) {
                     const newLength = toEl.textContent.length;
                     const lengthDiff = newLength - oldLength;
                     
-                    // 如果内容增长超过阈值（比如50个字符），触发微动画
-                    if (lengthDiff > 50) {
+                    // 如果内容增长超过阈值（比如20个字符），触发微动画
+                    if (lengthDiff > 20) {
                         // 使用脉冲动画而不是滑入动画
                         fromEl.classList.add('vcp-stream-content-pulse');
                         setTimeout(() => {
