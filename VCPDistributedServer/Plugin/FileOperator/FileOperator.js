@@ -1217,6 +1217,24 @@ process.stdin.on('data', async data => {
 // Convert internal response format to VCP protocol format
 function convertToVCPFormat(response) {
   if (response.success) {
+    // ⭐ 检查是否有特殊动作
+    if (response.data && response.data._specialAction) {
+      debugLog('Converting response with special action', {
+        action: response.data._specialAction,
+        payload: response.data.payload
+      });
+      
+      return {
+        status: 'success',
+        _specialAction: response.data._specialAction,  // 提升到顶层
+        payload: response.data.payload,                 // 提升到顶层
+        result: {
+          message: response.data.message,
+        },
+      };
+    }
+    
+    // 常规响应
     return {
       status: 'success',
       result: response.data || { message: response.message || 'Operation completed successfully' },
