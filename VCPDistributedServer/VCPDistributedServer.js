@@ -406,9 +406,33 @@ class DistributedServer {
                 } else {
                     // Result is a string from stdio, needs parsing
                     try {
-                        const parsedPluginResult = JSON.parse(result);
+                        // --- Robust JSON Parsing ---
+                        // The plugin might output debug info (like from dotenv) to stdout before the JSON.
+                        // We need to find the actual JSON string.
+                        const jsonStartIndex = result.indexOf('{');
+                        const jsonEndIndex = result.lastIndexOf('}');
+                        
+                        if (jsonStartIndex === -1 || jsonEndIndex === -1) {
+                            // If no JSON object is found, treat it as a raw string.
+                            throw new SyntaxError("No JSON object found in plugin output.");
+                        }
+
+                        const jsonString = result.substring(jsonStartIndex, jsonEndIndex + 1);
+                        const parsedPluginResult = JSON.parse(jsonString);
+                        // --- End of Robust JSON Parsing ---
+
                         if (parsedPluginResult.status === 'success') {
                             finalResult = parsedPluginResult.result;
+                            // --- VCP Protocol Enhancement ---
+                            // If the plugin response has special action fields (e.g., for canvas),
+                            // merge them into the final result object so they can be handled downstream.
+                            if (parsedPluginResult._specialAction) {
+                                if (typeof finalResult !== 'object' || finalResult === null) {
+                                    finalResult = {}; // Ensure finalResult is an object
+                                }
+                                finalResult._specialAction = parsedPluginResult._specialAction;
+                                finalResult.payload = parsedPluginResult.payload;
+                            }
                         } else {
                             throw new Error(parsedPluginResult.error || 'Plugin reported an error without a message.');
                         }
