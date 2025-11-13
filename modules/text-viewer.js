@@ -437,13 +437,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (oldScript.src.includes('text-viewer.js')) {
                         return;
                     }
-                    
+
                     const originalSrc = oldScript.src;
                     const processedSrc = replaceCdnUrls(originalSrc);
-                    
+
                     if (processedSrc !== originalSrc) {
                         console.log('[TextViewer] ✅ Replaced external script src:', originalSrc, '→', processedSrc);
-                        
+
                         const newScript = document.createElement('script');
                         // 复制所有属性，但替换 src
                         Array.from(oldScript.attributes).forEach(attr => {
@@ -453,7 +453,25 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 newScript.setAttribute(attr.name, attr.value);
                             }
                         });
-                        
+
+                        // 🔥 关键修复：添加加载完成的Promise，供后续内联脚本等待
+                        const loadPromise = new Promise((resolve, reject) => {
+                            newScript.onload = () => {
+                                console.log('[TextViewer] ✅ External library loaded:', processedSrc);
+                                resolve();
+                            };
+                            newScript.onerror = (err) => {
+                                console.error('[TextViewer] ❌ Failed to load external library:', processedSrc, err);
+                                reject(err); // or resolve() to not block other scripts
+                            };
+                        });
+
+                        // 将Promise存储到全局，供内联脚本等待
+                        if (!window.__vcpExternalLibsLoading) {
+                            window.__vcpExternalLibsLoading = [];
+                        }
+                        window.__vcpExternalLibsLoading.push(loadPromise);
+
                         if (oldScript.parentNode) {
                             oldScript.parentNode.replaceChild(newScript, oldScript);
                         }
@@ -482,7 +500,30 @@ document.addEventListener('DOMContentLoaded', async () => {
                 Array.from(oldScript.attributes).forEach(attr => {
                     newScript.setAttribute(attr.name, attr.value);
                 });
-                newScript.textContent = processedContent;
+
+                // 🔥 关键修复：如果有外部库正在加载，等待它们加载完成后再执行内联脚本
+                if (window.__vcpExternalLibsLoading && window.__vcpExternalLibsLoading.length > 0) {
+                    console.log('[TextViewer] ⏳ Waiting for external libraries to load before executing inline script...');
+                    
+                    // 包装内联脚本，等待所有外部库加载完成
+                    const wrappedContent = `
+                        (async function() {
+                            try {
+                                if (window.__vcpExternalLibsLoading) {
+                                    await Promise.all(window.__vcpExternalLibsLoading);
+                                    console.log('[TextViewer] ✅ All external libraries loaded, executing inline script.');
+                                }
+                                ${processedContent}
+                            } catch (error) {
+                                console.error('[TextViewer] ❌ Error in wrapped inline script:', error);
+                            }
+                        })();
+                    `;
+                    newScript.textContent = wrappedContent;
+                } else {
+                    // 没有外部库需要等待，直接执行
+                    newScript.textContent = processedContent;
+                }
                 
                 if (oldScript.parentNode) {
                     oldScript.parentNode.replaceChild(newScript, oldScript);
