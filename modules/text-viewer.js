@@ -368,6 +368,55 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- End: Ported functions ---
 
     /**
+     * Replaces CDN URLs in script content with local vendor paths
+     * @param {string} scriptContent - The script text content
+     * @returns {string} The processed script content with local paths
+     */
+    function replaceCdnUrls(scriptContent) {
+        if (!scriptContent || typeof scriptContent !== 'string') {
+            return scriptContent;
+        }
+        
+        let processed = scriptContent;
+        
+        // 🟢 鲁棒的 CDN URL 替换策略（与主程序保持一致）
+        
+        // 1. Three.js CDN 替换（阅读模式在 modules/ 目录，需要 ../）
+        const threeJsPatterns = [
+            /https?:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/three\.js\/[^'"`);\s]*/gi,
+            /https?:\/\/cdn\.jsdelivr\.net\/npm\/three[@\/][^'"`);\s]*/gi,
+            /https?:\/\/unpkg\.com\/three[@\/][^'"`);\s]*/gi,
+        ];
+        
+        threeJsPatterns.forEach(pattern => {
+            processed = processed.replace(pattern, '../vendor/three.min.js');
+        });
+        
+        // 2. Anime.js CDN 替换
+        const animeJsPatterns = [
+            /https?:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/animejs\/[^'"`);\s]*/gi,
+            /https?:\/\/cdn\.jsdelivr\.net\/npm\/animejs[@\/][^'"`);\s]*/gi,
+            /https?:\/\/unpkg\.com\/animejs[@\/][^'"`);\s]*/gi,
+        ];
+        
+        animeJsPatterns.forEach(pattern => {
+            processed = processed.replace(pattern, '../vendor/anime.min.js');
+        });
+        
+        // 3. 通用 CDN 域名替换（后备方案）
+        const genericCdnPatterns = [
+            { pattern: /https?:\/\/[^'"`);\s]*three[^'"`);\s]*\.js/gi, replacement: '../vendor/three.min.js' },
+            { pattern: /https?:\/\/[^'"`);\s]*anime[^'"`);\s]*\.js/gi, replacement: '../vendor/anime.min.js' },
+        ];
+        
+        genericCdnPatterns.forEach(({ pattern, replacement }) => {
+            processed = processed.replace(pattern, replacement);
+        });
+        
+        return processed;
+    }
+
+    /**
      * Finds and executes script tags within a given HTML element.
      * This is necessary because scripts inserted via innerHTML are not automatically executed.
      * @param {HTMLElement} containerElement - The element to search for scripts within.
@@ -377,22 +426,70 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const scripts = Array.from(containerElement.querySelectorAll('script'));
         scripts.forEach(oldScript => {
-            if (oldScript.type && oldScript.type !== 'text/javascript' && oldScript.type !== 'application/javascript') {
-                return;
-            }
-            // Avoid re-running the main text-viewer script or external libraries already loaded
-            if (oldScript.src.includes('text-viewer.js') || oldScript.src.includes('cdn.jsdelivr.net')) {
-                return;
-            }
+            try {
+                if (oldScript.type && oldScript.type !== 'text/javascript' && oldScript.type !== 'application/javascript') {
+                    return;
+                }
+                
+                // 🟢 关键修复：处理外部脚本（有 src 属性）
+                if (oldScript.src) {
+                    // Avoid re-running the main text-viewer script
+                    if (oldScript.src.includes('text-viewer.js')) {
+                        return;
+                    }
+                    
+                    const originalSrc = oldScript.src;
+                    const processedSrc = replaceCdnUrls(originalSrc);
+                    
+                    if (processedSrc !== originalSrc) {
+                        console.log('[TextViewer] ✅ Replaced external script src:', originalSrc, '→', processedSrc);
+                        
+                        const newScript = document.createElement('script');
+                        // 复制所有属性，但替换 src
+                        Array.from(oldScript.attributes).forEach(attr => {
+                            if (attr.name === 'src') {
+                                newScript.setAttribute('src', processedSrc);
+                            } else {
+                                newScript.setAttribute(attr.name, attr.value);
+                            }
+                        });
+                        
+                        if (oldScript.parentNode) {
+                            oldScript.parentNode.replaceChild(newScript, oldScript);
+                        }
+                    } else {
+                        console.log('[TextViewer] ⚠️ External script src not a CDN:', originalSrc);
+                    }
+                    return; // 外部脚本处理完毕
+                }
 
-            const newScript = document.createElement('script');
-            Array.from(oldScript.attributes).forEach(attr => {
-                newScript.setAttribute(attr.name, attr.value);
-            });
-            newScript.textContent = oldScript.textContent;
-            
-            if (oldScript.parentNode) {
-                oldScript.parentNode.replaceChild(newScript, oldScript);
+                // 🟢 处理内联脚本（没有 src 属性）
+                const originalContent = oldScript.textContent || '';
+                
+                // 跳过空脚本
+                if (!originalContent.trim()) {
+                    console.log('[TextViewer] ⚠️ Skipping empty inline script');
+                    return;
+                }
+                
+                const processedContent = replaceCdnUrls(originalContent);
+                
+                if (processedContent !== originalContent) {
+                    console.log('[TextViewer] ✅ Replaced CDN URLs in inline script');
+                }
+                
+                const newScript = document.createElement('script');
+                Array.from(oldScript.attributes).forEach(attr => {
+                    newScript.setAttribute(attr.name, attr.value);
+                });
+                newScript.textContent = processedContent;
+                
+                if (oldScript.parentNode) {
+                    oldScript.parentNode.replaceChild(newScript, oldScript);
+                }
+            } catch (error) {
+                console.error('[TextViewer] ❌ Error processing script:', error);
+                console.error('[TextViewer] Script element:', oldScript);
             }
         });
     }

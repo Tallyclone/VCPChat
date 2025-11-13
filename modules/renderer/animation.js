@@ -26,16 +26,44 @@ function replaceCdnUrls(scriptContent) {
     
     let processed = scriptContent;
     
-    // Replace each CDN pattern with its local equivalent
-    for (const [cdnPattern, localPath] of Object.entries(CDN_TO_LOCAL_MAP)) {
-        // Match the CDN URL with any version number and file extension
-        // Example: https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js
-        const regex = new RegExp(
-            cdnPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[^\'"`\\s]*',
-            'g'
-        );
-        processed = processed.replace(regex, localPath);
-    }
+    // 🟢 更鲁棒的替换策略：匹配所有可能的 CDN URL 格式
+    // 包括：字符串字面量、变量赋值、函数参数等
+    
+    // 1. Three.js CDN 替换（支持所有主流 CDN 和版本号）
+    const threeJsPatterns = [
+        // cdnjs.cloudflare.com
+        /https?:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/three\.js\/[^'"`);\s]*/gi,
+        // cdn.jsdelivr.net
+        /https?:\/\/cdn\.jsdelivr\.net\/npm\/three[@\/][^'"`);\s]*/gi,
+        // unpkg.com
+        /https?:\/\/unpkg\.com\/three[@\/][^'"`);\s]*/gi,
+    ];
+    
+    threeJsPatterns.forEach(pattern => {
+        processed = processed.replace(pattern, 'vendor/three.min.js');
+    });
+    
+    // 2. Anime.js CDN 替换
+    const animeJsPatterns = [
+        /https?:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/animejs\/[^'"`);\s]*/gi,
+        /https?:\/\/cdn\.jsdelivr\.net\/npm\/animejs[@\/][^'"`);\s]*/gi,
+        /https?:\/\/unpkg\.com\/animejs[@\/][^'"`);\s]*/gi,
+    ];
+    
+    animeJsPatterns.forEach(pattern => {
+        processed = processed.replace(pattern, 'vendor/anime.min.js');
+    });
+    
+    // 3. 通用 CDN 域名替换（作为后备方案）
+    // 如果上面的特定模式没匹配到，这个会捕获任何剩余的 CDN 链接
+    const genericCdnPatterns = [
+        { pattern: /https?:\/\/[^'"`);\s]*three[^'"`);\s]*\.js/gi, replacement: 'vendor/three.min.js' },
+        { pattern: /https?:\/\/[^'"`);\s]*anime[^'"`);\s]*\.js/gi, replacement: 'vendor/anime.min.js' },
+    ];
+    
+    genericCdnPatterns.forEach(({ pattern, replacement }) => {
+        processed = processed.replace(pattern, replacement);
+    });
     
     return processed;
 }
@@ -113,31 +141,74 @@ export function processAnimationsInContent(containerElement) {
     // --- 2. Process script tags with run-once protection ---
     const scripts = Array.from(containerElement.querySelectorAll('script'));
     scripts.forEach(oldScript => {
-        // If script has already been executed for this element, skip it.
-        if (oldScript.dataset.vcpExecuted === 'true') {
-            return;
-        }
+        try {
+            // If script has already been executed for this element, skip it.
+            if (oldScript.dataset.vcpExecuted === 'true') {
+                return;
+            }
 
-        if (oldScript.type && oldScript.type !== 'text/javascript' && oldScript.type !== 'application/javascript') {
-            return;
-        }
-        
-        const newScript = document.createElement('script');
-        Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
-        
-        // 🟢 关键修复：替换 CDN 链接为本地路径
-        const originalContent = oldScript.textContent;
-        const processedContent = replaceCdnUrls(originalContent);
-        
-        if (processedContent !== originalContent) {
-            console.log('[Animation] Replaced CDN URLs with local paths in script');
-        }
-        
-        newScript.textContent = processedContent;
-        
-        if (oldScript.parentNode) {
-            oldScript.parentNode.replaceChild(newScript, oldScript);
-            // Mark the original script element as executed to prevent re-running.
+            if (oldScript.type && oldScript.type !== 'text/javascript' && oldScript.type !== 'application/javascript') {
+                return;
+            }
+            
+            // 🟢 关键修复：处理外部脚本（有 src 属性）
+            if (oldScript.src) {
+                const originalSrc = oldScript.src;
+                const processedSrc = replaceCdnUrls(originalSrc);
+                
+                if (processedSrc !== originalSrc) {
+                    console.log('[Animation] ✅ Replaced external script src:', originalSrc, '→', processedSrc);
+                    
+                    const newScript = document.createElement('script');
+                    // 复制所有属性，但替换 src
+                    Array.from(oldScript.attributes).forEach(attr => {
+                        if (attr.name === 'src') {
+                            newScript.setAttribute('src', processedSrc);
+                        } else {
+                            newScript.setAttribute(attr.name, attr.value);
+                        }
+                    });
+                    
+                    if (oldScript.parentNode) {
+                        oldScript.parentNode.replaceChild(newScript, oldScript);
+                        oldScript.dataset.vcpExecuted = 'true';
+                    }
+                } else {
+                    console.log('[Animation] ⚠️ External script src not a CDN:', originalSrc);
+                    oldScript.dataset.vcpExecuted = 'true';
+                }
+                return; // 外部脚本处理完毕，跳过后续的内联脚本处理
+            }
+            
+            // 🟢 处理内联脚本（没有 src 属性）
+            const originalContent = oldScript.textContent || '';
+            
+            // 跳过空脚本或只有空白的脚本
+            if (!originalContent.trim()) {
+                console.log('[Animation] ⚠️ Skipping empty inline script');
+                oldScript.dataset.vcpExecuted = 'true';
+                return;
+            }
+            
+            const processedContent = replaceCdnUrls(originalContent);
+            
+            // 🔍 调试日志
+            if (processedContent !== originalContent) {
+                console.log('[Animation] ✅ CDN URLs replaced in inline script');
+            }
+            
+            const newScript = document.createElement('script');
+            Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
+            newScript.textContent = processedContent;
+            
+            if (oldScript.parentNode) {
+                oldScript.parentNode.replaceChild(newScript, oldScript);
+                oldScript.dataset.vcpExecuted = 'true';
+            }
+        } catch (error) {
+            console.error('[Animation] ❌ Error processing script:', error);
+            console.error('[Animation] Script element:', oldScript);
+            // 标记为已执行，避免重复尝试
             oldScript.dataset.vcpExecuted = 'true';
         }
     });
