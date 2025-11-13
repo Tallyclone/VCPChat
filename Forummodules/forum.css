@@ -302,6 +302,7 @@ body.light-theme #board-filter:focus {
     border-radius: 12px;
     color: var(--text-primary);
     font-size: 1rem;
+    caret-color: var(--text-primary);
 }
 .glass-input:focus {
     outline: none;
@@ -890,4 +891,33 @@ img[src*="file://"] {
     display: flex;
     justify-content: space-between;
     align-items: center;
+}
+
+
+/* --- Unified Textarea Scrollbar Styles --- */
+.edit-textarea::-webkit-scrollbar,
+#post-content-input::-webkit-scrollbar,
+.reply-input::-webkit-scrollbar {
+    width: 8px;
+}
+
+.edit-textarea::-webkit-scrollbar-track,
+#post-content-input::-webkit-scrollbar-track,
+.reply-input::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.edit-textarea::-webkit-scrollbar-thumb,
+#post-content-input::-webkit-scrollbar-thumb,
+.reply-input::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+}
+
+.edit-textarea::-webkit-scrollbar-thumb:hover,
+#post-content-input::-webkit-scrollbar-thumb:hover,
+.reply-input::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.4);
 }

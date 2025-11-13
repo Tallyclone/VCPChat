@@ -956,15 +956,23 @@ function renderFullContent(container, markdown, uid) {
     replyBox.className = 'reply-area-fixed';
     replyBox.innerHTML = `
         <input type="text" id="quick-reply-name" class="glass-input" placeholder="昵称" style="width: 120px; margin-bottom:0;">
-        <input type="text" id="quick-reply-text" class="glass-input reply-input" placeholder="写下你的评论..." style="margin-bottom:0;">
+        <textarea id="quick-reply-text" class="glass-input reply-input" placeholder="写下你的评论... (Ctrl+Enter 发送)" style="margin-bottom:0; height: 50px; resize: vertical;"></textarea>
         <button id="quick-reply-btn" class="jelly-btn" style="width: auto; padding: 15px 25px;">发送</button>
     `;
     container.appendChild(replyBox);
     const nameInput = container.querySelector('#quick-reply-name');
+    const textInput = container.querySelector('#quick-reply-text');
     nameInput.value = forumConfig.replyUsername || forumConfig.username || '';
     if (!nameInput.value) nameInput.placeholder = "请先在设置中指定署名";
     
-    container.querySelector('#quick-reply-btn').addEventListener('click', () => handleQuickReply(uid, container));
+    const quickReplyHandler = () => handleQuickReply(uid, container);
+    container.querySelector('#quick-reply-btn').addEventListener('click', quickReplyHandler);
+    textInput.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.key === 'Enter') {
+            e.preventDefault(); // 防止在文本框中插入换行符
+            quickReplyHandler();
+        }
+    });
 }
 
 // ========== Edit, Delete, Reply Logic ==========
