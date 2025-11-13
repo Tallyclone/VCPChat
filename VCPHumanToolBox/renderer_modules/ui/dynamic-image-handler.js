@@ -1,5 +1,5 @@
 // VCPHumanToolBox/renderer_modules/ui/dynamic-image-handler.js
-const canvasHandler = require('./canvas-handler.js');
+import * as canvasHandler from './canvas-handler.js';
 
 // --- 占位函数 ---
 // 稍后需要找到这些函数的正确实现
@@ -212,7 +212,7 @@ function addDynamicImageInput(container, index) {
  * 创建并初始化动态图片管理容器。
  * @param {HTMLElement} parentContainer - 将要容纳此组件的父元素。
  */
-function createDynamicImageContainer(parentContainer) {
+export function createDynamicImageContainer(parentContainer) {
     const dynamicContainer = document.createElement('div');
     dynamicContainer.className = 'dynamic-images-container';
     dynamicContainer.innerHTML = `
@@ -247,7 +247,3 @@ function createDynamicImageContainer(parentContainer) {
     
     parentContainer.appendChild(dynamicContainer);
 }
-
-module.exports = {
-    createDynamicImageContainer
-};
