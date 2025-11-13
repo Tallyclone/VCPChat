@@ -941,16 +941,39 @@ body:not(.light-theme) .mermaid-error {
 
 
 /* --- Stream Fade-in Animation --- */
-@keyframes vcp-stream-fade-in {
-  from {
-    opacity: 0;
-    transform: translateX(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
+/* 新节点的滑入动画（保持原样） */
+.vcp-stream-element-fade-in {
+    animation: vcp-stream-fade-in 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+/* 新增：内容增长的脉冲动画 */
+.vcp-stream-content-pulse {
+    animation: vcp-content-pulse 0.3s ease-out;
+}
+
+@keyframes vcp-stream-fade-in {
+    from {
+        opacity: 0;
+        transform: translateX(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes vcp-content-pulse {
+    0% {
+        background-color: transparent;
+    }
+    50% {
+        background-color: rgba(59, 130, 246, 0.08); /* 轻微的蓝色高亮 */
+    }
+    100% {
+        background-color: transparent;
+    }
+}
+
 
 /* Class to apply the animation to newly added stream elements */
 .vcp-stream-element-fade-in {

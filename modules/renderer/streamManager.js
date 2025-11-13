@@ -5,6 +5,7 @@ const streamingChunkQueues = new Map(); // messageId -> array of original chunk 
 const streamingTimers = new Map();      // messageId -> intervalId
 const accumulatedStreamText = new Map(); // messageId -> string
 let activeStreamingMessageId = null; // Track the currently active streaming message
+const elementContentLengthCache = new Map(); // 跟踪每个元素的内容长度
 
 // --- DOM Cache ---
 const messageDomCache = new Map(); // messageId -> { messageItem, contentDiv }
@@ -315,6 +316,25 @@ function renderStreamFrame(messageId) {
                     return false;
                 }
                 
+                // 🟢 检测块级元素的显著内容增长
+                if (/^(P|DIV|UL|OL|PRE|BLOCKQUOTE|H[1-6])$/.test(fromEl.tagName)) {
+                    const oldLength = elementContentLengthCache.get(fromEl) || fromEl.textContent.length;
+                    const newLength = toEl.textContent.length;
+                    const lengthDiff = newLength - oldLength;
+                    
+                    // 如果内容增长超过阈值（比如50个字符），触发微动画
+                    if (lengthDiff > 50) {
+                        // 使用脉冲动画而不是滑入动画
+                        fromEl.classList.add('vcp-stream-content-pulse');
+                        setTimeout(() => {
+                            fromEl.classList.remove('vcp-stream-content-pulse');
+                        }, 300);
+                    }
+                    
+                    // 更新缓存
+                    elementContentLengthCache.set(fromEl, newLength);
+                }
+                
                 // 🟢 保留按钮状态
                 if (fromEl.tagName === 'BUTTON' && fromEl.dataset.vcpInteractive === 'true') {
                     if (fromEl.disabled) {
@@ -377,7 +397,12 @@ function renderStreamFrame(messageId) {
             onNodeAdded: function(node) {
                 // Animate block-level elements as they are added to the DOM
                 if (node.nodeType === 1 && /^(P|DIV|UL|OL|PRE|BLOCKQUOTE|H[1-6]|TABLE|FIGURE)$/.test(node.tagName)) {
+                    // 新节点使用滑入动画
                     node.classList.add('vcp-stream-element-fade-in');
+                    
+                    // 初始化长度缓存
+                    elementContentLengthCache.set(node, node.textContent.length);
+                    
                     // Clean up the class after the animation completes to prevent re-triggering
                     node.addEventListener('animationend', () => {
                         node.classList.remove('vcp-stream-element-fade-in');
