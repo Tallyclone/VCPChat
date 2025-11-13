@@ -1,5 +1,45 @@
 // modules/renderer/animation.js
 
+// --- CDN URL Mapping ---
+// Maps common CDN URLs to local vendor paths
+const CDN_TO_LOCAL_MAP = {
+    // Three.js CDN patterns (主程序在根目录，不需要 ../)
+    'https://cdnjs.cloudflare.com/ajax/libs/three.js': 'vendor/three.min.js',
+    'https://cdn.jsdelivr.net/npm/three': 'vendor/three.min.js',
+    'https://unpkg.com/three': 'vendor/three.min.js',
+    
+    // Anime.js CDN patterns
+    'https://cdnjs.cloudflare.com/ajax/libs/animejs': 'vendor/anime.min.js',
+    'https://cdn.jsdelivr.net/npm/animejs': 'vendor/anime.min.js',
+    'https://unpkg.com/animejs': 'vendor/anime.min.js',
+};
+
+/**
+ * Replaces CDN URLs in script content with local vendor paths
+ * @param {string} scriptContent - The script text content
+ * @returns {string} The processed script content with local paths
+ */
+function replaceCdnUrls(scriptContent) {
+    if (!scriptContent || typeof scriptContent !== 'string') {
+        return scriptContent;
+    }
+    
+    let processed = scriptContent;
+    
+    // Replace each CDN pattern with its local equivalent
+    for (const [cdnPattern, localPath] of Object.entries(CDN_TO_LOCAL_MAP)) {
+        // Match the CDN URL with any version number and file extension
+        // Example: https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js
+        const regex = new RegExp(
+            cdnPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[^\'"`\\s]*',
+            'g'
+        );
+        processed = processed.replace(regex, localPath);
+    }
+    
+    return processed;
+}
+
 // --- Resource Tracking ---
 // Key: The .md-content HTMLElement of a message.
 // Value: An array of cleanup objects for Three.js instances within that message.
@@ -84,7 +124,16 @@ export function processAnimationsInContent(containerElement) {
         
         const newScript = document.createElement('script');
         Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
-        newScript.textContent = oldScript.textContent;
+        
+        // 🟢 关键修复：替换 CDN 链接为本地路径
+        const originalContent = oldScript.textContent;
+        const processedContent = replaceCdnUrls(originalContent);
+        
+        if (processedContent !== originalContent) {
+            console.log('[Animation] Replaced CDN URLs with local paths in script');
+        }
+        
+        newScript.textContent = processedContent;
         
         if (oldScript.parentNode) {
             oldScript.parentNode.replaceChild(newScript, oldScript);
