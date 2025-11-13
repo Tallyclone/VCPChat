@@ -434,6 +434,22 @@
         #infoContainer p {
             color: var(--secondary-text);
         }
+
+        /* Animation for new cards */
+        @keyframes slideInFromBottom {
+            from {
+                opacity: 0;
+                transform: translateY(40px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .card-enter-animation {
+            animation: slideInFromBottom 0.5s ease-out forwards;
+        }
     </style>
     <style>
         /* AI Memo Retrieval Styles */
@@ -598,6 +614,15 @@
             connectionStatusDiv.textContent = `连接状态：${message}`;
         }
 
+        function addAnimatedBlock(block) {
+            infoContainer.prepend(block);
+            // Use requestAnimationFrame to ensure the element is in the DOM before adding the class,
+            // which allows the CSS animation to trigger correctly.
+            requestAnimationFrame(() => {
+                block.classList.add('card-enter-animation');
+            });
+        }
+
         function displayRagInfo(data) {
             if (infoContainer.firstElementChild && infoContainer.firstElementChild.tagName === 'P') {
                 infoContainer.innerHTML = '';
@@ -691,7 +716,7 @@
                 block.appendChild(item);
             });
 
-            infoContainer.prepend(block);
+            addAnimatedBlock(block);
         }
 
         function toggleQueryText(button) {
@@ -883,7 +908,7 @@
                 });
             }
 
-            infoContainer.prepend(block);
+            addAnimatedBlock(block);
         }
 
         function toggleResultText(button) {
@@ -991,7 +1016,7 @@
             contentDiv.appendChild(responseDiv);
 
             block.appendChild(contentDiv);
-            infoContainer.prepend(block);
+            addAnimatedBlock(block);
         }
 
         function clearLogs() {
@@ -1085,7 +1110,7 @@
             
             contentDiv.appendChild(detailsGrid);
             block.appendChild(contentDiv);
-            infoContainer.prepend(block);
+            addAnimatedBlock(block);
         }
 
         function toggleAiMemoText(button) {
