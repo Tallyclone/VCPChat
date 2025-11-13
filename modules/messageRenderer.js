@@ -6,7 +6,7 @@ const DIARY_RENDER_DEBOUNCE_DELAY = 1000; // ms, potentially longer for diary if
 const enhancedRenderDebounceTimers = new WeakMap(); // For debouncing prettify calls
 
 import { avatarColorCache, getDominantAvatarColor } from './renderer/colorUtils.js';
-import { initializeImageHandler, setContentAndProcessImages, clearImageState, clearAllImageStates } from './renderer/imageHandler.js';
+import { initializeImageHandler, setContentAndProcessImages } from './renderer/imageHandler.js';
 import { processAnimationsInContent, cleanupAnimationsInContent } from './renderer/animation.js';
 import { createMessageSkeleton } from './renderer/domBuilder.js';
 import * as streamManager from './renderer/streamManager.js';
@@ -728,7 +728,6 @@ function removeMessageById(messageId, saveHistory = false) {
             }
         }
     }
-    clearImageState(messageId); // Clean up image state for the deleted message
 }
 
 function clearChat() {
@@ -744,7 +743,6 @@ function clearChat() {
         mainRendererReferences.chatMessagesDiv.innerHTML = '';
     }
     mainRendererReferences.currentChatHistoryRef.set([]); // Clear the history array via its ref
-    clearAllImageStates(); // Clear all image loading states
 }
 
 
