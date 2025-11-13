@@ -500,12 +500,14 @@ function deIndentHtml(text) {
     return lines.map(line => {
         if (line.trim().startsWith('```')) {
             inFence = !inFence;
+            return line;
         }
-        // If we are not in a fenced block, and a line is indented and looks like an HTML tag,
-        // remove the leading whitespace. This is the key fix.
-        // The regex now specifically targets indented `<p>` and `<div>` tags,
-        // which are common block-level elements that can be misinterpreted as code blocks.
-        // It is case-insensitive and handles tags spanning multiple lines.
+        
+        // 🟢 新增：如果行内包含 <img>，不要拆分它
+        if (!inFence && line.includes('<img')) {
+            return line; // 保持原样
+        }
+        
         if (!inFence && /^\s+<(!|[a-zA-Z])/.test(line)) {
             return line.trimStart();
         }
