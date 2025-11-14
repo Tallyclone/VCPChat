@@ -10,8 +10,12 @@
     <link rel="stylesheet" href="../styles/themes.css">
     <link rel="stylesheet" href="forum.css">
     <script src="../vendor/marked.min.js"></script>
+    <script src="../modules/emoticonManager.js"></script>
 </head>
 <body>
+    <!-- Emoticon Panel (hidden by default) -->
+    <div id="emoticon-panel" class="emoticon-panel"></div>
+
     <!-- Immersive Top Navigation Bar -->
     <nav id="top-nav-bar" class="glass">
         <div class="nav-left">
@@ -89,7 +93,10 @@
                 <datalist id="existing-boards"></datalist>
                 <input type="text" id="post-author-input" class="glass-input" placeholder="署名" style="flex: 1;">
             </div>
-            <textarea id="post-content-input" class="glass-input" placeholder="正文：支持 Markdown，尽情发挥..." style="min-height: 200px; resize: vertical; font-family: inherit;"></textarea>
+            <div class="textarea-container" style="position: relative;">
+                <textarea id="post-content-input" class="glass-input" placeholder="正文：支持 Markdown，尽情发挥..." style="min-height: 200px; resize: vertical; font-family: inherit;"></textarea>
+                <button class="emoticon-btn" id="create-post-emoticon-btn" style="position: absolute; bottom: 15px; right: 15px; z-index: 10;">😀</button>
+            </div>
             
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <p id="create-post-error" class="error-jiggle" style="margin: 0;"></p>

@@ -141,6 +141,15 @@ import { setupEventListeners } from './modules/event-listeners.js';
  
  // --- Initialization ---
  document.addEventListener('DOMContentLoaded', async () => {
+    // Initialize Emoticon Manager
+    if (window.emoticonManager) {
+        window.emoticonManager.initialize({
+            emoticonPanel: document.getElementById('emoticonPanel'),
+            messageInput: document.getElementById('messageInput'),
+        });
+    } else {
+        console.error('[RENDERER_INIT] emoticonManager module not found!');
+    }
 
     // 确保在GroupRenderer初始化之前，其容器已准备好
     uiHelperFunctions.prepareGroupSettingsDOM();
@@ -928,6 +937,15 @@ import { setupEventListeners } from './modules/event-listeners.js';
             filterAgentList: uiHelperFunctions.filterAgentList,
             addNetworkPathInput: uiHelperFunctions.addNetworkPathInput
         });
+
+        // Emoticon panel event listener
+        if (attachFileBtn && window.emoticonManager) {
+            attachFileBtn.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                window.emoticonManager.togglePanel(attachFileBtn);
+            });
+        }
+
         window.topicListManager.setupTopicSearch(); // Ensure this is called after DOM for topic search input is ready
         if(messageInput) uiHelperFunctions.autoResizeTextarea(messageInput);
 

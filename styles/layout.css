@@ -253,3 +253,69 @@ body.light-theme .notifications-sidebar {
     min-width: 0 !important;
     pointer-events: none;
 }
+
+/* --- User Emoticon Panel --- */
+.emoticon-panel {
+    display: none;
+    position: fixed;
+    width: 270px; /* Adjusted to account for scrollbar width */
+    height: 240px; /* Increased height for title */
+    background-color: var(--panel-bg-dark);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    padding: 10px;
+    box-sizing: border-box;
+    z-index: 1002; /* Higher than title bar */
+    /* New layout properties */
+    flex-direction: column;
+    /* display: flex; is set by JS */
+}
+
+.emoticon-panel-title {
+    font-size: 0.8em;
+    color: var(--highlight-text);
+    margin-bottom: 8px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.emoticon-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    overflow-y: auto;
+    flex-grow: 1;
+}
+
+body.light-theme .emoticon-panel {
+    background-color: var(--panel-bg-light);
+}
+
+.emoticon-item {
+    width: 52px;
+    height: 52px;
+    object-fit: contain;
+    cursor: pointer;
+    border-radius: 6px;
+    padding: 3px;
+    box-sizing: border-box;
+    transition: transform 0.2s ease, background-color 0.2s ease;
+}
+
+.emoticon-item:hover {
+    transform: scale(1.1);
+    background-color: var(--accent-bg);
+}
+
+.emoticon-item-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--secondary-text);
+    font-size: 0.9em;
+}

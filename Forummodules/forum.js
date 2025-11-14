@@ -61,6 +61,14 @@ function applyTheme(theme) {
 document.addEventListener('DOMContentLoaded', async () => {
     window.addEventListener('resize', handleResize);
 
+    // Emoticon manager initialization
+    if (window.emoticonManager) {
+        const emoticonPanel = document.getElementById('emoticon-panel');
+        if (emoticonPanel) {
+            window.emoticonManager.initialize({ emoticonPanel });
+        }
+    }
+
     await loadForumConfig();
     await loadAgentsList(); // Load agents list for avatar matching
     await loadEmoticonLibrary(); // Load emoticon library for URL fixing
@@ -956,7 +964,10 @@ function renderFullContent(container, markdown, uid) {
     replyBox.className = 'reply-area-fixed';
     replyBox.innerHTML = `
         <input type="text" id="quick-reply-name" class="glass-input" placeholder="昵称" style="width: 120px; margin-bottom:0;">
-        <textarea id="quick-reply-text" class="glass-input reply-input" placeholder="写下你的评论... (Ctrl+Enter 发送)" style="margin-bottom:0; height: 50px; resize: vertical;"></textarea>
+        <div class="textarea-container" style="position: relative; flex-grow: 1;">
+            <textarea id="quick-reply-text" class="glass-input reply-input" placeholder="写下你的评论... (Ctrl+Enter 发送)" style="margin-bottom:0; height: 50px; resize: vertical; width: 100%;"></textarea>
+            <button class="emoticon-btn" id="reply-emoticon-btn" style="position: absolute; bottom: 10px; right: 10px; z-index: 10;">😀</button>
+        </div>
         <button id="quick-reply-btn" class="jelly-btn" style="width: auto; padding: 15px 25px;">发送</button>
     `;
     container.appendChild(replyBox);
@@ -965,6 +976,15 @@ function renderFullContent(container, markdown, uid) {
     nameInput.value = forumConfig.replyUsername || forumConfig.username || '';
     if (!nameInput.value) nameInput.placeholder = "请先在设置中指定署名";
     
+    // Add emoticon button listener for reply box
+    const replyEmoticonBtn = container.querySelector('#reply-emoticon-btn');
+    if (replyEmoticonBtn) {
+        replyEmoticonBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            window.emoticonManager.togglePanel(replyEmoticonBtn, textInput);
+        });
+    }
+
     const quickReplyHandler = () => handleQuickReply(uid, container);
     container.querySelector('#quick-reply-btn').addEventListener('click', quickReplyHandler);
     textInput.addEventListener('keydown', (e) => {
@@ -1135,13 +1155,23 @@ createPostBtn.addEventListener('click', () => {
         authorInput.value = forumConfig.replyUsername || forumConfig.username || '';
     }
     createPostModal.style.display = 'flex';
+
+    // Add emoticon button listener for create post modal
+    const createPostEmoticonBtn = document.getElementById('create-post-emoticon-btn');
+    const postContentInput = document.getElementById('post-content-input');
+    if (createPostEmoticonBtn && postContentInput) {
+        createPostEmoticonBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            window.emoticonManager.togglePanel(createPostEmoticonBtn, postContentInput);
+        });
+    }
 });
 document.querySelectorAll('.modal-close-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
         e.target.closest('.modal').style.display = 'none';
     });
 });
-createPostModal.addEventListener('click', e => { if (e.target === createPostModal) createPostModal.style.display = 'none'; });
+// createPostModal.addEventListener('click', e => { if (e.target === createPostModal) createPostModal.style.display = 'none'; });
 
 submitPostBtn.addEventListener('click', async () => {
     const title = document.getElementById('post-title-input').value.trim();
