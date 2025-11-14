@@ -59,7 +59,7 @@ const emoticonManager = (() => {
         // Add title
         const title = document.createElement('div');
         title.className = 'emoticon-panel-title';
-        title.textContent = 'Vchat表情包系统';
+        title.textContent = '- Vchat表情包系统 -';
         emoticonPanel.appendChild(title);
 
         // Create grid container
