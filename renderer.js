@@ -1430,12 +1430,20 @@ async function loadAndApplyGlobalSettings() {
         document.getElementById('smoothStreamIntervalMs').value = globalSettings.smoothStreamIntervalMs !== undefined ? globalSettings.smoothStreamIntervalMs : 100;
 
 
+        // 管理用户头像的 .no-avatar 类
+        const userAvatarWrapper = userAvatarPreview?.closest('.agent-avatar-wrapper');
         if (globalSettings.userAvatarUrl && userAvatarPreview) {
             userAvatarPreview.src = globalSettings.userAvatarUrl; // Already has timestamp from main
             userAvatarPreview.style.display = 'block';
+            if (userAvatarWrapper) {
+                userAvatarWrapper.classList.remove('no-avatar');
+            }
         } else if (userAvatarPreview) {
             userAvatarPreview.src = '#';
             userAvatarPreview.style.display = 'none';
+            if (userAvatarWrapper) {
+                userAvatarWrapper.classList.add('no-avatar'); // 确保相机图标始终显示
+            }
         }
         if (window.messageRenderer) { // Update messageRenderer with user avatar info
             window.messageRenderer.setUserAvatar(globalSettings.userAvatarUrl);

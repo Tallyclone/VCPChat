@@ -12,6 +12,10 @@ class PresetPromptModule {
         this.presetPath = null;
         this.presets = [];
         
+        // 缓存内容数据
+        this.cachedContent = this.config.presetSystemPrompt || '';
+        this.cachedSelectedPreset = this.config.selectedPreset || '';
+        
         // 默认预设路径
         this.defaultPresetPath = './AppData/systemPromptPresets';
         this.loadPresetPath();
@@ -146,9 +150,9 @@ class PresetPromptModule {
             this.presetSelect.appendChild(option);
         });
 
-        // 恢复之前选择的预设
-        if (this.config.selectedPreset) {
-            this.presetSelect.value = this.config.selectedPreset;
+        // 恢复之前选择的预设（使用缓存）
+        if (this.cachedSelectedPreset) {
+            this.presetSelect.value = this.cachedSelectedPreset;
         }
 
         this.presetSelect.onchange = async () => {
@@ -205,7 +209,7 @@ class PresetPromptModule {
         this.textarea = document.createElement('textarea');
         this.textarea.className = 'prompt-textarea preset-prompt-textarea';
         this.textarea.placeholder = '请输入系统提示词或选择预设...';
-        this.textarea.value = this.config.presetSystemPrompt || '';
+        this.textarea.value = this.cachedContent;
         this.textarea.rows = 10;
 
         // 添加输入事件监听器
@@ -288,6 +292,10 @@ class PresetPromptModule {
         const content = this.textarea.value.trim();
         const selectedPreset = this.presetSelect ? this.presetSelect.value : '';
 
+        // 更新缓存
+        this.cachedContent = content;
+        this.cachedSelectedPreset = selectedPreset;
+
         await this.electronAPI.updateAgentConfig(this.agentId, {
             presetSystemPrompt: content,
             selectedPreset: selectedPreset
@@ -301,7 +309,7 @@ class PresetPromptModule {
         if (this.textarea) {
             return this.textarea.value.trim();
         }
-        return this.config.presetSystemPrompt || '';
+        return this.cachedContent;
     }
 }
 

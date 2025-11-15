@@ -7,6 +7,9 @@ class OriginalPromptModule {
         this.config = options.config;
         this.electronAPI = options.electronAPI;
         this.textarea = null;
+        
+        // 缓存内容数据
+        this.cachedContent = this.config.originalSystemPrompt || this.config.systemPrompt || '';
     }
 
     /**
@@ -20,7 +23,7 @@ class OriginalPromptModule {
         this.textarea = document.createElement('textarea');
         this.textarea.className = 'prompt-textarea original-prompt-textarea';
         this.textarea.placeholder = '请输入系统提示词...';
-        this.textarea.value = this.config.originalSystemPrompt || this.config.systemPrompt || '';
+        this.textarea.value = this.cachedContent;
         this.textarea.rows = 8;
         
         // 添加自动调整大小
@@ -51,6 +54,9 @@ class OriginalPromptModule {
 
         const content = this.textarea.value.trim();
         
+        // 更新缓存
+        this.cachedContent = content;
+        
         await this.electronAPI.updateAgentConfig(this.agentId, {
             originalSystemPrompt: content
         });
@@ -64,7 +70,7 @@ class OriginalPromptModule {
         if (this.textarea) {
             return this.textarea.value.trim();
         }
-        return this.config.originalSystemPrompt || this.config.systemPrompt || '';
+        return this.cachedContent;
     }
 }
 

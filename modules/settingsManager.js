@@ -155,13 +155,24 @@ const settingsManager = (() => {
         document.getElementById('agentStreamOutputTrue').checked = streamOutput === true || String(streamOutput) === 'true';
         document.getElementById('agentStreamOutputFalse').checked = streamOutput === false || String(streamOutput) === 'false';
         
+        // 获取头像包装器元素
+        const avatarWrapper = agentAvatarPreview?.closest('.agent-avatar-wrapper');
+        
         if (agentConfig.avatarUrl) {
             agentAvatarPreview.src = `${agentConfig.avatarUrl}${agentConfig.avatarUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
             agentAvatarPreview.style.display = 'block';
+            // 有头像时移除 no-avatar 类
+            if (avatarWrapper) {
+                avatarWrapper.classList.remove('no-avatar');
+            }
         } else {
-            // 头像为空时显示默认头像
+            // 头像为空时显示默认头像，不进行颜色提取
             agentAvatarPreview.src = 'assets/default_avatar.png';
             agentAvatarPreview.style.display = 'block';
+            // 无头像时添加 no-avatar 类，确保相机图标始终显示
+            if (avatarWrapper) {
+                avatarWrapper.classList.add('no-avatar');
+            }
         }
         agentAvatarInput.value = '';
         mainRendererFunctions.setCroppedFile('agent', null);
@@ -276,7 +287,8 @@ const settingsManager = (() => {
                 if (avatarResult.error) {
                     uiHelper.showToastNotification(`保存Agent头像失败: ${avatarResult.error}`, 'error');
                 } else {
-                    if (avatarResult.needsColorExtraction && electronAPI.saveAvatarColor) {
+                    // 只在成功保存真实头像文件后才提取颜色
+                    if (avatarResult.needsColorExtraction && avatarResult.avatarUrl && electronAPI.saveAvatarColor) {
                          uiHelper.getAverageColorFromAvatar(avatarResult.avatarUrl, (avgColor) => {
                             if (avgColor) {
                                 electronAPI.saveAvatarColor({ type: 'agent', id: agentId, color: avgColor })
@@ -608,7 +620,13 @@ const settingsManager = (() => {
                                 agentAvatarPreview.src = previewUrl;
                                 agentAvatarPreview.style.display = 'block';
                                 
-                                // 只对用户上传的头像进行颜色提取，不对默认头像提取
+                                // 上传新头像后移除 no-avatar 类
+                                const avatarWrapper = agentAvatarPreview.closest('.agent-avatar-wrapper');
+                                if (avatarWrapper) {
+                                    avatarWrapper.classList.remove('no-avatar');
+                                }
+                                
+                                // 只对用户上传的真实头像进行颜色提取，不对默认头像提取
                                 // 裁切完成后立即计算颜色并填充到输入框
                                 // 使用与全局设置相同的getDominantAvatarColor函数以保持一致性
                                 if (window.getDominantAvatarColor) {
