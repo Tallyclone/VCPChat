@@ -787,57 +787,248 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
+// ===== Ported from text-viewer.js for advanced CSS/HTML rendering =====
+
+function generateUniqueId() {
+    const timestampPart = Date.now().toString(36);
+    const randomPart = Math.random().toString(36).substring(2, 9);
+    return `vcp-forum-${timestampPart}${randomPart}`;
+}
+
+function scopeSelector(selector, scopeId) {
+    if (selector.match(/^(@|from|to|\d+%|:root|html|body)/)) {
+        return selector;
+    }
+    if (selector.match(/^::?[\w-]+$/)) {
+        return `#${scopeId}${selector}`;
+    }
+    return `#${scopeId} ${selector}`;
+}
+
+function scopeCss(cssString, scopeId) {
+    let css = cssString.replace(/\/\*[\s\S]*?\*\//g, '');
+    const rules = [];
+    let depth = 0;
+    let currentRule = '';
+    for (let i = 0; i < css.length; i++) {
+        const char = css[i];
+        currentRule += char;
+        if (char === '{') depth++;
+        else if (char === '}') {
+            depth--;
+            if (depth === 0) {
+                rules.push(currentRule.trim());
+                currentRule = '';
+            }
+        }
+    }
+    return rules.map(rule => {
+        const match = rule.match(/^([^{]+)\{(.+)\}$/s);
+        if (!match) return rule;
+        const [, selectors, body] = match;
+        const scopedSelectors = selectors.split(',').map(s => scopeSelector(s.trim(), scopeId)).join(', ');
+        return `${scopedSelectors} { ${body} }`;
+    }).join('\n');
+}
+
+function processAndInjectScopedCss(content, scopeId) {
+    let cssContent = '';
+    let styleInjected = false;
+    const styleRegex = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
+
+    const processedContent = content.replace(styleRegex, (match, css) => {
+        cssContent += css.trim() + '\n';
+        return ''; // Remove style tag from content
+    });
+
+    if (cssContent.length > 0) {
+        try {
+            const scopedCss = scopeCss(cssContent, scopeId);
+            const styleElement = document.createElement('style');
+            styleElement.type = 'text/css';
+            styleElement.setAttribute('data-vcp-forum-scope', scopeId);
+            styleElement.textContent = scopedCss;
+            document.head.appendChild(styleElement);
+            styleInjected = true;
+        } catch (error) {
+            console.error(`[Forum] Failed to scope CSS for ID: ${scopeId}`, error);
+        }
+    }
+    return { processedContent, styleInjected };
+}
+
+function deIndentHtml(text) {
+    const lines = text.split('\n');
+    let inFence = false;
+    
+    return lines.map(line => {
+        // Check for code fences
+        if (line.trim().startsWith('```')) {
+            inFence = !inFence;
+            return line;
+        }
+        
+        // Don't process lines inside code fences (keep original indentation for code)
+        if (inFence) {
+            return line;
+        }
+        
+        // 🔥 关键修复：去除所有行的前导空格，防止被Markdown识别为缩进代码块
+        // 只有在代码围栏内才保留缩进
+        return line.trimStart();
+    }).join('\n');
+}
+
 function enhanceMarkdown(markdown) {
-    // NEW: Fix local file path images by replacing backslashes with forward slashes.
+    // Step 1: Fix local file path images
     markdown = markdown.replace(/(!\[[^\]]*?\]\()(file:\/\/.*?)(\))/g, (match, prefix, url, suffix) => {
         return prefix + url.replace(/\\/g, '/') + suffix;
     });
 
-    // NEW: Prevent indented HTML tags from being treated as code blocks
-    const htmlTagRegex = /^\s*<\/?(div|p|img|span|a|h[1-6]|ul|ol|li|table|tr|td|th|section|article|header|footer|nav|aside|main|figure|figcaption|blockquote|pre|code|style|script|button|form|input|textarea|select|label|iframe|video|audio|canvas|svg)[\s>\/]/i;
+    // Step 2: Protect code blocks before de-indenting (like text-viewer.js)
+    const codeBlockMap = new Map();
+    let placeholderId = 0;
     
-    let lines = markdown.split('\n');
-    let deIndentedMarkdown = lines.map(line => {
-        // Check if the line starts with whitespace followed by a known HTML tag
-        if (htmlTagRegex.test(line)) {
-            // Remove leading whitespace
-            return line.trimStart();
-        }
-        return line;
-    }).join('\n');
+    let processed = markdown.replace(/```\w*([\s\S]*?)```/g, (match) => {
+        const placeholder = `__FORUM_CODE_BLOCK_PLACEHOLDER_${placeholderId}__`;
+        codeBlockMap.set(placeholder, match);
+        placeholderId++;
+        return placeholder;
+    });
 
-    // To prevent breaking HTML attributes, temporarily replace all HTML tags with placeholders.
+    // Step 3: De-indent HTML AND CSS to prevent code block interpretation
+    // Now code blocks are protected, so CSS won't be affected
+    processed = deIndentHtml(processed);
+
+    // Step 4: Detect if content contains block-level HTML
+    const hasBlockHtml = /<div[\s>]|<style[\s>]/i.test(processed);
+    
+    if (hasBlockHtml) {
+        // Restore code blocks before returning
+        if (codeBlockMap.size > 0) {
+            for (const [placeholder, block] of codeBlockMap.entries()) {
+                processed = processed.replace(placeholder, block);
+            }
+        }
+        // For HTML-heavy content, skip text enhancement
+        return processed;
+    }
+
+    // Step 5: For regular markdown, apply text enhancements
+    // Protect HTML tags during processing
     const htmlTags = [];
     const htmlTagRegexGlobal = /<[^>]+>/g;
 
-    let processed = deIndentedMarkdown.replace(htmlTagRegexGlobal, (match) => {
+    processed = processed.replace(htmlTagRegexGlobal, (match) => {
         htmlTags.push(match);
         return `__HTML_PLACEHOLDER_${htmlTags.length - 1}__`;
     });
 
-    // Step 1: On the text-only content, wrap quoted text in a span for highlighting.
-    processed = processed.replace(/([“"][^”]+?[”"]|"[^"]+")/g, '<span class="highlighted-quote">$1</span>');
+    // Wrap quoted text in spans for highlighting
+    processed = processed.replace(/([""][^"]+?[""]|"[^"]+")/g, '<span class="highlighted-quote">$1</span>');
 
-    // Step 2: Manually fix bolding for quoted text that was wrapped in a span.
+    // Fix bolding for quoted text
     processed = processed.replace(/\*\*(<span class="highlighted-quote">.+?<\/span>)\*\*/g, '<strong>$1</strong>');
-    
-    // Step 3: Fallback for any other bolded quotes.
-    processed = processed.replace(/\*\*([“"][^”]+?[”"]|"[^"]+")\*\*/g, '<strong>$1</strong>');
+    processed = processed.replace(/\*\*([""][^"]+?[""]|"[^"]+")\*\*/g, '<strong>$1</strong>');
 
-    // Restore the original HTML tags.
+    // Restore HTML tags
     if (htmlTags.length > 0) {
         processed = processed.replace(/__HTML_PLACEHOLDER_(\d+)__/g, (match, index) => {
             return htmlTags[parseInt(index, 10)] || match;
         });
     }
 
+    // Step 6: Restore code blocks
+    if (codeBlockMap.size > 0) {
+        for (const [placeholder, block] of codeBlockMap.entries()) {
+            processed = processed.replace(placeholder, block);
+        }
+    }
+
     return processed;
 }
 
+function applyBoldFormatting(container) {
+    const walker = document.createTreeWalker(
+        container,
+        NodeFilter.SHOW_TEXT,
+        { acceptNode: (node) => {
+            // Reject processing inside these elements
+            if (node.parentElement.closest('pre, code, script, style, .vcp-tool-use-bubble, .vcp-tool-result-bubble, a')) {
+                return NodeFilter.FILTER_REJECT;
+            }
+            // Only accept text nodes containing "**"
+            if (/\*\*/.test(node.nodeValue)) {
+                return NodeFilter.FILTER_ACCEPT;
+            }
+            return NodeFilter.FILTER_SKIP;
+        }},
+        false
+    );
+
+    const nodesToProcess = [];
+    // TreeWalker changes dynamically, so collect all nodes first
+    while (walker.nextNode()) {
+        nodesToProcess.push(walker.currentNode);
+    }
+
+    nodesToProcess.forEach(node => {
+        const parent = node.parentElement;
+        if (!parent) return;
+
+        const fragment = document.createDocumentFragment();
+        // Split text using regex, preserving delimiters
+        const parts = node.nodeValue.split(/(\*\*.*?\*\*)/g);
+
+        parts.forEach(part => {
+            if (part.startsWith('**') && part.endsWith('**')) {
+                const strong = document.createElement('strong');
+                strong.textContent = part.slice(2, -2);
+                fragment.appendChild(strong);
+            } else if (part) { // Avoid adding empty text nodes
+                fragment.appendChild(document.createTextNode(part));
+            }
+        });
+        // Replace old text node with new document fragment
+        parent.replaceChild(fragment, node);
+    });
+}
+
+// ===== End ported functions =====
+
 function renderFullContent(container, markdown, uid) {
     const previewEl = container.querySelector('.post-preview');
+    
+    // Generate unique scope ID for CSS isolation (like text-viewer.js)
+    const scopeId = generateUniqueId();
+    previewEl.id = scopeId;
+    
+    // === 关键修复：使用完整预处理流程（像 text-viewer.js） ===
+    const codeBlockMap = new Map();
+    let placeholderId = 0;
+    
+    // Step 1: 保护所有代码块（包括CSS代码块）
+    let processed = markdown.replace(/```\w*([\s\S]*?)```/g, (match) => {
+        const placeholder = `__FORUM_RENDER_CODE_BLOCK_${placeholderId}__`;
+        codeBlockMap.set(placeholder, match);
+        placeholderId++;
+        return placeholder;
+    });
+    
+    // Step 2: 提取和处理CSS（代码块已被保护）
+    const { processedContent: contentWithoutStyles } = processAndInjectScopedCss(processed, scopeId);
+    processed = contentWithoutStyles;
+    
+    // Step 3: 恢复代码块
+    if (codeBlockMap.size > 0) {
+        for (const [placeholder, block] of codeBlockMap.entries()) {
+            processed = processed.replace(placeholder, block);
+        }
+    }
+    // === 预处理完成 ===
+    
     const replyDelimiter = '\n\n---\n\n## 评论区\n---';
-    const parts = markdown.split(replyDelimiter);
+    const parts = processed.split(replyDelimiter);
     let mainMd = parts[0];
     const repliesMd = parts[1] || '';
 
@@ -877,6 +1068,9 @@ function renderFullContent(container, markdown, uid) {
 
     previewEl.innerHTML = window.marked ? marked.parse(enhanceMarkdown(postContentMd)) : `<pre>${escapeHtml(postContentMd)}</pre>`;
     previewEl.dataset.rawContent = postContentMd; // Store raw content for editing
+    
+    // Apply bold formatting to handle any remaining ** markers
+    applyBoldFormatting(previewEl);
     
     // Setup emoticon fixer for main content
     setupEmoticonFixer(previewEl);
@@ -946,9 +1140,10 @@ function renderFullContent(container, markdown, uid) {
                 loadAvatarForElement(avatarEl, replyUsername);
             }
             
-            // Setup emoticon fixer for reply content
+            // Setup emoticon fixer and bold formatting for reply content
             const replyContentEl = replyItem.querySelector('.reply-content');
             if (replyContentEl) {
+                applyBoldFormatting(replyContentEl);
                 setupEmoticonFixer(replyContentEl);
                 setupImageViewer(replyContentEl);
             }
