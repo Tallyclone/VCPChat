@@ -60,8 +60,16 @@ export async function handleSaveGlobalSettings(e, deps) {
             });
             if (avatarSaveResult.success) {
                 refs.globalSettings.get().userAvatarUrl = avatarSaveResult.avatarUrl;
-                document.getElementById('userAvatarPreview').src = avatarSaveResult.avatarUrl;
-                document.getElementById('userAvatarPreview').style.display = 'block';
+                const userAvatarPreview = document.getElementById('userAvatarPreview');
+                userAvatarPreview.src = avatarSaveResult.avatarUrl;
+                userAvatarPreview.style.display = 'block';
+                
+                // 移除 no-avatar 类，因为现在有头像了
+                const userAvatarWrapper = userAvatarPreview?.closest('.agent-avatar-wrapper');
+                if (userAvatarWrapper) {
+                    userAvatarWrapper.classList.remove('no-avatar');
+                }
+                
                 if (window.messageRenderer) {
                     window.messageRenderer.setUserAvatar(avatarSaveResult.avatarUrl);
                 }

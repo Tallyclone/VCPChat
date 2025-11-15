@@ -1644,12 +1644,25 @@ body.light-theme #globalSettingsModal .modal-content {
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: background-color 0.3s ease;
+/*     transition: background-color 0.3s ease, opacity 0.3s ease; */
     opacity: 0;
 }
 
-.agent-avatar-wrapper:hover .avatar-upload-overlay {
-    background-color: rgba(0, 0, 0, 0.5);
+/* Agent设置：悬浮时才显示相机图标 */
+#agentSettingsContainer .agent-avatar-wrapper:hover .avatar-upload-overlay {
+/*     background-color: rgba(0, 0, 0, 0.5);*/
+    opacity: 1;
+}
+
+/* 全局设置：无头像时始终显示相机图标（不需要遮罩背景） */
+#globalSettingsModal .agent-avatar-wrapper.no-avatar .avatar-upload-overlay {
+    opacity: 1;
+    background-color: transparent;
+}
+
+/* 全局设置：有头像时悬浮才显示相机图标 */
+#globalSettingsModal .agent-avatar-wrapper:not(.no-avatar):hover .avatar-upload-overlay {
+/*         background-color: rgba(0, 0, 0, 0.5); */
     opacity: 1;
 }
 

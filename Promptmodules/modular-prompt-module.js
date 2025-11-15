@@ -44,6 +44,10 @@ class ModularPromptModule {
             this.blocks = savedData.blocks || [];
             this.hiddenBlocks = savedData.hiddenBlocks || { default: [] };
             this.warehouseOrder = savedData.warehouseOrder || ['default'];
+            // 从配置中加载预览模式状态
+            if (typeof savedData.viewMode === 'boolean') {
+                this.viewMode = savedData.viewMode;
+            }
         } else if (typeof savedData === 'string') {
             this.blocks = savedData ? [{ id: this.generateId(), type: 'text', content: savedData, disabled: false }] : [];
         }
@@ -225,6 +229,11 @@ class ModularPromptModule {
             if (block.disabled) {
                 blockEl.classList.add('disabled');
             }
+            
+            // 如果有名称，添加标识类
+            if (block.name && block.name.trim()) {
+                blockEl.classList.add('has-custom-name');
+            }
 
             // 如果有多个内容条目，显示当前选中的内容
             const currentContent = this.getCurrentContent(block);
@@ -233,12 +242,18 @@ class ModularPromptModule {
             const contentEl = document.createElement('div');
             contentEl.className = 'block-content';
             contentEl.contentEditable = false; // 默认不可编辑
-            contentEl.textContent = currentContent;
+            // 如果有自定义名称，显示名称；否则显示内容
+            const displayText = block.name && block.name.trim() ? block.name : currentContent;
+            contentEl.textContent = displayText;
             
             // 双击进入编辑模式
             contentEl.addEventListener('dblclick', () => {
                 if (!block.disabled) {
                     contentEl.contentEditable = true;
+                    // 如果有名称，显示实际内容用于编辑
+                    if (block.name && block.name.trim()) {
+                        contentEl.textContent = currentContent;
+                    }
                     contentEl.focus();
                     // 选中所有文本
                     const range = document.createRange();
@@ -258,6 +273,10 @@ class ModularPromptModule {
                     block.variants[selectedIndex] = contentEl.textContent;
                 } else {
                     block.content = contentEl.textContent;
+                }
+                // 恢复显示名称（如果有的话）
+                if (block.name && block.name.trim()) {
+                    contentEl.textContent = block.name;
                 }
                 this.save();
             });
@@ -335,7 +354,7 @@ class ModularPromptModule {
         const menuItems = [];
 
         // 如果有多个内容条目，置顶显示为可选项
-        if (block.variants && block.variants.length > 0 && block.type !== 'newline') {
+        if (block.variants && block.variants.length > 1 && block.type !== 'newline') {
             block.variants.forEach((variant, variantIndex) => {
                 const preview = variant.substring(0, 30) + (variant.length > 30 ? '...' : '');
                 menuItems.push({
@@ -365,8 +384,8 @@ class ModularPromptModule {
                 hidden: block.type === 'newline'
             },
             {
-                label: '隐藏到小仓',
-                action: () => this.hideBlock(index)
+                label: '移到小仓',
+                action: () => this.moveBlockToWarehouse(index)
             },
             {
                 label: '删除',
@@ -571,17 +590,56 @@ class ModularPromptModule {
     }
 
     /**
-     * 隐藏积木块到小仓
+     * 移动积木块到小仓（检查重复）
      */
-    hideBlock(index) {
-        const block = this.blocks.splice(index, 1)[0];
+    moveBlockToWarehouse(index) {
+        const block = this.blocks[index];
         if (!this.hiddenBlocks[this.currentWarehouse]) {
             this.hiddenBlocks[this.currentWarehouse] = [];
         }
-        this.hiddenBlocks[this.currentWarehouse].push(block);
+        
+        // 检查是否已存在相同内容的积木块
+        const isDuplicate = this.hiddenBlocks[this.currentWarehouse].some(hiddenBlock => {
+            return this.areBlocksEqual(hiddenBlock, block);
+        });
+        
+        if (isDuplicate) {
+            // 直接删除，不添加到小仓
+            this.blocks.splice(index, 1);
+        } else {
+            // 移动到小仓
+            const removedBlock = this.blocks.splice(index, 1)[0];
+            this.hiddenBlocks[this.currentWarehouse].push(removedBlock);
+        }
+        
         this.save();
         this.renderBlocks();
         this.renderWarehouse();
+    }
+    
+    /**
+     * 检查两个积木块是否相同
+     */
+    areBlocksEqual(block1, block2) {
+        if (block1.type !== block2.type) return false;
+        if (block1.type === 'newline') return true; // 换行块都视为相同
+        
+        // 比较名称
+        if (block1.name !== block2.name) return false;
+        
+        // 比较内容条目
+        if (block1.variants && block2.variants) {
+            if (block1.variants.length !== block2.variants.length) return false;
+            for (let i = 0; i < block1.variants.length; i++) {
+                if (block1.variants[i] !== block2.variants[i]) return false;
+            }
+            return true;
+        } else if (block1.variants || block2.variants) {
+            return false; // 一个有variants一个没有
+        } else {
+            // 都没有variants，比较content
+            return block1.content === block2.content;
+        }
     }
 
 
@@ -663,10 +721,34 @@ class ModularPromptModule {
         // 隐藏的积木块列表
         const hiddenBlocksList = document.createElement('div');
         hiddenBlocksList.className = 'hidden-blocks-list';
+        
+        // 为列表添加拖拽接收事件（从编辑区拖入）
+        hiddenBlocksList.addEventListener('dragover', (e) => {
+            if (this.draggedBlock && this.draggedIndex !== null) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                hiddenBlocksList.classList.add('warehouse-drag-over');
+            }
+        });
+        
+        hiddenBlocksList.addEventListener('dragleave', (e) => {
+            if (!hiddenBlocksList.contains(e.relatedTarget)) {
+                hiddenBlocksList.classList.remove('warehouse-drag-over');
+            }
+        });
+        
+        hiddenBlocksList.addEventListener('drop', (e) => {
+            e.preventDefault();
+            hiddenBlocksList.classList.remove('warehouse-drag-over');
+            // 从编辑区拖入小仓
+            if (this.draggedBlock && this.draggedIndex !== null) {
+                this.moveBlockToWarehouseByDrag(this.draggedIndex);
+            }
+        });
 
         const currentHidden = this.hiddenBlocks[this.currentWarehouse] || [];
         if (currentHidden.length === 0) {
-            hiddenBlocksList.innerHTML = '<div class="warehouse-empty">此仓库为空</div>';
+            hiddenBlocksList.innerHTML = '<div class="warehouse-empty">此仓库为空<br><small style="font-size:0.85em;opacity:0.7;">拖拽积木块到这里</small></div>';
         } else {
             currentHidden.forEach((block, index) => {
                 const blockEl = this.createHiddenBlockElement(block, index);
@@ -676,6 +758,36 @@ class ModularPromptModule {
 
         this.warehouseContainer.appendChild(hiddenBlocksList);
     }
+    
+    /**
+     * 通过拖拽将积木块移到小仓（防止重复）
+     */
+    moveBlockToWarehouseByDrag(index) {
+        const block = this.blocks[index];
+        if (!this.hiddenBlocks[this.currentWarehouse]) {
+            this.hiddenBlocks[this.currentWarehouse] = [];
+        }
+        
+        // 检查是否已存在相同内容的积木块
+        const isDuplicate = this.hiddenBlocks[this.currentWarehouse].some(hiddenBlock => {
+            return this.areBlocksEqual(hiddenBlock, block);
+        });
+        
+        if (isDuplicate) {
+            // 直接删除，不添加到小仓
+            this.blocks.splice(index, 1);
+        } else {
+            // 移动到小仓
+            const removedBlock = this.blocks.splice(index, 1)[0];
+            this.hiddenBlocks[this.currentWarehouse].push(removedBlock);
+        }
+        
+        this.draggedBlock = null;
+        this.draggedIndex = null;
+        this.save();
+        this.renderBlocks();
+        this.renderWarehouse();
+    }
 
     /**
      * 创建隐藏积木块元素
@@ -683,6 +795,12 @@ class ModularPromptModule {
     createHiddenBlockElement(block, index) {
         const blockEl = document.createElement('div');
         blockEl.className = 'hidden-block';
+        blockEl.dataset.index = index;
+        
+        // 如果有自定义名称，添加标识类
+        if (block.name && block.name.trim()) {
+            blockEl.classList.add('has-custom-name');
+        }
         
         // 显示名称或内容预览
         const displayText = block.name || (block.content ? block.content : '[空积木块]');
@@ -692,7 +810,15 @@ class ModularPromptModule {
         // 悬浮提示显示完整内容
         blockEl.title = block.content || '[空积木块]';
         
-        // 小仓积木块始终可拖拽（不受 tileMode 限制）
+        // 如果有多个内容条目，显示指示器（圆点）
+        if (block.variants && block.variants.length > 1) {
+            const indicator = document.createElement('div');
+            indicator.className = 'variant-indicator';
+            indicator.title = `此积木块有 ${block.variants.length} 个内容条目，当前为第 ${(block.selectedVariant || 0) + 1} 个`;
+            blockEl.appendChild(indicator);
+        }
+        
+        // 小仓积木块始终可拖拽
         blockEl.draggable = true;
         blockEl.addEventListener('dragstart', (e) => {
             this.draggedHiddenBlock = { block, index, warehouse: this.currentWarehouse };
@@ -700,6 +826,7 @@ class ModularPromptModule {
             e.dataTransfer.setData('text/plain', 'hidden-block');
             blockEl.classList.add('dragging');
         });
+        
         blockEl.addEventListener('dragend', () => {
             blockEl.classList.remove('dragging');
             this.draggedHiddenBlock = null;
@@ -911,12 +1038,13 @@ class ModularPromptModule {
     }
 
     /**
-     * 拖拽开始
+     * 拖拽开始（编辑区积木块）
      */
     handleDragStart(e, block, index) {
         this.draggedBlock = block;
         this.draggedIndex = index;
         e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', 'edit-block');
         e.target.classList.add('dragging');
     }
 
@@ -978,17 +1106,16 @@ class ModularPromptModule {
     }
 
     /**
-     * 放置
+     * 放置（编辑区）
      */
     handleDrop(e, targetIndex) {
         e.preventDefault();
-        e.stopPropagation(); // 防止事件冒泡到容器
+        e.stopPropagation();
         this.removeDropIndicator();
         
-        // 从小仓拖拽到编辑区（复制模式，不删除原积木块）
+        // 从小仓拖拽到编辑区（复制模式）
         if (this.draggedHiddenBlock) {
             const { block } = this.draggedHiddenBlock;
-            // 深拷贝积木块（包括 variants 等属性）
             const newBlock = {
                 ...block,
                 id: this.generateId(),
@@ -996,7 +1123,6 @@ class ModularPromptModule {
                 selectedVariant: block.selectedVariant
             };
             
-            // 计算插入位置：鼠标位置决定是插入前还是插入后
             const rect = e.target.getBoundingClientRect();
             const midPoint = rect.left + rect.width / 2;
             const insertIndex = e.clientX < midPoint ? targetIndex : targetIndex + 1;
@@ -1010,15 +1136,12 @@ class ModularPromptModule {
         
         // 编辑区内部拖拽
         if (this.draggedIndex !== null && this.draggedIndex !== targetIndex) {
-            // 移动积木块
             const [movedBlock] = this.blocks.splice(this.draggedIndex, 1);
-            // 简化逻辑：直接插入到目标位置
             if (this.draggedIndex < targetIndex) {
                 this.blocks.splice(targetIndex - 1, 0, movedBlock);
             } else {
                 this.blocks.splice(targetIndex, 0, movedBlock);
             }
-            
             this.save();
             this.renderBlocks();
         }
@@ -1037,6 +1160,7 @@ class ModularPromptModule {
             draggingEl.classList.remove('dragging');
         }
     }
+    
 
     /**
      * 切换预览模式
@@ -1114,7 +1238,8 @@ class ModularPromptModule {
         const privateDataToSave = {
             blocks: this.blocks,
             hiddenBlocks: { ...this.hiddenBlocks }, // 创建一个副本进行操作
-            warehouseOrder: this.warehouseOrder
+            warehouseOrder: this.warehouseOrder,
+            viewMode: this.viewMode // 保存预览模式状态
         };
 
         // 3. [新增] 从私有数据副本中移除全局仓库，避免冗余存储
