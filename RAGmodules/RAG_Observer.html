@@ -452,6 +452,55 @@
         }
     </style>
     <style>
+        /* Tag相关样式 */
+        .tag-indicator {
+            background: rgba(255, 193, 7, 0.2);
+            color: #ffc107;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 0.75em;
+            margin-left: 5px;
+            border: 1px solid #ffc107;
+            display: inline-block;
+        }
+        
+        .matched-tags {
+            margin-top: 6px;
+            padding: 8px;
+            background: rgba(255, 193, 7, 0.08);
+            border-radius: 6px;
+            border-left: 3px solid #ffc107;
+        }
+        
+        .matched-tags strong {
+            color: #ffc107;
+            font-size: 0.85em;
+            display: block;
+            margin-bottom: 4px;
+        }
+        
+        .tag-item {
+            display: inline-block;
+            background: rgba(255, 193, 7, 0.25);
+            color: #ffc107;
+            padding: 2px 8px;
+            border-radius: 10px;
+            margin: 2px 4px 2px 0;
+            font-size: 0.8em;
+            border: 1px solid rgba(255, 193, 7, 0.5);
+        }
+        
+        .tag-boost-info {
+            margin-top: 4px;
+            font-size: 0.75em;
+            color: var(--secondary-text);
+        }
+        
+        .tag-boost-info .boost-value {
+            color: #ffc107;
+            font-weight: 600;
+        }
+        
         /* AI Memo Retrieval Styles */
         .ai-memo-block {
             background: rgba(26, 188, 156, 0.05);
@@ -661,6 +710,11 @@
                 ? `<button class="toggle-button" style="margin-left: 10px;" onclick="toggleQueryText(this)">展开</button>`
                 : '';
 
+            // 构建Tag模式信息
+            const tagModeInfo = data.useTagMemo
+                ? ` | <strong>TagMemo:</strong> <span class="tag-indicator">已启用 (权重: ${data.tagWeight || 'N/A'})</span>`
+                : '';
+            
             header.innerHTML = `
                 <h3>知识库: <strong>${data.dbName}</strong></h3>
                 <p>查询: <em class="query-content">${queryDisplay}</em> ${toggleButtonHTML}</p>
@@ -668,7 +722,7 @@
                     <strong>K:</strong> ${data.k} |
                     <strong>Time:</strong> ${data.useTime} |
                     <strong>Group:</strong> ${data.useGroup} |
-                    <strong>Rerank:</strong> ${data.useRerank} |
+                    <strong>Rerank:</strong> ${data.useRerank}${tagModeInfo} |
                     <strong>召回数量:</strong> ${data.results.length}
                 </p>
             `;
@@ -683,10 +737,22 @@
                 
                 const meta = document.createElement('div');
                 meta.className = 'rag-meta';
+                
+                // 构建分数显示（区分原始分数和最终分数）
+                let scoreDisplay = '';
+                if (data.useTagMemo && r.originalScore !== undefined) {
+                    scoreDisplay = `<span>最终Score: ${r.score.toFixed(3)}</span>`;
+                    if (r.originalScore !== r.score) {
+                        scoreDisplay += ` <span style="color: var(--secondary-text); font-size: 0.85em;">(原始: ${r.originalScore.toFixed(3)})</span>`;
+                    }
+                } else if (r.score) {
+                    scoreDisplay = `<span>Score: ${r.score.toFixed(3)}</span>`;
+                }
+                
                 meta.innerHTML = `
                     <span class="source-${r.source || 'unknown'}">来源: ${r.source || 'N/A'}</span>
                     ${r.date ? `<span class="date">日期: ${r.date}</span>` : ''}
-                    ${r.score ? `<span>Score: ${r.score.toFixed(3)}</span>` : ''}
+                    ${scoreDisplay}
                 `;
 
                 const toggleBtn = document.createElement('button');
@@ -710,6 +776,29 @@
 
                 content.appendChild(snippet);
                 content.appendChild(fullText);
+                
+                // 如果启用了TagMemo并且有匹配的Tags，显示Tag信息
+                if (data.useTagMemo && r.matchedTags && r.matchedTags.length > 0) {
+                    const tagInfo = document.createElement('div');
+                    tagInfo.className = 'matched-tags';
+                    
+                    let tagsHTML = '<strong>匹配标签:</strong> ';
+                    r.matchedTags.forEach(tag => {
+                        tagsHTML += `<span class="tag-item">${tag}</span>`;
+                    });
+                    
+                    // 添加Tag提权信息
+                    const boostInfo = `
+                        <div class="tag-boost-info">
+                            Tag匹配得分: <span class="boost-value">${r.tagMatchScore?.toFixed(3) || 'N/A'}</span> |
+                            匹配数量: <span class="boost-value">${r.tagMatchCount || 0}</span> |
+                            提权倍数: <span class="boost-value">${r.boostFactor?.toFixed(4) || '1.0000'}</span>
+                        </div>
+                    `;
+                    
+                    tagInfo.innerHTML = tagsHTML + boostInfo;
+                    content.appendChild(tagInfo);
+                }
                 
                 item.appendChild(itemHeader);
                 item.appendChild(content);
