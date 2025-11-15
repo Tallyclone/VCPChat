@@ -202,18 +202,83 @@
             margin-bottom: 8px;
             font-size: 0.9em;
         }
+        .rag-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+        
         .rag-meta span {
             background-color: rgba(255, 255, 255, 0.1);
             color: var(--secondary-text);
             padding: 3px 8px;
             border-radius: 12px;
-            margin-right: 8px;
             font-weight: 500;
             border: 1px solid rgba(255, 255, 255, 0.2);
         }
         .rag-meta .source-rag { background-color: rgba(52, 152, 219, 0.2); color: #5dade2; border-color: #5dade2; }
         .rag-meta .source-time { background-color: rgba(46, 204, 113, 0.2); color: #58d68d; border-color: #58d68d; }
         .rag-meta .date { background-color: rgba(142, 68, 173, 0.2); color: #af7ac5; border-color: #af7ac5; }
+        
+        /* Score评分可视化样式 */
+        .score-container {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .score-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 0.85em;
+            border: 1px solid;
+        }
+        
+        /* Score等级颜色 */
+        .score-badge.excellent {
+            background-color: rgba(76, 175, 80, 0.2);
+            color: #66bb6a;
+            border-color: #66bb6a;
+        }
+        .score-badge.good {
+            background-color: rgba(52, 152, 219, 0.2);
+            color: #5dade2;
+            border-color: #5dade2;
+        }
+        .score-badge.fair {
+            background-color: rgba(255, 193, 7, 0.2);
+            color: #ffc107;
+            border-color: #ffc107;
+        }
+        .score-badge.poor {
+            background-color: rgba(244, 67, 54, 0.2);
+            color: #ef5350;
+            border-color: #ef5350;
+        }
+        
+        /* Tag提权后的特殊样式 */
+        .score-badge.boosted {
+            background: linear-gradient(135deg, rgba(255, 193, 7, 0.3) 0%, rgba(255, 152, 0, 0.3) 100%);
+            color: #ffc107;
+            border-color: #ffc107;
+            box-shadow: 0 0 8px rgba(255, 193, 7, 0.3);
+        }
+        
+        .score-badge.boosted::before {
+            content: "⭐";
+            margin-right: 2px;
+        }
+        
+        .score-detail {
+            font-size: 0.75em;
+            color: var(--secondary-text);
+            font-weight: normal;
+        }
 
         /* 元思考链专用样式 */
         .meta-thinking-block {
@@ -465,40 +530,74 @@
         }
         
         .matched-tags {
-            margin-top: 6px;
-            padding: 8px;
-            background: rgba(255, 193, 7, 0.08);
-            border-radius: 6px;
-            border-left: 3px solid #ffc107;
+            margin-top: 8px !important;
+            padding: 12px !important;
+            background: rgba(255, 193, 7, 0.08) !important;
+            border-radius: 8px !important;
+            border-left: 3px solid #ffc107 !important;
+            display: block !important;
+            max-width: 100% !important;
         }
         
         .matched-tags strong {
             color: #ffc107;
-            font-size: 0.85em;
+            font-size: 0.9em;
             display: block;
-            margin-bottom: 4px;
+            margin-bottom: 8px;
+        }
+        
+        .tags-list {
+            display: flex !important;
+            flex-wrap: wrap !important;
+            gap: 6px !important;
+            margin-bottom: 10px !important;
         }
         
         .tag-item {
             display: inline-block;
             background: rgba(255, 193, 7, 0.25);
             color: #ffc107;
-            padding: 2px 8px;
-            border-radius: 10px;
-            margin: 2px 4px 2px 0;
-            font-size: 0.8em;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.85em;
             border: 1px solid rgba(255, 193, 7, 0.5);
+            font-weight: 500;
         }
         
         .tag-boost-info {
-            margin-top: 4px;
-            font-size: 0.75em;
-            color: var(--secondary-text);
+            margin-top: 8px !important;
+            padding-top: 8px !important;
+            border-top: 1px dashed rgba(255, 193, 7, 0.2) !important;
+            font-size: 0.8em !important;
+            color: var(--secondary-text) !important;
+            line-height: 1.2 !important;
+            display: block !important;
+            white-space: normal !important;
+            overflow: visible !important;
         }
         
-        .tag-boost-info .boost-value {
-            color: #ffc107;
-            font-weight: 600;
+        .tag-boost-item {
+            display: inline !important;
+            margin-right: 12px !important;
+            white-space: nowrap !important;
+            vertical-align: baseline !important;
+            float: none !important;
+        }
+        
+        .tag-boost-item:last-child {
+            margin-right: 0 !important;
+        }
+        
+        .tag-boost-item .boost-label {
+            color: var(--secondary-text) !important;
+            margin-right: 4px !important;
+            display: inline !important;
+        }
+        
+        .tag-boost-item .boost-value {
+            color: #ffc107 !important;
+            font-weight: 600 !important;
+            display: inline !important;
         }
         
         /* AI Memo Retrieval Styles */
@@ -726,6 +825,41 @@
                     <strong>召回数量:</strong> ${data.results.length}
                 </p>
             `;
+            
+            // 如果启用TagMemo且有tagStats，显示统计信息
+            if (data.useTagMemo && data.tagStats) {
+                const stats = data.tagStats;
+                const statsDiv = document.createElement('div');
+                statsDiv.style.cssText = `
+                    margin-top: 10px;
+                    padding: 10px;
+                    background: rgba(255, 193, 7, 0.08);
+                    border-radius: 8px;
+                    border: 1px solid rgba(255, 193, 7, 0.3);
+                    font-size: 0.85em;
+                `;
+                
+                let tagsHTML = '';
+                if (stats.uniqueMatchedTags && stats.uniqueMatchedTags.length > 0) {
+                    tagsHTML = '<div style="margin-top: 5px;"><strong style="color: #ffc107;">匹配到的所有标签:</strong> ';
+                    stats.uniqueMatchedTags.forEach(tag => {
+                        tagsHTML += `<span class="tag-item" style="margin: 2px 3px;">${tag}</span>`;
+                    });
+                    tagsHTML += '</div>';
+                }
+                
+                statsDiv.innerHTML = `
+                    <strong style="color: #ffc107;">📊 Tag统计概览</strong>
+                    <div style="margin-top: 5px; color: var(--secondary-text);">
+                        总匹配次数: <span style="color: #ffc107; font-weight: 600;">${stats.totalTagMatches || 0}</span> |
+                        命中结果数: <span style="color: #ffc107; font-weight: 600;">${stats.resultsWithTags || 0}/${data.results.length}</span> |
+                        平均提权: <span style="color: #ffc107; font-weight: 600;">${stats.avgBoostFactor || '1.0'}</span>
+                    </div>
+                    ${tagsHTML}
+                `;
+                header.appendChild(statsDiv);
+            }
+            
             block.appendChild(header);
 
             data.results.forEach(r => {
@@ -738,22 +872,52 @@
                 const meta = document.createElement('div');
                 meta.className = 'rag-meta';
                 
-                // 构建分数显示（区分原始分数和最终分数）
-                let scoreDisplay = '';
-                if (data.useTagMemo && r.originalScore !== undefined) {
-                    scoreDisplay = `<span>最终Score: ${r.score.toFixed(3)}</span>`;
-                    if (r.originalScore !== r.score) {
-                        scoreDisplay += ` <span style="color: var(--secondary-text); font-size: 0.85em;">(原始: ${r.originalScore.toFixed(3)})</span>`;
+                // 构建带可视化的分数显示
+                let scoreHTML = '';
+                if (r.score !== undefined && r.score !== null) {
+                    const score = r.score;
+                    const originalScore = r.originalScore;
+                    const isBoosted = data.useTagMemo && originalScore !== undefined && originalScore !== score;
+                    
+                    // 确定评分等级和颜色
+                    let scoreClass = 'poor';
+                    if (score >= 0.8) scoreClass = 'excellent';
+                    else if (score >= 0.6) scoreClass = 'good';
+                    else if (score >= 0.4) scoreClass = 'fair';
+                    
+                    // 如果是Tag提权的结果，使用特殊样式
+                    if (isBoosted) scoreClass = 'boosted';
+                    
+                    const scoreContainer = document.createElement('div');
+                    scoreContainer.className = 'score-container';
+                    
+                    const scoreBadge = document.createElement('span');
+                    scoreBadge.className = `score-badge ${scoreClass}`;
+                    scoreBadge.textContent = `Score: ${score.toFixed(3)}`;
+                    scoreContainer.appendChild(scoreBadge);
+                    
+                    if (isBoosted) {
+                        const scoreDetail = document.createElement('span');
+                        scoreDetail.className = 'score-detail';
+                        scoreDetail.textContent = `原始: ${originalScore.toFixed(3)}`;
+                        scoreContainer.appendChild(scoreDetail);
                     }
-                } else if (r.score) {
-                    scoreDisplay = `<span>Score: ${r.score.toFixed(3)}</span>`;
+                    
+                    scoreHTML = scoreContainer.outerHTML;
                 }
                 
+                // 先添加来源和日期标签
                 meta.innerHTML = `
                     <span class="source-${r.source || 'unknown'}">来源: ${r.source || 'N/A'}</span>
                     ${r.date ? `<span class="date">日期: ${r.date}</span>` : ''}
-                    ${scoreDisplay}
                 `;
+                
+                // 如果有score，将其作为DOM元素添加
+                if (scoreHTML) {
+                    const tempDiv = document.createElement('div');
+                    tempDiv.innerHTML = scoreHTML;
+                    meta.appendChild(tempDiv.firstChild);
+                }
 
                 const toggleBtn = document.createElement('button');
                 toggleBtn.className = 'toggle-button';
@@ -782,21 +946,40 @@
                     const tagInfo = document.createElement('div');
                     tagInfo.className = 'matched-tags';
                     
-                    let tagsHTML = '<strong>匹配标签:</strong> ';
+                    // 标题
+                    const title = document.createElement('strong');
+                    title.textContent = '🏷️ 匹配标签';
+                    tagInfo.appendChild(title);
+                    
+                    // Tags列表
+                    const tagsList = document.createElement('div');
+                    tagsList.className = 'tags-list';
                     r.matchedTags.forEach(tag => {
-                        tagsHTML += `<span class="tag-item">${tag}</span>`;
+                        const tagSpan = document.createElement('span');
+                        tagSpan.className = 'tag-item';
+                        tagSpan.textContent = tag;
+                        tagsList.appendChild(tagSpan);
                     });
+                    tagInfo.appendChild(tagsList);
                     
-                    // 添加Tag提权信息
-                    const boostInfo = `
-                        <div class="tag-boost-info">
-                            Tag匹配得分: <span class="boost-value">${r.tagMatchScore?.toFixed(3) || 'N/A'}</span> |
-                            匹配数量: <span class="boost-value">${r.tagMatchCount || 0}</span> |
-                            提权倍数: <span class="boost-value">${r.boostFactor?.toFixed(4) || '1.0000'}</span>
-                        </div>
+                    // Tag提权信息 - 紧凑单行布局
+                    const boostInfo = document.createElement('div');
+                    boostInfo.className = 'tag-boost-info';
+                    boostInfo.innerHTML = `
+                        <span class="tag-boost-item">
+                            <span class="boost-label">Tag匹配得分:</span>
+                            <span class="boost-value">${r.tagMatchScore?.toFixed(3) || 'N/A'}</span>
+                        </span>
+                        <span class="tag-boost-item">
+                            <span class="boost-label">匹配数量:</span>
+                            <span class="boost-value">${r.tagMatchCount || 0}</span>
+                        </span>
+                        <span class="tag-boost-item">
+                            <span class="boost-label">提权倍数:</span>
+                            <span class="boost-value">${r.boostFactor?.toFixed(4) || '1.0000'}×</span>
+                        </span>
                     `;
-                    
-                    tagInfo.innerHTML = tagsHTML + boostInfo;
+                    tagInfo.appendChild(boostInfo);
                     content.appendChild(tagInfo);
                 }
                 
