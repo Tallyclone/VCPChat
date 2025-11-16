@@ -1092,7 +1092,19 @@ function renderFullContent(container, markdown, uid) {
         const replyList = document.createElement('div');
         replyList.className = 'reply-list';
         replyList.innerHTML = '<h3>💬 评论</h3>';
-        repliesMd.split('\n\n---\n').filter(r => r.trim()).forEach((replyMd, i) => {
+        
+        // 修复：正确解析楼层，使用 '---\n### 楼层' 作为分隔标记
+        // 先移除开头的 '---' 分隔符（如果存在）
+        let cleanedReplies = repliesMd.trim();
+        if (cleanedReplies.startsWith('---')) {
+            cleanedReplies = cleanedReplies.substring(3).trim();
+        }
+        
+        // 使用正则表达式分割楼层：匹配 '---' 后面跟着换行和 '### 楼层'
+        const floorSplitRegex = /\n---\n(?=### 楼层)/;
+        const floors = cleanedReplies.split(floorSplitRegex).filter(r => r.trim());
+        
+        floors.forEach((replyMd, i) => {
             if (!replyMd.trim()) return;
             const floor = i + 1;
             
