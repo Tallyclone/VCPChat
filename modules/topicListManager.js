@@ -382,8 +382,6 @@ window.topicListManager = (() => {
         const menu = document.createElement('div');
         menu.id = 'topicContextMenu';
         menu.classList.add('context-menu');
-        menu.style.top = `${event.clientY}px`;
-        menu.style.left = `${event.clientX}px`;
 
         const editTitleOption = document.createElement('div');
         editTitleOption.classList.add('context-menu-item');
@@ -550,8 +548,41 @@ window.topicListManager = (() => {
         };
         menu.appendChild(exportTopicOption);
         
-
+        // 智能定位逻辑：先隐藏菜单以测量尺寸
+        menu.style.visibility = 'hidden';
+        menu.style.position = 'absolute';
         document.body.appendChild(menu);
+
+        // 获取菜单和窗口尺寸
+        const menuWidth = menu.offsetWidth;
+        const menuHeight = menu.offsetHeight;
+        const windowWidth = window.innerWidth;
+        const windowHeight = window.innerHeight;
+
+        let top = event.clientY;
+        let left = event.clientX;
+
+        // 检查菜单是否会超出窗口底部
+        if (top + menuHeight > windowHeight) {
+            // 将菜单显示在鼠标上方
+            top = event.clientY - menuHeight;
+            // 如果上方空间也不够，则贴近顶部
+            if (top < 0) top = 5;
+        }
+
+        // 检查菜单是否会超出窗口右侧
+        if (left + menuWidth > windowWidth) {
+            // 将菜单显示在鼠标左侧
+            left = event.clientX - menuWidth;
+            // 如果左侧空间也不够，则贴近左边
+            if (left < 0) left = 5;
+        }
+
+        // 应用最终位置并显示菜单
+        menu.style.top = `${top}px`;
+        menu.style.left = `${left}px`;
+        menu.style.visibility = 'visible';
+        
         document.addEventListener('click', closeTopicContextMenuOnClickOutside, true);
     }
 

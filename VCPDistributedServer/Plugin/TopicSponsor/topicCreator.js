@@ -39,6 +39,12 @@ async function main() {
             case 'CheckTopicOwnership':
                 result = await handleCheckTopicOwnership(VchatDataURL, args);
                 break;
+            case 'ListUnlockedTopics':
+                result = await handleListUnlockedTopics(VchatDataURL, args);
+                break;
+            case 'ReadTopicContent':
+                result = await handleReadTopicContent(VchatDataURL, args);
+                break;
             default:
                 throw new Error(`未知的命令: ${commandName}`);
         }
@@ -185,6 +191,40 @@ async function handleCheckTopicOwnership(vchatPath, args) {
     }
 
     return await checkTopicOwnership(vchatPath, agentInfo, topicId, callerName);
+}
+
+async function handleListUnlockedTopics(vchatPath, args) {
+    const maidName = args.maid;
+
+    if (!maidName) {
+        throw new Error("请求中缺少 'maid' 参数。");
+    }
+
+    const agentInfo = await findAgentInfo(vchatPath, maidName);
+    if (!agentInfo) {
+        throw new Error(`未找到名为 "${maidName}" 的Agent。`);
+    }
+
+    return await listUnlockedTopics(vchatPath, agentInfo);
+}
+
+async function handleReadTopicContent(vchatPath, args) {
+    const maidName = args.maid;
+    const topicId = args.topic_id;
+
+    if (!maidName) {
+        throw new Error("请求中缺少 'maid' 参数。");
+    }
+    if (!topicId) {
+        throw new Error("请求中缺少 'topic_id' 参数。");
+    }
+
+    const agentInfo = await findAgentInfo(vchatPath, maidName);
+    if (!agentInfo) {
+        throw new Error(`未找到名为 "${maidName}" 的Agent。`);
+    }
+
+    return await readTopicContent(vchatPath, agentInfo, topicId);
 }
 
 // --- 辅助函数 ---
@@ -539,6 +579,90 @@ async function checkTopicOwnership(vchatPath, agentInfo, topicId, callerName) {
             is_owner: isOwner,
             creator_name: creatorName,
             topic_name: topic.name
+        }
+    };
+}
+
+async function listUnlockedTopics(vchatPath, agentInfo) {
+    const agentConfigPath = path.join(vchatPath, 'Agents', agentInfo.uuid, 'config.json');
+    const config = JSON.parse(await fs.readFile(agentConfigPath, 'utf-8'));
+    
+    // 筛选出所有未锁定的话题
+    const unlockedTopics = (config.topics || []).filter(topic => topic.locked === false);
+
+    // 收集话题的详细信息
+    const topicsInfo = [];
+    for (const topic of unlockedTopics) {
+        const historyPath = path.join(vchatPath, 'UserData', agentInfo.uuid, 'topics', topic.id, 'history.json');
+        let messageCount = 0;
+        try {
+            const history = JSON.parse(await fs.readFile(historyPath, 'utf-8'));
+            messageCount = history.length;
+        } catch (e) {
+            console.error(`Failed to read history for topic ${topic.id}:`, e);
+        }
+        
+        topicsInfo.push({
+            topic_id: topic.id,
+            topic_name: topic.name,
+            locked: topic.locked,
+            unread: topic.unread || false,
+            created_at: topic.createdAt,
+            message_count: messageCount
+        });
+    }
+
+    return {
+        status: 'success',
+        result: {
+            agent_name: agentInfo.name,
+            agent_id: agentInfo.uuid,
+            has_unlocked_topics: topicsInfo.length > 0,
+            unlocked_topics_count: topicsInfo.length,
+            topics: topicsInfo
+        }
+    };
+}
+
+async function readTopicContent(vchatPath, agentInfo, topicId) {
+    // 1. 读取 Agent 配置，获取话题信息
+    const agentConfigPath = path.join(vchatPath, 'Agents', agentInfo.uuid, 'config.json');
+    const config = JSON.parse(await fs.readFile(agentConfigPath, 'utf-8'));
+    
+    // 2. 查找指定的话题
+    const topic = (config.topics || []).find(t => t.id === topicId);
+    if (!topic) {
+        throw new Error(`话题 ${topicId} 不存在。`);
+    }
+
+    // 3. 读取话题的完整历史记录
+    const historyPath = path.join(vchatPath, 'UserData', agentInfo.uuid, 'topics', topicId, 'history.json');
+    let messages = [];
+    try {
+        const historyContent = await fs.readFile(historyPath, 'utf-8');
+        messages = JSON.parse(historyContent);
+    } catch (e) {
+        if (e.code === 'ENOENT') {
+            throw new Error(`话题 ${topicId} 的历史记录文件不存在。`);
+        }
+        throw new Error(`读取话题 ${topicId} 的历史记录失败: ${e.message}`);
+    }
+
+    // 4. 返回完整的话题内容
+    return {
+        status: 'success',
+        result: {
+            agent_name: agentInfo.name,
+            agent_id: agentInfo.uuid,
+            topic_id: topicId,
+            topic_name: topic.name,
+            topic_info: {
+                locked: topic.locked !== undefined ? topic.locked : true,
+                unread: topic.unread || false,
+                created_at: topic.createdAt
+            },
+            message_count: messages.length,
+            messages: messages
         }
     };
 }
