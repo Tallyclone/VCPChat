@@ -475,6 +475,10 @@ window.itemListManager = (() => {
      * Updates the DOM with unread count badges.
      * @param {object} counts - An object mapping agentId to its unread count.
      */
+    /**
+     * Part C: 更新未读徽章显示
+     * @param {object} counts - An object mapping agentId to its unread count.
+     */
     function updateUnreadBadges(counts) {
         // First, remove all existing badges to handle refreshes correctly
         document.querySelectorAll('#agentList .unread-badge').forEach(badge => badge.remove());
@@ -482,19 +486,58 @@ window.itemListManager = (() => {
         // Then, add the new ones
         for (const agentId in counts) {
             const count = counts[agentId];
-            if (count > 0) {
-                const listItem = itemListUl.querySelector(`li[data-item-id="${agentId}"][data-item-type="agent"]`);
-                if (listItem) {
-                    // Avoid adding a badge if one already exists (defensive)
-                    if (listItem.querySelector('.unread-badge')) continue;
-                    
-                    const unreadBadge = document.createElement('span');
-                    unreadBadge.className = 'unread-badge';
+            const listItem = itemListUl.querySelector(`li[data-item-id="${agentId}"][data-item-type="agent"]`);
+            
+            if (listItem) {
+                // Avoid adding a badge if one already exists (defensive)
+                if (listItem.querySelector('.unread-badge')) continue;
+                
+                const avatarImg = listItem.querySelector('.avatar');
+                if (!avatarImg) continue;
+                
+                const unreadBadge = document.createElement('span');
+                unreadBadge.className = 'unread-badge';
+                
+                if (count > 0) {
+                    // 显示数字
                     unreadBadge.textContent = count;
-                    listItem.appendChild(unreadBadge);
+                } else if (count === 0) {
+                    // count === 0 但在 counts 对象中，表示有未读标记但无计数，显示小点但无数字
+                    unreadBadge.classList.add('unread-badge-dot-only');
+                    unreadBadge.textContent = '';
                 }
+                
+                // 添加动画效果
+                unreadBadge.classList.add('badge-appear');
+                
+                listItem.appendChild(unreadBadge);
+                
+                // Part C: 触发头像缩放动画
+                triggerAvatarAnimation(avatarImg);
             }
         }
+    }
+
+    /**
+     * Part C: 触发头像缩放动画
+     * @param {HTMLElement} avatarElement - 头像元素
+     */
+    function triggerAvatarAnimation(avatarElement) {
+        if (!avatarElement) return;
+        
+        // 移除可能存在的动画类
+        avatarElement.classList.remove('avatar-animate');
+        
+        // 强制重绘
+        void avatarElement.offsetWidth;
+        
+        // 添加动画类
+        avatarElement.classList.add('avatar-animate');
+        
+        // 动画结束后移除类，以便下次可以再次触发
+        setTimeout(() => {
+            avatarElement.classList.remove('avatar-animate');
+        }, 600); // 与动画持续时间一致
     }
 
     // --- Public API ---
@@ -503,6 +546,7 @@ window.itemListManager = (() => {
         loadItems,
         highlightActiveItem,
         resetMouseEventStates,
-        findItemById // Expose the new function
+        findItemById, // Expose the new function
+        updateUnreadBadges // Part C: 暴露更新徽章函数供外部调用
     };
 })();

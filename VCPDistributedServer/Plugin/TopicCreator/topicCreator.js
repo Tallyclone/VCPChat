@@ -11,38 +11,175 @@ async function main() {
         // 1. 动态计算 VchatDataURL 路径
         const VchatDataURL = path.join(__dirname, '..', '..', '..', 'AppData');
 
-        // 2. 获取请求信息
-        const maidName = args.maid;
-        const topicName = args.topic_name;
-        const initialMessage = args.initial_message;
-
-        if (!maidName) {
-            throw new Error("请求中缺少 'maid' 参数。");
-        }
-        if (!topicName) {
-            throw new Error("请求中缺少 'topic_name' 参数。");
-        }
-        if (!initialMessage) {
-            throw new Error("请求中缺少 'initial_message' 参数。");
+        // 2. 获取工具名称
+        const toolName = args.tool_name;
+        
+        if (!toolName) {
+            throw new Error("请求中缺少 'tool_name' 参数。");
         }
 
-        // 3. 查找Agent信息
-        const agentInfo = await findAgentInfo(VchatDataURL, maidName);
-        if (!agentInfo) {
-            throw new Error(`未找到名为 "${maidName}" 的Agent。`);
+        // 3. 根据工具名称执行不同的命令
+        let result;
+        switch (toolName) {
+            case 'CreateTopic':
+                result = await handleCreateTopic(VchatDataURL, args);
+                break;
+            case 'ReadUnlockedTopics':
+                result = await handleReadUnlockedTopics(VchatDataURL, args);
+                break;
+            case 'CheckNewTopics':
+                result = await handleCheckNewTopics(VchatDataURL, args);
+                break;
+            case 'CheckUnreadMessages':
+                result = await handleCheckUnreadMessages(VchatDataURL, args);
+                break;
+            case 'ReplyToTopic':
+                result = await handleReplyToTopic(VchatDataURL, args);
+                break;
+            case 'CheckTopicOwnership':
+                result = await handleCheckTopicOwnership(VchatDataURL, args);
+                break;
+            default:
+                throw new Error(`未知的工具名称: ${toolName}`);
         }
 
-        // 4. 创建新话题
-        await createTopic(VchatDataURL, agentInfo, topicName, initialMessage);
-
-        // 5. 成功时，将结果字符串输出到 stdout
-        console.log(`[AgentTopicCreator] 成功创建了新的话题：${topicName}`);
+        // 4. 输出结果
+        console.log(JSON.stringify(result));
 
     } catch (error) {
         // 失败时，将JSON错误信息输出到 stderr，并以非零状态码退出
         console.error(JSON.stringify({ status: "error", error: `[AgentTopicCreator] ${error.message}` }));
         process.exit(1);
     }
+}
+
+// --- 命令处理函数 ---
+
+async function handleCreateTopic(vchatPath, args) {
+    const maidName = args.maid;
+    const topicName = args.topic_name;
+    const initialMessage = args.initial_message;
+
+    if (!maidName) {
+        throw new Error("请求中缺少 'maid' 参数。");
+    }
+    if (!topicName) {
+        throw new Error("请求中缺少 'topic_name' 参数。");
+    }
+    if (!initialMessage) {
+        throw new Error("请求中缺少 'initial_message' 参数。");
+    }
+
+    const agentInfo = await findAgentInfo(vchatPath, maidName);
+    if (!agentInfo) {
+        throw new Error(`未找到名为 "${maidName}" 的Agent。`);
+    }
+
+    await createTopic(vchatPath, agentInfo, topicName, initialMessage);
+
+    return {
+        status: 'success',
+        message: `成功创建了新的话题：${topicName}`,
+        agent_name: agentInfo.name,
+        topic_name: topicName
+    };
+}
+
+async function handleReadUnlockedTopics(vchatPath, args) {
+    const maidName = args.maid;
+    const includeRead = args.include_read || false;
+
+    if (!maidName) {
+        throw new Error("请求中缺少 'maid' 参数。");
+    }
+
+    const agentInfo = await findAgentInfo(vchatPath, maidName);
+    if (!agentInfo) {
+        throw new Error(`未找到名为 "${maidName}" 的Agent。`);
+    }
+
+    return await readUnlockedTopics(vchatPath, agentInfo, includeRead);
+}
+
+async function handleCheckNewTopics(vchatPath, args) {
+    const maidName = args.maid;
+    const days = args.days || 3;
+
+    if (!maidName) {
+        throw new Error("请求中缺少 'maid' 参数。");
+    }
+
+    const agentInfo = await findAgentInfo(vchatPath, maidName);
+    if (!agentInfo) {
+        throw new Error(`未找到名为 "${maidName}" 的Agent。`);
+    }
+
+    return await checkNewTopics(vchatPath, agentInfo, days);
+}
+
+async function handleCheckUnreadMessages(vchatPath, args) {
+    const maidName = args.maid;
+
+    if (!maidName) {
+        throw new Error("请求中缺少 'maid' 参数。");
+    }
+
+    const agentInfo = await findAgentInfo(vchatPath, maidName);
+    if (!agentInfo) {
+        throw new Error(`未找到名为 "${maidName}" 的Agent。`);
+    }
+
+    return await checkUnreadMessages(vchatPath, agentInfo);
+}
+
+async function handleReplyToTopic(vchatPath, args) {
+    const maidName = args.maid;
+    const topicId = args.topic_id;
+    const message = args.message;
+    const senderName = args.sender_name;
+
+    if (!maidName) {
+        throw new Error("请求中缺少 'maid' 参数。");
+    }
+    if (!topicId) {
+        throw new Error("请求中缺少 'topic_id' 参数。");
+    }
+    if (!message) {
+        throw new Error("请求中缺少 'message' 参数。");
+    }
+    if (!senderName) {
+        throw new Error("请求中缺少 'sender_name' 参数。");
+    }
+
+    const agentInfo = await findAgentInfo(vchatPath, maidName);
+    if (!agentInfo) {
+        throw new Error(`未找到名为 "${maidName}" 的Agent。`);
+    }
+
+    return await replyToTopic(vchatPath, agentInfo, topicId, message, senderName);
+}
+
+async function handleCheckTopicOwnership(vchatPath, args) {
+    const maidName = args.maid;
+    const topicId = args.topic_id;
+    const callerName = args.caller_name;
+
+    if (!maidName) {
+        throw new Error("请求中缺少 'maid' 参数。");
+    }
+    if (!topicId) {
+        throw new Error("请求中缺少 'topic_id' 参数。");
+    }
+    if (!callerName) {
+        throw new Error("请求中缺少 'caller_name' 参数。");
+    }
+
+    const agentInfo = await findAgentInfo(vchatPath, maidName);
+    if (!agentInfo) {
+        throw new Error(`未找到名为 "${maidName}" 的Agent。`);
+    }
+
+    return await checkTopicOwnership(vchatPath, agentInfo, topicId, callerName);
 }
 
 // --- 辅助函数 ---
@@ -134,6 +271,8 @@ async function createTopic(vchatPath, agentInfo, topicName, initialMessage) {
         const avatarPath = path.join(agentConfigDir, 'avatar.png');
         const avatarUrl = `file://${avatarPath.replace(/\\/g, '/')}`; // 确保是 file URL 兼容的路径
         const historyFilePath = path.join(newTopicPath, 'history.json');
+        
+        // 创建带有元数据的初始消息
         const initialHistory = [
             {
                 "role": "assistant",
@@ -146,7 +285,13 @@ async function createTopic(vchatPath, agentInfo, topicName, initialMessage) {
                 "avatarColor": agentInfo.avatarColor || "rgb(96,106,116)",
                 "isGroupMessage": false,
                 "agentId": agentUuid,
-                "finishReason": "completed"
+                "finishReason": "completed",
+                "_metadata": {
+                    "topicCreator": agentInfo.name,
+                    "creatorAgentId": agentUuid,
+                    "createdBy": "plugin",
+                    "createdAt": timestamp
+                }
             }
         ];
         await fs.writeFile(historyFilePath, JSON.stringify(initialHistory, null, 2), 'utf-8');
@@ -155,10 +300,20 @@ async function createTopic(vchatPath, agentInfo, topicName, initialMessage) {
         if (!agentConfig.topics) {
             agentConfig.topics = [];
         }
+        
+        // 添加带有扩展元数据的话题
         agentConfig.topics.unshift({
             id: newTopicId,
             name: topicName,
-            createdAt: timestamp
+            createdAt: timestamp,
+            locked: false,           // 插件创建的话题默认未锁定
+            unread: true,            // 插件创建的话题默认未读
+            creatorSource: "plugin:TopicCreator",
+            _creator: {
+                agentName: agentInfo.name,
+                agentId: agentUuid,
+                timestamp: timestamp
+            }
         });
         
         // 4. 设置新话题为当前话题
@@ -170,6 +325,188 @@ async function createTopic(vchatPath, agentInfo, topicName, initialMessage) {
     } catch (error) {
         throw new Error(`创建新话题时发生错误: ${error.message}`);
     }
+}
+
+// --- 新增的功能函数 ---
+
+async function readUnlockedTopics(vchatPath, agentInfo, includeRead = false) {
+    const agentConfigPath = path.join(vchatPath, 'Agents', agentInfo.uuid, 'config.json');
+    const config = JSON.parse(await fs.readFile(agentConfigPath, 'utf-8'));
+    
+    const unlockedTopics = (config.topics || []).filter(topic => {
+        if (topic.locked) return false;
+        if (!includeRead && !topic.unread) return false;
+        return true;
+    });
+
+    const topicsWithMessages = [];
+    for (const topic of unlockedTopics) {
+        const historyPath = path.join(vchatPath, 'UserData', agentInfo.uuid, 'topics', topic.id, 'history.json');
+        try {
+            const history = JSON.parse(await fs.readFile(historyPath, 'utf-8'));
+            topicsWithMessages.push({
+                topic_id: topic.id,
+                topic_name: topic.name,
+                locked: topic.locked || false,
+                unread: topic.unread || false,
+                created_at: topic.createdAt,
+                message_count: history.length,
+                messages: history
+            });
+        } catch (e) {
+            console.error(`Failed to read history for topic ${topic.id}:`, e);
+        }
+    }
+
+    return {
+        status: 'success',
+        agent_name: agentInfo.name,
+        agent_id: agentInfo.uuid,
+        topics: topicsWithMessages,
+        total_topics: topicsWithMessages.length
+    };
+}
+
+async function checkNewTopics(vchatPath, agentInfo, days = 3) {
+    const agentConfigPath = path.join(vchatPath, 'Agents', agentInfo.uuid, 'config.json');
+    const config = JSON.parse(await fs.readFile(agentConfigPath, 'utf-8'));
+    
+    const cutoffTime = Date.now() - (days * 24 * 60 * 60 * 1000);
+    const newUnlockedTopics = (config.topics || []).filter(topic => {
+        return !topic.locked && topic.createdAt > cutoffTime;
+    });
+
+    return {
+        status: 'success',
+        agent_name: agentInfo.name,
+        has_new_topics: newUnlockedTopics.length > 0,
+        new_topics_count: newUnlockedTopics.length,
+        topics: newUnlockedTopics.map(t => ({
+            topic_id: t.id,
+            topic_name: t.name,
+            created_at: t.createdAt,
+            age_hours: (Date.now() - t.createdAt) / (1000 * 60 * 60),
+            locked: t.locked || false
+        }))
+    };
+}
+
+async function checkUnreadMessages(vchatPath, agentInfo) {
+    const agentConfigPath = path.join(vchatPath, 'Agents', agentInfo.uuid, 'config.json');
+    const config = JSON.parse(await fs.readFile(agentConfigPath, 'utf-8'));
+    
+    const unreadTopics = (config.topics || []).filter(topic => topic.unread);
+
+    const unreadTopicsInfo = [];
+    for (const topic of unreadTopics) {
+        const historyPath = path.join(vchatPath, 'UserData', agentInfo.uuid, 'topics', topic.id, 'history.json');
+        try {
+            const history = JSON.parse(await fs.readFile(historyPath, 'utf-8'));
+            const lastMessage = history[history.length - 1];
+            unreadTopicsInfo.push({
+                topic_id: topic.id,
+                topic_name: topic.name,
+                locked: topic.locked || false,
+                unread: topic.unread,
+                last_message_time: lastMessage ? lastMessage.timestamp : topic.createdAt
+            });
+        } catch (e) {
+            console.error(`Failed to read history for topic ${topic.id}:`, e);
+        }
+    }
+
+    return {
+        status: 'success',
+        agent_name: agentInfo.name,
+        has_unread: unreadTopicsInfo.length > 0,
+        unread_topics: unreadTopicsInfo
+    };
+}
+
+async function replyToTopic(vchatPath, agentInfo, topicId, message, senderName) {
+    // 1. 检查话题是否存在且可操作
+    const agentConfigPath = path.join(vchatPath, 'Agents', agentInfo.uuid, 'config.json');
+    const config = JSON.parse(await fs.readFile(agentConfigPath, 'utf-8'));
+    const topic = config.topics.find(t => t.id === topicId);
+    
+    if (!topic) {
+        throw new Error(`话题 ${topicId} 不存在。`);
+    }
+    
+    if (topic.locked && !topic.unread) {
+        throw new Error(`话题 ${topicId} 已锁定且未标记为未读，无法添加回复。`);
+    }
+
+    // 2. 读取话题历史
+    const historyPath = path.join(vchatPath, 'UserData', agentInfo.uuid, 'topics', topicId, 'history.json');
+    const history = JSON.parse(await fs.readFile(historyPath, 'utf-8'));
+
+    // 3. 添加新消息（署名发送者）
+    const timestamp = Date.now();
+    const newMessage = {
+        role: 'assistant',
+        name: senderName,
+        content: message,
+        timestamp: timestamp,
+        id: `msg_${timestamp}_plugin_${generateRandomString(7)}`,
+        isThinking: false,
+        _metadata: {
+            isPluginReply: true,
+            originalSender: senderName,
+            targetAgent: agentInfo.name
+        }
+    };
+
+    history.push(newMessage);
+
+    // 4. 保存更新后的历史
+    await fs.writeFile(historyPath, JSON.stringify(history, null, 2), 'utf-8');
+
+    return {
+        status: 'success',
+        message: `成功在 ${agentInfo.name} 的话题 "${topic.name}" 中添加回复。`,
+        topic_id: topicId,
+        sender: senderName
+    };
+}
+
+async function checkTopicOwnership(vchatPath, agentInfo, topicId, callerName) {
+    // 1. 读取 config.json
+    const agentConfigPath = path.join(vchatPath, 'Agents', agentInfo.uuid, 'config.json');
+    const config = JSON.parse(await fs.readFile(agentConfigPath, 'utf-8'));
+    const topic = config.topics.find(t => t.id === topicId);
+    
+    if (!topic) {
+        throw new Error(`话题 ${topicId} 不存在。`);
+    }
+
+    // 2. 检查创建者信息
+    let creatorName = 'unknown';
+    let isOwner = false;
+
+    if (topic._creator && topic._creator.agentName) {
+        creatorName = topic._creator.agentName;
+        isOwner = creatorName === callerName;
+    } else {
+        // 如果没有 _creator 信息，尝试从 history.json 的第一条消息中读取
+        try {
+            const historyPath = path.join(vchatPath, 'UserData', agentInfo.uuid, 'topics', topicId, 'history.json');
+            const history = JSON.parse(await fs.readFile(historyPath, 'utf-8'));
+            if (history.length > 0 && history[0]._metadata) {
+                creatorName = history[0]._metadata.topicCreator || history[0].name || 'unknown';
+                isOwner = creatorName === callerName;
+            }
+        } catch (e) {
+            console.error(`Failed to read history for topic ${topicId}:`, e);
+        }
+    }
+
+    return {
+        status: 'success',
+        is_owner: isOwner,
+        creator_name: creatorName,
+        topic_name: topic.name
+    };
 }
 
 main();

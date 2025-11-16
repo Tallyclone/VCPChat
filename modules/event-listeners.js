@@ -651,6 +651,118 @@ export function setupEventListeners(deps) {
         await chatManager.createNewTopicForItem(currentSelectedItem.id, currentSelectedItem.type);
     });
 
+    // 【新建话题】按钮右键菜单 - 创建未锁定话题
+    currentItemActionBtn.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        
+        const currentSelectedItem = refs.currentSelectedItem.get();
+        if (!currentSelectedItem.id || currentSelectedItem.type !== 'agent') {
+            return; // 仅对 Agent 显示右键菜单
+        }
+        
+        showNewTopicButtonMenu(e, currentSelectedItem);
+    });
+
+    /**
+     * 显示【新建话题】按钮的右键菜单
+     */
+    function showNewTopicButtonMenu(event, currentSelectedItem) {
+        // 移除已存在的菜单
+        const existingMenu = document.getElementById('newTopicContextMenu');
+        if (existingMenu) existingMenu.remove();
+
+        const menu = document.createElement('div');
+        menu.id = 'newTopicContextMenu';
+        menu.classList.add('context-menu');
+        menu.style.top = `${event.clientY}px`;
+        menu.style.left = `${event.clientX}px`;
+
+        // 新建无锁话题选项
+        const createUnlockedOption = document.createElement('div');
+        createUnlockedOption.classList.add('context-menu-item');
+        createUnlockedOption.innerHTML = `<i class="fas fa-unlock"></i> 新建无锁话题（AI可查看与回复）`;
+        createUnlockedOption.onclick = async () => {
+            menu.remove();
+            await createNewTopicWithLockStatus(currentSelectedItem, false);
+        };
+        menu.appendChild(createUnlockedOption);
+
+        document.body.appendChild(menu);
+        
+        // 点击外部关闭菜单
+        const closeMenu = (e) => {
+            if (!menu.contains(e.target)) {
+                menu.remove();
+                document.removeEventListener('click', closeMenu, true);
+            }
+        };
+        setTimeout(() => {
+            document.addEventListener('click', closeMenu, true);
+        }, 0);
+    }
+
+    /**
+     * 创建指定锁定状态的话题
+     */
+    async function createNewTopicWithLockStatus(currentSelectedItem, locked = true) {
+        if (!currentSelectedItem.id) {
+            uiHelperFunctions.showToastNotification("请先选择一个Agent。", 'error');
+            return;
+        }
+        
+        const newTopicName = `新话题 ${new Date().toLocaleTimeString([], {
+            hour: '2-digit', minute: '2-digit', second: '2-digit'
+        })}`;
+        
+        try {
+            const result = await window.electronAPI.createNewTopicForAgent(
+                currentSelectedItem.id,
+                newTopicName,
+                false, // isBranch
+                locked // 指定锁定状态
+            );
+            
+            if (result && result.success && result.topicId) {
+                refs.currentTopicId.set(result.topicId);
+                refs.currentChatHistory.set([]);
+                
+                if (window.messageRenderer) {
+                    window.messageRenderer.setCurrentTopicId(result.topicId);
+                    window.messageRenderer.clearChat();
+                }
+                
+                localStorage.setItem(`lastActiveTopic_${currentSelectedItem.id}_agent`, result.topicId);
+                
+                // 启动文件监听器
+                const agentConfigForWatcher = currentSelectedItem.config || currentSelectedItem;
+                if (window.electronAPI.watcherStart && agentConfigForWatcher?.agentDataPath) {
+                    const historyFilePath = `${agentConfigForWatcher.agentDataPath}\\topics\\${result.topicId}\\history.json`;
+                    await window.electronAPI.watcherStart(historyFilePath, currentSelectedItem.id, result.topicId);
+                }
+                
+                // 刷新话题列表
+                if (document.getElementById('tabContentTopics').classList.contains('active')) {
+                    if (window.topicListManager) await window.topicListManager.loadTopicList();
+                }
+                
+                // 显示时间戳气泡
+                if (chatManager && chatManager.displayTopicTimestampBubble) {
+                    await chatManager.displayTopicTimestampBubble(currentSelectedItem.id, 'agent', result.topicId);
+                }
+                
+                uiHelperFunctions.showToastNotification(
+                    locked ? '已创建新话题（已锁定）' : '已创建新话题（未锁定，AI可查看）',
+                    'success'
+                );
+            } else {
+                uiHelperFunctions.showToastNotification(`创建新话题失败: ${result ? result.error : '未知错误'}`, 'error');
+            }
+        } catch (error) {
+            console.error('创建话题时出错:', error);
+            uiHelperFunctions.showToastNotification(`创建话题时出错: ${error.message}`, 'error');
+        }
+    }
+
     clearNotificationsBtn.addEventListener('click', () => {
         document.getElementById('notificationsList').innerHTML = '';
     });

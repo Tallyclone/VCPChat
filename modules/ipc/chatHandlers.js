@@ -233,7 +233,14 @@ function initialize(mainWindow, context) {
     
                 // 仅当 topics 确实存在且为数组时返回它，否则返回空数组
                 if (config && config.topics && Array.isArray(config.topics)) {
-                    return config.topics;
+                    // Part A: 历史数据兼容处理 - 自动为缺少新字段的话题添加默认值
+                    const normalizedTopics = config.topics.map(topic => ({
+                        ...topic,
+                        locked: topic.locked !== undefined ? topic.locked : true,
+                        unread: topic.unread !== undefined ? topic.unread : false,
+                        creatorSource: topic.creatorSource || 'unknown'
+                    }));
+                    return normalizedTopics;
                 }
                 // 如果没有 topics 字段或格式不正确，返回空数组，让前端处理
                 return [];
@@ -247,7 +254,7 @@ function initialize(mainWindow, context) {
         }
     });
 
-    ipcMain.handle('create-new-topic-for-agent', async (event, agentId, topicName) => {
+    ipcMain.handle('create-new-topic-for-agent', async (event, agentId, topicName, isBranch = false, locked = true) => {
         try {
             const configPath = path.join(AGENT_DIR, agentId, 'config.json');
             if (!await fs.pathExists(configPath)) return { error: `Agent ${agentId} 的配置文件不存在。` };
@@ -270,7 +277,15 @@ function initialize(mainWindow, context) {
             }
 
             const newTopicId = `topic_${Date.now()}`;
-            const newTopic = { id: newTopicId, name: topicName || `新话题 ${config.topics.length + 1}`, createdAt: Date.now() };
+            const timestamp = Date.now();
+            const newTopic = {
+                id: newTopicId,
+                name: topicName || `新话题 ${config.topics.length + 1}`,
+                createdAt: timestamp,
+                locked: locked,              // Part A: 新增锁定状态，默认 true
+                unread: false,               // Part A: 新增未读标记，默认 false
+                creatorSource: "ui"          // Part A: 新增创建来源，UI创建标记为 "ui"
+            };
             
             if (agentConfigManager) {
                 const result = await agentConfigManager.updateAgentConfig(agentId, existingConfig => ({
@@ -953,6 +968,76 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
         }
     });
 
+    /**
+     * Part C: 智能计数逻辑辅助函数
+     * 判断是否应该激活计数
+     * @param {Array} history - 消息历史
+     * @returns {boolean}
+     */
+    function shouldActivateCount(history) {
+        if (!history || history.length === 0) return false;
+        
+        // 过滤掉系统消息
+        const nonSystemMessages = history.filter(msg => msg.role !== 'system');
+        
+        if (nonSystemMessages.length === 0) {
+            return true; // 没有用户消息
+        }
+        
+        // 检查倒数第二条消息（非系统消息）是否为用户消息
+        if (nonSystemMessages.length >= 2) {
+            const secondLast = nonSystemMessages[nonSystemMessages.length - 2];
+            return secondLast.role !== 'user';
+        }
+        
+        // 只有一条非系统消息
+        return nonSystemMessages[0].role !== 'user';
+    }
+
+    /**
+     * Part C: 计算未读消息数量
+     * @param {Array} history - 消息历史
+     * @returns {number}
+     */
+    function countUnreadMessages(history) {
+        // 从最后一条消息开始，向前计数直到遇到用户消息
+        let count = 0;
+        const nonSystemMessages = history.filter(msg => msg.role !== 'system');
+        
+        for (let i = nonSystemMessages.length - 1; i >= 0; i--) {
+            if (nonSystemMessages[i].role === 'user') {
+                break;
+            }
+            count++;
+        }
+        
+        return count;
+    }
+
+    /**
+     * Part C: 计算单个话题的未读消息数
+     * @param {Object} topic - 话题对象
+     * @param {Array} history - 话题历史消息
+     * @returns {number} - 未读消息数，-1 表示仅显示小点
+     */
+    function calculateTopicUnreadCount(topic, history) {
+        // 如果话题被标记为未读，但未满足计数条件，返回 -1 表示仅显示小点
+        if (topic.unread === true) {
+            // 检查是否满足计数条件
+            if (topic.locked === false && shouldActivateCount(history)) {
+                return countUnreadMessages(history);
+            }
+            return -1; // 仅显示小点，不显示数字
+        }
+        
+        // 如果话题未标记为未读，检查是否满足自动计数条件
+        if (topic.locked === false && shouldActivateCount(history)) {
+            return countUnreadMessages(history);
+        }
+        
+        return 0; // 不显示
+    }
+
     ipcMain.handle('get-unread-topic-counts', async () => {
         const counts = {};
         try {
@@ -960,7 +1045,8 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
             for (const dirent of agentDirs) {
                 if (dirent.isDirectory()) {
                     const agentId = dirent.name;
-                    let unreadCount = 0;
+                    let totalCount = 0;
+                    let hasUnreadMarker = false; // 用于标记是否有未读标记但无计数
                     const configPath = path.join(AGENT_DIR, agentId, 'config.json');
 
                     if (await fs.pathExists(configPath)) {
@@ -971,12 +1057,12 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
                                 if (await fs.pathExists(historyPath)) {
                                     try {
                                         const history = await fs.readJson(historyPath);
-                                        // 检查整个历史记录中是否没有任何一条消息的 role 是 'user'
-                                        if (Array.isArray(history) && history.length > 0) {
-                                            const hasUserMessage = history.some(message => message.role === 'user');
-                                            if (!hasUserMessage) {
-                                                unreadCount++;
-                                            }
+                                        const topicCount = calculateTopicUnreadCount(topic, history);
+                                        if (topicCount > 0) {
+                                            totalCount += topicCount;
+                                        } else if (topicCount === -1) {
+                                            // 有未读标记但无计数，记录这个状态
+                                            hasUnreadMarker = true;
                                         }
                                     } catch (readJsonError) {
                                         console.error(`读取 history.json 失败: ${historyPath}`, readJsonError);
@@ -985,8 +1071,13 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
                             }
                         }
                     }
-                    if (unreadCount > 0) {
-                        counts[agentId] = unreadCount;
+                    
+                    // 如果有计数，显示数字
+                    if (totalCount > 0) {
+                        counts[agentId] = totalCount;
+                    } else if (hasUnreadMarker) {
+                        // 如果只有未读标记没有计数，返回 0（前端会识别为仅显示小点）
+                        counts[agentId] = 0;
                     }
                 }
             }
@@ -994,6 +1085,107 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
         } catch (error) {
             console.error('获取未读话题计数时出错:', error);
             return { success: false, error: error.message, counts: {} };
+        }
+    });
+
+    // Part A: 切换话题锁定状态
+    ipcMain.handle('toggle-topic-lock', async (event, agentId, topicId) => {
+        try {
+            const agentConfigPath = path.join(AGENT_DIR, agentId, 'config.json');
+            if (!await fs.pathExists(agentConfigPath)) {
+                return { success: false, error: `Agent ${agentId} 的配置文件不存在` };
+            }
+
+            let config;
+            try {
+                config = await fs.readJson(agentConfigPath);
+            } catch (e) {
+                console.error(`读取Agent ${agentId} 配置文件失败 (toggle-topic-lock):`, e);
+                return { success: false, error: `读取配置文件失败: ${e.message}` };
+            }
+
+            if (!config.topics || !Array.isArray(config.topics)) {
+                return { success: false, error: '配置文件损坏或缺少话题列表' };
+            }
+
+            const topic = config.topics.find(t => t.id === topicId);
+            if (!topic) {
+                return { success: false, error: `未找到话题 ${topicId}` };
+            }
+
+            // Part A: 历史数据兼容 - 如果话题没有 locked 字段，默认设置为 true
+            if (topic.locked === undefined) {
+                topic.locked = true;
+            }
+
+            // 切换锁定状态
+            topic.locked = !topic.locked;
+
+            if (agentConfigManager) {
+                await agentConfigManager.updateAgentConfig(agentId, existingConfig => ({
+                    ...existingConfig,
+                    topics: config.topics
+                }));
+            } else {
+                await fs.writeJson(agentConfigPath, config, { spaces: 2 });
+            }
+
+            return {
+                success: true,
+                locked: topic.locked,
+                message: topic.locked ? '话题已锁定' : '话题已解锁'
+            };
+        } catch (error) {
+            console.error('[toggleTopicLock] Error:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // Part A: 设置话题未读状态
+    ipcMain.handle('set-topic-unread', async (event, agentId, topicId, unread) => {
+        try {
+            const agentConfigPath = path.join(AGENT_DIR, agentId, 'config.json');
+            if (!await fs.pathExists(agentConfigPath)) {
+                return { success: false, error: `Agent ${agentId} 的配置文件不存在` };
+            }
+
+            let config;
+            try {
+                config = await fs.readJson(agentConfigPath);
+            } catch (e) {
+                console.error(`读取Agent ${agentId} 配置文件失败 (set-topic-unread):`, e);
+                return { success: false, error: `读取配置文件失败: ${e.message}` };
+            }
+
+            if (!config.topics || !Array.isArray(config.topics)) {
+                return { success: false, error: '配置文件损坏或缺少话题列表' };
+            }
+
+            const topic = config.topics.find(t => t.id === topicId);
+            if (!topic) {
+                return { success: false, error: `未找到话题 ${topicId}` };
+            }
+
+            // Part A: 历史数据兼容 - 如果话题没有 unread 字段，默认设置为 false
+            if (topic.unread === undefined) {
+                topic.unread = false;
+            }
+
+            topic.unread = unread;
+
+            if (agentConfigManager) {
+                await agentConfigManager.updateAgentConfig(agentId, existingConfig => ({
+                    ...existingConfig,
+                    topics: config.topics
+                }));
+            } else {
+                await fs.writeJson(agentConfigPath, config, { spaces: 2 });
+            }
+
+            return { success: true, unread: topic.unread };
+        } catch (error) {
+            console.error('[setTopicUnread] Error:', error);
+            return { success: false, error: error.message };
         }
     });
 }
