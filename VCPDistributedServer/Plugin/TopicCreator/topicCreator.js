@@ -11,16 +11,16 @@ async function main() {
         // 1. 动态计算 VchatDataURL 路径
         const VchatDataURL = path.join(__dirname, '..', '..', '..', 'AppData');
 
-        // 2. 获取工具名称
-        const toolName = args.tool_name;
+        // 2. 获取命令名称（优先使用 command，兼容旧版 tool_name）
+        const commandName = args.command || args.tool_name;
         
-        if (!toolName) {
-            throw new Error("请求中缺少 'tool_name' 参数。");
+        if (!commandName) {
+            throw new Error("请求中缺少 'command' 参数。");
         }
 
-        // 3. 根据工具名称执行不同的命令
+        // 3. 根据命令名称执行不同的命令
         let result;
-        switch (toolName) {
+        switch (commandName) {
             case 'CreateTopic':
                 result = await handleCreateTopic(VchatDataURL, args);
                 break;
@@ -40,7 +40,7 @@ async function main() {
                 result = await handleCheckTopicOwnership(VchatDataURL, args);
                 break;
             default:
-                throw new Error(`未知的工具名称: ${toolName}`);
+                throw new Error(`未知的命令: ${commandName}`);
         }
 
         // 4. 输出结果
@@ -75,13 +75,18 @@ async function handleCreateTopic(vchatPath, args) {
         throw new Error(`未找到名为 "${maidName}" 的Agent。`);
     }
 
-    await createTopic(vchatPath, agentInfo, topicName, initialMessage);
+    const topicId = await createTopic(vchatPath, agentInfo, topicName, initialMessage);
 
     return {
         status: 'success',
-        message: `成功创建了新的话题：${topicName}`,
-        agent_name: agentInfo.name,
-        topic_name: topicName
+        result: {
+            message: `成功创建了新的话题：${topicName}`,
+            topic_id: topicId,
+            topic_name: topicName,
+            agent_name: agentInfo.name,
+            agent_id: agentInfo.uuid,
+            initial_message: initialMessage
+        }
     };
 }
 
@@ -322,6 +327,9 @@ async function createTopic(vchatPath, agentInfo, topicName, initialMessage) {
         // 5. 将更新后的配置写回到 Agents 目录
         await fs.writeFile(agentConfigPath, JSON.stringify(agentConfig, null, 2), 'utf-8');
 
+        // 6. 返回新话题ID
+        return newTopicId;
+
     } catch (error) {
         throw new Error(`创建新话题时发生错误: ${error.message}`);
     }
@@ -360,10 +368,12 @@ async function readUnlockedTopics(vchatPath, agentInfo, includeRead = false) {
 
     return {
         status: 'success',
-        agent_name: agentInfo.name,
-        agent_id: agentInfo.uuid,
-        topics: topicsWithMessages,
-        total_topics: topicsWithMessages.length
+        result: {
+            agent_name: agentInfo.name,
+            agent_id: agentInfo.uuid,
+            topics: topicsWithMessages,
+            total_topics: topicsWithMessages.length
+        }
     };
 }
 
@@ -378,16 +388,18 @@ async function checkNewTopics(vchatPath, agentInfo, days = 3) {
 
     return {
         status: 'success',
-        agent_name: agentInfo.name,
-        has_new_topics: newUnlockedTopics.length > 0,
-        new_topics_count: newUnlockedTopics.length,
-        topics: newUnlockedTopics.map(t => ({
-            topic_id: t.id,
-            topic_name: t.name,
-            created_at: t.createdAt,
-            age_hours: (Date.now() - t.createdAt) / (1000 * 60 * 60),
-            locked: t.locked || false
-        }))
+        result: {
+            agent_name: agentInfo.name,
+            has_new_topics: newUnlockedTopics.length > 0,
+            new_topics_count: newUnlockedTopics.length,
+            topics: newUnlockedTopics.map(t => ({
+                topic_id: t.id,
+                topic_name: t.name,
+                created_at: t.createdAt,
+                age_hours: (Date.now() - t.createdAt) / (1000 * 60 * 60),
+                locked: t.locked || false
+            }))
+        }
     };
 }
 
@@ -417,15 +429,18 @@ async function checkUnreadMessages(vchatPath, agentInfo) {
 
     return {
         status: 'success',
-        agent_name: agentInfo.name,
-        has_unread: unreadTopicsInfo.length > 0,
-        unread_topics: unreadTopicsInfo
+        result: {
+            agent_name: agentInfo.name,
+            has_unread: unreadTopicsInfo.length > 0,
+            unread_topics: unreadTopicsInfo
+        }
     };
 }
 
 async function replyToTopic(vchatPath, agentInfo, topicId, message, senderName) {
     // 1. 检查话题是否存在且可操作
     const agentConfigPath = path.join(vchatPath, 'Agents', agentInfo.uuid, 'config.json');
+    const agentConfigDir = path.join(vchatPath, 'Agents', agentInfo.uuid);
     const config = JSON.parse(await fs.readFile(agentConfigPath, 'utf-8'));
     const topic = config.topics.find(t => t.id === topicId);
     
@@ -441,19 +456,29 @@ async function replyToTopic(vchatPath, agentInfo, topicId, message, senderName) 
     const historyPath = path.join(vchatPath, 'UserData', agentInfo.uuid, 'topics', topicId, 'history.json');
     const history = JSON.parse(await fs.readFile(historyPath, 'utf-8'));
 
-    // 3. 添加新消息（署名发送者）
+    // 3. 添加新消息（使用与 CreateTopic 一致的完整参数）
     const timestamp = Date.now();
+    const avatarPath = path.join(agentConfigDir, 'avatar.png');
+    const avatarUrl = `file://${avatarPath.replace(/\\/g, '/')}`;
+    
     const newMessage = {
         role: 'assistant',
         name: senderName,
         content: message,
         timestamp: timestamp,
-        id: `msg_${timestamp}_plugin_${generateRandomString(7)}`,
+        id: `msg_${timestamp}_assistant_${generateRandomString(7)}`,
         isThinking: false,
+        avatarUrl: avatarUrl,
+        avatarColor: agentInfo.avatarColor || "rgb(96,106,116)",
+        isGroupMessage: false,
+        agentId: agentInfo.uuid,
+        finishReason: "completed",
         _metadata: {
             isPluginReply: true,
             originalSender: senderName,
-            targetAgent: agentInfo.name
+            targetAgent: agentInfo.name,
+            createdBy: "plugin",
+            createdAt: timestamp
         }
     };
 
@@ -464,9 +489,16 @@ async function replyToTopic(vchatPath, agentInfo, topicId, message, senderName) 
 
     return {
         status: 'success',
-        message: `成功在 ${agentInfo.name} 的话题 "${topic.name}" 中添加回复。`,
-        topic_id: topicId,
-        sender: senderName
+        result: {
+            message: `成功在 ${agentInfo.name} 的话题 "${topic.name}" 中添加回复。`,
+            topic_id: topicId,
+            topic_name: topic.name,
+            sender: senderName,
+            message_id: newMessage.id,
+            timestamp: timestamp,
+            agent_name: agentInfo.name,
+            agent_id: agentInfo.uuid
+        }
     };
 }
 
@@ -503,9 +535,11 @@ async function checkTopicOwnership(vchatPath, agentInfo, topicId, callerName) {
 
     return {
         status: 'success',
-        is_owner: isOwner,
-        creator_name: creatorName,
-        topic_name: topic.name
+        result: {
+            is_owner: isOwner,
+            creator_name: creatorName,
+            topic_name: topic.name
+        }
     };
 }
 

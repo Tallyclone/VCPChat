@@ -199,11 +199,18 @@ window.itemListManager = (() => {
                 li.dataset.itemId = item.id;
                 li.dataset.itemType = item.type;
 
+                // 创建头像包装器
+                const avatarWrapper = document.createElement('div');
+                avatarWrapper.classList.add('avatar-wrapper');
+
                 const avatarImg = document.createElement('img');
                 avatarImg.classList.add('avatar');
                 avatarImg.src = item.avatarUrl ? `${item.avatarUrl}${item.avatarUrl.includes('?') ? '&' : '?'}t=${Date.now()}` : (item.type === 'group' ? 'assets/default_group_avatar.png' : 'assets/default_avatar.png');
                 avatarImg.alt = `${item.name} 头像`;
                 avatarImg.onerror = () => { avatarImg.src = (item.type === 'group' ? 'assets/default_group_avatar.png' : 'assets/default_avatar.png'); };
+
+                // 将头像添加到包装器中
+                avatarWrapper.appendChild(avatarImg);
 
                 const nameSpan = document.createElement('span');
                 nameSpan.classList.add('agent-name');
@@ -245,7 +252,7 @@ window.itemListManager = (() => {
                     }
                 }
 
-                li.appendChild(avatarImg);
+                li.appendChild(avatarWrapper);
                 li.appendChild(nameSpan);
 
 
@@ -492,7 +499,11 @@ window.itemListManager = (() => {
                 // Avoid adding a badge if one already exists (defensive)
                 if (listItem.querySelector('.unread-badge')) continue;
                 
-                const avatarImg = listItem.querySelector('.avatar');
+                // 找到头像包装器
+                const avatarWrapper = listItem.querySelector('.avatar-wrapper');
+                if (!avatarWrapper) continue;
+                
+                const avatarImg = avatarWrapper.querySelector('.avatar');
                 if (!avatarImg) continue;
                 
                 const unreadBadge = document.createElement('span');
@@ -510,7 +521,8 @@ window.itemListManager = (() => {
                 // 添加动画效果
                 unreadBadge.classList.add('badge-appear');
                 
-                listItem.appendChild(unreadBadge);
+                // 将徽章添加到头像包装器中，而不是列表项
+                avatarWrapper.appendChild(unreadBadge);
                 
                 // Part C: 触发头像缩放动画
                 triggerAvatarAnimation(avatarImg);

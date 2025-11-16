@@ -665,24 +665,34 @@ body.light-theme .grid-cell[data-function="none"]:hover {
 
 
 /* Unread Topic Badge */
-#agentList li {
-    position: relative; /* Ensure the badge can be positioned relative to the list item */
+/* 为头像创建一个定位包装器 */
+.agent-list li {
+    position: relative;
+}
+
+/* 头像包装器，用于定位未读徽章 */
+.avatar-wrapper {
+    position: relative;
+    display: inline-block;
+    flex-shrink: 0;
 }
 
 .unread-badge {
     position: absolute;
-    top: 2px;
-    left: 2px; /* Position near the avatar */
+    top: -2px; /* 相对于头像顶部，略微向上偏移以贴近边缘 */
+    left: -2px; /* 相对于头像左边，略微向左偏移以贴近边缘 */
     background-color: var(--highlight-text); /* Use theme highlight color */
     color: var(--text-on-accent); /* Use theme text color for accents */
     border-radius: 50%;
-    width: 16px;
-    height: 16px;
-    font-size: 10px;
+    min-width: 16px; /* 使用 min-width 以适应更大的数字 */
+    height: 16px; /* 徽章高度 */
+    padding: 0 4px; /* 为数字较大时添加水平内边距 */
+    font-size: 10px; /* 字体大小 */
     font-weight: bold;
     line-height: 16px; /* Vertically center the number */
     text-align: center;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4); /* 增强阴影以突出显示 */
     z-index: 10;
-    border: 1px solid rgba(255, 255, 255, 0.2); /* Add a subtle border */
+    border: 2px solid var(--secondary-bg); /* 添加背景色边框，使其与背景分离 */
+    box-sizing: border-box; /* 确保边框和内边距包含在尺寸内 */
 }

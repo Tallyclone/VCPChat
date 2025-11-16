@@ -680,7 +680,7 @@ export function setupEventListeners(deps) {
         // 新建无锁话题选项
         const createUnlockedOption = document.createElement('div');
         createUnlockedOption.classList.add('context-menu-item');
-        createUnlockedOption.innerHTML = `<i class="fas fa-unlock"></i> 新建无锁话题（AI可查看与回复）`;
+        createUnlockedOption.innerHTML = `<i class="fas fa-unlock"></i> 新建无锁话题`;
         createUnlockedOption.onclick = async () => {
             menu.remove();
             await createNewTopicWithLockStatus(currentSelectedItem, false);
@@ -703,6 +703,7 @@ export function setupEventListeners(deps) {
 
     /**
      * 创建指定锁定状态的话题
+     * 通过扩展后端 API 来创建带指定锁定状态的话题，然后使用 chatManager 的标准流程切换到该话题
      */
     async function createNewTopicWithLockStatus(currentSelectedItem, locked = true) {
         if (!currentSelectedItem.id) {
@@ -715,6 +716,7 @@ export function setupEventListeners(deps) {
         })}`;
         
         try {
+            // 调用后端 API 创建话题，传入 locked 参数
             const result = await window.electronAPI.createNewTopicForAgent(
                 currentSelectedItem.id,
                 newTopicName,
@@ -723,31 +725,10 @@ export function setupEventListeners(deps) {
             );
             
             if (result && result.success && result.topicId) {
-                refs.currentTopicId.set(result.topicId);
-                refs.currentChatHistory.set([]);
-                
-                if (window.messageRenderer) {
-                    window.messageRenderer.setCurrentTopicId(result.topicId);
-                    window.messageRenderer.clearChat();
-                }
-                
-                localStorage.setItem(`lastActiveTopic_${currentSelectedItem.id}_agent`, result.topicId);
-                
-                // 启动文件监听器
-                const agentConfigForWatcher = currentSelectedItem.config || currentSelectedItem;
-                if (window.electronAPI.watcherStart && agentConfigForWatcher?.agentDataPath) {
-                    const historyFilePath = `${agentConfigForWatcher.agentDataPath}\\topics\\${result.topicId}\\history.json`;
-                    await window.electronAPI.watcherStart(historyFilePath, currentSelectedItem.id, result.topicId);
-                }
-                
-                // 刷新话题列表
-                if (document.getElementById('tabContentTopics').classList.contains('active')) {
-                    if (window.topicListManager) await window.topicListManager.loadTopicList();
-                }
-                
-                // 显示时间戳气泡
-                if (chatManager && chatManager.displayTopicTimestampBubble) {
-                    await chatManager.displayTopicTimestampBubble(currentSelectedItem.id, 'agent', result.topicId);
+                // 使用 chatManager 的 selectTopic 方法来切换到新创建的话题
+                // 这会触发所有必要的状态更新、UI刷新和文件监听器启动
+                if (chatManager && chatManager.selectTopic) {
+                    await chatManager.selectTopic(result.topicId);
                 }
                 
                 uiHelperFunctions.showToastNotification(
@@ -1033,9 +1014,8 @@ export function setupEventListeners(deps) {
             handleContinueWriting(currentInputText);
         }
 
-        if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'n' || e.key === 'N')) {
             e.preventDefault();
-            console.log('[快捷键] 执行快速新建话题');
             
             const currentSelectedItem = refs.currentSelectedItem.get();
             if (!currentSelectedItem.id) {
@@ -1048,14 +1028,39 @@ export function setupEventListeners(deps) {
                 return;
             }
             
-            // 调用chatManager的创建新话题功能
-            if (chatManager && chatManager.createNewTopicForItem) {
-                chatManager.createNewTopicForItem(currentSelectedItem.id, currentSelectedItem.type);
+            // 检查是否按下 Shift 键
+            if (e.shiftKey) {
+                // Ctrl/Command + Shift + N: 创建未上锁的话题
+                console.log('[快捷键] 执行快速新建未上锁话题');
+                createNewTopicWithLockStatus(currentSelectedItem, false);
             } else {
-                uiHelperFunctions.showToastNotification('无法创建新话题：功能不可用', 'error');
+                // Ctrl/Command + N: 创建普通话题（已上锁）
+                console.log('[快捷键] 执行快速新建话题');
+                if (chatManager && chatManager.createNewTopicForItem) {
+                    chatManager.createNewTopicForItem(currentSelectedItem.id, currentSelectedItem.type);
+                } else {
+                    uiHelperFunctions.showToastNotification('无法创建新话题：功能不可用', 'error');
+                }
             }
         }
     });
+
+    // 监听来自主进程的全局快捷键触发的创建未锁定话题事件
+    if (window.electronAPI && window.electronAPI.onCreateUnlockedTopic) {
+        window.electronAPI.onCreateUnlockedTopic(() => {
+            console.log('[快捷键] 收到来自主进程的创建未锁定话题请求');
+            const currentSelectedItem = refs.currentSelectedItem.get();
+            if (!currentSelectedItem.id) {
+                uiHelperFunctions.showToastNotification('请先选择一个Agent', 'warning');
+                return;
+            }
+            if (currentSelectedItem.type !== 'agent') {
+                uiHelperFunctions.showToastNotification('此快捷键仅适用于Agent，不适用于群组', 'warning');
+                return;
+            }
+            createNewTopicWithLockStatus(currentSelectedItem, false);
+        });
+    }
 
     if (seamFixer && notificationsSidebar) {
         const setSeamFixerWidth = () => {
