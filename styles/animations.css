@@ -137,3 +137,108 @@ body.light-theme .topic-item.active-topic-glowing::before {
 /* =======================================================
  * VCPChat Title: Animated Gradient Text (Removed for performance)
  * ======================================================= */
+
+/* =======================================================
+ * Part C: Topic Locking System - Avatar and Badge Animations
+ * ======================================================= */
+
+/* 头像缩放动画 - Juicy 效果 */
+@keyframes avatar-bounce {
+  0% {
+    transform: scale(1);
+  }
+  25% {
+    transform: scale(1.15);
+  }
+  50% {
+    transform: scale(0.95);
+  }
+  75% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.avatar-animate {
+  animation: avatar-bounce 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+/* 徽章出现动画 */
+@keyframes badge-appear {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.badge-appear {
+  animation: badge-appear 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+/* 未读徽章样式 */
+.unread-badge {
+  position: absolute;
+  top: -5px;
+  left: -5px;
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+  color: white;
+  border-radius: 50%;
+  min-width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: bold;
+  padding: 2px;
+  box-shadow: 0 2px 8px rgba(238, 90, 111, 0.4);
+  z-index: 10;
+  border: 2px solid var(--bg-primary);
+}
+
+.unread-badge-dot-only {
+  min-width: 12px;
+  height: 12px;
+  padding: 0;
+}
+
+/* 话题列表中的未锁定指示器 */
+.unlocked-indicator {
+  display: inline-block;
+  padding: 2px 6px;
+  background: rgba(76, 175, 80, 0.2);
+  color: #4caf50;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: bold;
+  margin-right: 8px;
+  border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+/* 消息计数样式 */
+.message-count.has-unread {
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+  color: white;
+  font-weight: bold;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.message-count.unread-marker-only::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: #ff6b6b;
+  border-radius: 50%;
+  margin-right: 4px;
+}

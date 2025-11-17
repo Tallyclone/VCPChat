@@ -37,6 +37,76 @@ window.topicListManager = (() => {
         console.log('[TopicListManager] Initialized successfully.');
     }
 
+    /**
+     * Part C: 智能计数逻辑辅助函数（前端复制）
+     * 判断是否应该激活计数
+     * @param {Array} history - 消息历史
+     * @returns {boolean}
+     */
+    function shouldActivateCount(history) {
+        if (!history || history.length === 0) return false;
+        
+        // 过滤掉系统消息
+        const nonSystemMessages = history.filter(msg => msg.role !== 'system');
+        
+        if (nonSystemMessages.length === 0) {
+            return true; // 没有用户消息
+        }
+        
+        // 检查倒数第二条消息（非系统消息）是否为用户消息
+        if (nonSystemMessages.length >= 2) {
+            const secondLast = nonSystemMessages[nonSystemMessages.length - 2];
+            return secondLast.role !== 'user';
+        }
+        
+        // 只有一条非系统消息
+        return nonSystemMessages[0].role !== 'user';
+    }
+
+    /**
+     * Part C: 计算未读消息数量
+     * @param {Array} history - 消息历史
+     * @returns {number}
+     */
+    function countUnreadMessages(history) {
+        // 从最后一条消息开始，向前计数直到遇到用户消息
+        let count = 0;
+        const nonSystemMessages = history.filter(msg => msg.role !== 'system');
+        
+        for (let i = nonSystemMessages.length - 1; i >= 0; i--) {
+            if (nonSystemMessages[i].role === 'user') {
+                break;
+            }
+            count++;
+        }
+        
+        return count;
+    }
+
+    /**
+     * Part C: 计算单个话题的未读消息数
+     * @param {Object} topic - 话题对象
+     * @param {Array} history - 话题历史消息
+     * @returns {number} - 未读消息数，-1 表示仅显示小点
+     */
+    function calculateTopicUnreadCount(topic, history) {
+        // 如果话题被标记为未读，但未满足计数条件，返回 -1 表示仅显示小点
+        if (topic.unread === true) {
+            // 检查是否满足计数条件
+            if (topic.locked === false && shouldActivateCount(history)) {
+                return countUnreadMessages(history);
+            }
+            return -1; // 仅显示小点，不显示数字
+        }
+        
+        // 如果话题未标记为未读，检查是否满足自动计数条件
+        if (topic.locked === false && shouldActivateCount(history)) {
+            return countUnreadMessages(history);
+        }
+        
+        return 0; // 不显示
+    }
+
     async function loadTopicList() {
         if (!topicListContainer) {
             console.error("Topic list container (tabContentTopics) not found.");
@@ -162,6 +232,16 @@ window.topicListManager = (() => {
                     messageCountSpan.textContent = '...';
 
                     li.appendChild(avatarImg);
+                    
+                    // Part C: 添加未锁定指示器
+                    if (topic.locked === false) {
+                        const unlockedIndicator = document.createElement('span');
+                        unlockedIndicator.classList.add('unlocked-indicator');
+                        unlockedIndicator.textContent = 'unlocked';
+                        unlockedIndicator.title = 'AI可以查看和回复此话题';
+                        li.appendChild(unlockedIndicator);
+                    }
+                    
                     li.appendChild(topicTitleDisplay);
                     li.appendChild(messageCountSpan);
 
@@ -171,10 +251,24 @@ window.topicListManager = (() => {
                     } else if (currentSelectedItem.type === 'group') {
                         historyPromise = electronAPI.getGroupChatHistory(currentSelectedItem.id, topic.id);
                     }
+                    
+                    // Part C: 实现智能计数逻辑（前端需要复制后端的辅助函数）
                     if (historyPromise) {
                         historyPromise.then(historyResult => {
                             if (historyResult && !historyResult.error && Array.isArray(historyResult)) {
-                                messageCountSpan.textContent = `${historyResult.length}`;
+                                // 使用与后端相同的智能计数逻辑
+                                const unreadCount = calculateTopicUnreadCount(topic, historyResult);
+                                
+                                if (unreadCount > 0) {
+                                    messageCountSpan.textContent = `${unreadCount}`;
+                                    messageCountSpan.classList.add('has-unread');
+                                } else if (unreadCount === -1) {
+                                    // 仅未读标记，无计数
+                                    messageCountSpan.textContent = `${historyResult.length}`;
+                                    messageCountSpan.classList.add('unread-marker-only');
+                                } else {
+                                    messageCountSpan.textContent = `${historyResult.length}`;
+                                }
                             } else {
                                 messageCountSpan.textContent = 'N/A';
                             }
@@ -288,8 +382,6 @@ window.topicListManager = (() => {
         const menu = document.createElement('div');
         menu.id = 'topicContextMenu';
         menu.classList.add('context-menu');
-        menu.style.top = `${event.clientY}px`;
-        menu.style.left = `${event.clientX}px`;
 
         const editTitleOption = document.createElement('div');
         editTitleOption.classList.add('context-menu-item');
@@ -367,6 +459,61 @@ window.topicListManager = (() => {
         };
         menu.appendChild(editTitleOption);
 
+        // Part C: 锁定/解锁话题选项
+        const toggleLockOption = document.createElement('div');
+        toggleLockOption.classList.add('context-menu-item');
+        const isLocked = topic.locked !== false; // 默认为锁定
+        toggleLockOption.innerHTML = isLocked
+            ? `<i class="fas fa-unlock"></i> 解锁话题`
+            : `<i class="fas fa-lock"></i> 锁定话题`;
+        toggleLockOption.onclick = async () => {
+            closeTopicContextMenu();
+            try {
+                const result = await electronAPI.toggleTopicLock(itemFullConfig.id, topic.id);
+                if (result.success) {
+                    topic.locked = result.locked;
+                    uiHelper.showToastNotification(result.message, 'success');
+                    loadTopicList(); // 刷新列表以显示新状态
+                } else {
+                    uiHelper.showToastNotification(`切换锁定状态失败: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                uiHelper.showToastNotification(`操作失败: ${error.message}`, 'error');
+            }
+        };
+        menu.appendChild(toggleLockOption);
+
+        // Part C: 标记为未读/已读选项
+        const toggleUnreadOption = document.createElement('div');
+        toggleUnreadOption.classList.add('context-menu-item');
+        const isUnread = topic.unread === true;
+        toggleUnreadOption.innerHTML = isUnread
+            ? `<i class="fas fa-check"></i> 标记为已读`
+            : `<i class="fas fa-envelope"></i> 标记为未读`;
+        toggleUnreadOption.onclick = async () => {
+            closeTopicContextMenu();
+            try {
+                const result = await electronAPI.setTopicUnread(itemFullConfig.id, topic.id, !isUnread);
+                if (result.success) {
+                    topic.unread = result.unread;
+                    uiHelper.showToastNotification(
+                        topic.unread ? '已标记为未读' : '已标记为已读',
+                        'success'
+                    );
+                    loadTopicList(); // 刷新列表
+                    // 同时刷新助手列表以更新计数
+                    if (window.itemListManager) {
+                        window.itemListManager.loadItems();
+                    }
+                } else {
+                    uiHelper.showToastNotification(`操作失败: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                uiHelper.showToastNotification(`操作失败: ${error.message}`, 'error');
+            }
+        };
+        menu.appendChild(toggleUnreadOption);
+
         const deleteTopicPermanentlyOption = document.createElement('div');
         deleteTopicPermanentlyOption.classList.add('context-menu-item', 'danger-item');
         deleteTopicPermanentlyOption.innerHTML = `<i class="fas fa-trash-alt"></i> 删除此话题`;
@@ -401,8 +548,41 @@ window.topicListManager = (() => {
         };
         menu.appendChild(exportTopicOption);
         
-
+        // 智能定位逻辑：先隐藏菜单以测量尺寸
+        menu.style.visibility = 'hidden';
+        menu.style.position = 'absolute';
         document.body.appendChild(menu);
+
+        // 获取菜单和窗口尺寸
+        const menuWidth = menu.offsetWidth;
+        const menuHeight = menu.offsetHeight;
+        const windowWidth = window.innerWidth;
+        const windowHeight = window.innerHeight;
+
+        let top = event.clientY;
+        let left = event.clientX;
+
+        // 检查菜单是否会超出窗口底部
+        if (top + menuHeight > windowHeight) {
+            // 将菜单显示在鼠标上方
+            top = event.clientY - menuHeight;
+            // 如果上方空间也不够，则贴近顶部
+            if (top < 0) top = 5;
+        }
+
+        // 检查菜单是否会超出窗口右侧
+        if (left + menuWidth > windowWidth) {
+            // 将菜单显示在鼠标左侧
+            left = event.clientX - menuWidth;
+            // 如果左侧空间也不够，则贴近左边
+            if (left < 0) left = 5;
+        }
+
+        // 应用最终位置并显示菜单
+        menu.style.top = `${top}px`;
+        menu.style.left = `${left}px`;
+        menu.style.visibility = 'visible';
+        
         document.addEventListener('click', closeTopicContextMenuOnClickOutside, true);
     }
 

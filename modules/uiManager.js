@@ -291,6 +291,8 @@ const uiManager = (() => {
                             window.topicListManager.loadTopicList(); // This might create/re-render the topic list and search input
                             window.topicListManager.setupTopicSearch(); // Explicitly set up search listeners after the tab is active and list loaded
                         }
+                        // 刷新计数
+                        refreshUnreadCounts();
                     } else if (targetTab === 'settings') {
                         if (window.settingsManager) {
                             // 检查是否有待刷新的 Agent
@@ -313,12 +315,30 @@ const uiManager = (() => {
                         if (window.itemListManager && typeof window.itemListManager.resetMouseEventStates === 'function') {
                             window.itemListManager.resetMouseEventStates();
                         }
+                        // 刷新计数
+                        refreshUnreadCounts();
                         // The items list (agents & groups) is always visible in a way,
                         // but this ensures other tab contents are hidden.
                         // loadItems() is usually called on init or after create/delete.
                     }
                 }
             });
+        }
+    }
+
+    /**
+     * 刷新未读计数
+     */
+    async function refreshUnreadCounts() {
+        try {
+            const result = await electronAPI.getUnreadTopicCounts();
+            if (result && result.success) {
+                if (window.itemListManager && typeof window.itemListManager.updateUnreadBadges === 'function') {
+                    window.itemListManager.updateUnreadBadges(result.counts);
+                }
+            }
+        } catch (error) {
+            console.error('[UIManager][refreshUnreadCounts] Error:', error);
         }
     }
 

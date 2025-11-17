@@ -89,10 +89,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Topic related
     getAgentTopics: (agentId) => ipcRenderer.invoke('get-agent-topics', agentId),
-    createNewTopicForAgent: (agentId, topicName, refreshTimestamp) => ipcRenderer.invoke('create-new-topic-for-agent', agentId, topicName, refreshTimestamp),
+    createNewTopicForAgent: (agentId, topicName, isBranch, locked) => ipcRenderer.invoke('create-new-topic-for-agent', agentId, topicName, isBranch, locked),
     saveAgentTopicTitle: (agentId, topicId, newTitle) => ipcRenderer.invoke('save-agent-topic-title', agentId, topicId, newTitle),
     deleteTopic: (agentId, topicId) => ipcRenderer.invoke('delete-topic', agentId, topicId),
     getUnreadTopicCounts: () => ipcRenderer.invoke('get-unread-topic-counts'),
+    // Part A: 新增话题锁定和未读状态 API
+    toggleTopicLock: (agentId, topicId) => ipcRenderer.invoke('toggle-topic-lock', agentId, topicId),
+    setTopicUnread: (agentId, topicId, unread) => ipcRenderer.invoke('set-topic-unread', agentId, topicId, unread),
+    onCreateUnlockedTopic: (callback) => {
+        ipcRenderer.on('create-unlocked-topic', (_event) => callback());
+        return () => ipcRenderer.removeListener('create-unlocked-topic', callback);
+    },
 
     // Chat History
     getChatHistory: (agentId, topicId) => ipcRenderer.invoke('get-chat-history', agentId, topicId),
