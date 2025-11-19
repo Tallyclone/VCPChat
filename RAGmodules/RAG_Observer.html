@@ -8,7 +8,7 @@
     <style>
         :root {
             --card-enter-duration: 0.6s;
-            --ease-elastic: cubic-bezier(0.34, 1.56, 0.64, 1);
+            --ease-elastic: cubic-bezier(0.68, -0.55, 0.27, 1.55); /* 更Q弹的果冻效果 */
             --glass-border: 1px solid rgba(255, 255, 255, 0.1);
             --glass-bg: rgba(20, 20, 20, 0.6);
             --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
@@ -146,12 +146,25 @@
         /* --- Filter Bar (The Cool Part) --- */
         .filter-bar {
             display: flex;
+            position: relative; /* For highlight positioning */
             background: rgba(255, 255, 255, 0.05);
             border-radius: 20px;
             padding: 4px;
             margin-bottom: 15px;
             border: var(--glass-border);
             backdrop-filter: blur(10px);
+        }
+
+        .filter-highlight {
+            position: absolute;
+            top: 4px;
+            left: 0;
+            height: calc(100% - 8px);
+            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.15);
+            transition: all 0.4s var(--ease-elastic); /* 速度加快 */
+            z-index: 0;
+            backdrop-filter: blur(4px); /* 磨砂效果 */
         }
 
         .filter-btn {
@@ -163,13 +176,13 @@
             font-size: 0.85rem;
             font-weight: 500;
             cursor: pointer;
-            transition: all 0.3s ease;
+            transition: color 0.3s ease;
+            position: relative;
+            z-index: 1;
         }
 
         .filter-btn.active {
-            background: rgba(255, 255, 255, 0.15);
             color: white;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
         }
         
         .filter-btn:hover:not(.active) { color: var(--primary-text); }
@@ -423,11 +436,12 @@
             </div>
 
             <div class="filter-bar">
-                <button class="filter-btn active" onclick="filterLogs('all')">全部</button>
-                <button class="filter-btn" onclick="filterLogs('rag')">RAG知识库</button>
-                <button class="filter-btn" onclick="filterLogs('chain')">元思考链</button>
-                <button class="filter-btn" onclick="filterLogs('chat')">Agent会话</button>
-                <button class="filter-btn" onclick="filterLogs('memo')">记忆检索</button>
+                <div class="filter-highlight"></div>
+                <button class="filter-btn active" data-type="all" onclick="filterLogs('all', this)">全部</button>
+                <button class="filter-btn" data-type="rag" onclick="filterLogs('rag', this)">RAG知识库</button>
+                <button class="filter-btn" data-type="chain" onclick="filterLogs('chain', this)">元思考链</button>
+                <button class="filter-btn" data-type="chat" onclick="filterLogs('chat', this)">Agent会话</button>
+                <button class="filter-btn" data-type="memo" onclick="filterLogs('memo', this)">记忆检索</button>
                 <button class="filter-btn" onclick="clearLogs()" style="margin-left: 10px; color: #ff5f56;">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                 </button>
@@ -469,12 +483,28 @@
             text.textContent = message;
         }
 
-        function filterLogs(type) {
+        function filterLogs(type, btnElement) {
+            if (!btnElement) return;
             currentFilter = type;
             
             // Update buttons
             document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
-            event.target.closest('.filter-btn').classList.add('active');
+            btnElement.classList.add('active');
+
+            // Move the highlight
+            const highlight = document.querySelector('.filter-highlight');
+            highlight.style.width = `${btnElement.offsetWidth}px`;
+            highlight.style.transform = `translateX(${btnElement.offsetLeft}px)`;
+
+            // Change highlight color based on type
+            const typeColors = {
+                'all': 'rgba(255, 255, 255, 0.15)',
+                'rag': 'rgba(52, 152, 219, 0.4)', // --accent-rag
+                'chain': 'rgba(155, 89, 182, 0.4)', // --accent-chain
+                'chat': 'rgba(241, 196, 15, 0.4)', // --accent-agent
+                'memo': 'rgba(26, 188, 156, 0.4)' // --accent-memo
+            };
+            highlight.style.backgroundColor = typeColors[type] || typeColors['all'];
 
             // Filter DOM
             const cards = document.querySelectorAll('.card-base');
@@ -773,6 +803,26 @@
             draw();
         }
 
+        // --- UI Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const activeButton = document.querySelector('.filter-btn.active');
+            if (activeButton) {
+                setTimeout(() => {
+                    const highlight = document.querySelector('.filter-highlight');
+                    if (!highlight) return;
+                    
+                    highlight.style.transition = 'none'; // No animation on load
+                    highlight.style.width = `${activeButton.offsetWidth}px`;
+                    highlight.style.transform = `translateX(${activeButton.offsetLeft}px)`;
+                    
+                    // Force reflow to apply styles immediately
+                    void highlight.offsetWidth;
+                    
+                    // Re-enable transitions
+                    highlight.style.transition = 'all 0.4s var(--ease-elastic)';
+                }, 100); // A small delay to ensure layout is calculated
+            }
+        });
     </script>
 </body>
 </html>
