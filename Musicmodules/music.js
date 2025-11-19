@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const currentTimeEl = document.querySelector('.current-time');
     const durationEl = document.querySelector('.duration');
     const albumArt = document.querySelector('.album-art');
+    const albumArtWrapper = document.querySelector('.album-art-wrapper');
     const trackTitle = document.querySelector('.track-title');
     const trackArtist = document.querySelector('.track-artist');
     const trackBitrate = document.querySelector('.track-bitrate');
@@ -84,6 +85,10 @@ let isDraggingProgress = false;
     let targetVisualizerData = [];
     let currentVisualizerData = [];
     const easingFactor = 0.2; // 缓动因子，值越小动画越平滑
+    let bassScale = 1.0; // 用于专辑封面 Bass 动画
+    const BASS_BOOST = 1.06; // Bass 触发时的放大系数
+    const BASS_DECAY = 0.96; // 动画恢复速度
+    const BASS_THRESHOLD = 0.55; // Bass 触发阈值
     let particles = []; // 用于存储粒子
     const PARTICLE_COUNT = 80; // 定义粒子数量
 
@@ -163,6 +168,7 @@ let isDraggingProgress = false;
 
     const updateBlurredBackground = (imageUrl) => {
         if (playerBackground) {
+            // 如果 imageUrl 是 'none'，它会清除背景图片，从而显示全局背景
             playerBackground.style.backgroundImage = imageUrl;
         }
     };
@@ -275,7 +281,7 @@ class WebNowPlayingAdapter {
             trackBitrate.textContent = '';
             const defaultArtUrl = `url('../assets/${currentTheme === 'light' ? 'musiclight.jpeg' : 'musicdark.jpeg'}')`;
             albumArt.style.backgroundImage = defaultArtUrl;
-            updateBlurredBackground(defaultArtUrl);
+            updateBlurredBackground('none'); // 没有歌曲时，回退到全局背景
             renderPlaylist();
             return;
         }
@@ -291,10 +297,17 @@ class WebNowPlayingAdapter {
         } else {
             trackBitrate.textContent = '';
         }
+        
         const defaultArtUrl = `url('../assets/${currentTheme === 'light' ? 'musiclight.jpeg' : 'musicdark.jpeg'}')`;
-        const albumArtUrl = track.albumArt ? `url('file://${track.albumArt.replace(/\\/g, '/')}')` : defaultArtUrl;
-        albumArt.style.backgroundImage = albumArtUrl;
-        updateBlurredBackground(albumArtUrl);
+        if (track.albumArt) {
+            const albumArtUrl = `url('file://${track.albumArt.replace(/\\/g, '/')}')`;
+            albumArt.style.backgroundImage = albumArtUrl;
+            updateBlurredBackground(albumArtUrl);
+        } else {
+            albumArt.style.backgroundImage = defaultArtUrl;
+            updateBlurredBackground('none'); // 没有封面时，回退到全局背景
+        }
+
         renderPlaylist();
         fetchAndDisplayLyrics(track.artist, track.title);
         updateMediaSessionMetadata(); // Update OS media controls
@@ -452,6 +465,28 @@ class WebNowPlayingAdapter {
            if (isPlaying) {
                animateLyrics();
            }
+
+            // --- Bass Animation Logic ---
+            if (isPlaying && currentVisualizerData.length > 0 && albumArtWrapper) {
+                // 从低频段计算 Bass 能量
+                const bassBinCount = Math.floor(currentVisualizerData.length * 0.05); // 取前5%的频段
+                let bassEnergy = 0;
+                for (let i = 0; i < bassBinCount; i++) {
+                    bassEnergy += currentVisualizerData[i];
+                }
+                bassEnergy /= bassBinCount; // 平均能量
+
+                // 如果 Bass 能量超过阈值，则触发动画
+                if (bassEnergy > BASS_THRESHOLD && bassScale < BASS_BOOST) {
+                    bassScale = BASS_BOOST;
+                } else {
+                    // 动画效果逐渐衰减回原样
+                    bassScale = Math.max(1.0, bassScale * BASS_DECAY);
+                }
+                
+                albumArtWrapper.style.transform = `scale(${bassScale})`;
+            }
+            // --- End Bass Animation Logic ---
 
             if (targetVisualizerData.length === 0) {
                visualizerCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);

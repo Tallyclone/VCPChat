@@ -58,12 +58,42 @@ body {
     z-index: -1; /* 置于最底层 */
 }
 
+
+@keyframes subtle-glow {
+    0%, 100% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 0.3;
+    }
+    50% {
+        transform: translate(-50%, -50%) scale(1.4);
+        opacity: 0.5;
+    }
+}
+
 .music-player-container {
+    position: relative; /* 为伪元素提供定位上下文 */
+    z-index: 0; /* 创建堆叠上下文 */
     display: flex;
     height: 100vh;
     padding: 20px;
     box-sizing: border-box;
     gap: 20px;
+    overflow: hidden; /* 确保伪元素不会溢出 */
+}
+
+.music-player-container::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 80%;
+    height: 80%;
+    transform: translate(-50%, -50%);
+    background: radial-gradient(circle, var(--music-highlight) 0%, transparent 70%);
+    opacity: 0.3;
+    filter: blur(120px);
+    animation: subtle-glow 10s ease-in-out infinite;
+    z-index: -1; /* 将光晕置于容器内容之后 */
 }
 
 .main-content {

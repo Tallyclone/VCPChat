@@ -702,6 +702,38 @@
             white-space: pre-wrap;
             word-break: break-word;
         }
+        /* --- Maid Diary Dark Theme Overrides --- */
+        body:not(.light-theme) .maid-diary-bubble {
+            background: #2c2a3a !important; /* A deep, slightly magical purple-gray */
+            border-color: #4a485f;
+            color: #d8d2c9 !important; /* A soft, parchment-like off-white */
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+        }
+
+        body:not(.light-theme) .diary-header {
+            border-bottom-color: #4a485f;
+        }
+
+        body:not(.light-theme) .diary-title {
+            color: #ffb74d; /* A warm, golden-orange for the title */
+        }
+
+        body:not(.light-theme) .diary-date {
+            color: #a0a0b0; /* A muted gray for secondary info */
+        }
+
+        body:not(.light-theme) .diary-maid-info {
+            color: #b0bec5;
+        }
+
+        body:not(.light-theme) .diary-maid-name {
+            color: #ffcc80; /* Lighter shade of the title color */
+            background: rgba(255, 183, 77, 0.1);
+        }
+
+        body:not(.light-theme) .diary-content {
+            color: #c5c8c6; /* A clear, readable light gray for the main content */
+        }
 
         /* Keyframes needed for animations */
         @keyframes vcp-bubble-background-flow-kf {
