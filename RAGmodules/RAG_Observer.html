@@ -214,7 +214,7 @@
             margin-bottom: 24px;
             position: relative;
             overflow: hidden;
-            transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.3s ease;
+            transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.3s ease, opacity 0.4s ease;
             /* Initial state for animation */
             opacity: 0;
             transform: translateY(30px) scale(0.98);
@@ -376,10 +376,9 @@
         }
 
         /* Clear Animation */
-        .clearing .card-base {
-            transform: scale(0.9) translateY(-20px);
+        .card-base.is-clearing {
             opacity: 0;
-            transition: all 0.4s ease;
+            transform: translateY(30px) scale(0.95);
         }
 
         /* Status Indicator */
@@ -522,11 +521,32 @@
         }
 
         function clearLogs() {
-            infoContainer.classList.add('clearing');
+            const cards = infoContainer.querySelectorAll('.card-base');
+            if (cards.length === 0) return;
+
+            cards.forEach((card, index) => {
+                // FINAL FIX: Forcefully remove the animation lock before triggering the transition.
+                card.classList.remove('card-enter');
+                card.style.animation = 'none'; // Explicitly clear the animation property.
+                void card.offsetHeight; // Force a browser reflow to apply the style changes.
+
+                // Stagger the application of the clearing class to trigger the transition.
+                setTimeout(() => {
+                    card.classList.add('is-clearing');
+                }, index * 50);
+            });
+
+            // Use the longest transition duration from the .card-base rule (opacity is 0.4s)
+            const animationDuration = 400;
+            const lastCardDelay = (cards.length - 1) * 50;
+
             setTimeout(() => {
-                infoContainer.innerHTML = '';
-                infoContainer.classList.remove('clearing');
-            }, 300);
+                infoContainer.innerHTML = `
+                    <div style="text-align:center; color:rgba(255,255,255,0.3); margin-top: 50px; font-size: 0.9rem;">
+                        <p>等待数据接入...</p>
+                        <p style="font-size: 0.8em;">System Ready</p>
+                    </div>`;
+            }, lastCardDelay + animationDuration);
         }
 
         function copyToClipboard(text, btn) {
