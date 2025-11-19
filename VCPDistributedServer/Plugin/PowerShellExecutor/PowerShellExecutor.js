@@ -182,18 +182,30 @@ let guiDataListener = null; // 新增：保存GUI监听器的引用
 let isExecutingCommand = false; // 新增：执行命令状态标志
 
 // --- 配置加载 ---
-// 插件启动时，从 config.env 文件读取默认配置
 const defaultConfig = {
-    returnMode: 'delta' // 默认为增量模式
+    returnMode: 'delta', // 默认为增量模式
+    forbiddenCommands: [],
+    authRequiredCommands: []
 };
 
 try {
     const configPath = path.join(__dirname, 'config.env');
     if (fs.existsSync(configPath)) {
         const configContent = fs.readFileSync(configPath, 'utf-8');
-        const match = configContent.match(/^POWERSHELL_RETURN_MODE\s*=\s*(delta|full)/m);
-        if (match) {
-            defaultConfig.returnMode = match[1];
+        
+        const returnModeMatch = configContent.match(/^POWERSHELL_RETURN_MODE\s*=\s*(delta|full)/m);
+        if (returnModeMatch) {
+            defaultConfig.returnMode = returnModeMatch[1];
+        }
+
+        const forbiddenMatch = configContent.match(/^FORBIDDEN_COMMANDS\s*=\s*(.*)/m);
+        if (forbiddenMatch && forbiddenMatch[1]) {
+            defaultConfig.forbiddenCommands = forbiddenMatch[1].split(',').map(c => c.trim().toLowerCase()).filter(c => c);
+        }
+
+        const authRequiredMatch = configContent.match(/^AUTH_REQUIRED_COMMANDS\s*=\s*(.*)/m);
+        if (authRequiredMatch && authRequiredMatch[1]) {
+            defaultConfig.authRequiredCommands = authRequiredMatch[1].split(',').map(c => c.trim().toLowerCase()).filter(c => c);
         }
     }
 } catch (error) {
@@ -264,6 +276,71 @@ function executeAdminCommand(command) {
                     const result = data.trim();
                     if (result === "USER_CANCELLED") {
                         resolve("用户取消了管理员权限请求。");
+                    } else if (result.startsWith("ERROR:")) {
+                        reject(new Error(result.substring(6).trim()));
+                    } else {
+                        resolve(result);
+                    }
+                });
+            });
+        });
+    });
+}
+
+/**
+ * 在交互模式下请求用户确认并执行命令。
+ * 这会打开一个非管理员权限的确认窗口。
+ * @param {string} command - 需要确认和执行的命令。
+ * @returns {Promise<string>} - 命令执行的结果或确认消息。
+ */
+function executeInteractiveCommand(command) {
+    return new Promise((resolve, reject) => {
+        tmp.file({ postfix: '.txt' }, (err, tmpFilePath, fd, cleanupCallback) => {
+            if (err) {
+                return reject(new Error(`无法创建临时文件: ${err.message}`));
+            }
+
+            const pythonConfirmScript = path.join(__dirname, 'AdminConfirm.py');
+            const commandAsBase64 = Buffer.from(command).toString('base64');
+            
+            // 注意：这里我们直接调用 pythonw.exe，而不是通过 Start-Process -Verb RunAs
+            // 这将以当前用户权限运行脚本，弹出一个确认框而不是UAC提权框。
+            const child = spawn('pythonw.exe', [
+                pythonConfirmScript,
+                commandAsBase64,
+                tmpFilePath,
+                '--interactive-auth' // 传递一个额外参数，让Python脚本知道这是交互式认证
+            ], {
+                windowsHide: true
+            });
+            childProcesses.add(child);
+
+            let stderrOutput = '';
+            child.stderr.on('data', (data) => {
+                stderrOutput += data.toString('utf-8');
+            });
+
+            child.on('error', (err) => {
+                childProcesses.delete(child);
+                cleanupCallback();
+                reject(new Error(`无法启动交互式确认脚本: ${err.message}`));
+            });
+
+            child.on('close', (code) => {
+                childProcesses.delete(child);
+                fs.readFile(tmpFilePath, 'utf-8', (readErr, data) => {
+                    cleanupCallback();
+
+                    if (readErr) {
+                        if (stderrOutput.trim()) {
+                            return reject(new Error(`交互式脚本执行失败: ${stderrOutput.trim()}`));
+                        }
+                        return reject(new Error(`无法读取交互式任务的输出文件: ${readErr.message}`));
+                    }
+
+                    const result = data.trim();
+                    if (result === "USER_CANCELLED") {
+                        resolve("用户取消了操作。");
                     } else if (result.startsWith("ERROR:")) {
                         reject(new Error(result.substring(6).trim()));
                     } else {
@@ -406,7 +483,6 @@ async function processToolCall(args) {
         .filter(([key]) => key.startsWith('command'))
         .map(([key, value]) => {
             const match = key.match(/^command(\d*)$/);
-            // command -> 0, command1 -> 1, command2 -> 2
             const index = match ? (match[1] === '' ? 0 : parseInt(match[1], 10)) : -1;
             return { key, value, index };
         })
@@ -417,8 +493,22 @@ async function processToolCall(args) {
         throw new Error('未提供任何有效的 command 参数 (例如 command, command1, command2)。');
     }
 
-    // --- 2. 初始化会话和参数 ---
-    // 使用最后一个命令条目中的参数作为基础，或者使用全局默认值
+    // --- 2. 安全预检查 ---
+    let needsInteractiveAuth = false;
+    for (const entry of commandEntries) {
+        const commandLowerCase = entry.value.toLowerCase();
+        
+        const forbiddenKeyword = defaultConfig.forbiddenCommands.find(keyword => commandLowerCase.includes(keyword));
+        if (forbiddenKeyword) {
+            throw new Error(`执行被阻止：命令 "${entry.value}" 包含被禁止的关键字 "${forbiddenKeyword}"。`);
+        }
+
+        if (defaultConfig.authRequiredCommands.some(keyword => commandLowerCase.includes(keyword))) {
+            needsInteractiveAuth = true;
+        }
+    }
+
+    // --- 3. 初始化会话和参数 ---
     const lastCommandIndex = commandEntries[commandEntries.length - 1].index;
     const getArg = (key, defaultVal) => {
         const indexedKey = `${key}${lastCommandIndex || ''}`;
@@ -429,10 +519,12 @@ async function processToolCall(args) {
     const newSession = getArg('newSession', false);
     const finalReturnMode = getArg('returnMode', defaultConfig.returnMode);
 
-    // --- 3. 管理员模式执行 (不支持命令链) ---
+    // --- 4. 根据模式选择执行路径 ---
+
+    // 路径 A: 管理员模式 (最高优先级)
     if (requireAdmin) {
         if (commandEntries.length > 1) {
-            throw new Error("管理员模式 (requireAdmin: true) 不支持执行多个命令链 (command1, command2, ...)。");
+            throw new Error("管理员模式 (requireAdmin: true) 不支持执行多个命令链。");
         }
         if (ptyProcess) {
             ptyProcess.kill();
@@ -443,7 +535,15 @@ async function processToolCall(args) {
         return executeAdminCommand(fullCommand);
     }
 
-    // --- 4. 非管理员会话执行 ---
+    // 路径 B: 交互式授权模式
+    if (needsInteractiveAuth) {
+        const combinedCommand = commandEntries.map(e => e.value).join('; ');
+        const fullCommand = `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; ${combinedCommand}`;
+        // 注意：此模式下，命令将在新的、非持久化的进程中执行，而不是在PTY会话中。
+        return executeInteractiveCommand(fullCommand);
+    }
+
+    // 路径 C: 标准非管理员会话执行
     ensureGuiWindow();
 
     if (newSession || !ptyProcess) {
@@ -452,31 +552,26 @@ async function processToolCall(args) {
     }
 
     const deltaOutputs = [];
-
-    isExecutingCommand = true; // 阻止 guiDataListener 发送原始数据
+    isExecutingCommand = true;
     try {
         for (const entry of commandEntries) {
             const command = entry.value;
-            // 检查是否有针对此特定命令的 returnMode
             const currentReturnModeKey = `returnMode${entry.index || ''}`;
             const currentReturnMode = args[currentReturnModeKey] || finalReturnMode;
 
             try {
                 const output = await executeSingleCommandInPty(ptyProcess, command);
-                // 即使是full模式，我们也需要收集增量输出，以备最终格式化
                 deltaOutputs.push({ command, output, returnMode: currentReturnMode });
             } catch (error) {
                 throw new Error(`在执行命令 "${command}" 时出错: ${error.message}`);
             }
         }
     } finally {
-        isExecutingCommand = false; // 恢复 guiDataListener
+        isExecutingCommand = false;
     }
 
     // --- 5. 格式化并返回结果 ---
     if (finalReturnMode === 'full') {
-        // 'full' 模式现在无法再支持，因为它依赖于已移除的 fullTerminalHistory
-        // 将其行为降级为返回最后一个命令的 delta 输出
         return deltaOutputs.length > 0 ? deltaOutputs[deltaOutputs.length - 1].output : '';
     } else { // delta 模式
         if (deltaOutputs.length === 1) {

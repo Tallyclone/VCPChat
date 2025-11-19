@@ -12,10 +12,10 @@ def is_admin():
         return False
 
 class ModernConfirmDialog:
-    def __init__(self, command):
+    def __init__(self, command, is_interactive=False):
         self.result = False
         self.root = tk.Tk()
-        self.root.title("管理员权限确认")
+        self.root.title("操作确认" if is_interactive else "管理员权限确认")
         
         # 窗口设置
         window_width = 700
@@ -46,7 +46,7 @@ class ModernConfirmDialog:
         }
         
         self.root.configure(bg=self.colors['bg'])
-        self.setup_ui(command)
+        self.setup_ui(command, is_interactive)
         
         # 窗口阴影效果（仅在Windows 10+）
         try:
@@ -62,10 +62,10 @@ class ModernConfirmDialog:
             self.root.attributes('-alpha', alpha + 0.1)
             self.root.after(20, self.fade_in)
     
-    def setup_ui(self, command):
+    def setup_ui(self, command, is_interactive):
         # 主容器
-        main_frame = tk.Frame(self.root, bg=self.colors['bg'], highlightthickness=2, 
-                             highlightbackground=self.colors['border'])
+        main_frame = tk.Frame(self.root, bg=self.colors['bg'], highlightthickness=2,
+                              highlightbackground=self.colors['border'])
         main_frame.pack(fill='both', expand=True, padx=0, pady=0)
         
         # 标题栏
@@ -77,15 +77,18 @@ class ModernConfirmDialog:
         title_content = tk.Frame(titlebar, bg=self.colors['surface'])
         title_content.pack(side='left', fill='both', expand=True, padx=20, pady=10)
         
-        # 警告图标
-        icon_label = tk.Label(title_content, text="⚠️", font=('Segoe UI Emoji', 20),
-                             bg=self.colors['surface'], fg=self.colors['warning'])
+        # 根据模式设置图标和标题
+        icon_text = "❓" if is_interactive else "⚠️"
+        icon_fg = self.colors['primary'] if is_interactive else self.colors['warning']
+        title_text = "执行确认" if is_interactive else "管理员权限请求"
+
+        icon_label = tk.Label(title_content, text=icon_text, font=('Segoe UI Emoji', 20),
+                              bg=self.colors['surface'], fg=icon_fg)
         icon_label.pack(side='left', padx=(0, 15))
         
-        # 标题文字
-        title_label = tk.Label(title_content, text="管理员权限请求",
-                              font=('Microsoft YaHei UI', 16, 'bold'),
-                              bg=self.colors['surface'], fg=self.colors['text'])
+        title_label = tk.Label(title_content, text=title_text,
+                               font=('Microsoft YaHei UI', 16, 'bold'),
+                               bg=self.colors['surface'], fg=self.colors['text'])
         title_label.pack(side='left')
         
         # 关闭按钮
@@ -122,11 +125,12 @@ class ModernConfirmDialog:
                              highlightthickness=1, highlightbackground=self.colors['border'])
         info_frame.pack(fill='x', pady=(0, 20))
         
-        info_text = tk.Label(info_frame, 
-                            text="🤖 AI 助手请求执行以下命令，需要管理员权限：",
-                            font=('Microsoft YaHei UI', 10),
-                            bg=self.colors['surface'], fg=self.colors['text'],
-                            pady=15, padx=20, anchor='w')
+        info_text_content = "🤖 AI 助手请求执行以下高权限命令，请确认：" if is_interactive else "🤖 AI 助手请求执行以下命令，需要管理员权限："
+        info_text = tk.Label(info_frame,
+                             text=info_text_content,
+                             font=('Microsoft YaHei UI', 10),
+                             bg=self.colors['surface'], fg=self.colors['text'],
+                             pady=15, padx=20, anchor='w')
         info_text.pack(fill='x')
         
         # 命令显示区域
@@ -179,11 +183,12 @@ class ModernConfirmDialog:
         warning_frame = tk.Frame(content_frame, bg=self.colors['bg'])
         warning_frame.pack(fill='x', pady=(15, 0))
         
+        warning_text_content = "⚡ 请注意：此操作将直接执行，请确认您了解其后果。" if is_interactive else "⚡ 警告：只有在您信任此操作的情况下才应允许执行"
         warning_label = tk.Label(warning_frame,
-                                text="⚡ 警告：只有在您信任此操作的情况下才应允许执行",
-                                font=('Microsoft YaHei UI', 9),
-                                bg=self.colors['bg'], fg=self.colors['warning'],
-                                anchor='w')
+                                 text=warning_text_content,
+                                 font=('Microsoft YaHei UI', 9),
+                                 bg=self.colors['bg'], fg=self.colors['warning'],
+                                 anchor='w')
         warning_label.pack(fill='x')
         
         # 取消按钮
@@ -283,15 +288,19 @@ def main():
     try:
         base64_command = sys.argv[1]
         output_file_path = sys.argv[2]
+        
+        # 检查是否存在交互模式标志
+        is_interactive = '--interactive-auth' in sys.argv
+        
         decoded_command = base64.b64decode(base64_command).decode('utf-8')
     except Exception:
         if output_file_path:
             with open(output_file_path, 'w', encoding='utf-8') as f:
-                f.write("ERROR: Invalid arguments received by the admin script.")
+                f.write("ERROR: Invalid arguments received by the script.")
         sys.exit(1)
 
-    # Display the confirmation dialog.
-    dialog = ModernConfirmDialog(decoded_command)
+    # 显示确认对话框，并传入交互模式的状态
+    dialog = ModernConfirmDialog(decoded_command, is_interactive=is_interactive)
     user_confirmed = dialog.show()
 
     if not user_confirmed:
