@@ -710,6 +710,11 @@ if (!gotTheLock) {
    // --- Assistant IPC Handlers are now in modules/ipc/assistantHandlers.js ---
 
     // --- Theme IPC Handlers are now in modules/ipc/themeHandlers.js ---
+    
+    // --- Platform Info IPC Handler ---
+    ipcMain.handle('get-platform', () => {
+        return process.platform;
+    });
 });
 
     // --- Python Execution IPC Handler ---

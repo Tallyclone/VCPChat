@@ -161,20 +161,38 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Now connect to WebSocket
     config.autoConnect();
 
+    // --- Platform Detection ---
+    if (window.electronAPI) {
+        window.electronAPI.getPlatform().then(platform => {
+            // platform is 'win32', 'darwin' (macOS), or 'linux'
+            if (platform === 'darwin') {
+                document.body.classList.add('platform-mac');
+            } else { // Default to Windows style for win32, linux, etc.
+                document.body.classList.add('platform-win');
+            }
+        });
+    } else {
+        // Fallback for browser testing
+        const platform = navigator.platform.toLowerCase();
+        if (platform.includes('mac')) {
+            document.body.classList.add('platform-mac');
+        } else {
+            document.body.classList.add('platform-win');
+        }
+    }
+
     // --- Custom Title Bar Listeners ---
-    const minimizeBtn = document.getElementById('minimize-btn');
-    const maximizeBtn = document.getElementById('maximize-btn');
-    const closeBtn = document.getElementById('close-btn');
+    const minimize = () => window.electronAPI?.minimizeWindow();
+    const maximize = () => window.electronAPI?.maximizeWindow();
+    const close = () => window.close();
 
-    minimizeBtn.addEventListener('click', () => {
-        if (window.electronAPI) window.electronAPI.minimizeWindow();
-    });
+    // Mac Controls
+    document.getElementById('mac-minimize-btn').addEventListener('click', minimize);
+    document.getElementById('mac-maximize-btn').addEventListener('click', maximize);
+    document.getElementById('mac-close-btn').addEventListener('click', close);
 
-    maximizeBtn.addEventListener('click', () => {
-        if (window.electronAPI) window.electronAPI.maximizeWindow();
-    });
-
-    closeBtn.addEventListener('click', () => {
-        window.close();
-    });
+    // Windows Controls
+    document.getElementById('win-minimize-btn').addEventListener('click', minimize);
+    document.getElementById('win-maximize-btn').addEventListener('click', maximize);
+    document.getElementById('win-close-btn').addEventListener('click', close);
 });

@@ -3,1406 +3,776 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VCP可视化中心Beta</title>
+    <title>VCP 灵视中心 | Ether Observer</title>
     <link rel="stylesheet" href="../styles/themes.css">
     <style>
+        :root {
+            --card-enter-duration: 0.6s;
+            --ease-elastic: cubic-bezier(0.34, 1.56, 0.64, 1);
+            --glass-border: 1px solid rgba(255, 255, 255, 0.1);
+            --glass-bg: rgba(20, 20, 20, 0.6);
+            --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            --accent-rag: #3498db;
+            --accent-chain: #9b59b6;
+            --accent-agent: #f1c40f;
+            --accent-memo: #1abc9c;
+        }
+
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-family: 'JetBrains Mono', 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
             color: var(--primary-text);
             margin: 0;
-            padding: 10px; /* Reduce side and bottom padding */
+            background-color: var(--panel-bg, #0f0f12); /* 深空底色 */
             display: flex;
             justify-content: center;
+            height: 100vh;
+            overflow: hidden;
             transition: background-color 0.3s ease;
-            padding-top: 40px; /* Add padding for the custom title bar */
-            box-sizing: border-box;
         }
+
         /* --- Custom Title Bar --- */
         #custom-title-bar {
             position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 40px;
+            top: 0; left: 0; right: 0;
+            height: 38px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 0 10px 0 20px;
-            background-color: transparent;
-            z-index: 1000;
+            padding: 0 16px;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.8), rgba(0,0,0,0));
+            z-index: 2000;
             -webkit-app-region: drag;
-            user-select: none;
+            backdrop-filter: blur(4px);
         }
 
         #custom-title-bar .title {
-            font-size: 14px;
+            font-size: 12px;
             font-weight: 600;
-            color: var(--primary-text);
-            opacity: 0.7;
-            -webkit-app-region: no-drag;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            opacity: 0.6;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
 
-        #custom-title-bar .window-controls {
+        .window-controls {
             display: flex;
-            gap: 10px;
+            gap: 8px;
             -webkit-app-region: no-drag;
         }
 
         .window-control-btn {
-            width: 30px;
-            height: 30px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
             border: none;
-            background-color: transparent;
-            color: var(--secondary-text);
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            padding: 0;
             cursor: pointer;
-            transition: background-color 0.2s ease, color 0.2s ease;
-            padding: 0; /* Override generic button padding */
+            transition: transform 0.2s, opacity 0.2s;
+            opacity: 0.8;
         }
+        .window-control-btn:hover { transform: scale(1.2); opacity: 1; }
+        #mac-close-btn { background: #ff5f56; }
+        #mac-minimize-btn { background: #ffbd2e; }
+        #mac-maximize-btn { background: #27c93f; }
 
-        .window-control-btn:hover {
-            background-color: var(--button-hover-bg);
-            color: var(--primary-text);
-        }
-
-        #close-btn:hover {
-            background-color: #e81123;
-            color: white;
-        }
-        .container {
-            width: 95%;
-            max-width: 1200px;
-            background: var(--panel-bg);
-            backdrop-filter: blur(20px) saturate(180%);
-            -webkit-backdrop-filter: blur(20px) saturate(180%);
-            border-radius: 16px;
-            border: 1px solid rgba(255, 255, 255, 0.18);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.37);
-            padding: 25px 35px;
-            box-sizing: border-box;
-            /* New styles for scrolling within the container */
-            max-height: calc(100vh - 60px); /* Adjust height for new padding (40px top + 10px bottom + 10px margin) */
-            overflow-y: auto;
-        }
-
-        /* --- Custom Scrollbar --- */
-        .container::-webkit-scrollbar {
-            width: 8px;
-        }
-
-        .container::-webkit-scrollbar-track {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 10px;
-        }
-
-        .container::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.25);
-            border-radius: 10px;
-            border: 1px solid rgba(255, 255, 255, 0.18);
-        }
-
-        .container::-webkit-scrollbar-thumb:hover {
-            background: rgba(255, 255, 255, 0.4);
-        }
-
-        .container::-webkit-scrollbar-thumb:active {
-            background: rgba(255, 255, 255, 0.5);
-        }
-        h1 {
-            color: var(--highlight-text);
-            text-align: center;
-            margin-bottom: 15px;
-            font-size: 2em;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 15px;
-            text-shadow: var(--panel-text-shadow);
-        }
-        .connection-status {
-            font-weight: 600;
-            padding: 10px 15px;
-            border-radius: 8px;
-            margin-bottom: 25px;
-            text-align: center;
-            font-size: 1.1em;
-            transition: all 0.3s ease;
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-        }
-        .status-connecting { background-color: rgba(255, 152, 0, 0.2); color: #ff9800; border: 1px solid #ff9800; }
-        .status-open { background-color: rgba(76, 175, 80, 0.2); color: #4caf50; border: 1px solid #4caf50; }
-        .status-closed { background-color: rgba(244, 67, 54, 0.2); color: #f44336; border: 1px solid #f44336; }
-        .status-error { background-color: rgba(211, 47, 47, 0.2); color: #d32f2f; border: 1px solid #d32f2f; }
-
-        .controls {
-            text-align: center;
-            margin-bottom: 25px;
-        }
-
-        button {
-            background-color: var(--button-bg);
-            color: var(--text-on-accent);
-            border: none;
-            padding: 10px 20px;
-            border-radius: 20px;
-            cursor: pointer;
-            font-size: 1em;
-            transition: all 0.3s ease;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
-        button:hover {
-            background-color: var(--button-hover-bg);
-            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
-            transform: translateY(-2px);
-        }
-
-        #infoContainer {
-            border-top: 1px solid #e0e0e0;
-            padding-top: 20px;
-        }
-
-        .rag-block {
-            background: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(12px) saturate(120%);
-            -webkit-backdrop-filter: blur(12px) saturate(120%);
-            border: 1px solid var(--border-color);
-            border-radius: 12px;
-            margin-bottom: 20px;
-            padding: 15px 20px;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
-            transition: all 0.3s ease;
-        }
-        .rag-block:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
-        }
-        .rag-block-header {
-            border-bottom: 1px dashed var(--border-color);
-            padding-bottom: 10px;
-            margin-bottom: 15px;
-        }
-        .rag-block-header h3 { margin: 0 0 8px 0; color: var(--highlight-text); }
-        .rag-block-header p { margin: 2px 0; font-size: 0.9em; color: var(--secondary-text); }
-        .rag-block-header strong { color: var(--primary-text); }
-
-        .rag-item {
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            padding: 12px 0;
-        }
-        .rag-item:last-child { border-bottom: none; }
-
-        .rag-item-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-            font-size: 0.9em;
-        }
-        .rag-meta {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            align-items: center;
-        }
-        
-        .rag-meta span {
-            background-color: rgba(255, 255, 255, 0.1);
-            color: var(--secondary-text);
-            padding: 3px 8px;
-            border-radius: 12px;
-            font-weight: 500;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-        .rag-meta .source-rag { background-color: rgba(52, 152, 219, 0.2); color: #5dade2; border-color: #5dade2; }
-        .rag-meta .source-time { background-color: rgba(46, 204, 113, 0.2); color: #58d68d; border-color: #58d68d; }
-        .rag-meta .date { background-color: rgba(142, 68, 173, 0.2); color: #af7ac5; border-color: #af7ac5; }
-        
-        /* Score评分可视化样式 */
-        .score-container {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        
-        .score-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            padding: 3px 8px;
-            border-radius: 12px;
-            font-weight: 600;
-            font-size: 0.85em;
-            border: 1px solid;
-        }
-        
-        /* Score等级颜色 */
-        .score-badge.excellent {
-            background-color: rgba(76, 175, 80, 0.2);
-            color: #66bb6a;
-            border-color: #66bb6a;
-        }
-        .score-badge.good {
-            background-color: rgba(52, 152, 219, 0.2);
-            color: #5dade2;
-            border-color: #5dade2;
-        }
-        .score-badge.fair {
-            background-color: rgba(255, 193, 7, 0.2);
-            color: #ffc107;
-            border-color: #ffc107;
-        }
-        .score-badge.poor {
-            background-color: rgba(244, 67, 54, 0.2);
-            color: #ef5350;
-            border-color: #ef5350;
-        }
-        
-        /* Tag提权后的特殊样式 */
-        .score-badge.boosted {
-            background: linear-gradient(135deg, rgba(255, 193, 7, 0.3) 0%, rgba(255, 152, 0, 0.3) 100%);
-            color: #ffc107;
-            border-color: #ffc107;
-            box-shadow: 0 0 8px rgba(255, 193, 7, 0.3);
-        }
-        
-        .score-badge.boosted::before {
-            content: "⭐";
-            margin-right: 2px;
-        }
-        
-        .score-detail {
-            font-size: 0.75em;
-            color: var(--secondary-text);
-            font-weight: normal;
-        }
-
-        /* 元思考链专用样式 */
-        .meta-thinking-block {
-            background: linear-gradient(135deg, rgba(142, 68, 173, 0.1) 0%, rgba(52, 152, 219, 0.1) 100%);
-            border: 2px solid rgba(142, 68, 173, 0.3);
-            border-radius: 16px;
-            margin-bottom: 25px;
-            padding: 20px;
-            box-shadow: 0 6px 24px rgba(142, 68, 173, 0.2);
-        }
-        
-        .meta-thinking-header {
-            text-align: center;
-            margin-bottom: 20px;
-            padding-bottom: 15px;
-            border-bottom: 2px dashed rgba(142, 68, 173, 0.3);
-        }
-        
-        .meta-thinking-header h3 {
-            margin: 0 0 10px 0;
-            color: #af7ac5;
-            font-size: 1.5em;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-        }
-        
-        .chain-path {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin: 15px 0;
-            font-size: 0.9em;
-        }
-        
-        .chain-node {
-            background: rgba(142, 68, 173, 0.2);
-            color: #af7ac5;
-            padding: 5px 12px;
-            border-radius: 20px;
-            border: 1px solid #af7ac5;
-            font-weight: 500;
-        }
-        
-        .chain-arrow {
-            color: #af7ac5;
-            font-size: 1.2em;
-        }
-        
-        .semantic-groups {
-            background: rgba(52, 152, 219, 0.1);
-            border: 1px solid rgba(52, 152, 219, 0.3);
-            border-radius: 8px;
-            padding: 10px 15px;
-            margin: 10px 0;
-        }
-        
-        .semantic-groups strong {
-            color: #5dade2;
-        }
-        
-        .semantic-group-tag {
-            background: rgba(52, 152, 219, 0.2);
-            color: #5dade2;
-            padding: 3px 10px;
-            border-radius: 12px;
-            margin: 0 5px;
-            font-size: 0.85em;
-            border: 1px solid #5dade2;
-        }
-        
-        .thinking-stage {
-            background: rgba(255, 255, 255, 0.03);
-            border-left: 4px solid #af7ac5;
-            border-radius: 8px;
-            margin: 15px 0;
-            padding: 15px;
-            transition: all 0.3s ease;
-        }
-        
-        .thinking-stage:hover {
-            background: rgba(255, 255, 255, 0.06);
-            transform: translateX(5px);
-        }
-        
-        .stage-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-        
-        .stage-title {
-            font-size: 1.1em;
-            font-weight: 600;
-            color: #af7ac5;
-        }
-        
-        .stage-badge {
-            background: rgba(142, 68, 173, 0.2);
-            color: #af7ac5;
-            padding: 4px 12px;
-            border-radius: 15px;
-            font-size: 0.85em;
-            border: 1px solid #af7ac5;
-        }
-        
-        .stage-results {
-            margin-top: 10px;
-        }
-        
-        .stage-result-item {
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 6px;
-            padding: 10px;
-            margin: 8px 0;
-            font-size: 0.9em;
-        }
-        
-        .stage-result-meta {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 6px;
-            font-size: 0.85em;
-            color: var(--secondary-text);
-        }
-
-        .toggle-button {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid var(--border-color);
-            color: var(--secondary-text);
-            padding: 4px 10px;
-            border-radius: 15px;
-            cursor: pointer;
-            font-size: 0.85em;
-            transition: all 0.3s ease;
-        }
-        .toggle-button:hover { 
-            background-color: var(--accent-bg);
-            color: var(--primary-text);
-            transform: scale(1.05);
-        }
-
-        .rag-content {
-            font-size: 0.95em;
-            line-height: 1.6;
-            color: var(--primary-text);
-            white-space: pre-wrap;
-            word-wrap: break-word;
-        }
-        .agent-chat-query .rag-content p,
-        .agent-chat-response .rag-content p {
-            margin-top: 0;
-            margin-bottom: 1em;
-        }
-        .agent-chat-query .rag-content p:last-child,
-        .agent-chat-response .rag-content p:last-child {
-            margin-bottom: 0;
-        }
-        .rag-content img {
-            max-width: 100%;
-            height: auto;
-            border-radius: 8px;
-            margin-top: 10px;
-        }
-        .full-text { display: none; }
-        
-        /* Agent Private Chat Preview Styles */
-        .agent-chat-block {
-            background: rgba(255, 193, 7, 0.05);
-            backdrop-filter: blur(12px) saturate(120%);
-            -webkit-backdrop-filter: blur(12px) saturate(120%);
-            border: 1px solid rgba(255, 193, 7, 0.3);
-            border-radius: 12px;
-            margin-bottom: 20px;
-            padding: 15px 20px;
-            box-shadow: 0 4px 16px rgba(255, 193, 7, 0.1);
-            transition: all 0.3s ease;
-        }
-        .agent-chat-block:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(255, 193, 7, 0.2);
-        }
-        .agent-chat-header h3 { margin: 0 0 8px 0; color: #ffc107; }
-        .agent-chat-header p { margin: 2px 0; font-size: 0.9em; color: var(--secondary-text); }
-        .agent-chat-header strong { color: var(--primary-text); }
-        .agent-chat-content {
-            margin-top: 15px;
-            padding-top: 10px;
-            border-top: 1px dashed rgba(255, 193, 7, 0.2);
-        }
-        .agent-chat-query strong, .agent-chat-response strong {
-            display: block;
-            margin-bottom: 5px;
-            font-size: 1em;
-            color: var(--highlight-text);
-        }
-        .agent-chat-query .rag-content, .agent-chat-response .rag-content {
-            padding-left: 15px;
-            border-left: 3px solid rgba(255, 193, 7, 0.5);
-        }
-        
-        #spectrum-canvas {
+        /* --- Windows Controls --- */
+        .window-controls-win {
             display: none;
+            -webkit-app-region: no-drag;
+        }
+        .win-control-btn {
+            width: 40px;
+            height: 38px;
+            background: transparent;
+            border: none;
+            color: rgba(255,255,255,0.7);
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .win-control-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+        #win-close-btn:hover { background: #e81123; color: #fff; }
+        .win-control-btn svg { width: 12px; height: 12px; }
+
+        /* --- Platform Specific Layout --- */
+        .window-controls-mac, .window-controls-win { display: none; }
+        .platform-mac .window-controls-mac { display: flex; }
+        .platform-win .window-controls-win { display: flex; }
+
+        /* Mac: [controls] [title] [spacer] */
+        .platform-mac #custom-title-bar { justify-content: space-between; }
+        .platform-mac #custom-title-bar::after { content: ''; width: 64px; }
+
+        /* Win: [title] [controls] */
+        .platform-win #custom-title-bar { justify-content: flex-start; }
+        .platform-win .title { flex-grow: 1; }
+
+        /* --- Main Container --- */
+        .main-wrapper {
             width: 100%;
-            height: 60px;
-            margin-bottom: 20px;
-            border-radius: 8px;
-            background-color: rgba(255, 255, 255, 0.05);
-            border: 1px solid var(--border-color);
-            box-shadow: inset 0 0 10px rgba(0,0,0,0.2);
+            max-width: 1000px;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            padding-top: 40px;
+            box-sizing: border-box;
         }
-        
-        #infoContainer p {
+
+        .header-section {
+            padding: 10px 20px;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            z-index: 100;
+        }
+
+        /* --- Visualizer Canvas --- */
+        #spectrum-canvas {
+            width: 100%;
+            height: 4px;
+            position: absolute;
+            top: 38px;
+            left: 0;
+            z-index: 1500;
+            opacity: 0.8;
+            pointer-events: none;
+        }
+
+        /* --- Filter Bar (The Cool Part) --- */
+        .filter-bar {
+            display: flex;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            padding: 4px;
+            margin-bottom: 15px;
+            border: var(--glass-border);
+            backdrop-filter: blur(10px);
+        }
+
+        .filter-btn {
+            background: transparent;
+            border: none;
             color: var(--secondary-text);
-        }
-
-        /* Animation for new cards */
-        @keyframes slideInFromBottom {
-            from {
-                opacity: 0;
-                transform: translateY(40px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .card-enter-animation {
-            animation: slideInFromBottom 0.5s ease-out forwards;
-        }
-    </style>
-    <style>
-        /* Tag相关样式 */
-        .tag-indicator {
-            background: rgba(255, 193, 7, 0.2);
-            color: #ffc107;
-            padding: 2px 6px;
-            border-radius: 10px;
-            font-size: 0.75em;
-            margin-left: 5px;
-            border: 1px solid #ffc107;
-            display: inline-block;
-        }
-        
-        .matched-tags {
-            margin-top: 8px !important;
-            padding: 12px !important;
-            background: rgba(255, 193, 7, 0.08) !important;
-            border-radius: 8px !important;
-            border-left: 3px solid #ffc107 !important;
-            display: block !important;
-            max-width: 100% !important;
-        }
-        
-        .matched-tags strong {
-            color: #ffc107;
-            font-size: 0.9em;
-            display: block;
-            margin-bottom: 8px;
-        }
-        
-        .tags-list {
-            display: flex !important;
-            flex-wrap: wrap !important;
-            gap: 6px !important;
-            margin-bottom: 10px !important;
-        }
-        
-        .tag-item {
-            display: inline-block;
-            background: rgba(255, 193, 7, 0.25);
-            color: #ffc107;
-            padding: 4px 10px;
-            border-radius: 12px;
-            font-size: 0.85em;
-            border: 1px solid rgba(255, 193, 7, 0.5);
+            padding: 6px 16px;
+            border-radius: 16px;
+            font-size: 0.85rem;
             font-weight: 500;
-        }
-        
-        .tag-boost-info {
-            margin-top: 8px !important;
-            padding-top: 8px !important;
-            border-top: 1px dashed rgba(255, 193, 7, 0.2) !important;
-            font-size: 0.8em !important;
-            color: var(--secondary-text) !important;
-            line-height: 1.2 !important;
-            display: block !important;
-            white-space: normal !important;
-            overflow: visible !important;
-        }
-        
-        .tag-boost-item {
-            display: inline !important;
-            margin-right: 12px !important;
-            white-space: nowrap !important;
-            vertical-align: baseline !important;
-            float: none !important;
-        }
-        
-        .tag-boost-item:last-child {
-            margin-right: 0 !important;
-        }
-        
-        .tag-boost-item .boost-label {
-            color: var(--secondary-text) !important;
-            margin-right: 4px !important;
-            display: inline !important;
-        }
-        
-        .tag-boost-item .boost-value {
-            color: #ffc107 !important;
-            font-weight: 600 !important;
-            display: inline !important;
-        }
-        
-        /* AI Memo Retrieval Styles */
-        .ai-memo-block {
-            background: rgba(26, 188, 156, 0.05);
-            backdrop-filter: blur(12px) saturate(120%);
-            -webkit-backdrop-filter: blur(12px) saturate(120%);
-            border: 1px solid rgba(26, 188, 156, 0.3);
-            border-radius: 12px;
-            margin-bottom: 20px;
-            padding: 15px 20px;
-            box-shadow: 0 4px 16px rgba(26, 188, 156, 0.1);
+            cursor: pointer;
             transition: all 0.3s ease;
         }
-        .ai-memo-block:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(26, 188, 156, 0.2);
+
+        .filter-btn.active {
+            background: rgba(255, 255, 255, 0.15);
+            color: white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
         }
-        .ai-memo-header h3 {
-            margin: 0 0 8px 0;
-            color: #1abc9c;
+        
+        .filter-btn:hover:not(.active) { color: var(--primary-text); }
+
+        /* --- Scrollable Content --- */
+        #infoContainer {
+            flex: 1;
+            overflow-y: overlay; /* Elegant scroll */
+            padding: 0 20px 20px 20px;
+            scroll-behavior: smooth;
+        }
+
+        /* Custom Scrollbar */
+        #infoContainer::-webkit-scrollbar { width: 6px; }
+        #infoContainer::-webkit-scrollbar-track { background: transparent; }
+        #infoContainer::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+        }
+        #infoContainer::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
+
+        /* --- Card Base Styles --- */
+        .card-base {
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px) saturate(180%);
+            border: var(--glass-border);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 24px;
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.3s ease;
+            /* Initial state for animation */
+            opacity: 0;
+            transform: translateY(30px) scale(0.98);
+        }
+
+        .card-base:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+            border-color: rgba(255,255,255,0.2);
+        }
+
+        /* Dynamic border accent line */
+        .card-base::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; bottom: 0;
+            width: 3px;
+            background: var(--accent-color, #fff);
+            opacity: 0.7;
+        }
+
+        /* Animation Class */
+        .card-enter {
+            animation: cardEnter var(--card-enter-duration) var(--ease-elastic) forwards;
+        }
+
+        @keyframes cardEnter {
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        /* --- Typography & Details --- */
+        h3 {
+            margin: 0 0 10px 0;
+            font-size: 1.1rem;
+            font-weight: 700;
             display: flex;
             align-items: center;
             gap: 10px;
+            color: #fff;
         }
-        .ai-memo-header p { margin: 2px 0; font-size: 0.9em; color: var(--secondary-text); }
-        .ai-memo-header strong { color: var(--primary-text); }
-        .ai-memo-content {
-            margin-top: 15px;
-            padding-top: 10px;
-            border-top: 1px dashed rgba(26, 188, 156, 0.2);
+
+        .meta-info {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            font-size: 0.8rem;
+            color: rgba(255, 255, 255, 0.5);
+            margin-bottom: 12px;
+            font-family: 'JetBrains Mono', monospace;
         }
-        .ai-memo-details-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 15px;
+
+        .meta-pill {
+            background: rgba(255,255,255,0.05);
+            padding: 2px 8px;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.05);
         }
-        .ai-memo-details-item {
-            background: rgba(255, 255, 255, 0.03);
+
+        /* --- Content & Collapsible --- */
+        .content-wrapper {
+            position: relative;
+        }
+        
+        .text-content {
+            font-size: 0.95rem;
+            line-height: 1.6;
+            color: rgba(255, 255, 255, 0.9);
+            word-break: break-word;
+            position: relative;
+        }
+
+        .text-content code {
+            background: rgba(0,0,0,0.3);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9em;
+            color: #e06c75;
+        }
+
+        .snippet {
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            mask-image: linear-gradient(180deg, #000 60%, transparent);
+        }
+        
+        .full-text {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* --- Action Buttons --- */
+        .action-row {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .icon-btn {
+            background: rgba(255,255,255,0.05);
+            border: none;
+            color: rgba(255,255,255,0.6);
+            cursor: pointer;
+            padding: 6px;
+            border-radius: 6px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .icon-btn:hover {
+            background: rgba(255,255,255,0.15);
+            color: #fff;
+        }
+
+        .icon-btn svg { width: 16px; height: 16px; }
+
+        .toggle-arrow {
+            transition: transform 0.3s var(--ease-elastic);
+        }
+        .expanded .toggle-arrow { transform: rotate(180deg); }
+
+        /* --- Specific Card Types --- */
+        .type-rag { --accent-color: var(--accent-rag); }
+        .type-chain { --accent-color: var(--accent-chain); }
+        .type-chat { --accent-color: var(--accent-agent); }
+        .type-memo { --accent-color: var(--accent-memo); }
+
+        /* RAG Item */
+        .rag-sub-item {
+            background: rgba(0,0,0,0.2);
             border-radius: 8px;
             padding: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            margin-top: 10px;
+            border: 1px solid rgba(255,255,255,0.05);
         }
-        .ai-memo-details-item strong {
-            display: block;
-            margin-bottom: 5px;
-            font-size: 1em;
-            color: var(--highlight-text);
+
+        .score-badge {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: bold;
         }
+        .score-high { color: #4caf50; background: rgba(76, 175, 80, 0.1); border: 1px solid rgba(76, 175, 80, 0.3); }
+        .score-med { color: #ff9800; background: rgba(255, 152, 0, 0.1); border: 1px solid rgba(255, 152, 0, 0.3); }
+        .score-low { color: #f44336; background: rgba(244, 67, 54, 0.1); border: 1px solid rgba(244, 67, 54, 0.3); }
+        .score-boosted { 
+            background: linear-gradient(45deg, rgba(255,193,7,0.1), rgba(255,152,0,0.2)); 
+            color: #ffc107; 
+            border: 1px solid #ffc107;
+            box-shadow: 0 0 8px rgba(255, 193, 7, 0.2);
+        }
+
+        /* Clear Animation */
+        .clearing .card-base {
+            transform: scale(0.9) translateY(-20px);
+            opacity: 0;
+            transition: all 0.4s ease;
+        }
+
+        /* Status Indicator */
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 12px;
+            font-size: 0.75rem;
+            color: rgba(255,255,255,0.6);
+            border: 1px solid rgba(255,255,255,0.05);
+            margin-bottom: 10px;
+        }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+        .dot-green { background: #4caf50; box-shadow: 0 0 8px #4caf50; animation: pulse 2s infinite; }
+        .dot-red { background: #f44336; }
+        .dot-orange { background: #ff9800; }
+
+        @keyframes pulse { 0% { opacity: 0.5; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1.1); } 100% { opacity: 0.5; transform: scale(0.9); } }
+
     </style>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script>
-        // Configure marked.js to allow raw HTML and handle line breaks
-        marked.setOptions({
-            gfm: true, // Enable GitHub Flavored Markdown
-            breaks: true, // Interpret carriage returns as <br>
-        });
-    </script>
+    <script>marked.setOptions({ gfm: true, breaks: true });</script>
     <script src="./rag-observer-config.js"></script>
 </head>
 <body>
-    <!-- Custom Title Bar -->
+    <!-- Title Bar -->
     <div id="custom-title-bar">
-        <span class="title">VCP - 信息流监听器</span>
-        <div class="window-controls">
-            <button id="minimize-btn" class="window-control-btn" title="最小化">
-                <svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1.2"></line></svg>
-            </button>
-            <button id="maximize-btn" class="window-control-btn" title="最大化">
-                <svg width="10" height="10" viewBox="0 0 10 10"><path fill="none" stroke="currentColor" stroke-width="1" d="M0.5,0.5 h9 v9 h-9 z"></path></svg>
-            </button>
-            <button id="close-btn" class="window-control-btn" title="关闭">
-                <svg width="10" height="10" viewBox="0 0 10 10"><path fill="currentColor" d="M0.5,0.5 9.5,9.5 M9.5,0.5 0.5,9.5" stroke="currentColor" stroke-width="1.2"></path></svg>
-            </button>
+        <div class="window-controls window-controls-mac">
+            <button id="mac-close-btn" class="window-control-btn" title="关闭"></button>
+            <button id="mac-minimize-btn" class="window-control-btn" title="最小化"></button>
+            <button id="mac-maximize-btn" class="window-control-btn" title="最大化"></button>
+        </div>
+        <div class="title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="4"></circle></svg>
+            VCP 信息流监听器
+        </div>
+        <div class="window-controls window-controls-win">
+            <button id="win-minimize-btn" class="win-control-btn" title="最小化"><svg><use href="#icon-win-minimize"></use></svg></button>
+            <button id="win-maximize-btn" class="win-control-btn" title="最大化"><svg><use href="#icon-win-maximize"></use></svg></button>
+            <button id="win-close-btn" class="win-control-btn" title="关闭"><svg><use href="#icon-win-close"></use></svg></button>
         </div>
     </div>
 
-    <div class="container">
-        <canvas id="spectrum-canvas"></canvas>
-        <h1>
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle;">
-                <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C7.59 20 4 16.41 4 12C4 7.59 7.59 4 12 4C16.41 4 20 7.59 20 12C20 16.41 16.41 20 12 20Z" fill="#3498db"/>
-                <path d="M12 7C9.24 7 7 9.24 7 12C7 14.76 9.24 17 12 17C14.76 17 17 14.76 17 12C17 9.24 14.76 7 12 7ZM12 15C10.34 15 9 13.66 9 12C9 10.34 10.34 9 12 9C13.66 9 15 10.34 15 12C15 13.66 13.66 15 12 15Z" fill="#3498db"/>
-                <path d="M12 4V2M12 22V20M4 12H2M22 12H20M19.07 4.93L17.66 6.34M4.93 19.07L6.34 17.66M19.07 19.07L17.66 17.66M4.93 4.93L6.34 6.34" stroke="#3498db" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-            VCP 信息流监听器
-        </h1>
-        
-        <div id="connectionStatus" class="connection-status status-closed">
-            连接状态：未连接
-        </div>
+    <canvas id="spectrum-canvas"></canvas>
 
-        <div class="controls">
-            <button onclick="clearLogs()">清空日志</button>
+    <div class="main-wrapper">
+        <div class="header-section">
+            <div id="connectionStatus" class="status-pill">
+                <div class="status-dot dot-red" id="statusDot"></div>
+                <span id="statusText">未连接</span>
+            </div>
+
+            <div class="filter-bar">
+                <button class="filter-btn active" onclick="filterLogs('all')">全部</button>
+                <button class="filter-btn" onclick="filterLogs('rag')">RAG知识库</button>
+                <button class="filter-btn" onclick="filterLogs('chain')">元思考链</button>
+                <button class="filter-btn" onclick="filterLogs('chat')">Agent会话</button>
+                <button class="filter-btn" onclick="filterLogs('memo')">记忆检索</button>
+                <button class="filter-btn" onclick="clearLogs()" style="margin-left: 10px; color: #ff5f56;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                </button>
+            </div>
         </div>
 
         <div id="infoContainer">
-            <p style="text-align:center; color:#999;">等待连接...</p>
+            <div style="text-align:center; color:rgba(255,255,255,0.3); margin-top: 50px; font-size: 0.9rem;">
+                <p>等待数据接入...</p>
+                <p style="font-size: 0.8em;">System Ready</p>
+            </div>
         </div>
     </div>
 
+    <!-- Icons Def -->
+    <svg style="display: none;">
+        <symbol id="icon-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></symbol>
+        <symbol id="icon-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></symbol>
+        <symbol id="icon-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></symbol>
+        <symbol id="icon-win-minimize" viewBox="0 0 10 10"><path stroke="currentColor" stroke-width="1.2" d="M0 5 H10"></path></symbol>
+        <symbol id="icon-win-maximize" viewBox="0 0 10 10"><path fill="none" stroke="currentColor" stroke-width="1.2" d="M1,1 h8 v8 h-8 z"></path></symbol>
+        <symbol id="icon-win-close" viewBox="0 0 10 10"><path stroke="currentColor" stroke-width="1.2" d="M1,1 L9,9 M9,1 L1,9"></path></symbol>
+    </svg>
+
     <script>
-        const spectrumCanvas = document.getElementById('spectrum-canvas');
-        if (spectrumCanvas) {
-            const spectrumCtx = spectrumCanvas.getContext('2d');
-            let animationFrameId;
-
-            window.stopSpectrumAnimation = function() {
-                if (animationFrameId) {
-                    cancelAnimationFrame(animationFrameId);
-                    animationFrameId = null;
-                }
-                spectrumCanvas.style.display = 'none';
-            }
-
-            function drawSpectrum() {
-                if (spectrumCanvas.width !== spectrumCanvas.offsetWidth || spectrumCanvas.height !== spectrumCanvas.offsetHeight) {
-                    spectrumCanvas.width = spectrumCanvas.offsetWidth;
-                    spectrumCanvas.height = spectrumCanvas.offsetHeight;
-                }
-                
-                const width = spectrumCanvas.width;
-                const height = spectrumCanvas.height;
-                spectrumCtx.clearRect(0, 0, width, height);
-
-                const bars = 64;
-                const barWidth = width / bars;
-                const time = Date.now() * 0.002;
-
-                for (let i = 0; i < bars; i++) {
-                    const x = i * barWidth;
-                    const amplitude = (Math.sin(i * 0.2 + time) + 1) / 2;
-                    const barHeight = amplitude * height * 0.8 + height * 0.1;
-                    
-                    const gradient = spectrumCtx.createLinearGradient(0, 0, 0, height);
-                    gradient.addColorStop(0, 'rgba(52, 152, 219, 0.8)');
-                    gradient.addColorStop(1, 'rgba(142, 68, 173, 0.8)');
-
-                    spectrumCtx.fillStyle = gradient;
-                    spectrumCtx.fillRect(x, height - barHeight, barWidth - 2, barHeight);
-                }
-
-                animationFrameId = requestAnimationFrame(drawSpectrum);
-            }
-
-            window.startSpectrumAnimation = function(duration = 3000) {
-                spectrumCanvas.style.display = 'block';
-                if (animationFrameId) {
-                    cancelAnimationFrame(animationFrameId);
-                }
-                drawSpectrum();
-                setTimeout(window.stopSpectrumAnimation, duration);
-            }
-        }
-    </script>
-    <script>
-        const connectionStatusDiv = document.getElementById('connectionStatus');
+        // --- Visuals & Utils ---
         const infoContainer = document.getElementById('infoContainer');
+        let currentFilter = 'all';
 
         function updateStatus(status, message) {
-            connectionStatusDiv.className = `connection-status status-${status}`;
-            connectionStatusDiv.textContent = `连接状态：${message}`;
+            const dot = document.getElementById('statusDot');
+            const text = document.getElementById('statusText');
+            
+            dot.className = 'status-dot';
+            if (status === 'open') dot.classList.add('dot-green');
+            else if (status === 'connecting') dot.classList.add('dot-orange');
+            else dot.classList.add('dot-red');
+            
+            text.textContent = message;
         }
 
-        function addAnimatedBlock(block) {
-            infoContainer.prepend(block);
-            // Use requestAnimationFrame to ensure the element is in the DOM before adding the class,
-            // which allows the CSS animation to trigger correctly.
-            requestAnimationFrame(() => {
-                block.classList.add('card-enter-animation');
-            });
-        }
-
-        function displayRagInfo(data) {
-            if (infoContainer.firstElementChild && infoContainer.firstElementChild.tagName === 'P') {
-                infoContainer.innerHTML = '';
-            }
-
-            // 检查是否为 Agent 私聊预览数据
-            if (data.type === 'AGENT_PRIVATE_CHAT_PREVIEW') {
-                displayAgentChatPreview(data);
-                return;
-            }
-
-            // 检查是否为元思考链数据
-            if (data.type === 'META_THINKING_CHAIN') {
-                displayMetaThinkingChain(data);
-                return;
-            }
+        function filterLogs(type) {
+            currentFilter = type;
             
-            // 检查是否为 AI Memo Retrieval 数据
-            if (data.type === 'AI_MEMO_RETRIEVAL') {
-                displayAiMemoRetrieval(data);
-                return;
-            }
+            // Update buttons
+            document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.closest('.filter-btn').classList.add('active');
 
-             const block = document.createElement('div');
-             block.className = 'rag-block';
-
-            const header = document.createElement('div');
-            header.className = 'rag-block-header';
-            const queryText = data.query;
-            const needsToggle = queryText.length > 150;
-            const renderedQuery = marked.parse(queryText);
-            const queryDisplay = needsToggle
-                ? `<span class="snippet">${queryText.substring(0, 150)}...</span><div class="full-text" style="display:none;">${renderedQuery}</div>`
-                : `<div>${renderedQuery}</div>`;
-            const toggleButtonHTML = needsToggle
-                ? `<button class="toggle-button" style="margin-left: 10px;" onclick="toggleQueryText(this)">展开</button>`
-                : '';
-
-            // 构建Tag模式信息
-            const tagModeInfo = data.useTagMemo
-                ? ` | <strong>TagMemo:</strong> <span class="tag-indicator">已启用 (权重: ${data.tagWeight || 'N/A'})</span>`
-                : '';
-            
-            header.innerHTML = `
-                <h3>知识库: <strong>${data.dbName}</strong></h3>
-                <p>查询: <em class="query-content">${queryDisplay}</em> ${toggleButtonHTML}</p>
-                <p>
-                    <strong>K:</strong> ${data.k} |
-                    <strong>Time:</strong> ${data.useTime} |
-                    <strong>Group:</strong> ${data.useGroup} |
-                    <strong>Rerank:</strong> ${data.useRerank}${tagModeInfo} |
-                    <strong>召回数量:</strong> ${data.results.length}
-                </p>
-            `;
-            
-            // 如果启用TagMemo且有tagStats，显示统计信息
-            if (data.useTagMemo && data.tagStats) {
-                const stats = data.tagStats;
-                const statsDiv = document.createElement('div');
-                statsDiv.style.cssText = `
-                    margin-top: 10px;
-                    padding: 10px;
-                    background: rgba(255, 193, 7, 0.08);
-                    border-radius: 8px;
-                    border: 1px solid rgba(255, 193, 7, 0.3);
-                    font-size: 0.85em;
-                `;
-                
-                let tagsHTML = '';
-                if (stats.uniqueMatchedTags && stats.uniqueMatchedTags.length > 0) {
-                    tagsHTML = '<div style="margin-top: 5px;"><strong style="color: #ffc107;">匹配到的所有标签:</strong> ';
-                    stats.uniqueMatchedTags.forEach(tag => {
-                        tagsHTML += `<span class="tag-item" style="margin: 2px 3px;">${tag}</span>`;
-                    });
-                    tagsHTML += '</div>';
-                }
-                
-                statsDiv.innerHTML = `
-                    <strong style="color: #ffc107;">📊 Tag统计概览</strong>
-                    <div style="margin-top: 5px; color: var(--secondary-text);">
-                        总匹配次数: <span style="color: #ffc107; font-weight: 600;">${stats.totalTagMatches || 0}</span> |
-                        命中结果数: <span style="color: #ffc107; font-weight: 600;">${stats.resultsWithTags || 0}/${data.results.length}</span> |
-                        平均提权: <span style="color: #ffc107; font-weight: 600;">${stats.avgBoostFactor || '1.0'}</span>
-                    </div>
-                    ${tagsHTML}
-                `;
-                header.appendChild(statsDiv);
-            }
-            
-            block.appendChild(header);
-
-            data.results.forEach(r => {
-                const item = document.createElement('div');
-                item.className = 'rag-item';
-
-                const itemHeader = document.createElement('div');
-                itemHeader.className = 'rag-item-header';
-                
-                const meta = document.createElement('div');
-                meta.className = 'rag-meta';
-                
-                // 构建带可视化的分数显示
-                let scoreHTML = '';
-                if (r.score !== undefined && r.score !== null) {
-                    const score = r.score;
-                    const originalScore = r.originalScore;
-                    const isBoosted = data.useTagMemo && originalScore !== undefined && originalScore !== score;
-                    
-                    // 确定评分等级和颜色
-                    let scoreClass = 'poor';
-                    if (score >= 0.8) scoreClass = 'excellent';
-                    else if (score >= 0.6) scoreClass = 'good';
-                    else if (score >= 0.4) scoreClass = 'fair';
-                    
-                    // 如果是Tag提权的结果，使用特殊样式
-                    if (isBoosted) scoreClass = 'boosted';
-                    
-                    const scoreContainer = document.createElement('div');
-                    scoreContainer.className = 'score-container';
-                    
-                    const scoreBadge = document.createElement('span');
-                    scoreBadge.className = `score-badge ${scoreClass}`;
-                    scoreBadge.textContent = `Score: ${score.toFixed(3)}`;
-                    scoreContainer.appendChild(scoreBadge);
-                    
-                    if (isBoosted) {
-                        const scoreDetail = document.createElement('span');
-                        scoreDetail.className = 'score-detail';
-                        scoreDetail.textContent = `原始: ${originalScore.toFixed(3)}`;
-                        scoreContainer.appendChild(scoreDetail);
-                    }
-                    
-                    scoreHTML = scoreContainer.outerHTML;
-                }
-                
-                // 先添加来源和日期标签
-                meta.innerHTML = `
-                    <span class="source-${r.source || 'unknown'}">来源: ${r.source || 'N/A'}</span>
-                    ${r.date ? `<span class="date">日期: ${r.date}</span>` : ''}
-                `;
-                
-                // 如果有score，将其作为DOM元素添加
-                if (scoreHTML) {
-                    const tempDiv = document.createElement('div');
-                    tempDiv.innerHTML = scoreHTML;
-                    meta.appendChild(tempDiv.firstChild);
-                }
-
-                const toggleBtn = document.createElement('button');
-                toggleBtn.className = 'toggle-button';
-                toggleBtn.textContent = '展开';
-                toggleBtn.onclick = () => toggleFullText(toggleBtn);
-
-                itemHeader.appendChild(meta);
-                itemHeader.appendChild(toggleBtn);
-
-                const content = document.createElement('div');
-                content.className = 'rag-content';
-                
-                const snippet = document.createElement('div');
-                snippet.className = 'snippet';
-                snippet.textContent = r.text.substring(0, 150) + (r.text.length > 150 ? '...' : '');
-
-                const fullText = document.createElement('div');
-                fullText.className = 'full-text';
-                fullText.innerHTML = marked.parse(r.text);
-
-                content.appendChild(snippet);
-                content.appendChild(fullText);
-                
-                // 如果启用了TagMemo并且有匹配的Tags，显示Tag信息
-                if (data.useTagMemo && r.matchedTags && r.matchedTags.length > 0) {
-                    const tagInfo = document.createElement('div');
-                    tagInfo.className = 'matched-tags';
-                    
-                    // 标题
-                    const title = document.createElement('strong');
-                    title.textContent = '🏷️ 匹配标签';
-                    tagInfo.appendChild(title);
-                    
-                    // Tags列表
-                    const tagsList = document.createElement('div');
-                    tagsList.className = 'tags-list';
-                    r.matchedTags.forEach(tag => {
-                        const tagSpan = document.createElement('span');
-                        tagSpan.className = 'tag-item';
-                        tagSpan.textContent = tag;
-                        tagsList.appendChild(tagSpan);
-                    });
-                    tagInfo.appendChild(tagsList);
-                    
-                    // Tag提权信息 - 紧凑单行布局
-                    const boostInfo = document.createElement('div');
-                    boostInfo.className = 'tag-boost-info';
-                    boostInfo.innerHTML = `
-                        <span class="tag-boost-item">
-                            <span class="boost-label">Tag匹配得分:</span>
-                            <span class="boost-value">${r.tagMatchScore?.toFixed(3) || 'N/A'}</span>
-                        </span>
-                        <span class="tag-boost-item">
-                            <span class="boost-label">匹配数量:</span>
-                            <span class="boost-value">${r.tagMatchCount || 0}</span>
-                        </span>
-                        <span class="tag-boost-item">
-                            <span class="boost-label">提权倍数:</span>
-                            <span class="boost-value">${r.boostFactor?.toFixed(4) || '1.0000'}×</span>
-                        </span>
-                    `;
-                    tagInfo.appendChild(boostInfo);
-                    content.appendChild(tagInfo);
-                }
-                
-                item.appendChild(itemHeader);
-                item.appendChild(content);
-                block.appendChild(item);
-            });
-
-            addAnimatedBlock(block);
-        }
-
-        function toggleQueryText(button) {
-            const queryContent = button.parentElement.querySelector('.query-content');
-            const snippet = queryContent.querySelector('.snippet');
-            const fullText = queryContent.querySelector('.full-text');
-            
-            if (!snippet || !fullText) return;
-
-            const isCollapsed = fullText.style.display === 'none';
-            if (isCollapsed) {
-                fullText.style.display = 'block';
-                snippet.style.display = 'none';
-                button.textContent = '收起';
-            } else {
-                fullText.style.display = 'none';
-                snippet.style.display = 'block';
-                button.textContent = '展开';
-            }
-        }
-
-        function toggleFullText(button) {
-            const contentDiv = button.closest('.rag-item').querySelector('.rag-content');
-            const snippet = contentDiv.querySelector('.snippet');
-            const fullText = contentDiv.querySelector('.full-text');
-
-            const isCollapsed = fullText.style.display === 'none';
-            if (isCollapsed) {
-                fullText.style.display = 'block';
-                snippet.style.display = 'none';
-                button.textContent = '收起';
-
-            } else {
-                fullText.style.display = 'none';
-                snippet.style.display = 'block';
-                button.textContent = '展开';
-            }
-        }
-
-        function displayMetaThinkingChain(data) {
-            const block = document.createElement('div');
-            block.className = 'meta-thinking-block';
-
-            // 头部
-            const header = document.createElement('div');
-            header.className = 'meta-thinking-header';
-            
-            const title = document.createElement('h3');
-            title.innerHTML = `
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="#af7ac5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="rgba(142, 68, 173, 0.2)"/>
-                    <path d="M2 17L12 22L22 17" stroke="#af7ac5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    <path d="M2 12L12 17L22 12" stroke="#af7ac5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                VCP元思考链: ${data.chainName}
-            `;
-            header.appendChild(title);
-
-            // 查询信息
-            const queryInfo = document.createElement('p');
-            queryInfo.style.fontSize = '0.9em';
-            queryInfo.style.color = 'var(--secondary-text)';
-            const queryText = data.query || '';
-            const needsToggle = queryText.length > 100;
-            const renderedQuery = marked.parse(queryText || '');
-            const queryDisplay = needsToggle
-                ? `<span class="snippet">${(queryText || '').substring(0, 100)}...</span><div class="full-text" style="display:none;">${renderedQuery}</div>`
-                : `<div>${renderedQuery}</div>`;
-            const toggleButtonHTML = needsToggle
-                ? `<button class="toggle-button" style="margin-left: 8px;" onclick="toggleQueryText(this)">展开</button>`
-                : '';
-            queryInfo.innerHTML = `查询: <em class="query-content">${queryDisplay}</em> ${toggleButtonHTML}`;
-            header.appendChild(queryInfo);
-
-            // 思维链路径
-            const chainPath = document.createElement('div');
-            chainPath.className = 'chain-path';
-            if (data.stages && data.stages.length > 0) {
-                data.stages.forEach((stage, index) => {
-                    if (index > 0) {
-                        const arrow = document.createElement('span');
-                        arrow.className = 'chain-arrow';
-                        arrow.textContent = '→';
-                        chainPath.appendChild(arrow);
-                    }
-                    const node = document.createElement('span');
-                    node.className = 'chain-node';
-                    node.textContent = stage.clusterName;
-                    chainPath.appendChild(node);
-                });
-            }
-            header.appendChild(chainPath);
-
-            // 语义组信息
-            if (data.useGroup && data.activatedGroups && data.activatedGroups.length > 0) {
-                const groupsDiv = document.createElement('div');
-                groupsDiv.className = 'semantic-groups';
-                let groupsHTML = '<strong>激活的语义组:</strong> ';
-                data.activatedGroups.forEach(group => {
-                    groupsHTML += `<span class="semantic-group-tag">${group}</span>`;
-                });
-                groupsDiv.innerHTML = groupsHTML;
-                header.appendChild(groupsDiv);
-            }
-
-            // 统计信息
-            const statsDiv = document.createElement('p');
-            statsDiv.style.fontSize = '0.85em';
-            statsDiv.style.marginTop = '10px';
-            statsDiv.innerHTML = `
-                <strong>总阶段数:</strong> ${data.totalStages} |
-                <strong>使用语义组:</strong> ${data.useGroup ? '是' : '否'}
-            `;
-            header.appendChild(statsDiv);
-
-            block.appendChild(header);
-
-            // 各阶段详情
-            if (data.stages && data.stages.length > 0) {
-                data.stages.forEach(stage => {
-                    const stageDiv = document.createElement('div');
-                    stageDiv.className = 'thinking-stage';
-
-                    const stageHeader = document.createElement('div');
-                    stageHeader.className = 'stage-header';
-
-                    const stageTitle = document.createElement('div');
-                    stageTitle.className = 'stage-title';
-                    stageTitle.textContent = `阶段${stage.stage}: ${stage.clusterName}`;
-
-                    const stageBadge = document.createElement('div');
-                    stageBadge.className = 'stage-badge';
-                    stageBadge.textContent = `召回 ${stage.resultCount} 个`;
-
-                    stageHeader.appendChild(stageTitle);
-                    stageHeader.appendChild(stageBadge);
-                    stageDiv.appendChild(stageHeader);
-
-                    // 阶段结果
-                    if (stage.results && stage.results.length > 0) {
-                        const resultsDiv = document.createElement('div');
-                        resultsDiv.className = 'stage-results';
-
-                        stage.results.forEach((result, idx) => {
-                            const resultItem = document.createElement('div');
-                            resultItem.className = 'stage-result-item';
-
-                            const resultMeta = document.createElement('div');
-                            resultMeta.className = 'stage-result-meta';
-                            resultMeta.innerHTML = `
-                                <span>#${idx + 1}</span>
-                                ${result.score ? `<span>Score: ${result.score.toFixed(3)}</span>` : ''}
-                            `;
-
-                            const resultText = document.createElement('div');
-                            resultText.style.marginTop = '6px';
-                            resultText.style.fontSize = '0.9em';
-                            resultText.style.lineHeight = '1.5';
-                            
-                            const needsToggleResult = result.text && result.text.length > 120;
-                            const renderedText = marked.parse(result.text || '');
-                            if (needsToggleResult) {
-                                const snippetText = (result.text || '').substring(0, 120) + '...';
-                                resultText.innerHTML = `
-                                    <div class="snippet">${snippetText}</div>
-                                    <div class="full-text" style="display:none;">${renderedText}</div>
-                                    <button class="toggle-button" style="margin-top: 6px;" onclick="toggleResultText(this)">展开</button>
-                                `;
-                            } else {
-                                resultText.innerHTML = renderedText;
-                            }
-
-                            resultItem.appendChild(resultMeta);
-                            resultItem.appendChild(resultText);
-                            resultsDiv.appendChild(resultItem);
-                        });
-
-                        stageDiv.appendChild(resultsDiv);
+            // Filter DOM
+            const cards = document.querySelectorAll('.card-base');
+            cards.forEach(card => {
+                if (type === 'all') {
+                    card.style.display = 'block';
+                } else {
+                    if (card.classList.contains(`type-${type}`)) {
+                        card.style.display = 'block';
                     } else {
-                        const noResults = document.createElement('p');
-                        noResults.style.fontSize = '0.9em';
-                        noResults.style.color = 'var(--secondary-text)';
-                        noResults.style.fontStyle = 'italic';
-                        noResults.textContent = '本阶段未找到匹配的元逻辑模块';
-                        stageDiv.appendChild(noResults);
+                        card.style.display = 'none';
                     }
-
-                    block.appendChild(stageDiv);
-                });
-            }
-
-            addAnimatedBlock(block);
-        }
-
-        function toggleResultText(button) {
-            const parent = button.parentElement;
-            const snippet = parent.querySelector('.snippet');
-            const fullText = parent.querySelector('.full-text');
-            
-            if (!snippet || !fullText) return;
-
-            const isCollapsed = fullText.style.display === 'none';
-            if (isCollapsed) {
-                fullText.style.display = 'block';
-                snippet.style.display = 'none';
-                button.textContent = '收起';
-            } else {
-                fullText.style.display = 'none';
-                snippet.style.display = 'block';
-                button.textContent = '展开';
-            }
-        }
-
-        function toggleAgentChatText(button) {
-            const contentDiv = button.parentElement;
-            const snippet = contentDiv.querySelector('.snippet');
-            const fullText = contentDiv.querySelector('.full-text');
-            
-            if (!snippet || !fullText) return;
-
-            const isCollapsed = fullText.style.display === 'none';
-            if (isCollapsed) {
-                fullText.style.display = 'block';
-                snippet.style.display = 'none';
-                button.textContent = '收起';
-            } else {
-                fullText.style.display = 'none';
-                snippet.style.display = 'block';
-                button.textContent = '展开';
-            }
-        }
-
-        function displayAgentChatPreview(data) {
-            const block = document.createElement('div');
-            block.className = 'agent-chat-block';
-
-            const header = document.createElement('div');
-            header.className = 'agent-chat-header';
-            
-            const time = new Date(data.timestamp).toLocaleTimeString();
-
-            header.innerHTML = `
-                <h3>
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle;">
-                        <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C7.59 20 4 16.41 4 12C4 7.59 7.59 4 12 4C16.41 4 20 7.59 20 12C20 16.41 16.41 20 12 20Z" fill="#ffc107"/>
-                        <path d="M12 7C9.24 7 7 9.24 7 12C7 14.76 9.24 17 12 17C14.76 17 17 14.76 17 12C17 9.24 14.76 7 12 7Z" fill="#ffc107"/>
-                    </svg>
-                    Agent 私聊预览: <strong>${data.agentName}</strong> (${time})
-                </h3>
-                <p>会话ID: ${data.sessionId}</p>
-            `;
-            block.appendChild(header);
-
-            const contentDiv = document.createElement('div');
-            contentDiv.className = 'agent-chat-content';
-
-            // User Query
-            const queryText = data.query || '';
-            const needsToggleQuery = queryText.length > 150;
-            const renderedQuery = marked.parse(queryText);
-            const queryDisplay = needsToggleQuery
-                ? `<span class="snippet">${queryText.substring(0, 150)}...</span><div class="full-text" style="display:none;">${renderedQuery}</div>`
-                : `<div>${renderedQuery}</div>`;
-            const toggleButtonQueryHTML = needsToggleQuery
-                ? `<button class="toggle-button" style="margin-left: 10px;" onclick="toggleAgentChatText(this)">展开</button>`
-                : '';
-            
-            const queryDiv = document.createElement('div');
-            queryDiv.className = 'agent-chat-query';
-            queryDiv.innerHTML = `
-                <strong>用户输入:</strong>
-                <div class="rag-content">
-                    ${queryDisplay} ${toggleButtonQueryHTML}
-                </div>
-            `;
-            contentDiv.appendChild(queryDiv);
-
-            // Agent Response
-            const responseText = data.response || '';
-            const needsToggleResponse = responseText.length > 150;
-            const renderedResponse = marked.parse(responseText);
-            const responseDisplay = needsToggleResponse
-                ? `<span class="snippet">${responseText.substring(0, 150)}...</span><div class="full-text" style="display:none;">${renderedResponse}</div>`
-                : `<div>${renderedResponse}</div>`;
-            const toggleButtonResponseHTML = needsToggleResponse
-                ? `<button class="toggle-button" style="margin-left: 10px;" onclick="toggleAgentChatText(this)">展开</button>`
-                : '';
-
-            const responseDiv = document.createElement('div');
-            responseDiv.className = 'agent-chat-response';
-            responseDiv.innerHTML = `
-                <strong>Agent 回复:</strong>
-                <div class="rag-content">
-                    ${responseDisplay} ${toggleButtonResponseHTML}
-                </div>
-            `;
-            contentDiv.appendChild(responseDiv);
-
-            block.appendChild(contentDiv);
-            addAnimatedBlock(block);
+                }
+            });
         }
 
         function clearLogs() {
-            infoContainer.innerHTML = '<p style="text-align:center; color:#999;">日志已清空。</p>';
-        }
-    </script>
-    <script>
-        function displayAiMemoRetrieval(data) {
-            const block = document.createElement('div');
-            block.className = 'ai-memo-block';
-
-            const header = document.createElement('div');
-            header.className = 'ai-memo-header';
-
-            // 显示日记本列表
-            const dbNamesDisplay = data.dbNames && data.dbNames.length > 0
-                ? data.dbNames.join(', ')
-                : '未知';
-
-            const queryText = data.query || '';
-            const needsToggleQuery = queryText.length > 150;
-            const renderedQuery = marked.parse(queryText);
-            const queryDisplay = needsToggleQuery
-                ? `<span class="snippet">${queryText.substring(0, 150)}...</span><div class="full-text" style="display:none;">${renderedQuery}</div>`
-                : `<div>${renderedQuery}</div>`;
-            const toggleButtonQueryHTML = needsToggleQuery
-                ? `<button class="toggle-button" style="margin-left: 10px;" onclick="toggleQueryText(this)">展开</button>`
-                : '';
-
-            header.innerHTML = `
-                <h3>
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle;">
-                        <path d="M18.36 5.64C16.96 4.24 15.06 3.5 13 3.5C10.94 3.5 9.04 4.24 7.64 5.64C6.24 7.04 5.5 8.94 5.5 11H18.5C18.5 8.94 17.76 7.04 16.36 5.64Z" fill="#1abc9c" fill-opacity="0.3"/>
-                        <path d="M5.5 11V12.5C5.5 15.26 7.74 17.5 10.5 17.5V20.5H13.5V17.5C16.26 17.5 18.5 15.26 18.5 12.5V11H5.5Z" fill="#1abc9c"/>
-                    </svg>
-                    AI 聚合记忆检索
-                </h3>
-                <p><strong>日记本:</strong> ${dbNamesDisplay} (共 ${data.diaryCount || 0} 个)</p>
-                <p>查询: <em class="query-content">${queryDisplay}</em> ${toggleButtonQueryHTML}</p>
-                <p><strong>模式:</strong> ${data.mode}${data.mode === 'aggregated_batched' ? ` | <strong>批次数:</strong> ${data.batchCount || 0}` : ''}</p>
-            `;
-            block.appendChild(header);
-
-            const contentDiv = document.createElement('div');
-            contentDiv.className = 'ai-memo-content';
-            
-            const detailsGrid = document.createElement('div');
-            detailsGrid.className = 'ai-memo-details-grid';
-
-            // 根据模式显示不同内容
-            if (data.mode === 'aggregated_single') {
-                const rawResponse = data.rawResponse || '';
-                const needsToggleRaw = rawResponse.length > 200;
-                const renderedRaw = marked.parse(rawResponse);
-                const rawDisplay = needsToggleRaw
-                    ? `<div class="snippet">${rawResponse.substring(0, 200)}...</div><div class="full-text" style="display:none;">${renderedRaw}</div><button class="toggle-button" style="margin-top: 8px;" onclick="toggleAiMemoText(this)">展开</button>`
-                    : `<div>${renderedRaw}</div>`;
-
-                const extractedMemories = data.extractedMemories || '';
-                const needsToggleMem = extractedMemories.length > 200;
-                const renderedMem = marked.parse(extractedMemories);
-                const memDisplay = needsToggleMem
-                    ? `<div class="snippet">${extractedMemories.substring(0, 200)}...</div><div class="full-text" style="display:none;">${renderedMem}</div><button class="toggle-button" style="margin-top: 8px;" onclick="toggleAiMemoText(this)">展开</button>`
-                    : `<div>${renderedMem}</div>`;
-
-                detailsGrid.innerHTML = `
-                    <div class="ai-memo-details-item">
-                        <strong>AI 原始响应</strong>
-                        <div class="rag-content">${rawDisplay}</div>
-                    </div>
-                    <div class="ai-memo-details-item">
-                        <strong>提取的记忆</strong>
-                        <div class="rag-content">${memDisplay}</div>
-                    </div>
-                `;
-            } else if (data.mode === 'aggregated_batched') {
-                const extractedMemories = data.extractedMemories || '';
-                const needsToggleMem = extractedMemories.length > 200;
-                const renderedMem = marked.parse(extractedMemories);
-                const memDisplay = needsToggleMem
-                    ? `<div class="snippet">${extractedMemories.substring(0, 200)}...</div><div class="full-text" style="display:none;">${renderedMem}</div><button class="toggle-button" style="margin-top: 8px;" onclick="toggleAiMemoText(this)">展开</button>`
-                    : `<div>${renderedMem}</div>`;
-
-                detailsGrid.innerHTML = `
-                    <div class="ai-memo-details-item">
-                        <strong>提取的记忆</strong>
-                        <div class="rag-content">${memDisplay}</div>
-                    </div>
-                `;
-            }
-            
-            contentDiv.appendChild(detailsGrid);
-            block.appendChild(contentDiv);
-            addAnimatedBlock(block);
+            infoContainer.classList.add('clearing');
+            setTimeout(() => {
+                infoContainer.innerHTML = '';
+                infoContainer.classList.remove('clearing');
+            }, 300);
         }
 
-        function toggleAiMemoText(button) {
-            const parent = button.parentElement;
-            const snippet = parent.querySelector('.snippet');
-            const fullText = parent.querySelector('.full-text');
-            
-            if (!snippet || !fullText) return;
+        function copyToClipboard(text, btn) {
+            navigator.clipboard.writeText(text).then(() => {
+                const originalHTML = btn.innerHTML;
+                btn.innerHTML = `<svg class="icon-btn-svg"><use href="#icon-check"></use></svg>`;
+                btn.style.color = '#4caf50';
+                setTimeout(() => {
+                    btn.innerHTML = originalHTML;
+                    btn.style.color = '';
+                }, 1500);
+            });
+        }
 
-            const isCollapsed = fullText.style.display === 'none';
-            if (isCollapsed) {
-                fullText.style.display = 'block';
-                snippet.style.display = 'none';
-                button.textContent = '收起';
+        function toggleExpand(btn) {
+            const wrapper = btn.closest('.content-wrapper');
+            if (!wrapper) return;
+            
+            const snippet = wrapper.querySelector('.snippet');
+            const full = wrapper.querySelector('.full-text');
+            const arrow = btn.querySelector('.toggle-arrow');
+            
+            // Toggle logic
+            if (full.style.display === 'block') {
+                full.style.display = 'none';
+                snippet.style.display = '-webkit-box'; // Restore line clamp
+                btn.classList.remove('expanded');
             } else {
-                fullText.style.display = 'none';
-                snippet.style.display = 'block';
-                button.textContent = '展开';
+                full.style.display = 'block';
+                snippet.style.display = 'none';
+                btn.classList.add('expanded');
             }
         }
+
+        // --- Block Generators ---
+
+        // Helper to create generic toggle-able text
+        function createContentHTML(text) {
+            if (!text) return '';
+            const isLong = text.length > 150;
+            const rendered = marked.parse(text);
+            
+            if (!isLong) return `<div class="text-content">${rendered}</div>`;
+
+            // Safe string escaping for onclick
+            const escapedText = text.replace(/"/g, '&quot;').replace(/'/g, "\\'");
+            
+            return `
+                <div class="content-wrapper">
+                    <div class="text-content">
+                        <div class="snippet">${text}</div>
+                        <div class="full-text">${rendered}</div>
+                    </div>
+                    <div class="action-row">
+                        <button class="icon-btn" title="复制" onclick="copyToClipboard(decodeURIComponent('${encodeURIComponent(text)}'), this)">
+                            <svg><use href="#icon-copy"></use></svg>
+                        </button>
+                        <button class="icon-btn" title="展开/收起" onclick="toggleExpand(this)">
+                            <svg class="toggle-arrow"><use href="#icon-chevron"></use></svg>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        // 1. RAG BLOCK
+        function displayRagInfo(data) {
+            // Handle specialized types first
+            if (data.type === 'AGENT_PRIVATE_CHAT_PREVIEW') return displayAgentChat(data);
+            if (data.type === 'META_THINKING_CHAIN') return displayChain(data);
+            if (data.type === 'AI_MEMO_RETRIEVAL') return displayMemo(data);
+
+            const block = document.createElement('div');
+            block.className = 'card-base type-rag card-enter';
+            
+            // Header
+            let headerHTML = `
+                <h3>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                    ${data.dbName}
+                </h3>
+                <div class="meta-info">
+                    <span class="meta-pill">K: ${data.k}</span>
+                    <span class="meta-pill">Time: ${data.useTime}</span>
+                    <span class="meta-pill">ReRank: ${data.useRerank}</span>
+                    ${data.useTagMemo ? `<span class="meta-pill" style="color:#ffc107; border-color:#ffc107;">TagBoost: ${data.tagWeight}</span>` : ''}
+                </div>
+                ${createContentHTML(data.query)}
+            `;
+            
+            // Results
+            let resultsHTML = '';
+            data.results.forEach(r => {
+                const scoreClass = r.score >= 0.8 ? 'score-high' : (r.score >= 0.5 ? 'score-med' : 'score-low');
+                const isBoosted = data.useTagMemo && r.originalScore && r.originalScore !== r.score;
+                
+                let tagsHTML = '';
+                if(r.matchedTags && r.matchedTags.length) {
+                    tagsHTML = `<div style="margin-top:4px; font-size:0.75em; color:#ffc107;">🏷️ ${r.matchedTags.join(', ')}</div>`;
+                }
+
+                resultsHTML += `
+                    <div class="rag-sub-item">
+                        <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+                            <span class="score-badge ${isBoosted ? 'score-boosted' : scoreClass}">
+                                ${r.score.toFixed(3)} ${isBoosted ? '⚡' : ''}
+                            </span>
+                            <span style="font-size:0.75em; opacity:0.6;">${r.source || 'Unknown'}</span>
+                        </div>
+                        ${createContentHTML(r.text)}
+                        ${tagsHTML}
+                    </div>
+                `;
+            });
+
+            block.innerHTML = headerHTML + `<div style="margin-top:15px;">${resultsHTML}</div>`;
+            prependCard(block);
+        }
+
+        // 2. CHAIN BLOCK
+        function displayChain(data) {
+            const block = document.createElement('div');
+            block.className = 'card-base type-chain card-enter';
+
+            // Chain Path Visualization
+            const stagesPath = data.stages.map(s => s.clusterName).join(' <span style="opacity:0.4;">→</span> ');
+
+            let headerHTML = `
+                <h3 style="color: var(--accent-chain);">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+                    元思考链: ${data.chainName}
+                </h3>
+                <div class="meta-info" style="color:var(--accent-chain); font-weight:600;">
+                    ${stagesPath}
+                </div>
+                ${createContentHTML(data.query)}
+            `;
+
+            let stagesHTML = '';
+            if (data.stages && data.stages.length > 0) {
+                data.stages.forEach(stage => {
+                    let resultsHTML = '';
+                    if (stage.results && stage.results.length > 0) {
+                        stage.results.forEach(r => {
+                            resultsHTML += `
+                                <div class="rag-sub-item" style="background:rgba(0,0,0,0.1); margin-top:8px;">
+                                     <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+                                        <span class="score-badge score-med">
+                                            Score: ${r.score ? r.score.toFixed(3) : 'N/A'}
+                                        </span>
+                                        <span style="font-size:0.75em; opacity:0.6;">${r.source || 'Unknown'}</span>
+                                    </div>
+                                    ${createContentHTML(r.text)}
+                                </div>
+                            `;
+                        });
+                    } else {
+                        resultsHTML = `<div class="rag-sub-item" style="background:rgba(0,0,0,0.1); margin-top:8px; font-style:italic; color:rgba(255,255,255,0.5);">本阶段无结果</div>`;
+                    }
+
+                    stagesHTML += `
+                        <div class="rag-sub-item" style="margin-top:15px; border-left: 2px solid var(--accent-chain);">
+                            <div style="font-weight:bold; color: #fff; margin-bottom: 8px;">
+                                阶段 ${stage.stage}: ${stage.clusterName} (${stage.resultCount}个结果)
+                            </div>
+                            ${resultsHTML}
+                        </div>
+                    `;
+                });
+            }
+
+            block.innerHTML = headerHTML + `<div style="margin-top:15px;">${stagesHTML}</div>`;
+            prependCard(block);
+        }
+
+        // 3. AGENT CHAT BLOCK
+        function displayAgentChat(data) {
+            const block = document.createElement('div');
+            block.className = 'card-base type-chat card-enter';
+            block.innerHTML = `
+                <h3 style="color: var(--accent-agent);">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                    Agent 私聊: ${data.agentName}
+                </h3>
+                <div style="margin-top:10px; padding-left:10px; border-left:2px solid rgba(255,255,255,0.1);">
+                    <div style="font-size:0.8em; opacity:0.5; margin-bottom:4px;">USER</div>
+                    ${createContentHTML(data.query)}
+                </div>
+                <div style="margin-top:15px; padding-left:10px; border-left:2px solid var(--accent-agent);">
+                    <div style="font-size:0.8em; color:var(--accent-agent); margin-bottom:4px;">AI RESPONSE</div>
+                    ${createContentHTML(data.response)}
+                </div>
+            `;
+            prependCard(block);
+        }
+
+        // 4. MEMO BLOCK
+        function displayMemo(data) {
+            const block = document.createElement('div');
+            block.className = 'card-base type-memo card-enter';
+            block.innerHTML = `
+                <h3 style="color: var(--accent-memo);">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                    记忆回溯 (${data.diaryCount || 0})
+                </h3>
+                <div class="meta-info">模式: ${data.mode}</div>
+                ${createContentHTML(data.extractedMemories)}
+            `;
+            prependCard(block);
+        }
+
+        function prependCard(element) {
+            // Check filter before adding
+            const type = element.classList.contains('type-rag') ? 'rag' :
+                         element.classList.contains('type-chain') ? 'chain' :
+                         element.classList.contains('type-chat') ? 'chat' :
+                         element.classList.contains('type-memo') ? 'memo' : 'all';
+            
+            if (currentFilter !== 'all' && currentFilter !== type) {
+                element.style.display = 'none';
+            }
+
+            // Remove "Waiting..." text if present
+            if (infoContainer.children.length > 0 && infoContainer.children[0].tagName === 'DIV' && infoContainer.children[0].innerText.includes('等待数据')) {
+                infoContainer.innerHTML = '';
+            }
+
+            infoContainer.prepend(element);
+        }
+
+        // --- Spectrum Animation ---
+        const canvas = document.getElementById('spectrum-canvas');
+        const ctx = canvas.getContext('2d');
+        let animationId;
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = 4; // Thin line
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        window.startSpectrumAnimation = function(duration = 3000) {
+            if (animationId) cancelAnimationFrame(animationId);
+            let startTime = Date.now();
+
+            function draw() {
+                const elapsed = Date.now() - startTime;
+                if (elapsed > duration) {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    return;
+                }
+
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                const gradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
+                gradient.addColorStop(0, '#3498db');
+                gradient.addColorStop(0.5, '#9b59b6');
+                gradient.addColorStop(1, '#f1c40f');
+                ctx.fillStyle = gradient;
+
+                // Simple wave effect
+                const width = canvas.width;
+                const bars = 50;
+                const step = width / bars;
+                
+                for(let i=0; i<bars; i++) {
+                    const t = Date.now() * 0.005;
+                    const h = (Math.sin(i * 0.2 + t) + 1) * 2; // Height variation
+                    ctx.fillRect(i * step, 2 - h/2, step-2, h);
+                }
+
+                animationId = requestAnimationFrame(draw);
+            }
+            draw();
+        }
+
     </script>
 </body>
 </html>
