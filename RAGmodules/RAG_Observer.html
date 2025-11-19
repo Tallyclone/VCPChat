@@ -640,7 +640,11 @@
             // Results
             let resultsHTML = '';
             data.results.forEach(r => {
-                const scoreClass = r.score >= 0.8 ? 'score-high' : (r.score >= 0.5 ? 'score-med' : 'score-low');
+                // BUG FIX: Check if r.score is a valid number before calling toFixed().
+                // Time-based results from the backend don't have a score, which was causing a rendering crash.
+                const hasScore = typeof r.score === 'number';
+                const scoreDisplay = hasScore ? r.score.toFixed(3) : 'Time'; // Display 'Time' for time-based results
+                const scoreClass = hasScore ? (r.score >= 0.8 ? 'score-high' : (r.score >= 0.5 ? 'score-med' : 'score-low')) : 'score-med';
                 const isBoosted = data.useTagMemo && r.originalScore && r.originalScore !== r.score;
                 
                 let tagsHTML = '';
@@ -652,7 +656,7 @@
                     <div class="rag-sub-item">
                         <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
                             <span class="score-badge ${isBoosted ? 'score-boosted' : scoreClass}">
-                                ${r.score.toFixed(3)} ${isBoosted ? '⚡' : ''}
+                                ${scoreDisplay} ${isBoosted ? '⚡' : ''}
                             </span>
                             <span style="font-size:0.75em; opacity:0.6;">${r.source || 'Unknown'}</span>
                         </div>
