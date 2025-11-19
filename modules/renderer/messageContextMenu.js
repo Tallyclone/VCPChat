@@ -199,7 +199,8 @@ function showContextMenu(event, messageItem, message) {
                 const contentClone = contentDiv.cloneNode(true);
                 // 移除工具使用气泡，以获得更干净的复制内容
                 contentClone.querySelectorAll('.vcp-tool-use-bubble, .vcp-tool-result-bubble').forEach(el => el.remove());
-                textToCopy = contentClone.innerText.trim();
+                // 修复：清理多余的空行，确保最多只有一个空行
+                textToCopy = contentClone.innerText.replace(/\n{3,}/g, '\n\n').trim();
             } else {
                 // 如果找不到 .md-content，则回退到旧方法
                 let contentToProcess = message.content;
@@ -300,7 +301,8 @@ function showContextMenu(event, messageItem, message) {
                             // Also remove tool-result bubbles
                             contentClone.querySelectorAll('.vcp-tool-result-bubble').forEach(el => el.remove());
                             // Now, get the innerText from the cleaned-up clone
-                            textToRead = contentClone.innerText || '';
+                            // 修复：清理多余的空行，确保最多只有一个空行
+                            textToRead = (contentClone.innerText || '').replace(/\n{3,}/g, '\n\n').trim();
                         }
                         
                         if (textToRead.trim()) {
