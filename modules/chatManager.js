@@ -560,7 +560,7 @@ window.chatManager = (() => {
 
     async function handleSendMessage() {
         const { messageInput } = elements;
-        let content = messageInput.value.trim(); // Use let as it might be modified
+        let content = messageInput.value; // Use let as it might be modified
         const attachedFiles = attachedFilesRef.get();
         const currentSelectedItem = currentSelectedItemRef.get();
         const currentTopicId = currentTopicIdRef.get();
