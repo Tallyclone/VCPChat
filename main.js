@@ -253,7 +253,7 @@ function createWindow() {
         mainWindow.show();
     });
 
-    mainWindow.setMenu(null); // 移除应用程序菜单栏
+    // mainWindow.setMenu(null); // 移除应用程序菜单栏 - 注释掉以启用macOS的标准菜单
 
     // Set theme source to 'system' by default. The renderer will send the saved preference on launch.
     nativeTheme.themeSource = 'system';
@@ -428,6 +428,104 @@ if (!gotTheLock) {
    // Create the main window first to give immediate feedback to the user.
    createWindow();
    createTray();
+   // --- Application Menu ---
+   const isMac = process.platform === 'darwin';
+   const menuTemplate = [
+       ...(isMac ? [{
+           label: app.name,
+           submenu: [
+               { role: 'about' },
+               { type: 'separator' },
+               { role: 'services' },
+               { type: 'separator' },
+               { role: 'hide' },
+               { role: 'hideothers' },
+               { role: 'unhide' },
+               { type: 'separator' },
+               {
+                   label: '退出 VCPChat',
+                   accelerator: 'Command+Q',
+                   click: () => {
+                       app.isQuitting = true;
+                       app.quit();
+                   }
+               }
+           ]
+       }] : []),
+       {
+           label: '编辑',
+           submenu: [
+               { role: 'undo' },
+               { role: 'redo' },
+               { type: 'separator' },
+               { role: 'cut' },
+               { role: 'copy' },
+               { role: 'paste' },
+               ...(isMac ? [
+                   { role: 'pasteAndMatchStyle' },
+                   { role: 'delete' },
+                   { role: 'selectAll' },
+                   { type: 'separator' },
+                   {
+                       label: '语音',
+                       submenu: [
+                           { role: 'startSpeaking' },
+                           { role: 'stopSpeaking' }
+                       ]
+                   }
+               ] : [
+                   { role: 'delete' },
+                   { type: 'separator' },
+                   { role: 'selectAll' }
+               ])
+           ]
+       },
+       {
+           label: '视图',
+           submenu: [
+               { role: 'reload' },
+               { role: 'forceReload' },
+               { type: 'separator' },
+               { role: 'resetZoom' },
+               { role: 'zoomIn' },
+               { role: 'zoomOut' },
+               { type: 'separator' },
+               { role: 'togglefullscreen' }
+           ]
+       },
+       {
+           label: '窗口',
+           submenu: [
+               { role: 'minimize' },
+               { role: 'zoom' },
+               ...(isMac ? [
+                   { role: 'close' },
+                   { type: 'separator' },
+                   { role: 'front' },
+                   { type: 'separator' },
+                   { role: 'window' }
+               ] : [
+                   { role: 'close' }
+               ])
+           ]
+       },
+       {
+           label: '开发者',
+           submenu: [
+               {
+                   label: '切换开发者工具',
+                   accelerator: 'Ctrl+Shift+I',
+                   click: (item, focusedWindow) => {
+                       if (focusedWindow) {
+                           focusedWindow.webContents.toggleDevTools();
+                       }
+                   }
+               }
+           ]
+       }
+   ];
+   const menu = Menu.buildFromTemplate(menuTemplate);
+   Menu.setApplicationMenu(menu);
 
    // Fetch models in the background and notify the renderer when done.
    console.log('[Main] Fetching models in the background...');
@@ -559,7 +657,7 @@ if (!gotTheLock) {
         });
 
         translatorWindow.on('close', (event) => {
-            if (process.platform === 'darwin') {
+            if (process.platform === 'darwin' && !app.isQuitting) {
                 event.preventDefault();
                 translatorWindow.hide();
             }
@@ -629,7 +727,7 @@ if (!gotTheLock) {
         openChildWindows.push(ragObserverWindow);
 
         ragObserverWindow.on('close', (event) => {
-            if (process.platform === 'darwin') {
+            if (process.platform === 'darwin' && !app.isQuitting) {
                 event.preventDefault();
                 ragObserverWindow.hide();
             }
@@ -768,16 +866,7 @@ if (!gotTheLock) {
         }
     });
 
-    // 注册 Command + Q 快捷键以实现完全退出 (macOS)
-    // 在 macOS 上，Command+Q 默认行为被阻止，需要手动处理以确保触发 app.quit()
-    if (process.platform === 'darwin') {
-        globalShortcut.register('Command+Q', () => {
-            console.log('[Main] Command+Q detected. Initiating full quit.');
-            // 确保设置 isQuitting 标志，以绕过 mainWindow.on('close') 中的 event.preventDefault() 逻辑
-            app.isQuitting = true;
-            app.quit();
-        });
-    }
+    // 移除全局 Command+Q 快捷键，改用标准的应用程序菜单
     
     // 注册创建未锁定话题的全局快捷键
     globalShortcut.register('CommandOrControl+Shift+N', () => {

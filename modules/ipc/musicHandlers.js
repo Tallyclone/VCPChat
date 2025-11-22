@@ -85,7 +85,7 @@ function createOrFocusMusicWindow() {
         });
 
         musicWindow.on('close', (event) => {
-            if (process.platform === 'darwin') {
+            if (process.platform === 'darwin' && !require('electron').app.isQuitting) {
                 event.preventDefault();
                 musicWindow.hide();
             }

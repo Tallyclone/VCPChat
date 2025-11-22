@@ -83,7 +83,7 @@ async function createCanvasWindow(filePath = null) {
     });
 
     canvasWindow.on('close', (event) => {
-        if (process.platform === 'darwin') {
+        if (process.platform === 'darwin' && !require('electron').app.isQuitting) {
             event.preventDefault();
             canvasWindow.hide();
         }

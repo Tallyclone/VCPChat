@@ -257,7 +257,7 @@ function createOrFocusNotesWindow() {
     });
 
     notesWindow.on('close', (event) => {
-        if (process.platform === 'darwin') {
+        if (process.platform === 'darwin' && !require('electron').app.isQuitting) {
             event.preventDefault();
             notesWindow.hide();
         }
