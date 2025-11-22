@@ -108,6 +108,9 @@ function initialize(mainWindow, openChildWindows) {
 
     ipcMain.on('open-forum-window', (event) => {
         if (forumWindowInstance && !forumWindowInstance.isDestroyed()) {
+            if (!forumWindowInstance.isVisible()) {
+                forumWindowInstance.show();
+            }
             forumWindowInstance.focus();
             return;
         }
@@ -120,7 +123,7 @@ function initialize(mainWindow, openChildWindows) {
             title: 'VCP 论坛',
             modal: false,
             frame: false,
-            titleBarStyle: 'hidden',
+            // titleBarStyle: 'hidden', // 移除以确保 macOS 上三色球被 frame: false 彻底移除
             webPreferences: {
                 preload: path.join(__dirname, '../../preload.js'),
                 contextIsolation: true,
@@ -143,6 +146,13 @@ function initialize(mainWindow, openChildWindows) {
 
         // Add to the list of open windows to receive theme updates
         openChildWindows.push(forumWindow);
+
+        forumWindow.on('close', (event) => {
+            if (process.platform === 'darwin') {
+                event.preventDefault();
+                forumWindow.hide();
+            }
+        });
 
         forumWindow.on('closed', () => {
             const index = openChildWindows.indexOf(forumWindow);

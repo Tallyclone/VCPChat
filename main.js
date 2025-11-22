@@ -208,7 +208,7 @@ function createWindow() {
         minWidth: 900,
         minHeight: 600,
         frame: false, // 移除原生窗口框架
-        titleBarStyle: 'hidden', // 隐藏标题栏
+        // titleBarStyle: 'hidden', // 隐藏标题栏 - 移除以确保 macOS 上三色球被 frame: false 彻底移除
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,    // 恢复: 开启上下文隔离
@@ -224,9 +224,18 @@ function createWindow() {
 
     // 当主窗口关闭时，退出整个应用程序
     // 这将触发 'will-quit' 事件，用于执行所有清理操作
+    mainWindow.on('close', (event) => {
+        // On macOS, closing the window should hide it and keep the app alive.
+        // The 'activate' event will handle re-opening it.
+        if (process.platform === 'darwin' && !app.isQuitting) {
+            event.preventDefault();
+            mainWindow.hide();
+        }
+    });
+
+    // This will be triggered when the app is quitting, after the window is closed.
     mainWindow.on('closed', () => {
-        console.log('[Main] Main window closed, quitting application.');
-        app.quit();
+        mainWindow = null;
     });
 
     mainWindow.once('ready-to-show', () => {
@@ -266,13 +275,28 @@ function createWindow() {
 
 function createTray() {
     const iconPath = path.join(__dirname, 'assets', 'icon.png');
-    tray = new Tray(iconPath);
+    
+    // 修复图标体积问题：在 macOS 上，使用 nativeImage 调整图标大小
+    const { nativeImage } = require('electron');
+    let icon = nativeImage.createFromPath(iconPath);
+    
+    // 假设 macOS 菜单栏图标的理想尺寸是 16x16 或 20x20
+    if (process.platform === 'darwin') {
+        // 尝试使用模板图像，并调整大小以适应菜单栏
+        icon = icon.resize({ width: 16, height: 16 });
+        icon.setTemplateImage(true); // 告诉 macOS 这是一个模板图像，用于深色/浅色模式切换
+    }
+
+    tray = new Tray(icon);
 
     const contextMenu = Menu.buildFromTemplate([
         {
             label: '显示/隐藏',
             click: () => {
-                mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
+                // 修复 TypeError: Cannot read properties of null (reading 'isVisible')
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
+                }
             }
         },
         {
@@ -285,11 +309,30 @@ function createTray() {
     ]);
 
     tray.setToolTip('VCP AI 聊天客户端');
-    tray.setContextMenu(contextMenu);
-
-    tray.on('click', () => {
-        mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
-    });
+    // 平台特定行为调整：macOS 左键点击只显示/隐藏，右键点击才显示菜单
+    if (process.platform === 'darwin') {
+        // macOS: 左键点击 (tray.on('click')) 负责显示/隐藏窗口
+        tray.on('click', () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
+            }
+        });
+        
+        // macOS: 右键点击 (tray.on('right-click')) 负责显示菜单
+        tray.on('right-click', () => {
+            tray.popUpContextMenu(contextMenu);
+        });
+        
+        // 注意：在 macOS 上，不调用 tray.setContextMenu()，以确保左键点击不弹出菜单。
+    } else {
+        // Windows/Linux: 默认行为。
+        tray.setContextMenu(contextMenu);
+        tray.on('click', () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
+            }
+        });
+    }
 }
 
 // --- App Lifecycle ---
@@ -442,6 +485,9 @@ if (!gotTheLock) {
 
     ipcMain.handle('open-translator-window', async (event) => {
         if (translatorWindow && !translatorWindow.isDestroyed()) {
+            if (!translatorWindow.isVisible()) {
+                translatorWindow.show();
+            }
             translatorWindow.focus();
             return;
         }
@@ -452,7 +498,7 @@ if (!gotTheLock) {
             minHeight: 600,
             title: '翻译',
             frame: false, // 移除原生窗口框架
-            titleBarStyle: 'hidden', // 隐藏标题栏
+            // titleBarStyle: 'hidden', // 隐藏标题栏 - 移除以确保 macOS 上三色球被 frame: false 彻底移除
             modal: false,
             webPreferences: {
                 preload: path.join(__dirname, 'preload.js'),
@@ -512,6 +558,13 @@ if (!gotTheLock) {
             console.log('[Main Process] translatorWindow show() called.');
         });
 
+        translatorWindow.on('close', (event) => {
+            if (process.platform === 'darwin') {
+                event.preventDefault();
+                translatorWindow.hide();
+            }
+        });
+
         translatorWindow.on('closed', () => {
             console.log('[Main Process] translatorWindow has been closed.');
             openChildWindows = openChildWindows.filter(win => win !== translatorWindow);
@@ -526,6 +579,9 @@ if (!gotTheLock) {
     ipcMain.handle('open-rag-observer-window', async () => {
         // 检查窗口是否已存在，如果存在则聚焦
         if (ragObserverWindow && !ragObserverWindow.isDestroyed()) {
+            if (!ragObserverWindow.isVisible()) {
+                ragObserverWindow.show();
+            }
             ragObserverWindow.focus();
             return;
         }
@@ -537,7 +593,7 @@ if (!gotTheLock) {
             minHeight: 600,
             title: 'VCP - 信息流监听器',
             frame: false, // 移除原生窗口框架
-            titleBarStyle: 'hidden', // 隐藏标题栏
+            // titleBarStyle: 'hidden', // 隐藏标题栏 - 移除以确保 macOS 上三色球被 frame: false 彻底移除
             webPreferences: {
                 preload: path.join(__dirname, 'preload.js'),
                 contextIsolation: true,
@@ -571,6 +627,13 @@ if (!gotTheLock) {
         });
 
         openChildWindows.push(ragObserverWindow);
+
+        ragObserverWindow.on('close', (event) => {
+            if (process.platform === 'darwin') {
+                event.preventDefault();
+                ragObserverWindow.hide();
+            }
+        });
 
         ragObserverWindow.on('closed', () => {
             openChildWindows = openChildWindows.filter(win => win !== ragObserverWindow);
@@ -685,7 +748,15 @@ if (!gotTheLock) {
     // --- End of Distributed Server Initialization ---
 
     app.on('activate', () => {
-        if (BrowserWindow.getAllWindows().length === 0) {
+        // On macOS, re-show the main window when the dock icon is clicked.
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            if (!mainWindow.isVisible()) {
+                mainWindow.show();
+            }
+            mainWindow.focus();
+        }
+        // If the main window has been closed (mainWindow is null), create a new one.
+        else if (BrowserWindow.getAllWindows().length === 0) {
             createWindow();
         }
     });
@@ -696,6 +767,17 @@ if (!gotTheLock) {
             focusedWindow.webContents.toggleDevTools();
         }
     });
+
+    // 注册 Command + Q 快捷键以实现完全退出 (macOS)
+    // 在 macOS 上，Command+Q 默认行为被阻止，需要手动处理以确保触发 app.quit()
+    if (process.platform === 'darwin') {
+        globalShortcut.register('Command+Q', () => {
+            console.log('[Main] Command+Q detected. Initiating full quit.');
+            // 确保设置 isQuitting 标志，以绕过 mainWindow.on('close') 中的 event.preventDefault() 逻辑
+            app.isQuitting = true;
+            app.quit();
+        });
+    }
     
     // 注册创建未锁定话题的全局快捷键
     globalShortcut.register('CommandOrControl+Shift+N', () => {

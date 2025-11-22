@@ -219,6 +219,9 @@ async function scanAndCacheNetworkNotes() {
 function createOrFocusNotesWindow() {
     if (notesWindow && !notesWindow.isDestroyed()) {
         console.log('[Main Process] Notes window already exists. Focusing it.');
+        if (!notesWindow.isVisible()) {
+            notesWindow.show();
+        }
         notesWindow.focus();
         return notesWindow;
     }
@@ -231,7 +234,7 @@ function createOrFocusNotesWindow() {
         minHeight: 600,
         title: '我的笔记',
         frame: false, // 移除原生窗口框架
-        titleBarStyle: 'hidden', // 隐藏标题栏
+        // titleBarStyle: 'hidden', // 隐藏标题栏 - 移除以确保 macOS 上三色球被 frame: false 彻底移除
         modal: false,
         webPreferences: {
             preload: path.join(__dirname, '..', '..', 'preload.js'), // Corrected path
@@ -251,6 +254,13 @@ function createOrFocusNotesWindow() {
 
     notesWindow.once('ready-to-show', () => {
         notesWindow.show();
+    });
+
+    notesWindow.on('close', (event) => {
+        if (process.platform === 'darwin') {
+            event.preventDefault();
+            notesWindow.hide();
+        }
     });
 
     notesWindow.on('closed', () => {
