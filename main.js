@@ -456,7 +456,7 @@ if (!gotTheLock) {
            label: '文件',
            submenu: [
                {
-                   label: '新建话题',
+                   label: '新建无锁话题',
                    accelerator: 'CommandOrControl+Shift+N',
                    click: () => {
                        if (mainWindow && !mainWindow.isDestroyed()) {

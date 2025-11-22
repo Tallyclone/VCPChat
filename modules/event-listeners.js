@@ -21,7 +21,7 @@ export function setupEventListeners(deps) {
         refs,
 
         // Modules and helper functions
-        uiHelperFunctions, chatManager, itemListManager, settingsManager, uiManager,
+        uiHelperFunctions, chatManager, itemListManager, settingsManager, uiManager, topicListManager,
         getCroppedFile, setCroppedFile, updateAttachmentPreview, filterAgentList,
         addNetworkPathInput
     } = deps;
@@ -729,6 +729,11 @@ export function setupEventListeners(deps) {
                 // 这会触发所有必要的状态更新、UI刷新和文件监听器启动
                 if (chatManager && chatManager.selectTopic) {
                     await chatManager.selectTopic(result.topicId);
+                }
+
+                // 关键修复：在切换话题后，强制刷新话题列表UI
+                if (topicListManager && topicListManager.loadTopicList) {
+                    await topicListManager.loadTopicList();
                 }
                 
                 uiHelperFunctions.showToastNotification(
