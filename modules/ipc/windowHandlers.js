@@ -123,7 +123,7 @@ function initialize(mainWindow, openChildWindows) {
             title: 'VCP 论坛',
             modal: false,
             frame: false,
-            // titleBarStyle: 'hidden', // 移除以确保 macOS 上三色球被 frame: false 彻底移除
+            ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
             webPreferences: {
                 preload: path.join(__dirname, '../../preload.js'),
                 contextIsolation: true,

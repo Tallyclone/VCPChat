@@ -208,7 +208,7 @@ function createWindow() {
         minWidth: 900,
         minHeight: 600,
         frame: false, // 移除原生窗口框架
-        // titleBarStyle: 'hidden', // 隐藏标题栏 - 移除以确保 macOS 上三色球被 frame: false 彻底移除
+        ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,    // 恢复: 开启上下文隔离
@@ -610,7 +610,7 @@ if (!gotTheLock) {
             minHeight: 600,
             title: '翻译',
             frame: false, // 移除原生窗口框架
-            // titleBarStyle: 'hidden', // 隐藏标题栏 - 移除以确保 macOS 上三色球被 frame: false 彻底移除
+            ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
             modal: false,
             webPreferences: {
                 preload: path.join(__dirname, 'preload.js'),
@@ -705,7 +705,7 @@ if (!gotTheLock) {
             minHeight: 600,
             title: 'VCP - 信息流监听器',
             frame: false, // 移除原生窗口框架
-            // titleBarStyle: 'hidden', // 隐藏标题栏 - 移除以确保 macOS 上三色球被 frame: false 彻底移除
+            ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
             webPreferences: {
                 preload: path.join(__dirname, 'preload.js'),
                 contextIsolation: true,
@@ -1110,7 +1110,7 @@ ipcMain.on('open-voice-chat-window', (event, { agentId }) => {
         minWidth: 400,
         minHeight: 500,
         frame: false,
-        titleBarStyle: 'hidden', // Add this to hide the title bar on some OS
+        ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
         title: '语音聊天',
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
