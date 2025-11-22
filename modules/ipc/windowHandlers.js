@@ -75,7 +75,7 @@ function initialize(mainWindow, openChildWindows) {
             title: title || '图片预览',
             modal: false,
             frame: false, // 移除原生窗口框架
-            titleBarStyle: 'hidden', // 隐藏标题栏
+            ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }), // 隐藏标题栏
             webPreferences: {
                 preload: path.join(__dirname, '../../preload.js'), // Correct path from this file's location
                 contextIsolation: true,

@@ -260,7 +260,7 @@ function createAssistantWindow(data) {
         title: '划词助手',
         modal: false,
         frame: false,
-        titleBarStyle: 'hidden',
+        ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
         webPreferences: {
             preload: path.join(__dirname, '..', '..', 'preload.js'),
             contextIsolation: true,

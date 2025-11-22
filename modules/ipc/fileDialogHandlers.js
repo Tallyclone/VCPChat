@@ -307,7 +307,7 @@ function initialize(mainWindow, context) {
             title: decodeURIComponent(windowTitle) || '阅读模式',
             modal: false, show: false,
             frame: false, // 移除原生窗口框架
-            titleBarStyle: 'hidden', // 隐藏标题栏
+            ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }), // 隐藏标题栏
             minimizable: true, // 确保窗口可以最小化到任务栏
             icon: path.join(__dirname, '..', 'assets', 'icon.png'),
             webPreferences: {
