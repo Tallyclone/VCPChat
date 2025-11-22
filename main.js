@@ -453,6 +453,20 @@ if (!gotTheLock) {
            ]
        }] : []),
        {
+           label: '文件',
+           submenu: [
+               {
+                   label: '新建话题',
+                   accelerator: 'CommandOrControl+Shift+N',
+                   click: () => {
+                       if (mainWindow && !mainWindow.isDestroyed()) {
+                           mainWindow.webContents.send('create-unlocked-topic');
+                       }
+                   }
+               }
+           ]
+       },
+       {
            label: '编辑',
            submenu: [
                { role: 'undo' },
@@ -868,12 +882,7 @@ if (!gotTheLock) {
 
     // 移除全局 Command+Q 快捷键，改用标准的应用程序菜单
     
-    // 注册创建未锁定话题的全局快捷键
-    globalShortcut.register('CommandOrControl+Shift+N', () => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('create-unlocked-topic');
-        }
-    });
+    // 全局快捷键 'CommandOrControl+Shift+N' 已通过菜单栏实现
     
     // --- Music Player IPC Handlers are now in modules/ipc/musicHandlers.js ---
 
