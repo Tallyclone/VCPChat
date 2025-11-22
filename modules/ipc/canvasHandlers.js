@@ -43,6 +43,9 @@ function initialize(config) {
 async function createCanvasWindow(filePath = null) {
     console.log('[CanvasHandlers] Received request to open canvas window.');
     if (canvasWindow && !canvasWindow.isDestroyed()) {
+        if (!canvasWindow.isVisible()) {
+            canvasWindow.show();
+        }
         canvasWindow.focus();
         if (filePath) {
             canvasWindow.webContents.send('load-canvas-file-by-path', filePath);
@@ -61,7 +64,7 @@ async function createCanvasWindow(filePath = null) {
         minHeight: 600,
         title: '协同 Canvas',
         frame: false,
-        titleBarStyle: 'hidden',
+        ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
         webPreferences: {
             preload: path.join(__dirname, '..', '..', 'preload.js'),
             contextIsolation: true,
@@ -77,6 +80,13 @@ async function createCanvasWindow(filePath = null) {
 
     canvasWindow.once('ready-to-show', () => {
         canvasWindow.show();
+    });
+
+    canvasWindow.on('close', (event) => {
+        if (process.platform === 'darwin' && !require('electron').app.isQuitting) {
+            event.preventDefault();
+            canvasWindow.hide();
+        }
     });
 
     canvasWindow.on('closed', () => {

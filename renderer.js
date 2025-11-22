@@ -931,6 +931,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
             itemListManager: window.itemListManager,
             settingsManager: window.settingsManager,
             uiManager: window.uiManager,
+            topicListManager: window.topicListManager,
             getCroppedFile: uiHelperFunctions.getCroppedFile,
             setCroppedFile: uiHelperFunctions.setCroppedFile,
             updateAttachmentPreview: () => uiHelperFunctions.updateAttachmentPreview(attachedFiles, attachmentPreviewArea),

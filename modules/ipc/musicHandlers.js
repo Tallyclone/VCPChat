@@ -39,6 +39,9 @@ function createOrFocusMusicWindow() {
 
         if (musicWindow && !musicWindow.isDestroyed()) {
             console.log('[Music] Music window already exists. Focusing it.');
+            if (!musicWindow.isVisible()) {
+                musicWindow.show();
+            }
             musicWindow.focus();
             resolve(musicWindow);
             return;
@@ -52,7 +55,7 @@ function createOrFocusMusicWindow() {
             minHeight: 600,
             title: '音乐播放器',
             frame: false, // 移除原生窗口框架
-            titleBarStyle: 'hidden', // 隐藏标题栏
+            ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
             modal: false,
             webPreferences: {
                 preload: path.join(__dirname, '..', '..', 'preload.js'),
@@ -78,6 +81,13 @@ function createOrFocusMusicWindow() {
             if (event.sender === musicWindow.webContents) {
                 console.log('[Music] Received "music-renderer-ready" signal. Resolving promise.');
                 resolve(musicWindow);
+            }
+        });
+
+        musicWindow.on('close', (event) => {
+            if (process.platform === 'darwin' && !require('electron').app.isQuitting) {
+                event.preventDefault();
+                musicWindow.hide();
             }
         });
 

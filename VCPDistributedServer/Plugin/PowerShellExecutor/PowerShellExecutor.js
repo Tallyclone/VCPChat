@@ -22,7 +22,7 @@ function ensureGuiWindow() {
         height: 600,
         title: 'VCP PowerShell Executor',
         frame: false, // 禁用窗口边框
-        titleBarStyle: 'hidden', // 隐藏标题栏
+        ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
         webPreferences: {
             preload: path.join(__dirname, 'gui', 'preload.js'),
             nodeIntegration: false, // 禁用 Node.js 集成以增强安全性
