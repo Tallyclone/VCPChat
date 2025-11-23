@@ -303,7 +303,7 @@ function transformSpecialBlocks(text) {
             // --- It's a DailyNote Tool, render it as a diary bubble ---
             const maidRegex = /(?:maid|maidName):\s*「始」([^「」]*)「末」/;
             const dateRegex = /Date:\s*「始」([^「」]*)「末」/;
-            const contentRegex = /Content:\s*「始」([\s\S]*)「末」/;
+            const contentRegex = /Content:\s*「始」([\s\S]*?)「末」/;
 
             const maidMatch = content.match(maidRegex);
             const dateMatch = content.match(dateRegex);
