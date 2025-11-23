@@ -19,22 +19,23 @@
             return null;
         }
         
+        // 终极修复：废除使用正则表达式解析正则表达式的脆弱方法。
+        // 改为使用明确的、手动字符串分割，这能从根本上避免转义地狱。
+        if (input.length < 2 || !input.startsWith('/') || input.lastIndexOf('/') === 0) {
+            console.error(`[regexFromString] 无效的格式: "${input}"。规则必须采用 /pattern/flags 的格式。`);
+            return null;
+        }
+
         try {
-            // 尝试匹配 /pattern/flags 格式
-            const match = input.match(/^\/(.+?)\/([gimsuvy]*)$/);
+            const lastSlashIndex = input.lastIndexOf('/');
+            const pattern = input.substring(1, lastSlashIndex);
+            const flags = input.substring(lastSlashIndex + 1);
             
-            if (match) {
-                // 如果匹配成功，使用提取的模式和标志创建正则
-                const [, pattern, flags] = match;
-                return new RegExp(pattern, flags);
-            } else {
-                // 如果不是 /pattern/flags 格式，将整个字符串作为模式（无标志）
-                // 需要转义特殊字符
-                const escapedPattern = input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                return new RegExp(escapedPattern, 'g');
-            }
+            // 这是最稳定、最可靠的创建方式
+            return new RegExp(pattern, flags);
+            
         } catch (e) {
-            console.error('[regexFromString] 解析正则表达式失败:', e);
+            console.error(`[regexFromString] 解析正则表达式 "${input}" 失败:`, e);
             return null;
         }
     };

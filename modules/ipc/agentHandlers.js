@@ -224,10 +224,21 @@ function initialize(context) {
 
             // Handle stripRegexes separately if the property exists in the incoming config
             if (config.hasOwnProperty('stripRegexes')) {
-                const stripRegexes = config.stripRegexes;
+                let stripRegexes = config.stripRegexes;
                 if (Array.isArray(stripRegexes) && stripRegexes.length > 0) {
-                    // Save non-empty regexes to the separate file
-                    await fs.writeJson(regexPath, stripRegexes, { spaces: 2 });
+                    // 终极修复：在保存到JSON之前，手动“解毒”正则表达式字符串。
+                    // fs.writeJson 会自动转义 \，导致 \\ -> \\\\。
+                    // 我们在这里进行一次反向操作，将 \\ 变回 \，这样经过 fs.writeJson 的转义后，文件里就是正确的 \\。
+                    const cleanedRegexes = stripRegexes.map(rule => {
+                        if (rule.findPattern && typeof rule.findPattern === 'string') {
+                            // 将 \\ 替换为 \，为 fs.writeJson 的自动转义做准备
+                            rule.findPattern = rule.findPattern.replace(/\\\\/g, '\\');
+                        }
+                        return rule;
+                    });
+                    
+                    // 使用清理过的数据进行保存
+                    await fs.writeJson(regexPath, cleanedRegexes, { spaces: 2 });
                 } else {
                     // If the array is empty or not an array, remove the regex file if it exists
                     if (await fs.pathExists(regexPath)) {
