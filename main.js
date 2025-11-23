@@ -235,7 +235,12 @@ function createWindow() {
 
     // This will be triggered when the app is quitting, after the window is closed.
     mainWindow.on('closed', () => {
+        // When the main window is closed, we quit the app on non-macOS platforms.
+        // This ensures that any child windows are also closed and the process terminates.
         mainWindow = null;
+        if (process.platform !== 'darwin') {
+            app.quit();
+        }
     });
 
     mainWindow.once('ready-to-show', () => {

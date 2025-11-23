@@ -295,35 +295,68 @@ function transformSpecialBlocks(text) {
 
     // Process Tool Requests
     processed = processed.replace(TOOL_REGEX, (match, content) => {
-        // Regex to find tool name in either XML format (<tool_name>...</tool_name>) or key-value format (tool_name: ...)
-        const toolNameRegex = /<tool_name>([\s\S]*?)<\/tool_name>|tool_name:\s*([^\n\r]*)/;
-        const toolNameMatch = content.match(toolNameRegex);
+        // Check if this is a DailyNote tool call with the 'create' command
+        const isDailyNoteCreate = /tool_name:\s*「始」\s*DailyNote\s*「末」/.test(content) &&
+                                  /command:\s*「始」\s*create\s*「末」/.test(content);
 
-        // The tool name will be in capture group 1 or 2. Default to a fallback.
-        let toolName = 'Processing...';
-        if (toolNameMatch) {
-            // Use the first non-empty capture group
-            let extractedName = (toolNameMatch[1] || toolNameMatch[2] || '').trim();
+        if (isDailyNoteCreate) {
+            // --- It's a DailyNote Tool, render it as a diary bubble ---
+            const maidRegex = /(?:maid|maidName):\s*「始」([^「」]*)「末」/;
+            const dateRegex = /Date:\s*「始」([^「」]*)「末」/;
+            const contentRegex = /Content:\s*「始」([\s\S]*)「末」/;
+
+            const maidMatch = content.match(maidRegex);
+            const dateMatch = content.match(dateRegex);
+            const contentMatch = content.match(contentRegex);
+
+            const maid = maidMatch ? maidMatch[1].trim() : '';
+            const date = dateMatch ? dateMatch[1].trim() : '';
+            const diaryContent = contentMatch ? contentMatch[1].trim() : '[日记内容解析失败]';
+
+            let html = `<div class="maid-diary-bubble">`;
+            html += `<div class="diary-header">`;
+            html += `<span class="diary-title">Maid's Diary</span>`;
+            if (date) {
+                html += `<span class="diary-date">${escapeHtml(date)}</span>`;
+            }
+            html += `</div>`;
             
-            // Clean the extracted name: remove special markers and trailing commas
-            if (extractedName) {
-                extractedName = extractedName.replace(/「始」|「末」/g, '').replace(/,$/, '').trim();
+            if (maid) {
+                html += `<div class="diary-maid-info">`;
+                html += `<span class="diary-maid-label">Maid:</span> `;
+                html += `<span class="diary-maid-name">${escapeHtml(maid)}</span>`;
+                html += `</div>`;
             }
 
-            if (extractedName) {
-                toolName = extractedName;
+            html += `<div class="diary-content">${escapeHtml(diaryContent)}</div>`;
+            html += `</div>`;
+
+            return html;
+        } else {
+            // --- It's a regular tool call, render it normally ---
+            const toolNameRegex = /<tool_name>([\s\S]*?)<\/tool_name>|tool_name:\s*「始」([^「」]*)「末」/;
+            const toolNameMatch = content.match(toolNameRegex);
+
+            let toolName = 'Processing...';
+            if (toolNameMatch) {
+                let extractedName = (toolNameMatch[1] || toolNameMatch[2] || '').trim();
+                if (extractedName) {
+                    extractedName = extractedName.replace(/「始」|「末」/g, '').replace(/,$/, '').trim();
+                }
+                if (extractedName) {
+                    toolName = extractedName;
+                }
             }
+
+            const escapedFullContent = escapeHtml(content);
+            return `<div class="vcp-tool-use-bubble">` +
+                   `<div class="vcp-tool-summary">` +
+                   `<span class="vcp-tool-label">VCP-ToolUse:</span> ` +
+                   `<span class="vcp-tool-name-highlight">${escapeHtml(toolName)}</span>` +
+                   `</div>` +
+                   `<div class="vcp-tool-details"><pre>${escapedFullContent}</pre></div>` +
+                   `</div>`;
         }
-
-        const escapedFullContent = escapeHtml(content);
-        // Construct the new HTML with a hidden details part
-        return `<div class="vcp-tool-use-bubble">` +
-               `<div class="vcp-tool-summary">` +
-               `<span class="vcp-tool-label">VCP-ToolUse:</span> ` +
-               `<span class="vcp-tool-name-highlight">${escapeHtml(toolName)}</span>` +
-               `</div>` +
-               `<div class="vcp-tool-details"><pre>${escapedFullContent}</pre></div>` +
-               `</div>`;
     });
 
     // Process Daily Notes
