@@ -303,8 +303,17 @@ class DistributedServer {
         try {
             // --- 新增：处理内部文件请求 ---
             if (toolName === 'internal_request_file') {
-                const filePath = toolArgs.filePath;
+                // 关键改进：对接 FileFetcherServer 的新协议
+                const { fileUrl } = toolArgs;
+                if (!fileUrl || !fileUrl.startsWith('file://')) {
+                    throw new Error(`Invalid or missing fileUrl parameter for internal_request_file.`);
+                }
+
                 try {
+                    // 在分布式服务器自己的环境中，安全地将 URL 转换为本地路径
+                    const { fileURLToPath } = require('url');
+                    const filePath = fileURLToPath(fileUrl);
+
                     const fileBuffer = await fs.readFile(filePath);
                     const mimeType = mime.lookup(filePath) || 'application/octet-stream';
                     
@@ -322,9 +331,11 @@ class DistributedServer {
                     };
                 } catch (e) {
                     if (e.code === 'ENOENT') {
-                        throw new Error(`File not found on distributed server: ${filePath}`);
+                        throw new Error(`File not found on distributed server: ${fileUrl}`);
+                    } else if (e.code === 'ERR_INVALID_FILE_URL_PATH') {
+                        throw new Error(`Invalid file URL path on distributed server: ${fileUrl}`);
                     } else {
-                        throw new Error(`Error reading file on distributed server: ${e.message}`);
+                        throw new Error(`Error reading file on distributed server (${fileUrl}): ${e.message}`);
                     }
                 }
                 this.sendMessage(responsePayload);
