@@ -259,18 +259,18 @@ class ModernConfirmDialog:
     
     def on_allow(self):
         self.result = True
-        self.root.quit()
+        self.root.destroy()
     
     def on_cancel(self):
         self.result = False
-        # 打印到stderr，以便Node.js可以捕获这个特定的消息
-        print("User cancelled the operation.", file=sys.stderr)
-        sys.stderr.flush()
-        self.root.quit()
+        # 在 pythonw.exe 模式下，任何对 sys.stderr 的写入都可能导致进程挂起。
+        # 移除所有 print 和 flush 调用，因为主逻辑通过临时文件通信。
+        self.root.destroy()
     
     def show(self):
         self.root.mainloop()
-        self.root.destroy()
+        # 窗口已在 on_allow/on_cancel 中通过 destroy() 关闭，
+        # mainloop 会因此退出。此处无需再次调用 destroy。
         return self.result
 
 def main():
