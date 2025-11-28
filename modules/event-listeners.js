@@ -937,7 +937,7 @@ export function setupEventListeners(deps) {
                 }
                 
                 // 显示操作提示
-                uiHelperFunctions.showToastNotification(`侧边栏已${isActive ? '显示' : '隐藏'}`, 'info');
+                // uiHelperFunctions.showToastNotification(`侧边栏已${isActive ? '显示' : '隐藏'}`, 'info');
             }
         });
     }
