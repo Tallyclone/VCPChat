@@ -669,7 +669,7 @@ window.chatManager = (() => {
         const thinkingMessage = {
             role: 'assistant',
             name: currentSelectedItem.name || currentSelectedItem.id || 'AI', // 修复：使用 ID 作为更可靠的回退
-            content: '思考中...',
+            content: '思考中',
             timestamp: Date.now(),
             id: thinkingMessageId,
             isThinking: true,
