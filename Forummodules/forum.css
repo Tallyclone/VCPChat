@@ -1165,3 +1165,38 @@ body.light-theme .emoticon-panel {
     opacity: 1;
     transform: scale(1.1);
 }
+
+/* --- KaTeX Rendering Fix --- */
+/* Prevent parent styles from breaking KaTeX layout */
+.post-preview .katex-display,
+.reply-content .katex-display,
+.post-preview .katex,
+.reply-content .katex {
+    word-break: normal;
+    word-wrap: normal;
+    white-space: nowrap;
+    text-align: left; /* Ensure formulas are left-aligned within their container */
+}
+
+/*
+  FIX: Reset inherited text-wrapping and alignment styles for all child elements within KaTeX blocks.
+  This prevents global styles (like `word-break: break-word` or `white-space: normal` on all spans)
+  from breaking the precise layout of KaTeX formulas, which rely on their own specific styling.
+*/
+.post-preview .katex *,
+.reply-content .katex * {
+    white-space: revert;
+    word-break: revert;
+    word-wrap: revert;
+    overflow-wrap: revert;
+    text-align: revert;
+    display: revert;
+}
+
+/* Ensure the KaTeX container itself can be a block element */
+.katex-display {
+    display: block;
+    overflow-x: auto; /* Allow horizontal scrolling for very long formulas */
+    overflow-y: hidden;
+    padding: 0.5em 0;
+}

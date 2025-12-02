@@ -1072,6 +1072,17 @@ function renderFullContent(container, markdown, uid) {
     // Apply bold formatting to handle any remaining ** markers
     applyBoldFormatting(previewEl);
     
+    // KaTeX auto-rendering
+    if (window.renderMathInElement) {
+        renderMathInElement(previewEl, {
+            delimiters: [
+                {left: "$$", right: "$$", display: true},
+                {left: "$", right: "$", display: false},
+                {left: "\\(", right: "\\)", display: false},
+                {left: "\\[", right: "\\]", display: true}
+            ]
+        });
+    }
     // Setup emoticon fixer for main content
     setupEmoticonFixer(previewEl);
     setupImageViewer(previewEl);
@@ -1158,6 +1169,18 @@ function renderFullContent(container, markdown, uid) {
                 applyBoldFormatting(replyContentEl);
                 setupEmoticonFixer(replyContentEl);
                 setupImageViewer(replyContentEl);
+
+                // KaTeX auto-rendering for replies
+                if (window.renderMathInElement) {
+                    renderMathInElement(replyContentEl, {
+                        delimiters: [
+                            {left: "$$", right: "$$", display: true},
+                            {left: "$", right: "$", display: false},
+                            {left: "\\(", right: "\\)", display: false},
+                            {left: "\\[", right: "\\]", display: true}
+                        ]
+                    });
+                }
             }
             
             // Add event listeners for action buttons
