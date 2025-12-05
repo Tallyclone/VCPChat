@@ -31,7 +31,7 @@ import * as middleClickHandler from './renderer/middleClickHandler.js';
 // --- Pre-compiled Regular Expressions for Performance ---
 const TOOL_REGEX = /<<<\[TOOL_REQUEST\]>>>(.*?)<<<\[END_TOOL_REQUEST\]>>>/gs;
 const NOTE_REGEX = /<<<DailyNoteStart>>>(.*?)<<<DailyNoteEnd>>>/gs;
-const TOOL_RESULT_REGEX = /\[\[VCP调用结果信息汇总:(.*?)\]\]/gs;
+const TOOL_RESULT_REGEX = /\[\[VCP调用结果信息汇总:(.*?)VCP调用结果结束\]\]/gs;
 const BUTTON_CLICK_REGEX = /\[\[点击按钮:(.*?)\]\]/gs;
 const CANVAS_PLACEHOLDER_REGEX = /\{\{VCPChatCanvas\}\}/g;
 const STYLE_REGEX = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
