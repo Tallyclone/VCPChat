@@ -773,6 +773,11 @@ function clearChat() {
                 cleanupAnimationsInContent(contentDiv);
             }
         });
+        
+        // 🟢 清理所有注入的 scoped CSS
+        document.querySelectorAll('style[data-vcp-scope-id]').forEach(el => el.remove());
+        document.querySelectorAll('style[data-chat-scope-id]').forEach(el => el.remove());
+        
         mainRendererReferences.chatMessagesDiv.innerHTML = '';
     }
     mainRendererReferences.currentChatHistoryRef.set([]); // Clear the history array via its ref
@@ -1135,10 +1140,25 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
             textToRender = transformUserButtonClick(textToRender);
             textToRender = transformVCPChatCanvas(textToRender);
         } else if (message.role === 'assistant' && scopeId) {
-            // --- Scoped CSS: Extract, scope, and inject styles from AI content ---
-            const { processedContent: contentWithoutStyles } = processAndInjectScopedCss(textToRender, scopeId);
+            // --- 🟢 关键修复：先保护代码块，再提取样式 ---
+            // 这样可以避免代码块内的 <style> 被误当作真正的样式注入
+            const codeBlocksForStyleProtection = [];
+            const textWithProtectedBlocks = textToRender.replace(CODE_FENCE_REGEX, (match) => {
+                const placeholder = `__VCP_STYLE_PROTECT_${codeBlocksForStyleProtection.length}__`;
+                codeBlocksForStyleProtection.push(match);
+                return placeholder;
+            });
+            
+            // 现在只会匹配代码块外的 <style> 标签
+            const { processedContent: contentWithoutStyles } = processAndInjectScopedCss(textWithProtectedBlocks, scopeId);
+            
+            // 恢复代码块
             textToRender = contentWithoutStyles;
-            // --- END Scoped CSS ---
+            codeBlocksForStyleProtection.forEach((block, i) => {
+                const placeholder = `__VCP_STYLE_PROTECT_${i}__`;
+                textToRender = textToRender.replace(placeholder, block);
+            });
+            // --- 修复结束 ---
         }
         
         // --- 按“对话轮次”计算深度 ---
