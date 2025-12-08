@@ -560,12 +560,12 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
     if (shouldEnableSmoothStreaming()) {
         streamingChunkQueues.set(messageId, []);
     }
-    accumulatedStreamText.set(messageId, '');
+    accumulatedStreamText.set(messageId, message.content || '');
     
     // Prepare placeholder for history
     const placeholderForHistory = {
         ...message,
-        content: '',
+        content: message.content || '',
         isThinking: false,
         timestamp: message.timestamp || Date.now(),
         isGroupMessage: context.isGroupMessage,
