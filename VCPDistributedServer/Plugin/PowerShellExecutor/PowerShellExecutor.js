@@ -214,8 +214,140 @@ try {
 
 
 /**
+ * 智能安全检查函数 - 区分命令关键字和路径内容
+ * @param {string} command - 要检查的命令字符串
+ * @param {string[]} forbiddenKeywords - 禁止的关键字列表
+ * @param {string[]} authRequiredKeywords - 需要授权的关键字列表
+ * @returns {object} - 检查结果 {isForbidden: boolean, needsAuth: boolean, matchedKeyword: string}
+ */
+function intelligentSecurityCheck(command, forbiddenKeywords, authRequiredKeywords) {
+    const result = {
+        isForbidden: false,
+        needsAuth: false,
+        matchedKeyword: null,
+        reason: null
+    };
+
+    // 预处理命令：移除多余空格，转换为小写
+    const normalizedCommand = command.trim().toLowerCase();
+    
+    // 如果命令为空，直接返回
+    if (!normalizedCommand) {
+        return result;
+    }
+
+    // 定义路径模式 - 常见的Windows和Unix路径格式
+    const pathPatterns = [
+        /[a-z]:\\[^\\/:*?"<>|]*(?:\\[^\\/:*?"<>|]*)*\\?/gi,  // Windows路径 C:\path\to\file
+        /\/[^\/\s]*(?:\/[^\/\s]*)*\/?/g,                      // Unix路径 /path/to/file
+        /\$env:[a-z_]+[^\\/:*?"<>|\s]*/gi,                   // PowerShell环境变量路径
+        /\${[^}]+}[^\\/:*?"<>|\s]*/gi,                       // 变量路径 ${VAR}/path
+        /~\/[^\/\s]*(?:\/[^\/\s]*)*\/?/g                     // 用户目录路径 ~/path
+    ];
+
+    // 提取所有可能的路径
+    const detectedPaths = [];
+    pathPatterns.forEach(pattern => {
+        const matches = normalizedCommand.match(pattern);
+        if (matches) {
+            detectedPaths.push(...matches);
+        }
+    });
+
+    // 创建不包含路径的命令版本用于安全检查
+    let commandWithoutPaths = normalizedCommand;
+    detectedPaths.forEach(path => {
+        // 将路径替换为占位符，避免路径中的关键字被误判
+        commandWithoutPaths = commandWithoutPaths.replace(path.toLowerCase(), ' __PATH_PLACEHOLDER__ ');
+    });
+
+    // 清理命令：移除多余空格
+    commandWithoutPaths = commandWithoutPaths.replace(/\s+/g, ' ').trim();
+
+    // 定义PowerShell命令结构模式
+    const commandStructurePatterns = [
+        // PowerShell cmdlet模式: Verb-Noun
+        /\b[a-z]+-[a-z]+\b/g,
+        // 常见命令
+        /\b(?:get|set|new|remove|copy|move|invoke|start|stop|restart|test|clear|add|export|import|select|where|foreach|sort|group|measure|compare|out|write|read)\b/g,
+        // 参数模式
+        /\s-[a-z]+\b/g
+    ];
+
+    // 检查禁止的关键字
+    for (const keyword of forbiddenKeywords) {
+        if (!keyword) continue;
+        
+        const keywordLower = keyword.toLowerCase();
+        
+        // 1. 首先检查是否在路径中
+        const isInPath = detectedPaths.some(path =>
+            path.toLowerCase().includes(keywordLower)
+        );
+        
+        if (isInPath) {
+            // 如果关键字只在路径中出现，检查是否也在命令部分出现
+            if (!commandWithoutPaths.includes(keywordLower)) {
+                console.log(`[PowerShellExecutor] 安全检查：关键字 "${keyword}" 仅在路径中发现，允许执行`);
+                continue; // 跳过这个关键字，不视为违规
+            }
+        }
+        
+        // 2. 检查命令部分是否包含关键字
+        if (commandWithoutPaths.includes(keywordLower)) {
+            // 3. 进一步验证：检查关键字是否作为独立的命令或参数出现
+            const wordBoundaryPattern = new RegExp(`\\b${keywordLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
+            
+            if (wordBoundaryPattern.test(commandWithoutPaths)) {
+                result.isForbidden = true;
+                result.matchedKeyword = keyword;
+                result.reason = `命令包含被禁止的关键字: ${keyword}`;
+                console.log(`[PowerShellExecutor] 安全检查：发现禁止的命令关键字 "${keyword}"`);
+                return result;
+            }
+        }
+    }
+
+    // 检查需要授权的关键字（使用相同的逻辑）
+    for (const keyword of authRequiredKeywords) {
+        if (!keyword) continue;
+        
+        const keywordLower = keyword.toLowerCase();
+        
+        // 1. 首先检查是否在路径中
+        const isInPath = detectedPaths.some(path =>
+            path.toLowerCase().includes(keywordLower)
+        );
+        
+        if (isInPath) {
+            // 如果关键字只在路径中出现，检查是否也在命令部分出现
+            if (!commandWithoutPaths.includes(keywordLower)) {
+                console.log(`[PowerShellExecutor] 安全检查：授权关键字 "${keyword}" 仅在路径中发现，不需要授权`);
+                continue; // 跳过这个关键字，不需要授权
+            }
+        }
+        
+        // 2. 检查命令部分是否包含关键字
+        if (commandWithoutPaths.includes(keywordLower)) {
+            // 3. 进一步验证：检查关键字是否作为独立的命令或参数出现
+            const wordBoundaryPattern = new RegExp(`\\b${keywordLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
+            
+            if (wordBoundaryPattern.test(commandWithoutPaths)) {
+                result.needsAuth = true;
+                result.matchedKeyword = keyword;
+                result.reason = `命令包含需要授权的关键字: ${keyword}`;
+                console.log(`[PowerShellExecutor] 安全检查：发现需要授权的命令关键字 "${keyword}"`);
+                // 注意：不要return，继续检查其他关键字
+            }
+        }
+    }
+
+    return result;
+}
+
+/**
  * 启动一个独立的 Python GUI 脚本来请求管理员权限并执行命令。
- * 这是一个“即发即忘”的操作，它会打开一个全新的、独立的管理员终端窗口。
+ * 这是一个"即发即忘"的操作，它会打开一个全新的、独立的管理员终端窗口。
  * @param {string} command - 需要以管理员权限执行的命令。
  * @returns {Promise<string>} - 一个解析为提示信息的消息。
  */
@@ -493,18 +625,22 @@ async function processToolCall(args) {
         throw new Error('未提供任何有效的 command 参数 (例如 command, command1, command2)。');
     }
 
-    // --- 2. 安全预检查 ---
+    // --- 2. 智能安全预检查 ---
     let needsInteractiveAuth = false;
     for (const entry of commandEntries) {
-        const commandLowerCase = entry.value.toLowerCase();
+        const securityResult = intelligentSecurityCheck(
+            entry.value,
+            defaultConfig.forbiddenCommands,
+            defaultConfig.authRequiredCommands
+        );
         
-        const forbiddenKeyword = defaultConfig.forbiddenCommands.find(keyword => commandLowerCase.includes(keyword));
-        if (forbiddenKeyword) {
-            throw new Error(`执行被阻止：命令 "${entry.value}" 包含被禁止的关键字 "${forbiddenKeyword}"。`);
+        if (securityResult.isForbidden) {
+            throw new Error(`执行被阻止：${securityResult.reason}`);
         }
 
-        if (defaultConfig.authRequiredCommands.some(keyword => commandLowerCase.includes(keyword))) {
+        if (securityResult.needsAuth) {
             needsInteractiveAuth = true;
+            console.log(`[PowerShellExecutor] 命令 "${entry.value}" 需要交互式授权：${securityResult.reason}`);
         }
     }
 
