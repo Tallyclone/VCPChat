@@ -4,6 +4,8 @@ const fs = require('fs-extra');
 const path = require('path');
 
 let AGENT_DIR_CACHE; // Cache the agent directory path
+let USER_DATA_DIR_CACHE; // Cache the user data directory path
+let AVATAR_IMAGE_DIR; // Centralized avatar storage directory
 
 async function getAgentConfigById(agentId) {
     if (!AGENT_DIR_CACHE) {
@@ -65,6 +67,13 @@ async function getAgentConfigById(agentId) {
 function initialize(context) {
     const { AGENT_DIR, USER_DATA_DIR, SETTINGS_FILE, USER_AVATAR_FILE, settingsManager, agentConfigManager } = context;
     AGENT_DIR_CACHE = AGENT_DIR; // Cache the directory path
+    USER_DATA_DIR_CACHE = USER_DATA_DIR; // Cache the user data directory path
+
+    // Calculate the centralized avatar directory path based on the structure used in getGroupsInternal
+    // Assuming USER_DATA_DIR is inside a structure like .../VCPChat/UserData
+    // Correcting path calculation based on user feedback (assuming path.dirname(USER_DATA_DIR) already points to the AppData root)
+    const appDataRoot = path.dirname(USER_DATA_DIR);
+    AVATAR_IMAGE_DIR = path.join(appDataRoot, 'avatarimage');
 
     ipcMain.handle('get-agents', async () => {
         try {
@@ -321,8 +330,21 @@ function initialize(context) {
                 return { error: '保存头像失败：未提供有效的头像数据。' };
             }
 
-            const agentDir = path.join(AGENT_DIR, agentId);
+            const agentDir = path.join(AGENT_DIR_CACHE, agentId);
             await fs.ensureDir(agentDir);
+
+            // 1. 获取 Agent 名称
+            let agentConfig = {};
+            try {
+                const configPath = path.join(agentDir, 'config.json');
+                if (await fs.pathExists(configPath)) {
+                    agentConfig = await fs.readJson(configPath);
+                }
+            } catch (e) {
+                console.warn(`无法读取Agent ${agentId} 的配置以获取名称:`, e);
+            }
+            const agentName = agentConfig.name || agentId;
+
 
             let ext = path.extname(avatarData.name).toLowerCase();
             if (!ext) {
@@ -338,6 +360,7 @@ function initialize(context) {
                 return { error: `保存头像失败：不支持的文件类型/扩展名 "${ext}"。` };
             }
 
+            // 2. 删除 Agent 目录下的旧头像
             const oldAvatars = [
                 path.join(agentDir, 'avatar.png'),
                 path.join(agentDir, 'avatar.jpg'),
@@ -354,7 +377,26 @@ function initialize(context) {
             const newAvatarPath = path.join(agentDir, `avatar${ext}`);
             const nodeBuffer = Buffer.from(avatarData.buffer);
 
+            // 3. 写入 Agent 目录下的新头像
             await fs.writeFile(newAvatarPath, nodeBuffer);
+
+            // 4. 集中式头像存储逻辑
+            if (AVATAR_IMAGE_DIR) {
+                await fs.ensureDir(AVATAR_IMAGE_DIR);
+                
+                // 4a. 删除集中式目录中旧的、以 Agent 名称命名的头像文件
+                const centralizedOldAvatars = allowedExtensions.map(e => path.join(AVATAR_IMAGE_DIR, `${agentName}${e}`));
+                for (const oldAvatarPath of centralizedOldAvatars) {
+                    if (await fs.pathExists(oldAvatarPath)) {
+                        await fs.remove(oldAvatarPath);
+                    }
+                }
+
+                // 4b. 写入集中式目录的新头像
+                const centralizedNewAvatarPath = path.join(AVATAR_IMAGE_DIR, `${agentName}${ext}`);
+                await fs.writeFile(centralizedNewAvatarPath, nodeBuffer);
+            }
+
             return { success: true, avatarUrl: `file://${newAvatarPath}?t=${Date.now()}`, needsColorExtraction: true };
         } catch (error) {
             console.error(`保存Agent ${agentId} 头像失败:`, error);
@@ -492,7 +534,8 @@ async function getAgentsInternal({ AGENT_DIR }) {
 }
 
 async function getGroupsInternal({ USER_DATA_DIR }) {
-     const groupsDir = path.join(path.dirname(USER_DATA_DIR), 'VCPChat', 'AppData', 'AgentGroups');
+     // Correcting path calculation based on user feedback (assuming path.dirname(USER_DATA_DIR) already points to the AppData root)
+     const groupsDir = path.join(path.dirname(USER_DATA_DIR), 'AgentGroups');
     try {
         if (!await fs.pathExists(groupsDir)) {
             return [];
