@@ -891,6 +891,7 @@ function initializeMessageRenderer(refs) {
         preprocessFullContent: preprocessFullContent,
         renderAttachments: renderAttachments,
         interruptHandler: mainRendererReferences.interruptHandler,
+        updateMessageContent: updateMessageContent, // 🟢 新增：传递 updateMessageContent
     });
 
     if (typeof contextMenu.toggleEditMode === 'function') {
