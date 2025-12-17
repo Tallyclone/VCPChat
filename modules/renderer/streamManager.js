@@ -732,6 +732,12 @@ export function appendStreamChunk(messageId, chunkData, context) {
     }
     
     // Extract text from chunk
+    // 如果检测到 JSON 解析错误，直接过滤掉，不显示给用户
+    if (chunkData?.error === 'json_parse_error') {
+        console.warn(`[StreamManager] 过滤掉 JSON 解析错误的 chunk for messageId: ${messageId}`, chunkData.raw);
+        return;
+    }
+    
     let textToAppend = "";
     if (chunkData?.choices?.[0]?.delta?.content) {
         textToAppend = chunkData.choices[0].delta.content;
@@ -741,8 +747,9 @@ export function appendStreamChunk(messageId, chunkData, context) {
         textToAppend = chunkData.content;
     } else if (typeof chunkData === 'string') {
         textToAppend = chunkData;
-    } else if (chunkData?.raw) {
-        textToAppend = chunkData.raw + (chunkData.error ? ` (解析错误)` : "");
+    } else if (chunkData?.raw && !chunkData?.error) {
+        // 只有在没有错误标记时才显示 raw 数据
+        textToAppend = chunkData.raw;
     }
     
     if (!textToAppend) return;
