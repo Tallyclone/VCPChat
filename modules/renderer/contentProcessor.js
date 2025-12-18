@@ -334,7 +334,7 @@ function processAllPreBlocksInContentDiv(contentDiv) {
 
     const allPreElements = contentDiv.querySelectorAll('pre');
     allPreElements.forEach(preElement => {
-        if (preElement.dataset.vcpPrettified === "true" || preElement.dataset.maidDiaryPrettified === "true") {
+        if (preElement.dataset.vcpPrettified === "true" || preElement.dataset.maidDiaryPrettified === "true" || preElement.dataset.vcpHtmlPreview === "true") {
             return; // Already processed
         }
 
@@ -355,6 +355,150 @@ function processAllPreBlocksInContentDiv(contentDiv) {
             const dailyNoteContentMatch = blockText.match(/<<<DailyNoteStart>>>([\s\S]*?)<<<DailyNoteEnd>>>/);
             const actualDailyNoteText = dailyNoteContentMatch ? dailyNoteContentMatch[1].trim() : "";
             prettifySinglePreElement(preElement, 'dailynote', actualDailyNoteText);
+        }
+        // Check for HTML code block
+        else if (codeElement && (codeElement.classList.contains('language-html') || blockText.trim().startsWith('<!DOCTYPE html>') || blockText.trim().startsWith('<html'))) {
+            setupHtmlPreview(preElement, blockText);
+        }
+    });
+}
+
+/**
+ * Sets up a play/return toggle for HTML code blocks.
+ * @param {HTMLElement} preElement - The pre element containing the code.
+ * @param {string} htmlContent - The raw HTML content.
+ */
+function setupHtmlPreview(preElement, htmlContent) {
+    if (preElement.dataset.vcpHtmlPreview === "true") return;
+    preElement.dataset.vcpHtmlPreview = "true";
+
+    // Create container for the whole block to manage positioning
+    const container = document.createElement('div');
+    container.className = 'vcp-html-preview-container';
+    preElement.parentNode.insertBefore(container, preElement);
+    container.appendChild(preElement);
+
+    // Create the toggle button
+    const actionBtn = document.createElement('button');
+    actionBtn.className = 'vcp-html-preview-toggle';
+    actionBtn.innerHTML = '<span>▶️ 播放</span>';
+    actionBtn.title = '在气泡内预览 HTML';
+    actionBtn.dataset.vcpInteractive = 'true';
+    actionBtn.type = 'button';
+    container.appendChild(actionBtn);
+
+    let previewFrame = null;
+    const frameId = `vcp-frame-${Math.random().toString(36).substr(2, 9)}`;
+
+    actionBtn.addEventListener('click', (e) => {
+        // 🔴 彻底阻止事件传播，防止触发任何父级监听器
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+
+        const isPreviewing = container.classList.contains('preview-mode');
+        
+        if (!isPreviewing) {
+            // 🟢 核心修复：先获取当前高度，避免高度塌陷导致的滚动跳动
+            const currentHeight = preElement.offsetHeight;
+            
+            // 为容器设置固定高度，防止高度塌陷
+            container.style.minHeight = currentHeight + 'px';
+            
+            container.classList.add('preview-mode');
+            actionBtn.innerHTML = '<span>🔙 返回</span>';
+            
+            if (!previewFrame) {
+                previewFrame = document.createElement('iframe');
+                previewFrame.className = 'vcp-html-preview-frame';
+                previewFrame.dataset.frameId = frameId;
+                
+                // 🟢 先设置iframe的初始高度为当前代码块高度
+                previewFrame.style.height = currentHeight + 'px';
+                
+                previewFrame.srcdoc = `
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <meta charset="UTF-8">
+                        <style>
+                            html, body { margin: 0; padding: 0; overflow: hidden; height: auto; }
+                            body {
+                                padding: 20px;
+                                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                                background: white;
+                                color: black;
+                                line-height: 1.5;
+                                box-sizing: border-box;
+                                min-height: 100px;
+                            }
+                            * { box-sizing: border-box; }
+                            img { max-width: 100%; height: auto; }
+                        </style>
+                    </head>
+                    <body>
+                        <div id="vcp-wrapper">${htmlContent}</div>
+                        <script>
+                            function updateHeight() {
+                                const wrapper = document.getElementById('vcp-wrapper');
+                                const height = Math.max(wrapper.scrollHeight + 40, document.body.scrollHeight);
+                                window.parent.postMessage({
+                                    type: 'vcp-html-resize',
+                                    height: height,
+                                    frameId: '${frameId}'
+                                }, '*');
+                            }
+                            window.onload = () => {
+                                setTimeout(updateHeight, 50);
+                                setTimeout(updateHeight, 500);
+                            };
+                            new ResizeObserver(updateHeight).observe(document.body);
+                        </script>
+                    </body>
+                    </html>
+                `;
+                
+                const messageHandler = (msg) => {
+                    if (msg.data && msg.data.type === 'vcp-html-resize' && msg.data.frameId === frameId) {
+                        if (previewFrame) {
+                            // 🟢 平滑过渡到新高度
+                            previewFrame.style.transition = 'height 0.3s ease';
+                            previewFrame.style.height = msg.data.height + 'px';
+                            
+                            // 同时更新容器的最小高度
+                            container.style.minHeight = msg.data.height + 'px';
+                        }
+                    }
+                };
+                window.addEventListener('message', messageHandler);
+
+                container.appendChild(previewFrame);
+            } else {
+                previewFrame.style.display = 'block';
+                // 恢复之前的高度
+                previewFrame.style.height = currentHeight + 'px';
+            }
+            
+            // 🟢 延迟隐藏代码块，确保iframe先显示
+            setTimeout(() => {
+                preElement.style.display = 'none';
+            }, 50);
+            
+        } else {
+            // 返回代码模式
+            container.classList.remove('preview-mode');
+            actionBtn.innerHTML = '<span>▶️ 播放</span>';
+            
+            // 🟢 先显示代码块，再隐藏iframe
+            preElement.style.display = 'block';
+            
+            setTimeout(() => {
+                if (previewFrame) {
+                    previewFrame.style.display = 'none';
+                }
+                // 清除固定高度限制
+                container.style.minHeight = '';
+            }, 50);
         }
     });
 }

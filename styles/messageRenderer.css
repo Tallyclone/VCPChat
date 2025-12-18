@@ -990,3 +990,84 @@ body:not(.light-theme) .mermaid-error {
     display: inline-block; /* Emoticons are usually inline */
     vertical-align: middle; /* Align nicely with text */
 }
+
+/* --- HTML Preview Container & Toggle --- */
+.vcp-html-preview-container {
+    position: relative;
+    margin: 10px 0;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    background: var(--bg-color);
+    transition: all 0.3s ease, min-height 0.3s ease;
+    /* 🟢 添加最小高度过渡，防止高度塌陷导致的滚动跳动 */
+}
+
+.vcp-html-preview-toggle {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 10;
+    padding: 4px 12px;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.2s ease;
+}
+
+.vcp-html-preview-toggle:hover {
+    background: rgba(0, 0, 0, 0.7);
+    transform: scale(1.05);
+}
+
+.vcp-html-preview-toggle span {
+    pointer-events: none;
+}
+
+.vcp-html-preview-frame {
+    width: 100%;
+    min-height: 100px;
+    max-height: 100vh; /* 稍微增加最大高度 */
+    border: none;
+    background: white;
+    display: block;
+    transition: height 0.3s ease, opacity 0.2s ease;
+    /* 🟢 添加透明度过渡，让切换更平滑 */
+}
+
+/* 确保预览模式下容器不会因为内容切换而剧烈跳动 */
+.vcp-html-preview-container.preview-mode {
+    background: white;
+    /* 🟢 预览模式下保持稳定的背景 */
+}
+
+/* 🟢 新增：代码块的平滑过渡 */
+.vcp-html-preview-container pre {
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+/* 🟢 新增：当iframe正在加载时的平滑过渡状态 */
+.vcp-html-preview-container.preview-mode pre {
+    opacity: 0;
+    transform: translateY(-10px);
+}
+
+/* Ensure the pre block inside container doesn't have extra margins */
+.vcp-html-preview-container pre {
+    margin: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+}
+
+/* Dark theme adjustments for the container */
+body:not(.light-theme) .vcp-html-preview-container {
+    border-color: rgba(255, 255, 255, 0.1);
+}
