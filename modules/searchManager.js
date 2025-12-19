@@ -343,6 +343,21 @@ const searchManager = {
 
     escapeRegExp(string) {
         return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    },
+
+    /**
+     * 转义HTML特殊字符，防止HTML注入
+     * @param {string} text 要转义的文本
+     * @returns {string} 转义后的文本
+     */
+    escapeHtml(text) {
+        if (typeof text !== 'string') return '';
+        return text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
     }
 };
 
