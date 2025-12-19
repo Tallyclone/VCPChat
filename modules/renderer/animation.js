@@ -158,16 +158,36 @@ function processScripts(containerElement) {
     allScripts.forEach(s => { if (s.parentNode) s.parentNode.removeChild(s); });
 
     const executeInline = () => {
-        inlineScripts.forEach(script => {
-            try {
-                const newScript = document.createElement('script');
-                // 通过IIFE（立即调用函数表达式）包裹脚本，防止全局作用域污染和变量重定义错误
-                newScript.textContent = `(function(){\n${script.textContent}\n})();`;
-                document.head.appendChild(newScript).parentNode.removeChild(newScript);
-            } catch (e) {
-                console.error('[Animation] Error executing inline script:', e);
-            }
-        });
+        // 🛡️ Document API Shadowing - 防止 document.write/open/close 导致 SPA 崩溃
+        const originalWrite = document.write;
+        const originalOpen = document.open;
+        const originalClose = document.close;
+
+        const blockedApiHandler = function(...args) {
+            console.warn('[Animation] Blocked document.write/open/close call in inline script:', args);
+        };
+
+        document.write = blockedApiHandler;
+        document.open = blockedApiHandler;
+        document.close = blockedApiHandler;
+
+        try {
+            inlineScripts.forEach(script => {
+                try {
+                    const newScript = document.createElement('script');
+                    // 通过IIFE（立即调用函数表达式）包裹脚本，防止全局作用域污染和变量重定义错误
+                    newScript.textContent = `(function(){\n${script.textContent}\n})();`;
+                    document.head.appendChild(newScript).parentNode.removeChild(newScript);
+                } catch (e) {
+                    console.error('[Animation] Error executing inline script:', e);
+                }
+            });
+        } finally {
+            // 🔄 恢复原始 API
+            document.write = originalWrite;
+            document.open = originalOpen;
+            document.close = originalClose;
+        }
     };
 
     const loadOtherScriptsAndExecuteInline = () => {
