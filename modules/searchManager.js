@@ -62,11 +62,27 @@ const searchManager = {
             }
         });
 
-        // Perform search on Enter
-        this.elements.input.addEventListener('keyup', (e) => {
+        // Perform search on Ctrl+Enter or Enter (if not multiline)
+        this.elements.input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
+                // Ctrl+Enter 或 Shift+Enter 触发搜索
+                if (e.ctrlKey || e.shiftKey) {
+                    e.preventDefault();
+                    const query = this.elements.input.value.trim();
+                    if (query && query !== this.state.currentQuery) {
+                        this.performSearch(query);
+                    }
+                }
+                // 单独的 Enter 键允许换行，不触发搜索
+            }
+        });
+
+        // 也保留原来的 keyup 事件，但只在单行内容时触发
+        this.elements.input.addEventListener('keyup', (e) => {
+            if (e.key === 'Enter' && !e.ctrlKey && !e.shiftKey) {
                 const query = this.elements.input.value.trim();
-                if (query && query !== this.state.currentQuery) {
+                // 只有当内容不包含换行符时才自动搜索
+                if (query && !query.includes('\n') && query !== this.state.currentQuery) {
                     this.performSearch(query);
                 }
             }
@@ -165,7 +181,21 @@ const searchManager = {
                         ? message.content.text
                         : String(message.content || '');
 
-                    if (content.toLowerCase().includes(lowerCaseQuery)) {
+                    // 支持多行搜索：将搜索查询和内容都标准化处理
+                    const normalizedContent = content.toLowerCase().replace(/\s+/g, ' ').trim();
+                    const normalizedQuery = lowerCaseQuery.replace(/\s+/g, ' ').trim();
+                    
+                    // 如果查询包含换行符，进行精确的多行匹配
+                    let isMatch = false;
+                    if (lowerCaseQuery.includes('\n')) {
+                        // 多行查询：保持原始格式进行匹配
+                        isMatch = content.toLowerCase().includes(lowerCaseQuery);
+                    } else {
+                        // 单行查询：使用标准化匹配（忽略多余空白）
+                        isMatch = normalizedContent.includes(normalizedQuery);
+                    }
+
+                    if (isMatch) {
                         allFoundMessages.push({
                             ...message,
                             context: result.context
@@ -216,9 +246,19 @@ const searchManager = {
             contentWrapperEl.classList.add('content');
 
             const query = this.state.currentQuery;
-            const highlightedContent = query
-                ? contentText.replace(new RegExp(this.escapeRegExp(query), 'gi'), (match) => `<strong>${match}</strong>`)
-                : contentText;
+            let highlightedContent = contentText;
+            
+            if (query) {
+                if (query.includes('\n')) {
+                    // 多行查询：精确匹配高亮
+                    const escapedQuery = this.escapeRegExp(query);
+                    highlightedContent = contentText.replace(new RegExp(escapedQuery, 'gi'), (match) => `<strong>${match}</strong>`);
+                } else {
+                    // 单行查询：标准高亮
+                    const escapedQuery = this.escapeRegExp(query);
+                    highlightedContent = contentText.replace(new RegExp(escapedQuery, 'gi'), (match) => `<strong>${match}</strong>`);
+                }
+            }
 
             contentWrapperEl.innerHTML = `<span class="name">${message.name || message.role}: </span>${highlightedContent}`;
 
