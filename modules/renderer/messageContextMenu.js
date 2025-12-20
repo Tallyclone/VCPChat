@@ -901,6 +901,7 @@ async function handleRegenerateResponse(originalAssistantMessage) {
             model: agentConfig.model,
             temperature: parseFloat(agentConfig.temperature),
             max_tokens: agentConfig.maxOutputTokens ? parseInt(agentConfig.maxOutputTokens) : undefined,
+            contextTokenLimit: agentConfig.contextTokenLimit ? parseInt(agentConfig.contextTokenLimit) : undefined,
             top_p: agentConfig.top_p ? parseFloat(agentConfig.top_p) : undefined,
             top_k: agentConfig.top_k ? parseInt(agentConfig.top_k) : undefined,
             stream: agentConfig.streamOutput === true || String(agentConfig.streamOutput) === 'true'

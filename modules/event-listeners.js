@@ -255,6 +255,7 @@ export function setupEventListeners(deps) {
                 model: agentConfig?.model || 'gemini-pro',
                 temperature: agentConfig?.temperature !== undefined ? parseFloat(agentConfig.temperature) : 0.7,
                 ...(agentConfig?.maxOutputTokens && { max_tokens: parseInt(agentConfig.maxOutputTokens) }),
+                ...(agentConfig?.contextTokenLimit && { contextTokenLimit: parseInt(agentConfig.contextTokenLimit) }),
                 stream: useStreaming
             };
             

@@ -917,6 +917,7 @@ window.chatManager = (() => {
                 model: (agentConfig && agentConfig.model) ? agentConfig.model : 'gemini-pro',
                 temperature: (agentConfig && agentConfig.temperature !== undefined) ? parseFloat(agentConfig.temperature) : 0.7,
                 ...(agentConfig && agentConfig.maxOutputTokens && { max_tokens: parseInt(agentConfig.maxOutputTokens) }),
+                ...(agentConfig && agentConfig.contextTokenLimit !== undefined && agentConfig.contextTokenLimit !== null && { contextTokenLimit: parseInt(agentConfig.contextTokenLimit) }),
                 ...(agentConfig && agentConfig.top_p !== undefined && agentConfig.top_p !== null && { top_p: parseFloat(agentConfig.top_p) }),
                 ...(agentConfig && agentConfig.top_k !== undefined && agentConfig.top_k !== null && { top_k: parseInt(agentConfig.top_k) }),
                 stream: useStreaming

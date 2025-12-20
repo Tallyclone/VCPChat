@@ -211,6 +211,7 @@ window.electronAPI.onAssistantData(async (data) => {
                 temperature: agentConfig.temperature,
                 stream: true,
                 ...(agentConfig.maxOutputTokens && { max_tokens: parseInt(agentConfig.maxOutputTokens, 10) }),
+                ...(agentConfig.contextTokenLimit && { contextTokenLimit: parseInt(agentConfig.contextTokenLimit, 10) }),
                 ...(agentConfig.top_p && { top_p: parseFloat(agentConfig.top_p) }),
                 ...(agentConfig.top_k && { top_k: parseInt(agentConfig.top_k, 10) })
             };
