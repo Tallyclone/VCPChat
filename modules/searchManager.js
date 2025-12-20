@@ -55,13 +55,6 @@ const searchManager = {
         // Close button
         this.elements.closeButton.addEventListener('click', () => this.closeModal());
 
-        // Close by clicking overlay
-        this.elements.modal.addEventListener('click', (e) => {
-            if (e.target === this.elements.modal) {
-                this.closeModal();
-            }
-        });
-
         // Perform search on Ctrl+Enter or Enter (if not multiline)
         this.elements.input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
