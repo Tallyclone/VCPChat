@@ -40,6 +40,7 @@ const searchManager = {
         this.elements.modal = document.getElementById('global-search-modal');
         this.elements.closeButton = document.getElementById('global-search-close-button');
         this.elements.input = document.getElementById('global-search-input');
+        this.elements.agentSelect = document.getElementById('global-search-agent-select');
         this.elements.resultsContainer = document.getElementById('global-search-results');
         this.elements.paginationContainer = document.getElementById('global-search-pagination');
     },
@@ -87,15 +88,69 @@ const searchManager = {
         });
     },
 
-    openModal() {
+    async openModal() {
         this.elements.modal.style.display = 'flex';
         this.elements.input.focus();
         this.elements.input.select();
+        await this.populateAgentSelect();
+    },
+
+    async populateAgentSelect() {
+        try {
+            const [agents, groups] = await Promise.all([
+                this.electronAPI.getAgents(),
+                this.electronAPI.getAgentGroups()
+            ]);
+
+            // 保留“所有”选项
+            const currentValue = this.elements.agentSelect.value;
+            this.elements.agentSelect.innerHTML = '<option value="all">所有助手和群组</option>';
+
+            if (agents && !agents.error) {
+                const agentGroup = document.createElement('optgroup');
+                agentGroup.label = '助手';
+                agents.forEach(agent => {
+                    const option = document.createElement('option');
+                    option.value = `agent:${agent.id}`;
+                    option.textContent = agent.name;
+                    agentGroup.appendChild(option);
+                });
+                this.elements.agentSelect.appendChild(agentGroup);
+            }
+
+            if (groups && !groups.error) {
+                const groupGroup = document.createElement('optgroup');
+                groupGroup.label = '群组';
+                groups.forEach(group => {
+                    const option = document.createElement('option');
+                    option.value = `group:${group.id}`;
+                    option.textContent = group.name;
+                    groupGroup.appendChild(option);
+                });
+                this.elements.agentSelect.appendChild(groupGroup);
+            }
+
+            // 尝试恢复之前选中的值
+            if (currentValue && Array.from(this.elements.agentSelect.options).some(opt => opt.value === currentValue)) {
+                this.elements.agentSelect.value = currentValue;
+            }
+        } catch (error) {
+            console.error('[SearchManager] Failed to populate agent select:', error);
+        }
     },
 
     closeModal() {
         this.elements.modal.style.display = 'none';
         this.clearScopedStyles();
+
+        // 清空搜索内容和状态，确保下次打开时是干净的
+        if (this.elements.input) this.elements.input.value = '';
+        if (this.elements.resultsContainer) this.elements.resultsContainer.innerHTML = '';
+        if (this.elements.paginationContainer) this.elements.paginationContainer.innerHTML = '';
+        
+        this.state.currentQuery = '';
+        this.state.searchResults = [];
+        this.state.currentPage = 1;
     },
 
     clearScopedStyles() {
@@ -164,7 +219,17 @@ const searchManager = {
             let allFoundMessages = [];
             const topicsToFetch = [];
 
+            const selectedFilter = this.elements.agentSelect.value; // "all", "agent:id", or "group:id"
+            const [filterType, filterId] = selectedFilter.split(':');
+
             const processItem = (item, type) => {
+                // 如果指定了过滤，且当前项目不匹配，则跳过
+                if (selectedFilter !== 'all') {
+                    if (type !== filterType || item.id !== filterId) {
+                        return;
+                    }
+                }
+
                 if (item.topics && item.topics.length > 0) {
                     item.topics.forEach(topic => {
                         topicsToFetch.push({
@@ -235,6 +300,11 @@ const searchManager = {
                 });
             });
 
+            // 如果在搜索过程中关闭了模态框，则不更新状态和渲染
+            if (this.elements.modal.style.display === 'none') {
+                return;
+            }
+
             this.state.searchResults = allFoundMessages.sort((a, b) => b.timestamp - a.timestamp);
             this.state.currentPage = 1;
             this.renderSearchResults();
@@ -264,7 +334,6 @@ const searchManager = {
             const itemEl = document.createElement('div');
             itemEl.classList.add('search-result-item');
             
-            // 为每个搜索结果生成唯一作用域 ID
             const scopeId = this.generateUniqueId();
             itemEl.id = scopeId;
             
@@ -274,26 +343,30 @@ const searchManager = {
                 ? message.content.text
                 : String(message.content || '');
 
-            // --- Scoped CSS 处理 ---
-            let textToProcess = contentText;
-            const codeBlocksForStyleProtection = [];
-            // 保护代码块
-            textToProcess = textToProcess.replace(CODE_FENCE_REGEX, (match) => {
-                const placeholder = `__VCP_STYLE_PROTECT_${codeBlocksForStyleProtection.length}__`;
-                codeBlocksForStyleProtection.push(match);
+            // ========== 🔧 修复的核心逻辑 ==========
+            let processedContent = contentText;
+            const codeBlocks = [];
+            
+            // 1️⃣ 提取代码块并用占位符替换
+            processedContent = processedContent.replace(CODE_FENCE_REGEX, (match, codeContent) => {
+                const placeholder = `__VCP_CODE_BLOCK_${codeBlocks.length}__`;
+                codeBlocks.push(codeContent); // 只保存代码内容，不保存 ``` 标记
                 return placeholder;
             });
-
-            // 提取并注入 Scoped CSS
-            const contentWithoutStyles = this.processAndInjectScopedCss(textToProcess, scopeId);
             
-            // 恢复代码块
-            let finalContent = contentWithoutStyles;
-            codeBlocksForStyleProtection.forEach((block, i) => {
-                const placeholder = `__VCP_STYLE_PROTECT_${i}__`;
-                finalContent = finalContent.replace(placeholder, block);
+            // 2️⃣ 提取并注入 Scoped CSS（针对非代码块区域）
+            processedContent = this.processAndInjectScopedCss(processedContent, scopeId);
+            
+            // 3️⃣ 恢复代码块：转义后包装成 <pre><code>
+            codeBlocks.forEach((code, i) => {
+                const placeholder = `__VCP_CODE_BLOCK_${i}__`;
+                const escapedCode = this.escapeHtml(code.trim());
+                processedContent = processedContent.replace(
+                    placeholder,
+                    `<pre class="search-code-block"><code>${escapedCode}</code></pre>`
+                );
             });
-            // --- 处理结束 ---
+            // ========== 修复结束 ==========
 
             const contextEl = document.createElement('div');
             contextEl.classList.add('context');
@@ -302,23 +375,14 @@ const searchManager = {
             const contentWrapperEl = document.createElement('div');
             contentWrapperEl.classList.add('content');
 
+            // 4️⃣ 直接渲染 HTML（div 气泡会正常显示，代码块已经被安全处理）
+            contentWrapperEl.innerHTML = `<span class="name">${this.escapeHtml(message.name || message.role)}: </span><span class="message-body">${processedContent}</span>`;
+            
+            // 5️⃣ 在 DOM 层面高亮搜索词（避免破坏 HTML 结构）
             const query = this.state.currentQuery;
-            
-            // 🔴 修复：转义 HTML，防止在搜索预览中执行原始 HTML
-            const safeContent = this.escapeHtml(finalContent);
-            
-            // 然后再高亮搜索词（在转义后的安全内容上）
-            let highlightedContent = safeContent;
             if (query) {
-                // 同时也需要转义查询词，以匹配转义后的内容
-                const escapedQuery = this.escapeRegExp(this.escapeHtml(query));
-                highlightedContent = safeContent.replace(
-                    new RegExp(escapedQuery, 'gi'),
-                    (match) => `<strong>${match}</strong>`
-                );
+                this.highlightTextInElement(contentWrapperEl.querySelector('.message-body'), query);
             }
-
-            contentWrapperEl.innerHTML = `<span class="name">${this.escapeHtml(message.name || message.role)}: </span>${highlightedContent}`;
 
             itemEl.appendChild(contextEl);
             itemEl.appendChild(contentWrapperEl);
@@ -326,6 +390,65 @@ const searchManager = {
         });
 
         this.renderPagination();
+    },
+
+    /**
+     * 在元素的文本节点中高亮搜索词（不破坏 HTML 结构）
+     * @param {HTMLElement} element 目标元素
+     * @param {string} query 搜索词
+     */
+    highlightTextInElement(element, query) {
+        if (!element || !query) return;
+        
+        const lowerQuery = query.toLowerCase().replace(/\s+/g, ' ').trim();
+        
+        // 使用 TreeWalker 遍历所有文本节点
+        const walker = document.createTreeWalker(
+            element,
+            NodeFilter.SHOW_TEXT,
+            null,
+            false
+        );
+        
+        const textNodes = [];
+        let node;
+        while ((node = walker.nextNode())) {
+            textNodes.push(node);
+        }
+        
+        textNodes.forEach(textNode => {
+            const text = textNode.textContent;
+            const lowerText = text.toLowerCase();
+            
+            if (!lowerText.includes(lowerQuery)) return;
+            
+            const fragment = document.createDocumentFragment();
+            let lastIndex = 0;
+            let searchIndex = 0;
+            
+            while ((searchIndex = lowerText.indexOf(lowerQuery, lastIndex)) !== -1) {
+                // 添加匹配前的文本
+                if (searchIndex > lastIndex) {
+                    fragment.appendChild(
+                        document.createTextNode(text.slice(lastIndex, searchIndex))
+                    );
+                }
+                // 添加高亮的匹配文本
+                const strong = document.createElement('strong');
+                strong.className = 'search-highlight';
+                strong.textContent = text.slice(searchIndex, searchIndex + lowerQuery.length);
+                fragment.appendChild(strong);
+                
+                lastIndex = searchIndex + lowerQuery.length;
+            }
+            
+            // 添加剩余文本
+            if (lastIndex < text.length) {
+                fragment.appendChild(document.createTextNode(text.slice(lastIndex)));
+            }
+            
+            textNode.parentNode.replaceChild(fragment, textNode);
+        });
     },
 
     renderPagination() {

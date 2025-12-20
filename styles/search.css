@@ -67,6 +67,34 @@
     overflow: hidden;
 }
 
+.search-controls {
+    margin-bottom: 15px;
+    flex-shrink: 0;
+}
+
+.search-agent-select {
+    width: 100%;
+    padding: 10px 15px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background-color: var(--input-bg);
+    color: var(--primary-text);
+    font-size: 1rem;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='currentColor' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 15px center;
+    padding-right: 40px;
+}
+
+.search-agent-select:focus {
+    border-color: var(--highlight-text);
+    box-shadow: 0 0 5px var(--highlight-text-translucent);
+}
+
 #global-search-input {
     width: 100%;
     padding: 12px 15px;
@@ -135,6 +163,29 @@
     background-color: var(--highlight-bg);
     padding: 1px 3px;
     border-radius: 3px;
+}
+
+/* 搜索结果中的代码块样式 */
+.search-result-item .search-code-block {
+    background: var(--code-bg, #f5f5f5);
+    border-radius: 4px;
+    padding: 8px 12px;
+    margin: 8px 0;
+    overflow-x: auto;
+    font-size: 0.85em;
+    max-height: 150px; /* 限制预览高度 */
+    overflow-y: auto;
+}
+
+.search-result-item .search-code-block code {
+    white-space: pre;
+    font-family: 'Consolas', 'Monaco', monospace;
+}
+
+/* 搜索高亮 */
+.search-highlight {
+    background-color: rgba(255, 213, 0, 0.4);
+    font-weight: bold;
 }
 
 #global-search-pagination {

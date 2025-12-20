@@ -804,7 +804,12 @@
                 <button id="global-search-close-button" class="search-modal-close-button">&times;</button>
             </div>
             <div class="search-modal-body">
-                <textarea id="global-search-input" placeholder="搜索所有聊天记录 (Ctrl+F)...&#10;支持多行搜索，Ctrl+Enter 或 Shift+Enter 执行搜索" rows="3"></textarea>
+                <div class="search-controls">
+                    <select id="global-search-agent-select" class="search-agent-select">
+                        <option value="all">所有助手和群组</option>
+                    </select>
+                </div>
+                <textarea id="global-search-input" placeholder="搜索聊天记录 (Ctrl+F)...&#10;支持多行搜索，Ctrl+Enter 或 Shift+Enter 执行搜索" rows="3"></textarea>
                 <div id="global-search-results"></div>
                 <div id="global-search-pagination"></div>
             </div>
