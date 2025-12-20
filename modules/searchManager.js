@@ -1,6 +1,11 @@
 // V-Chat Search Manager
 // This module handles the global search functionality.
 
+import { scopeCss } from './renderer/contentProcessor.js';
+
+const STYLE_REGEX = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
+const CODE_FENCE_REGEX = /```\w*([\s\S]*?)```/g;
+
 const searchManager = {
     // --- Properties ---
     electronAPI: null,
@@ -90,6 +95,38 @@ const searchManager = {
 
     closeModal() {
         this.elements.modal.style.display = 'none';
+        this.clearScopedStyles();
+    },
+
+    clearScopedStyles() {
+        document.querySelectorAll('style[data-vcp-search-scope-id]').forEach(el => el.remove());
+    },
+
+    generateUniqueId() {
+        const timestampPart = Date.now().toString(36);
+        const randomPart = Math.random().toString(36).substring(2, 9);
+        return `vcp-search-bubble-${timestampPart}${randomPart}`;
+    },
+
+    processAndInjectScopedCss(content, scopeId) {
+        let cssContent = '';
+        const processedContent = content.replace(STYLE_REGEX, (match, css) => {
+            cssContent += css.trim() + '\n';
+            return ''; // 移除 style 标签
+        });
+
+        if (cssContent.length > 0) {
+            try {
+                const scopedCss = scopeCss(cssContent, scopeId);
+                const styleElement = document.createElement('style');
+                styleElement.setAttribute('data-vcp-search-scope-id', scopeId);
+                styleElement.textContent = scopedCss;
+                document.head.appendChild(styleElement);
+            } catch (error) {
+                console.error(`[SearchManager] Failed to scope CSS for ${scopeId}:`, error);
+            }
+        }
+        return processedContent;
     },
 
     async performSearch(query) {
@@ -106,6 +143,7 @@ const searchManager = {
 
         this.state.isFetching = true;
         this.state.currentQuery = query;
+        this.clearScopedStyles();
         this.elements.resultsContainer.innerHTML = '<p style="text-align: center; padding: 20px;">正在努力搜索中...</p>';
         this.elements.paginationContainer.innerHTML = '';
 
@@ -225,11 +263,37 @@ const searchManager = {
         paginatedResults.forEach(message => {
             const itemEl = document.createElement('div');
             itemEl.classList.add('search-result-item');
+            
+            // 为每个搜索结果生成唯一作用域 ID
+            const scopeId = this.generateUniqueId();
+            itemEl.id = scopeId;
+            
             itemEl.addEventListener('click', () => this.navigateToMessage(message));
 
             const contentText = (typeof message.content === 'object' && message.content !== null && message.content.text)
                 ? message.content.text
                 : String(message.content || '');
+
+            // --- Scoped CSS 处理 ---
+            let textToProcess = contentText;
+            const codeBlocksForStyleProtection = [];
+            // 保护代码块
+            textToProcess = textToProcess.replace(CODE_FENCE_REGEX, (match) => {
+                const placeholder = `__VCP_STYLE_PROTECT_${codeBlocksForStyleProtection.length}__`;
+                codeBlocksForStyleProtection.push(match);
+                return placeholder;
+            });
+
+            // 提取并注入 Scoped CSS
+            const contentWithoutStyles = this.processAndInjectScopedCss(textToProcess, scopeId);
+            
+            // 恢复代码块
+            let finalContent = contentWithoutStyles;
+            codeBlocksForStyleProtection.forEach((block, i) => {
+                const placeholder = `__VCP_STYLE_PROTECT_${i}__`;
+                finalContent = finalContent.replace(placeholder, block);
+            });
+            // --- 处理结束 ---
 
             const contextEl = document.createElement('div');
             contextEl.classList.add('context');
@@ -239,21 +303,22 @@ const searchManager = {
             contentWrapperEl.classList.add('content');
 
             const query = this.state.currentQuery;
-            let highlightedContent = contentText;
             
+            // 🔴 修复：转义 HTML，防止在搜索预览中执行原始 HTML
+            const safeContent = this.escapeHtml(finalContent);
+            
+            // 然后再高亮搜索词（在转义后的安全内容上）
+            let highlightedContent = safeContent;
             if (query) {
-                if (query.includes('\n')) {
-                    // 多行查询：精确匹配高亮
-                    const escapedQuery = this.escapeRegExp(query);
-                    highlightedContent = contentText.replace(new RegExp(escapedQuery, 'gi'), (match) => `<strong>${match}</strong>`);
-                } else {
-                    // 单行查询：标准高亮
-                    const escapedQuery = this.escapeRegExp(query);
-                    highlightedContent = contentText.replace(new RegExp(escapedQuery, 'gi'), (match) => `<strong>${match}</strong>`);
-                }
+                // 同时也需要转义查询词，以匹配转义后的内容
+                const escapedQuery = this.escapeRegExp(this.escapeHtml(query));
+                highlightedContent = safeContent.replace(
+                    new RegExp(escapedQuery, 'gi'),
+                    (match) => `<strong>${match}</strong>`
+                );
             }
 
-            contentWrapperEl.innerHTML = `<span class="name">${message.name || message.role}: </span>${highlightedContent}`;
+            contentWrapperEl.innerHTML = `<span class="name">${this.escapeHtml(message.name || message.role)}: </span>${highlightedContent}`;
 
             itemEl.appendChild(contextEl);
             itemEl.appendChild(contentWrapperEl);
