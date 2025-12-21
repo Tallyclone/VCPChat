@@ -313,6 +313,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Forum Module
     openForumWindow: () => ipcRenderer.send('open-forum-window'),
+    openMemoWindow: () => ipcRenderer.send('open-memo-window'),
     loadForumConfig: () => ipcRenderer.invoke('load-forum-config'),
     saveForumConfig: (config) => ipcRenderer.invoke('save-forum-config', config),
     loadAgentsList: () => ipcRenderer.invoke('load-agents-list'),

@@ -818,6 +818,17 @@ export function setupEventListeners(deps) {
                 uiHelperFunctions.showToastNotification('无法打开论坛：功能不可用。', 'error');
             }
         });
+
+        // 右键点击 - 打开 VCPMemo 中心
+        openForumBtn.addEventListener('contextmenu', async (e) => {
+            e.preventDefault();
+            if (window.electronAPI && window.electronAPI.openMemoWindow) {
+                await window.electronAPI.openMemoWindow();
+            } else {
+                console.warn('[Renderer] electronAPI.openMemoWindow is not available.');
+                uiHelperFunctions.showToastNotification('无法打开 VCPMemo 中心：功能不可用。', 'error');
+            }
+        });
     }
 
     if (openTranslatorBtn) {

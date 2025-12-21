@@ -9,6 +9,7 @@ const path = require('path');
  */
 function initialize(mainWindow, openChildWindows) {
     let forumWindowInstance = null;
+    let memoWindowInstance = null;
     // --- Window Control IPC Handlers ---
     ipcMain.on('minimize-window', (event) => {
         const win = BrowserWindow.fromWebContents(event.sender);
@@ -160,6 +161,63 @@ function initialize(mainWindow, openChildWindows) {
                 openChildWindows.splice(index, 1);
             }
             forumWindowInstance = null;
+        });
+    });
+
+    ipcMain.on('open-memo-window', (event) => {
+        if (memoWindowInstance && !memoWindowInstance.isDestroyed()) {
+            if (!memoWindowInstance.isVisible()) {
+                memoWindowInstance.show();
+            }
+            memoWindowInstance.focus();
+            return;
+        }
+
+        const memoWindow = new BrowserWindow({
+            width: 1200,
+            height: 800,
+            minWidth: 800,
+            minHeight: 600,
+            title: 'VCP Memo 中心',
+            modal: false,
+            frame: false,
+            ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
+            webPreferences: {
+                preload: path.join(__dirname, '../../preload.js'),
+                contextIsolation: true,
+                nodeIntegration: false,
+            },
+            icon: path.join(__dirname, '../../assets/icon.png'),
+            show: false,
+        });
+
+        memoWindowInstance = memoWindow;
+
+        memoWindow.setMenu(null);
+
+        const url = `file://${path.join(__dirname, '../../Memomodules/memo.html')}`;
+        memoWindow.loadURL(url);
+
+        memoWindow.once('ready-to-show', () => {
+            memoWindow.show();
+        });
+
+        // Add to the list of open windows to receive theme updates
+        openChildWindows.push(memoWindow);
+
+        memoWindow.on('close', (event) => {
+            if (process.platform === 'darwin') {
+                event.preventDefault();
+                memoWindow.hide();
+            }
+        });
+
+        memoWindow.on('closed', () => {
+            const index = openChildWindows.indexOf(memoWindow);
+            if (index > -1) {
+                openChildWindows.splice(index, 1);
+            }
+            memoWindowInstance = null;
         });
     });
 }
