@@ -19,6 +19,7 @@ const folderListEl = document.getElementById('folder-list');
 const memoGridEl = document.getElementById('memo-grid');
 const currentFolderNameEl = document.getElementById('current-folder-name');
 const searchInput = document.getElementById('search-memos');
+const contextMenuEl = document.getElementById('context-menu');
 
 // 编辑器相关
 const editorOverlay = document.getElementById('editor-overlay');
@@ -183,6 +184,54 @@ function setupEventListeners() {
     document.getElementById('save-memo-btn').onclick = handleSaveMemo;
     document.getElementById('delete-memo-btn').onclick = handleDeleteMemo;
 
+    // 编辑器右键菜单
+    editorTextarea.oncontextmenu = (e) => {
+        showContextMenu(e, [
+            {
+                label: '撤销',
+                icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5"></path><path d="M20 20v-7a4 4 0 0 0-4-4H4"></path></svg>',
+                onClick: () => document.execCommand('undo')
+            },
+            {
+                label: '剪切',
+                icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><line x1="20" y1="4" x2="8.12" y2="15.88"></line><line x1="14.47" y1="14.48" x2="20" y2="20"></line><line x1="8.12" y1="8.12" x2="12" y2="12"></line></svg>',
+                onClick: () => {
+                    editorTextarea.focus();
+                    document.execCommand('cut');
+                }
+            },
+            {
+                label: '复制',
+                icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>',
+                onClick: () => {
+                    editorTextarea.focus();
+                    document.execCommand('copy');
+                }
+            },
+            {
+                label: '粘贴',
+                icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>',
+                onClick: async () => {
+                    editorTextarea.focus();
+                    try {
+                        const text = await navigator.clipboard.readText();
+                        const start = editorTextarea.selectionStart;
+                        const end = editorTextarea.selectionEnd;
+                        const val = editorTextarea.value;
+                        editorTextarea.value = val.substring(0, start) + text + val.substring(end);
+                        editorTextarea.selectionStart = editorTextarea.selectionEnd = start + text.length;
+                        // 触发 input 事件以更新预览
+                        editorTextarea.dispatchEvent(new Event('input'));
+                    } catch (err) {
+                        console.error('无法粘贴: ', err);
+                        // 回退到 execCommand
+                        document.execCommand('paste');
+                    }
+                }
+            }
+        ]);
+    };
+
     // 全局 Esc 键监听
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
@@ -203,6 +252,47 @@ function setupEventListeners() {
             }
         }
     });
+
+    // 点击页面其他地方隐藏右键菜单
+    document.addEventListener('click', () => {
+        contextMenuEl.style.display = 'none';
+    });
+}
+
+// ========== 右键菜单逻辑 ==========
+function showContextMenu(e, items) {
+    e.preventDefault();
+    contextMenuEl.innerHTML = '';
+    
+    items.forEach(item => {
+        const menuItem = document.createElement('div');
+        menuItem.className = `context-menu-item ${item.className || ''}`;
+        menuItem.innerHTML = `
+            ${item.icon || ''}
+            <span>${item.label}</span>
+        `;
+        menuItem.onclick = (event) => {
+            event.stopPropagation();
+            contextMenuEl.style.display = 'none';
+            item.onClick();
+        };
+        contextMenuEl.appendChild(menuItem);
+    });
+
+    contextMenuEl.style.display = 'block';
+    
+    // 调整位置防止溢出
+    let x = e.clientX;
+    let y = e.clientY;
+    
+    const menuWidth = contextMenuEl.offsetWidth || 150;
+    const menuHeight = contextMenuEl.offsetHeight || 100;
+    
+    if (x + menuWidth > window.innerWidth) x -= menuWidth;
+    if (y + menuHeight > window.innerHeight) y -= menuHeight;
+    
+    contextMenuEl.style.left = `${x}px`;
+    contextMenuEl.style.top = `${y}px`;
 }
 
 // ========== API 调用 ==========
@@ -256,6 +346,19 @@ function renderFolders(folders) {
             <span>${folder}</span>
         `;
         item.onclick = () => selectFolder(folder);
+        
+        // 文件夹右键菜单
+        item.oncontextmenu = (e) => {
+            showContextMenu(e, [
+                {
+                    label: '删除文件夹',
+                    className: 'danger',
+                    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>',
+                    onClick: () => handleDeleteFolder(folder)
+                }
+            ]);
+        };
+
         folderListEl.appendChild(item);
 
         // 批量移动下拉框
@@ -406,6 +509,35 @@ async function handleSaveMemo() {
     } finally {
         saveBtn.disabled = false;
         saveBtn.textContent = originalText;
+    }
+}
+
+async function handleDeleteFolder(folderName) {
+    const confirmed = await customConfirm(`确定要删除文件夹 "${folderName}" 吗？\n注意：仅限空文件夹可以被删除。`, '⚠️ 删除文件夹');
+    if (!confirmed) return;
+
+    try {
+        const response = await fetch(`${serverBaseUrl}admin_api/dailynotes/folder/delete`, {
+            method: 'POST',
+            headers: {
+                'Authorization': apiAuthHeader,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ folderName })
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || data.message || '删除失败');
+        }
+
+        await customAlert('文件夹已成功删除', '成功');
+        if (currentFolder === folderName) {
+            currentFolder = '';
+        }
+        await loadFolders();
+    } catch (error) {
+        customAlert(error.message, '删除失败');
     }
 }
 

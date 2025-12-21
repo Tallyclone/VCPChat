@@ -366,3 +366,39 @@ body {
     display: flex;
     align-items: center;
 }
+
+/* --- Context Menu --- */
+.context-menu {
+    background: rgba(30, 30, 30, 0.9);
+    backdrop-filter: blur(15px);
+    border: 1px solid var(--glass-border);
+    overflow: hidden;
+}
+
+.context-menu-item {
+    padding: 10px 15px;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: background 0.2s;
+}
+
+.context-menu-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.context-menu-item.danger {
+    color: var(--danger-color);
+}
+
+.context-menu-item.danger:hover {
+    background: rgba(229, 115, 115, 0.1);
+}
+
+.context-menu-item svg {
+    width: 14px;
+    height: 14px;
+}
