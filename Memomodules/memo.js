@@ -340,7 +340,16 @@ async function loadFolders() {
         const data = await apiFetch('/folders');
         renderFolders(data.folders);
         if (data.folders.length > 0 && !currentFolder) {
-            selectFolder(data.folders[0]);
+            // 找到第一个未被隐藏的文件夹
+            const firstVisibleFolder = data.folders.find(f => f !== 'MusicDiary' && !hiddenFolders.has(f));
+            if (firstVisibleFolder) {
+                selectFolder(firstVisibleFolder);
+            } else {
+                // 如果所有文件夹都被隐藏了
+                currentFolder = '';
+                currentFolderNameEl.textContent = '暂无可用文件夹';
+                memoGridEl.innerHTML = '<div style="padding: 20px; color: var(--text-secondary);">所有文件夹均已隐藏或暂无文件夹</div>';
+            }
         }
     } catch (error) {
         console.error('加载文件夹失败:', error);
