@@ -320,6 +320,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     loadUserAvatar: () => ipcRenderer.invoke('load-user-avatar'),
     loadAgentAvatar: (folderName) => ipcRenderer.invoke('load-agent-avatar', folderName),
 
+    // Memo Config
+    loadMemoConfig: () => ipcRenderer.invoke('load-memo-config'),
+    saveMemoConfig: (config) => ipcRenderer.invoke('save-memo-config', config),
+
     // Canvas Module
     openCanvasWindow: () => ipcRenderer.invoke('open-canvas-window'),
     canvasReady: () => ipcRenderer.send('canvas-ready'),

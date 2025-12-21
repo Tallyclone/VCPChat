@@ -63,6 +63,12 @@
                     <span>加载中...</span>
                 </div>
             </div>
+            <div class="sidebar-footer" style="padding: 10px; border-top: 1px solid var(--glass-border);">
+                <button id="manage-hidden-btn" class="glass-btn" style="width: 100%; justify-content: center;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                    管理隐藏文件夹
+                </button>
+            </div>
         </aside>
 
         <!-- 主内容区：日记列表 -->
@@ -156,6 +162,22 @@
             <h3 id="alert-title" style="margin-top: 0; margin-bottom: 15px; color: var(--accent-color);">提示</h3>
             <p id="alert-message" style="margin-bottom: 25px; line-height: 1.6; color: var(--text-primary);"></p>
             <button id="alert-ok-btn" class="jelly-btn" style="width: auto; padding: 10px 40px;">确定</button>
+        </div>
+    </div>
+
+    <!-- 隐藏文件夹管理弹窗 -->
+    <div id="hidden-folders-modal" class="modal" style="display: none; align-items: center; justify-content: center; position: fixed; top:0; left:0; right:0; bottom:0; z-index: 3000; background: rgba(0,0,0,0.6); backdrop-filter: blur(10px);">
+        <div class="modal-glass-content glass" style="width: 90%; max-width: 500px; padding: 30px; border-radius: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="margin: 0;">🙈 隐藏文件夹管理</h2>
+                <button id="close-hidden-modal-btn" class="nav-icon-btn" style="font-size: 1.5rem;">&times;</button>
+            </div>
+            <div id="hidden-folders-list" style="max-height: 300px; overflow-y: auto; margin-bottom: 20px;">
+                <!-- 隐藏文件夹列表将由 JS 动态生成 -->
+            </div>
+            <div style="display: flex; justify-content: flex-end;">
+                <button id="hidden-modal-ok-btn" class="jelly-btn" style="width: auto; padding: 10px 40px;">完成</button>
+            </div>
         </div>
     </div>
 

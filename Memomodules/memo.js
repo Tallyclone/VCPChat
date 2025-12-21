@@ -13,6 +13,7 @@ let currentMemo = null; // 当前正在编辑的日记 { folder, file, content }
 let searchScope = 'folder'; // 'folder' or 'global'
 let isBatchMode = false;
 let selectedMemos = new Set(); // Set of memo names
+let hiddenFolders = new Set(); // Set of hidden folder names
 
 // ========== DOM 元素 ==========
 const folderListEl = document.getElementById('folder-list');
@@ -79,7 +80,13 @@ async function initApp() {
             return;
         }
 
-        // 3. 加载文件夹列表
+        // 3. 加载配置
+        const memoConfig = await window.electronAPI.loadMemoConfig();
+        if (memoConfig && memoConfig.hiddenFolders) {
+            hiddenFolders = new Set(memoConfig.hiddenFolders);
+        }
+
+        // 4. 加载文件夹列表
         await loadFolders();
 
     } catch (error) {
@@ -172,6 +179,15 @@ function setupEventListeners() {
 
     document.getElementById('submit-new-memo-btn').onclick = handleCreateMemo;
 
+    // 隐藏文件夹管理
+    document.getElementById('manage-hidden-btn').onclick = openHiddenFoldersModal;
+    document.getElementById('close-hidden-modal-btn').onclick = () => {
+        document.getElementById('hidden-folders-modal').style.display = 'none';
+    };
+    document.getElementById('hidden-modal-ok-btn').onclick = () => {
+        document.getElementById('hidden-folders-modal').style.display = 'none';
+    };
+
     // 编辑器控制
     document.getElementById('close-editor-btn').onclick = () => {
         editorOverlay.classList.remove('active');
@@ -243,6 +259,8 @@ function setupEventListeners() {
                 document.getElementById('confirm-cancel-btn').click();
             } else if (alertModal && alertModal.style.display === 'flex') {
                 document.getElementById('alert-ok-btn').click();
+            } else if (document.getElementById('hidden-folders-modal').style.display === 'flex') {
+                document.getElementById('close-hidden-modal-btn').click();
             } else if (editorOverlay.classList.contains('active')) {
                 document.getElementById('close-editor-btn').click();
             } else if (createModal.style.display === 'flex') {
@@ -335,8 +353,8 @@ function renderFolders(folders) {
     moveSelect.innerHTML = '<option value="">-- 移动到文件夹 --</option>';
 
     folders.forEach(folder => {
-        // 屏蔽 MusicDiary 文件夹
-        if (folder === 'MusicDiary') return;
+        // 屏蔽 MusicDiary 文件夹和已隐藏的文件夹
+        if (folder === 'MusicDiary' || hiddenFolders.has(folder)) return;
 
         // 侧边栏列表
         const item = document.createElement('div');
@@ -355,6 +373,11 @@ function renderFolders(folders) {
                     className: 'danger',
                     icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>',
                     onClick: () => handleDeleteFolder(folder)
+                },
+                {
+                    label: '隐藏文件夹',
+                    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>',
+                    onClick: () => handleHideFolder(folder)
                 }
             ]);
         };
@@ -629,8 +652,10 @@ async function searchMemos(term) {
 
         const data = await apiFetch(url);
         
-        // 过滤掉来自 MusicDiary 的搜索结果
-        const filteredNotes = data.notes.filter(note => note.folderName !== 'MusicDiary');
+        // 过滤掉来自 MusicDiary 和隐藏文件夹的搜索结果
+        const filteredNotes = data.notes.filter(note =>
+            note.folderName !== 'MusicDiary' && !hiddenFolders.has(note.folderName)
+        );
 
         const scopeText = (searchScope === 'folder' && currentFolder) ? `${currentFolder} 内搜索` : `全局搜索`;
         currentFolderNameEl.textContent = `${scopeText}: ${term}`;
@@ -697,6 +722,63 @@ async function handleBatchMove(e) {
     } finally {
         e.target.value = ''; // 重置下拉框
     }
+}
+
+async function handleHideFolder(folderName) {
+    const confirmed = await customConfirm(`确定要隐藏文件夹 "${folderName}" 吗？\n隐藏后将不会在列表中显示，也不会被检索到。`, '🙈 隐藏文件夹');
+    if (!confirmed) return;
+
+    hiddenFolders.add(folderName);
+    await saveHiddenFolders();
+    
+    if (currentFolder === folderName) {
+        currentFolder = '';
+        memoGridEl.innerHTML = '';
+        currentFolderNameEl.textContent = '请选择文件夹';
+    }
+    await loadFolders();
+}
+
+async function saveHiddenFolders() {
+    try {
+        await window.electronAPI.saveMemoConfig({
+            hiddenFolders: Array.from(hiddenFolders)
+        });
+    } catch (error) {
+        console.error('保存隐藏文件夹配置失败:', error);
+    }
+}
+
+function openHiddenFoldersModal() {
+    const modal = document.getElementById('hidden-folders-modal');
+    const listEl = document.getElementById('hidden-folders-list');
+    listEl.innerHTML = '';
+
+    if (hiddenFolders.size === 0) {
+        listEl.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-secondary);">暂无隐藏的文件夹</div>';
+    } else {
+        hiddenFolders.forEach(folder => {
+            const item = document.createElement('div');
+            item.className = 'folder-item';
+            item.style.justifyContent = 'space-between';
+            item.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                    <span>${folder}</span>
+                </div>
+                <button class="glass-btn" style="padding: 4px 10px; font-size: 0.8rem;">取消隐藏</button>
+            `;
+            item.querySelector('button').onclick = async () => {
+                hiddenFolders.delete(folder);
+                await saveHiddenFolders();
+                openHiddenFoldersModal(); // 刷新列表
+                await loadFolders(); // 刷新侧边栏
+            };
+            listEl.appendChild(item);
+        });
+    }
+
+    modal.style.display = 'flex';
 }
 
 // ========== 自定义弹窗函数 ==========
