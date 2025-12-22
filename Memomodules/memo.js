@@ -14,6 +14,8 @@ let searchScope = 'folder'; // 'folder' or 'global'
 let isBatchMode = false;
 let selectedMemos = new Set(); // Set of "folder:::name" strings
 let hiddenFolders = new Set(); // Set of hidden folder names
+let folderOrder = []; // Array of folder names for UI sorting
+let draggedFolder = null; // Currently dragged folder name
 
 // ========== DOM 元素 ==========
 const folderListEl = document.getElementById('folder-list');
@@ -82,8 +84,13 @@ async function initApp() {
 
         // 3. 加载配置
         const memoConfig = await window.electronAPI.loadMemoConfig();
-        if (memoConfig && memoConfig.hiddenFolders) {
-            hiddenFolders = new Set(memoConfig.hiddenFolders);
+        if (memoConfig) {
+            if (memoConfig.hiddenFolders) {
+                hiddenFolders = new Set(memoConfig.hiddenFolders);
+            }
+            if (memoConfig.folderOrder) {
+                folderOrder = memoConfig.folderOrder;
+            }
         }
 
         // 4. 加载文件夹列表
@@ -347,13 +354,12 @@ async function loadFolders() {
     try {
         const data = await apiFetch('/folders');
         renderFolders(data.folders);
-        if (data.folders.length > 0 && !currentFolder) {
-            // 找到第一个未被隐藏的文件夹
-            const firstVisibleFolder = data.folders.find(f => f !== 'MusicDiary' && !hiddenFolders.has(f));
-            if (firstVisibleFolder) {
-                selectFolder(firstVisibleFolder);
+        if (!currentFolder) {
+            if (folderOrder.length > 0) {
+                // 找到排序后的第一个文件夹
+                selectFolder(folderOrder[0]);
             } else {
-                // 如果所有文件夹都被隐藏了
+                // 如果所有文件夹都被隐藏了或暂无文件夹
                 currentFolder = '';
                 currentFolderNameEl.textContent = '暂无可用文件夹';
                 memoGridEl.innerHTML = '<div style="padding: 20px; color: var(--text-secondary);">所有文件夹均已隐藏或暂无文件夹</div>';
@@ -369,18 +375,73 @@ function renderFolders(folders) {
     const moveSelect = document.getElementById('batch-move-select');
     moveSelect.innerHTML = '<option value="">-- 移动到文件夹 --</option>';
 
-    folders.forEach(folder => {
-        // 屏蔽 MusicDiary 文件夹和已隐藏的文件夹
-        if (folder === 'MusicDiary' || hiddenFolders.has(folder)) return;
+    // 过滤掉 MusicDiary 和隐藏文件夹
+    const visibleFolders = folders.filter(f => f !== 'MusicDiary' && !hiddenFolders.has(f));
 
+    // 根据 folderOrder 排序
+    visibleFolders.sort((a, b) => {
+        const indexA = folderOrder.indexOf(a);
+        const indexB = folderOrder.indexOf(b);
+        if (indexA === -1 && indexB === -1) return 0;
+        if (indexA === -1) return 1;
+        if (indexB === -1) return -1;
+        return indexA - indexB;
+    });
+
+    // 更新 folderOrder 以包含新发现的文件夹
+    folderOrder = visibleFolders;
+
+    visibleFolders.forEach(folder => {
         // 侧边栏列表
         const item = document.createElement('div');
         item.className = `folder-item ${folder === currentFolder ? 'active' : ''}`;
+        item.setAttribute('draggable', 'true');
         item.innerHTML = `
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
             <span>${folder}</span>
         `;
         item.onclick = () => selectFolder(folder);
+
+        // 拖拽事件
+        item.ondragstart = (e) => {
+            draggedFolder = folder;
+            item.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+        };
+
+        item.ondragover = (e) => {
+            e.preventDefault();
+            if (draggedFolder !== folder) {
+                item.classList.add('drag-over');
+            }
+            return false;
+        };
+
+        item.ondragleave = () => {
+            item.classList.remove('drag-over');
+        };
+
+        item.ondrop = async (e) => {
+            e.preventDefault();
+            item.classList.remove('drag-over');
+            if (draggedFolder && draggedFolder !== folder) {
+                // 重新排序
+                const fromIndex = folderOrder.indexOf(draggedFolder);
+                const toIndex = folderOrder.indexOf(folder);
+                
+                folderOrder.splice(fromIndex, 1);
+                folderOrder.splice(toIndex, 0, draggedFolder);
+                
+                renderFolders(folders); // 重新渲染
+                await saveMemoConfig(); // 持久化
+            }
+            return false;
+        };
+
+        item.ondragend = () => {
+            item.classList.remove('dragging');
+            draggedFolder = null;
+        };
         
         // 文件夹右键菜单
         item.oncontextmenu = (e) => {
@@ -781,7 +842,7 @@ async function handleHideFolder(folderName) {
     if (!confirmed) return;
 
     hiddenFolders.add(folderName);
-    await saveHiddenFolders();
+    await saveMemoConfig();
     
     if (currentFolder === folderName) {
         currentFolder = '';
@@ -791,13 +852,14 @@ async function handleHideFolder(folderName) {
     await loadFolders();
 }
 
-async function saveHiddenFolders() {
+async function saveMemoConfig() {
     try {
         await window.electronAPI.saveMemoConfig({
-            hiddenFolders: Array.from(hiddenFolders)
+            hiddenFolders: Array.from(hiddenFolders),
+            folderOrder: folderOrder
         });
     } catch (error) {
-        console.error('保存隐藏文件夹配置失败:', error);
+        console.error('保存记忆中心配置失败:', error);
     }
 }
 
@@ -822,7 +884,7 @@ function openHiddenFoldersModal() {
             `;
             item.querySelector('button').onclick = async () => {
                 hiddenFolders.delete(folder);
-                await saveHiddenFolders();
+                await saveMemoConfig();
                 openHiddenFoldersModal(); // 刷新列表
                 await loadFolders(); // 刷新侧边栏
             };

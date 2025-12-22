@@ -65,6 +65,17 @@ body {
     color: var(--text-secondary);
 }
 
+.folder-item.dragging {
+    opacity: 0.5;
+    background: rgba(var(--accent-color-rgb, 74, 144, 226), 0.2);
+    border: 1px dashed var(--accent-color);
+}
+
+.folder-item.drag-over {
+    border-top: 2px solid var(--accent-color);
+    background: rgba(255, 255, 255, 0.05);
+}
+
 .folder-item:hover {
     background: rgba(255, 255, 255, 0.05);
     color: var(--text-primary);
