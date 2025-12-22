@@ -12,7 +12,7 @@ let allMemos = [];
 let currentMemo = null; // 当前正在编辑的日记 { folder, file, content }
 let searchScope = 'folder'; // 'folder' or 'global'
 let isBatchMode = false;
-let selectedMemos = new Set(); // Set of memo names
+let selectedMemos = new Set(); // Set of "folder:::name" strings
 let hiddenFolders = new Set(); // Set of hidden folder names
 
 // ========== DOM 元素 ==========
@@ -159,11 +159,19 @@ function setupEventListeners() {
         batchEditBtn.style.display = 'flex';
         batchActions.style.display = 'none';
         selectedMemos.clear();
+        updateBatchUI();
         renderMemos(allMemos);
     };
 
     document.getElementById('batch-delete-btn').onclick = handleBatchDelete;
     document.getElementById('batch-move-select').onchange = handleBatchMove;
+
+    // 悬浮条清空
+    document.getElementById('batch-bar-clear').onclick = () => {
+        selectedMemos.clear();
+        updateBatchUI();
+        renderMemos(allMemos);
+    };
 
     // 新建日记弹窗
     document.getElementById('create-memo-btn').onclick = () => {
@@ -435,7 +443,9 @@ function renderMemos(memos) {
 
     memos.forEach(memo => {
         const card = document.createElement('div');
-        const isSelected = selectedMemos.has(memo.name);
+        const memoFolder = memo.folderName || currentFolder;
+        const memoId = `${memoFolder}:::${memo.name}`;
+        const isSelected = selectedMemos.has(memoId);
         card.className = `memo-card glass glass-hover ${isBatchMode ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`;
         
         const dateStr = new Date(memo.lastModified).toLocaleString();
@@ -447,18 +457,19 @@ function renderMemos(memos) {
             </div>
             <div class="meta">
                 <span>📅 ${dateStr}</span>
+                ${memo.folderName && memo.folderName !== currentFolder ? `<span style="opacity:0.6; font-size:0.7rem;">📁 ${memo.folderName}</span>` : ''}
             </div>
         `;
         
         card.onclick = () => {
             if (isBatchMode) {
-                if (selectedMemos.has(memo.name)) {
-                    selectedMemos.delete(memo.name);
+                if (selectedMemos.has(memoId)) {
+                    selectedMemos.delete(memoId);
                 } else {
-                    selectedMemos.add(memo.name);
+                    selectedMemos.add(memoId);
                 }
                 updateBatchUI();
-                card.classList.toggle('selected', selectedMemos.has(memo.name));
+                card.classList.toggle('selected', selectedMemos.has(memoId));
             } else {
                 openMemo(memo);
             }
@@ -468,7 +479,39 @@ function renderMemos(memos) {
 }
 
 function updateBatchUI() {
-    document.getElementById('selected-count').textContent = `已选 ${selectedMemos.size} 项`;
+    const count = selectedMemos.size;
+    document.getElementById('selected-count').textContent = `已选 ${count} 项`;
+    
+    const floatingBar = document.getElementById('batch-floating-bar');
+    const barCount = document.getElementById('batch-bar-count');
+    const barItems = document.getElementById('batch-bar-items');
+    
+    if (count > 0 && isBatchMode) {
+        floatingBar.style.display = 'flex';
+        barCount.textContent = `已选择 ${count} 项`;
+        
+        // 渲染选中项列表
+        barItems.innerHTML = '';
+        selectedMemos.forEach(memoId => {
+            const [folder, name] = memoId.split(':::');
+            const item = document.createElement('div');
+            item.className = 'batch-item-tag';
+            item.innerHTML = `
+                <div class="item-name" title="${name}">${name}</div>
+                <div class="item-folder">📁 ${folder}</div>
+                <div class="batch-item-remove" title="移除">×</div>
+            `;
+            item.querySelector('.batch-item-remove').onclick = (e) => {
+                e.stopPropagation();
+                selectedMemos.delete(memoId);
+                updateBatchUI();
+                renderMemos(allMemos);
+            };
+            barItems.appendChild(item);
+        });
+    } else {
+        floatingBar.style.display = 'none';
+    }
 }
 
 async function openMemo(memo) {
@@ -680,10 +723,10 @@ async function handleBatchDelete() {
     if (!confirmed) return;
 
     try {
-        const notesToDelete = Array.from(selectedMemos).map(name => ({
-            folder: currentFolder,
-            file: name
-        }));
+        const notesToDelete = Array.from(selectedMemos).map(memoId => {
+            const [folder, file] = memoId.split(':::');
+            return { folder, file };
+        });
 
         await apiFetch('/delete-batch', {
             method: 'POST',
@@ -709,10 +752,10 @@ async function handleBatchMove(e) {
     }
 
     try {
-        const sourceNotes = Array.from(selectedMemos).map(name => ({
-            folder: currentFolder,
-            file: name
-        }));
+        const sourceNotes = Array.from(selectedMemos).map(memoId => {
+            const [folder, file] = memoId.split(':::');
+            return { folder, file };
+        });
 
         await apiFetch('/move', {
             method: 'POST',
