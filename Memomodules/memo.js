@@ -577,16 +577,32 @@ function updateBatchUI() {
 
 async function openMemo(memo) {
     try {
+        const memoFolder = memo.folderName || currentFolder;
+        
+        // 跳转逻辑：如果点击的是非当前文件夹的日记，更新当前文件夹状态
+        if (memoFolder !== currentFolder) {
+            currentFolder = memoFolder;
+            // 更新侧边栏 UI 选中状态
+            document.querySelectorAll('.folder-item').forEach(el => {
+                const span = el.querySelector('span');
+                if (span && span.textContent === memoFolder) {
+                    el.classList.add('active');
+                } else {
+                    el.classList.remove('active');
+                }
+            });
+        }
+
         editorStatus.textContent = '正在加载内容...';
         editorOverlay.classList.add('active');
         editorTitleInput.value = memo.name;
         editorTextarea.value = '';
         editorPreview.innerHTML = '';
 
-        const data = await apiFetch(`/note/${encodeURIComponent(currentFolder)}/${encodeURIComponent(memo.name)}`);
+        const data = await apiFetch(`/note/${encodeURIComponent(memoFolder)}/${encodeURIComponent(memo.name)}`);
         
         currentMemo = {
-            folder: currentFolder,
+            folder: memoFolder,
             file: memo.name,
             content: data.content
         };
@@ -639,7 +655,7 @@ async function handleSaveMemo() {
         editorStatus.textContent = '保存成功 ' + new Date().toLocaleTimeString();
         
         // 刷新列表预览
-        loadMemos(currentFolder);
+        await refreshMemoList();
     } catch (error) {
         alert('保存失败: ' + error.message);
     } finally {
@@ -691,7 +707,7 @@ async function handleDeleteMemo() {
         });
 
         editorOverlay.classList.remove('active');
-        loadMemos(currentFolder);
+        await refreshMemoList();
     } catch (error) {
         alert('删除失败: ' + error.message);
     }
@@ -770,6 +786,7 @@ async function searchMemos(term) {
             note.folderName !== 'MusicDiary' && !hiddenFolders.has(note.folderName)
         );
 
+        allMemos = filteredNotes; // 更新全局变量，确保后续操作（如批量管理）针对的是搜索结果
         const scopeText = (searchScope === 'folder' && currentFolder) ? `${currentFolder} 内搜索` : `全局搜索`;
         currentFolderNameEl.textContent = `${scopeText}: ${term}`;
         renderMemos(filteredNotes);
@@ -796,7 +813,7 @@ async function handleBatchDelete() {
 
         selectedMemos.clear();
         document.getElementById('cancel-batch-btn').click();
-        loadMemos(currentFolder);
+        await refreshMemoList();
     } catch (error) {
         alert('批量删除失败: ' + error.message);
     }
@@ -828,8 +845,8 @@ async function handleBatchMove(e) {
 
         selectedMemos.clear();
         document.getElementById('cancel-batch-btn').click();
-        loadMemos(currentFolder);
-        loadFolders();
+        await refreshMemoList();
+        await loadFolders();
     } catch (error) {
         alert('批量移动失败: ' + error.message);
     } finally {
@@ -893,6 +910,15 @@ function openHiddenFoldersModal() {
     }
 
     modal.style.display = 'flex';
+}
+
+async function refreshMemoList() {
+    const term = searchInput.value.trim();
+    if (term) {
+        await searchMemos(term);
+    } else if (currentFolder) {
+        await loadMemos(currentFolder);
+    }
 }
 
 // ========== 自定义弹窗函数 ==========
