@@ -138,14 +138,16 @@ function setupEventListeners() {
     };
 
     // 搜索
-    searchInput.oninput = debounce(() => {
-        const term = searchInput.value.trim();
-        if (term) {
-            searchMemos(term);
-        } else if (currentFolder) {
-            loadMemos(currentFolder);
+    searchInput.onkeydown = (e) => {
+        if (e.key === 'Enter') {
+            const term = searchInput.value.trim();
+            if (term) {
+                searchMemos(term);
+            } else if (currentFolder) {
+                loadMemos(currentFolder);
+            }
         }
-    }, 500);
+    };
 
     // 批量管理
     const batchEditBtn = document.getElementById('batch-edit-btn');
