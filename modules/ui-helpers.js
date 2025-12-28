@@ -45,25 +45,22 @@
      */
     uiHelperFunctions.scrollToBottom = function() {
         const chatMessagesDiv = document.getElementById('chatMessages');
-        if (!chatMessagesDiv) return;
+        const parentContainer = document.querySelector('.chat-messages-container');
+        if (!chatMessagesDiv || !parentContainer) return;
 
-        // 关键修正：滚动检查必须在调用时进行，而不是在动画帧回调中。
-        // 这确保我们基于当前的用户滚动位置来决定是否要滚动。
-        const scrollThreshold = 20; // 像素容差
-        const isScrolledToBottom = chatMessagesDiv.scrollHeight - chatMessagesDiv.clientHeight <= chatMessagesDiv.scrollTop + scrollThreshold;
+        // 🟢 核心修复：使用真正的滚动容器（parentContainer）进行判断
+        // 之前的逻辑错误地使用了 chatMessagesDiv，而它通常没有滚动条，导致判断永远为 true
+        const scrollThreshold = 50; // 像素容差
+        const isScrolledToBottom = parentContainer.scrollHeight - parentContainer.clientHeight <= parentContainer.scrollTop + scrollThreshold;
 
         // 只有当用户已经位于底部时，才执行自动滚动。
         if (isScrolledToBottom) {
             // 使用 requestAnimationFrame 来确保滚动操作在下一次浏览器重绘前执行。
-            // 这可以保证在执行滚动时，DOM的布局和尺寸计算已经完成，从而获取到最准确的 scrollHeight 值。
             requestAnimationFrame(() => {
-                // 在动画帧回调中再次检查元素是否存在，以防万一。
-                if (document.body.contains(chatMessagesDiv)) {
+                if (document.body.contains(parentContainer)) {
+                    parentContainer.scrollTop = parentContainer.scrollHeight;
+                    // 同时同步内部 div 的位置（如果它也有滚动条的话）
                     chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight;
-                    const parentContainer = document.querySelector('.chat-messages-container');
-                    if (parentContainer) {
-                        parentContainer.scrollTop = parentContainer.scrollHeight;
-                    }
                 }
             });
         }
