@@ -307,10 +307,11 @@ function renderStreamFrame(messageId) {
     const rawHtml = refs.markedInstance.parse(processedText);
 
     if (refs.morphdom) {
-        refs.morphdom(contentDiv, `<div>${rawHtml}</div>`, {
-            childrenOnly: true,
-            
-            onBeforeElUpdated: function(fromEl, toEl) {
+        try {
+            refs.morphdom(contentDiv, `<div>${rawHtml}</div>`, {
+                childrenOnly: true,
+                
+                onBeforeElUpdated: function(fromEl, toEl) {
                 // 跳过相同节点
                 if (fromEl.isEqualNode(toEl)) {
                     return false;
@@ -411,6 +412,12 @@ function renderStreamFrame(messageId) {
                 return node;
             }
         });
+        } catch (error) {
+            // 🟢 捕获不完整 HTML 导致的 morphdom 异常
+            // 在流式输出过程中，这是预期内的行为，静默忽略即可
+            // 等待下一个 chunk 到达后，内容变得完整，渲染会自动恢复正常
+            console.debug('[StreamManager] morphdom skipped frame due to incomplete HTML, waiting for more chunks...');
+        }
     } else {
         contentDiv.innerHTML = rawHtml;
     }
