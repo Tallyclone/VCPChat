@@ -49,18 +49,8 @@ window.topicListManager = (() => {
         // 过滤掉系统消息
         const nonSystemMessages = history.filter(msg => msg.role !== 'system');
         
-        if (nonSystemMessages.length === 0) {
-            return true; // 没有用户消息
-        }
-        
-        // 检查倒数第二条消息（非系统消息）是否为用户消息
-        if (nonSystemMessages.length >= 2) {
-            const secondLast = nonSystemMessages[nonSystemMessages.length - 2];
-            return secondLast.role !== 'user';
-        }
-        
-        // 只有一条非系统消息
-        return nonSystemMessages[0].role !== 'user';
+        // 必须有且只有一条消息，且该消息是 AI 回复
+        return nonSystemMessages.length === 1 && nonSystemMessages[0].role === 'assistant';
     }
 
     /**
@@ -69,18 +59,7 @@ window.topicListManager = (() => {
      * @returns {number}
      */
     function countUnreadMessages(history) {
-        // 从最后一条消息开始，向前计数直到遇到用户消息
-        let count = 0;
-        const nonSystemMessages = history.filter(msg => msg.role !== 'system');
-        
-        for (let i = nonSystemMessages.length - 1; i >= 0; i--) {
-            if (nonSystemMessages[i].role === 'user') {
-                break;
-            }
-            count++;
-        }
-        
-        return count;
+        return shouldActivateCount(history) ? 1 : 0;
     }
 
     /**
@@ -90,18 +69,15 @@ window.topicListManager = (() => {
      * @returns {number} - 未读消息数，-1 表示仅显示小点
      */
     function calculateTopicUnreadCount(topic, history) {
-        // 如果话题被标记为未读，但未满足计数条件，返回 -1 表示仅显示小点
-        if (topic.unread === true) {
-            // 检查是否满足计数条件
-            if (topic.locked === false && shouldActivateCount(history)) {
-                return countUnreadMessages(history);
-            }
-            return -1; // 仅显示小点，不显示数字
+        // 优先检查自动计数条件（AI回复了但用户没回）
+        if (shouldActivateCount(history)) {
+            const count = countUnreadMessages(history);
+            if (count > 0) return count;
         }
-        
-        // 如果话题未标记为未读，检查是否满足自动计数条件
-        if (topic.locked === false && shouldActivateCount(history)) {
-            return countUnreadMessages(history);
+
+        // 如果不满足自动计数条件，但被手动标记为未读，则显示小点
+        if (topic.unread === true) {
+            return -1; // 仅显示小点，不显示数字
         }
         
         return 0; // 不显示
@@ -462,7 +438,7 @@ window.topicListManager = (() => {
         // Part C: 锁定/解锁话题选项
         const toggleLockOption = document.createElement('div');
         toggleLockOption.classList.add('context-menu-item');
-        const isLocked = topic.locked !== false; // 默认为锁定
+        const isLocked = topic.locked === true; // 默认为未锁定 (false)
         toggleLockOption.innerHTML = isLocked
             ? `<i class="fas fa-unlock"></i> 解锁话题`
             : `<i class="fas fa-lock"></i> 锁定话题`;

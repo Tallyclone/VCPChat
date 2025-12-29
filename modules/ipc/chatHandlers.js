@@ -236,7 +236,7 @@ function initialize(mainWindow, context) {
                     // Part A: 历史数据兼容处理 - 自动为缺少新字段的话题添加默认值
                     const normalizedTopics = config.topics.map(topic => ({
                         ...topic,
-                        locked: topic.locked !== undefined ? topic.locked : true,
+                        locked: topic.locked !== undefined ? topic.locked : false,
                         unread: topic.unread !== undefined ? topic.unread : false,
                         creatorSource: topic.creatorSource || 'unknown'
                     }));
@@ -254,7 +254,7 @@ function initialize(mainWindow, context) {
         }
     });
 
-    ipcMain.handle('create-new-topic-for-agent', async (event, agentId, topicName, isBranch = false, locked = true) => {
+    ipcMain.handle('create-new-topic-for-agent', async (event, agentId, topicName, isBranch = false, locked = false) => {
         try {
             const configPath = path.join(AGENT_DIR, agentId, 'config.json');
             if (!await fs.pathExists(configPath)) return { error: `Agent ${agentId} 的配置文件不存在。` };
@@ -282,7 +282,7 @@ function initialize(mainWindow, context) {
                 id: newTopicId,
                 name: topicName || `新话题 ${config.topics.length + 1}`,
                 createdAt: timestamp,
-                locked: locked,              // Part A: 新增锁定状态，默认 true
+                locked: locked,              // Part A: 新增锁定状态，默认 false
                 unread: false,               // Part A: 新增未读标记，默认 false
                 creatorSource: "ui"          // Part A: 新增创建来源，UI创建标记为 "ui"
             };
@@ -971,6 +971,7 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
     /**
      * Part C: 智能计数逻辑辅助函数
      * 判断是否应该激活计数
+     * 规则：上下文（排除系统消息）有且只有一个 AI 的回复，且没有用户回复
      * @param {Array} history - 消息历史
      * @returns {boolean}
      */
@@ -980,18 +981,8 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
         // 过滤掉系统消息
         const nonSystemMessages = history.filter(msg => msg.role !== 'system');
         
-        if (nonSystemMessages.length === 0) {
-            return true; // 没有用户消息
-        }
-        
-        // 检查倒数第二条消息（非系统消息）是否为用户消息
-        if (nonSystemMessages.length >= 2) {
-            const secondLast = nonSystemMessages[nonSystemMessages.length - 2];
-            return secondLast.role !== 'user';
-        }
-        
-        // 只有一条非系统消息
-        return nonSystemMessages[0].role !== 'user';
+        // 必须有且只有一条消息，且该消息是 AI 回复
+        return nonSystemMessages.length === 1 && nonSystemMessages[0].role === 'assistant';
     }
 
     /**
@@ -1000,18 +991,7 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
      * @returns {number}
      */
     function countUnreadMessages(history) {
-        // 从最后一条消息开始，向前计数直到遇到用户消息
-        let count = 0;
-        const nonSystemMessages = history.filter(msg => msg.role !== 'system');
-        
-        for (let i = nonSystemMessages.length - 1; i >= 0; i--) {
-            if (nonSystemMessages[i].role === 'user') {
-                break;
-            }
-            count++;
-        }
-        
-        return count;
+        return shouldActivateCount(history) ? 1 : 0;
     }
 
     /**
@@ -1021,18 +1001,15 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
      * @returns {number} - 未读消息数，-1 表示仅显示小点
      */
     function calculateTopicUnreadCount(topic, history) {
-        // 如果话题被标记为未读，但未满足计数条件，返回 -1 表示仅显示小点
-        if (topic.unread === true) {
-            // 检查是否满足计数条件
-            if (topic.locked === false && shouldActivateCount(history)) {
-                return countUnreadMessages(history);
-            }
-            return -1; // 仅显示小点，不显示数字
+        // 优先检查自动计数条件（AI回复了但用户没回）
+        if (shouldActivateCount(history)) {
+            const count = countUnreadMessages(history);
+            if (count > 0) return count;
         }
-        
-        // 如果话题未标记为未读，检查是否满足自动计数条件
-        if (topic.locked === false && shouldActivateCount(history)) {
-            return countUnreadMessages(history);
+
+        // 如果不满足自动计数条件，但被手动标记为未读，则显示小点
+        if (topic.unread === true) {
+            return -1; // 仅显示小点，不显示数字
         }
         
         return 0; // 不显示
