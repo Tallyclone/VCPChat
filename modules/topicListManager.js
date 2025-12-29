@@ -438,7 +438,7 @@ window.topicListManager = (() => {
         // Part C: 锁定/解锁话题选项
         const toggleLockOption = document.createElement('div');
         toggleLockOption.classList.add('context-menu-item');
-        const isLocked = topic.locked === true; // 默认为未锁定 (false)
+        const isLocked = topic.locked !== false; // 默认为锁定
         toggleLockOption.innerHTML = isLocked
             ? `<i class="fas fa-unlock"></i> 解锁话题`
             : `<i class="fas fa-lock"></i> 锁定话题`;

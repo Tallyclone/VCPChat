@@ -236,7 +236,7 @@ function initialize(mainWindow, context) {
                     // Part A: 历史数据兼容处理 - 自动为缺少新字段的话题添加默认值
                     const normalizedTopics = config.topics.map(topic => ({
                         ...topic,
-                        locked: topic.locked !== undefined ? topic.locked : false,
+                        locked: topic.locked !== undefined ? topic.locked : true,
                         unread: topic.unread !== undefined ? topic.unread : false,
                         creatorSource: topic.creatorSource || 'unknown'
                     }));
@@ -254,7 +254,7 @@ function initialize(mainWindow, context) {
         }
     });
 
-    ipcMain.handle('create-new-topic-for-agent', async (event, agentId, topicName, isBranch = false, locked = false) => {
+    ipcMain.handle('create-new-topic-for-agent', async (event, agentId, topicName, isBranch = false, locked = true) => {
         try {
             const configPath = path.join(AGENT_DIR, agentId, 'config.json');
             if (!await fs.pathExists(configPath)) return { error: `Agent ${agentId} 的配置文件不存在。` };
@@ -282,7 +282,7 @@ function initialize(mainWindow, context) {
                 id: newTopicId,
                 name: topicName || `新话题 ${config.topics.length + 1}`,
                 createdAt: timestamp,
-                locked: locked,              // Part A: 新增锁定状态，默认 false
+                locked: locked,              // Part A: 新增锁定状态，默认 true
                 unread: false,               // Part A: 新增未读标记，默认 false
                 creatorSource: "ui"          // Part A: 新增创建来源，UI创建标记为 "ui"
             };
