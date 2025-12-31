@@ -1754,7 +1754,7 @@ async function createNewTopicForGroup(groupId, topicName) {
     
     const newTopicId = `group_topic_${Date.now()}`;
     const newTopic = { id: newTopicId, name: topicName || `新话题 ${groupConfig.topics.length + 1}`, createdAt: Date.now() };
-    groupConfig.topics.push(newTopic);
+    groupConfig.topics.unshift(newTopic);
 
     // 直接传递需要更新的部分给 saveAgentGroupConfig
     const result = await saveAgentGroupConfig(groupId, { topics: groupConfig.topics });
