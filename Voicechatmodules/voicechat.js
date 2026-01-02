@@ -71,7 +71,48 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // --- Event Listeners ---
-    closeBtn.addEventListener('click', () => window.close());
+    closeBtn.addEventListener('click', async () => {
+        await saveVoiceChatToHistory();
+        window.close();
+    });
+
+    async function saveVoiceChatToHistory() {
+        if (!agentId || currentChatHistory.length === 0) return;
+
+        // Filter out thinking messages and system messages if they are just placeholders
+        const validMessages = currentChatHistory.filter(msg => !msg.isThinking && msg.role !== 'system');
+        if (validMessages.length === 0) return;
+
+        console.log('[VoiceChat] Saving chat history before exit...');
+        try {
+            // 1. Create a new topic for this voice chat
+            const timestamp = new Date().toLocaleString();
+            const defaultTitle = `语音通话 ${timestamp}`;
+            const result = await window.electronAPI.createNewTopicForAgent(agentId, defaultTitle);
+
+            if (result && result.success && result.topicId) {
+                const newTopicId = result.topicId;
+                
+                // 2. Save the history to the new topic
+                await window.electronAPI.saveChatHistory(agentId, newTopicId, currentChatHistory);
+                console.log(`[VoiceChat] History saved to new topic: ${newTopicId}`);
+
+                // 3. Attempt to summarize the topic title
+                if (window.summarizeTopicFromMessages) {
+                    const agentName = agentConfig?.name || 'AI';
+                    const summarizedTitle = await window.summarizeTopicFromMessages(validMessages, agentName);
+                    if (summarizedTitle) {
+                        await window.electronAPI.saveAgentTopicTitle(agentId, newTopicId, summarizedTitle);
+                        console.log(`[VoiceChat] Topic summarized: ${summarizedTitle}`);
+                    }
+                }
+            } else {
+                console.error('[VoiceChat] Failed to create topic for saving history:', result?.error);
+            }
+        } catch (error) {
+            console.error('[VoiceChat] Error saving voice chat history:', error);
+        }
+    }
     sendMessageBtn.addEventListener('click', () => sendMessage(messageInput.value));
     messageInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -161,7 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 electronAPI: window.electronAPI,
                 markedInstance: markedInstance,
                 uiHelper: uiHelperFunctions, // Pass the local helper
-                summarizeTopicFromMessages: async () => "", // Stub
+                summarizeTopicFromMessages: window.summarizeTopicFromMessages || (async () => ""),
                 handleCreateBranch: () => {} // Stub
             });
             console.log('[VoiceChat] Shared messageRenderer initialized.');
