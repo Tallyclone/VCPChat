@@ -197,8 +197,8 @@ function showContextMenu(event, messageItem, message) {
             if (contentDiv) {
                 // 克隆节点以避免修改实时显示的DOM
                 const contentClone = contentDiv.cloneNode(true);
-                // 移除工具使用气泡，以获得更干净的复制内容
-                contentClone.querySelectorAll('.vcp-tool-use-bubble, .vcp-tool-result-bubble').forEach(el => el.remove());
+                // 移除工具使用气泡、样式表和脚本，以获得更干净的复制内容
+                contentClone.querySelectorAll('.vcp-tool-use-bubble, .vcp-tool-result-bubble, style, script').forEach(el => el.remove());
                 // 修复：清理多余的空行，确保最多只有一个空行
                 textToCopy = contentClone.innerText.replace(/\n{3,}/g, '\n\n').trim();
             } else {
@@ -296,10 +296,8 @@ function showContextMenu(event, messageItem, message) {
                         if (contentDiv) {
                             // Clone the content element to avoid modifying the actual displayed content
                             const contentClone = contentDiv.cloneNode(true);
-                            // Remove all tool-use bubbles from the clone
-                            contentClone.querySelectorAll('.vcp-tool-use-bubble').forEach(el => el.remove());
-                            // Also remove tool-result bubbles
-                            contentClone.querySelectorAll('.vcp-tool-result-bubble').forEach(el => el.remove());
+                            // Remove all tool-use bubbles, tool-result bubbles, style tags, and script tags from the clone
+                            contentClone.querySelectorAll('.vcp-tool-use-bubble, .vcp-tool-result-bubble, style, script').forEach(el => el.remove());
                             // Now, get the innerText from the cleaned-up clone
                             // 修复：清理多余的空行，确保最多只有一个空行
                             textToRead = (contentClone.innerText || '').replace(/\n{3,}/g, '\n\n').trim();
