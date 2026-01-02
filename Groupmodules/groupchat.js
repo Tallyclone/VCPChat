@@ -648,7 +648,8 @@ ${att._fileManagerData.extractedText}
                         messages: messagesForAI,
                         model: modelConfigForAgent.model,
                         temperature: modelConfigForAgent.temperature,
-                        stream: modelConfigForAgent.stream
+                        stream: modelConfigForAgent.stream,
+                        messageId: messageIdForAgentResponse // 包含 messageId 以支持后端中断
                     }),
                     signal: controller.signal
                 });
@@ -1133,7 +1134,8 @@ ${att._fileManagerData.extractedText}
                     model: modelConfigForAgent.model,
                     temperature: modelConfigForAgent.temperature,
                     stream: modelConfigForAgent.stream,
-                    max_tokens: modelConfigForAgent.max_tokens
+                    max_tokens: modelConfigForAgent.max_tokens,
+                    messageId: messageIdForAgentResponse // 包含 messageId 以支持后端中断
                 }),
                 signal: controller.signal
             });
@@ -1904,13 +1906,46 @@ async function redoGroupChatMessage(groupId, topicId, messageIdToDelete, agentId
  * @param {string} messageId - 要中断的消息的 ID
  * @returns {{success: boolean, error?: string}}
  */
-function interruptGroupRequest(messageId) {
+async function interruptGroupRequest(messageId) {
     const controller = activeRequestControllers.get(messageId);
     if (controller) {
-        console.log(`[GroupChat] Interrupting request for messageId: ${messageId}`);
+        console.log(`[GroupChat] Interrupting local request for messageId: ${messageId}`);
         controller.abort();
-        // The controller is removed from the map in the finally block of the fetch call
-        return { success: true, message: 'Interrupt signal sent.' };
+
+        // 发送远程中断协议
+        try {
+            const globalSettings = await getVcpGlobalSettings();
+            if (globalSettings.vcpUrl && globalSettings.vcpApiKey) {
+                // 计算中断接口 URL (假设从 /v1/chat/completions 转换为 /v1/interrupt)
+                const urlObj = new URL(globalSettings.vcpUrl);
+                urlObj.pathname = '/v1/interrupt';
+                const interruptUrl = urlObj.toString();
+
+                console.log(`[GroupChat] Sending remote interrupt request to: ${interruptUrl}`);
+                const response = await fetch(interruptUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${globalSettings.vcpApiKey}`
+                    },
+                    body: JSON.stringify({
+                        messageId: messageId
+                    })
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log('[GroupChat] Remote interrupt success:', result.message);
+                } else {
+                    const errorText = await response.text();
+                    console.error('[GroupChat] Remote interrupt failed:', response.status, errorText);
+                }
+            }
+        } catch (remoteError) {
+            console.error('[GroupChat] Error sending remote interrupt:', remoteError);
+        }
+
+        return { success: true, message: 'Interrupt signal sent locally and remote request attempted.' };
     } else {
         console.warn(`[GroupChat] Could not find active request controller for messageId to interrupt: ${messageId}`);
         return { success: false, error: 'Request not found or already completed.' };
