@@ -12,23 +12,47 @@ async function initializeBrowser() {
     if (browser) return; // Already initialized
 
     console.log('[SpeechRecognizer] Initializing Puppeteer browser...');
-    const executablePath = puppeteer.executablePath();
+    
+    // Try to find system Chrome as Chromium doesn't support WebSpeech API well
+    let executablePath = puppeteer.executablePath();
+    const platform = process.platform;
+    if (platform === 'win32') {
+        const chromePaths = [
+            'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+            'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+            path.join(process.env.LOCALAPPDATA, 'Google\\Chrome\\Application\\chrome.exe')
+        ];
+        for (const p of chromePaths) {
+            if (require('fs').existsSync(p)) {
+                executablePath = p;
+                console.log(`[SpeechRecognizer] Using system Chrome: ${p}`);
+                break;
+            }
+        }
+    }
+
     browser = await puppeteer.launch({
         executablePath: executablePath,
-        headless: true,
+        headless: true, // Set to false for debugging
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--use-fake-ui-for-media-stream',
-            '--disable-gpu', // Often helps in headless environments
+            '--disable-gpu',
         ],
     });
 
     page = await browser.newPage();
     
-    // Grant microphone permissions permanently for the session
+    // Grant microphone permissions
     const context = browser.defaultBrowserContext();
-    await context.overridePermissions(`file://${path.join(__dirname, '..')}`, ['microphone']);
+    try {
+        // Use 'file://' as origin for local files
+        await context.overridePermissions('file://', ['microphone']);
+    } catch (e) {
+        console.warn('[SpeechRecognizer] Failed to override permissions for file://, trying specific path', e);
+        await context.overridePermissions(`file://${path.join(__dirname, '..')}`, ['microphone']);
+    }
 
     // Expose the callback function once
     await page.exposeFunction('sendTextToElectron', (text) => {
@@ -36,7 +60,12 @@ async function initializeBrowser() {
             textCallback(text);
         }
     });
-    console.log('[SpeechRecognizer] "sendTextToElectron" function exposed.');
+
+    await page.exposeFunction('sendErrorToElectron', (error) => {
+        console.error('[SpeechRecognizer] Browser Error:', error);
+    });
+
+    console.log('[SpeechRecognizer] Functions exposed.');
 
     const recognizerPath = `file://${path.join(__dirname, '..', 'Voicechatmodules', 'recognizer.html')}`;
     console.log(`[SpeechRecognizer] Loading recognizer page: ${recognizerPath}`);

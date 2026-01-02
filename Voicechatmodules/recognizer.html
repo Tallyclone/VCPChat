@@ -136,6 +136,12 @@
             recognition.onerror = function(event) {
                 console.error('语音识别错误:', event.error);
                 statusDiv.textContent = '识别出错: ' + event.error;
+                
+                // Send error back to Electron for debugging
+                if (typeof window.sendErrorToElectron === 'function') {
+                    window.sendErrorToElectron('Speech Recognition Error: ' + event.error);
+                }
+
                 recognizing = false;
                 startButton.textContent = '开始录音';
                 startButton.style.backgroundColor = '#4682b4';

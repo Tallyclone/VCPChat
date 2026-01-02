@@ -44,21 +44,24 @@ const CODE_FENCE_REGEX = /```\w*([\s\S]*?)```/g;
 // --- Enhanced Rendering Styles (from UserScript) ---
 function injectEnhancedStyles() {
    try {
+       // 检查是否已经通过 ID 或 href 引入了该样式表
        const existingStyleElement = document.getElementById('vcp-enhanced-ui-styles');
-       if (existingStyleElement) {
-           // Style element already exists, no need to recreate
-           return;
+       if (existingStyleElement) return;
+
+       const links = document.getElementsByTagName('link');
+       for (let i = 0; i < links.length; i++) {
+           if (links[i].href && links[i].href.includes('messageRenderer.css')) {
+               return;
+           }
        }
 
-       // Create link element to load external CSS
+       // 如果没有引入，则尝试从根路径引入（仅对根目录 HTML 有效）
        const linkElement = document.createElement('link');
        linkElement.id = 'vcp-enhanced-ui-styles';
        linkElement.rel = 'stylesheet';
        linkElement.type = 'text/css';
        linkElement.href = 'styles/messageRenderer.css';
        document.head.appendChild(linkElement);
-
-       // console.log('VCPSub Enhanced UI: External styles loaded.'); // Reduced logging
    } catch (error) {
        console.error('VCPSub Enhanced UI: Failed to load external styles:', error);
    }
