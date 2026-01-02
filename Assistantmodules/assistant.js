@@ -21,7 +21,48 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Main Logic ---
 
-    closeBtn.addEventListener('click', () => window.close());
+    closeBtn.addEventListener('click', async () => {
+        await saveAssistantChatToHistory();
+        window.close();
+    });
+
+    async function saveAssistantChatToHistory() {
+        if (!agentId || currentChatHistory.length === 0) return;
+
+        // Filter out thinking messages and system messages if they are just placeholders
+        const validMessages = currentChatHistory.filter(msg => !msg.isThinking && msg.role !== 'system');
+        if (validMessages.length === 0) return;
+
+        console.log('[Assistant] Saving chat history before exit...');
+        try {
+            // 1. Create a new topic for this assistant chat
+            const timestamp = new Date().toLocaleString();
+            const defaultTitle = `划词助手 ${timestamp}`;
+            const result = await window.electronAPI.createNewTopicForAgent(agentId, defaultTitle);
+
+            if (result && result.success && result.topicId) {
+                const newTopicId = result.topicId;
+                
+                // 2. Save the history to the new topic
+                await window.electronAPI.saveChatHistory(agentId, newTopicId, currentChatHistory);
+                console.log(`[Assistant] History saved to new topic: ${newTopicId}`);
+
+                // 3. Attempt to summarize the topic title
+                if (window.summarizeTopicFromMessages) {
+                    const agentName = agentConfig?.name || 'AI';
+                    const summarizedTitle = await window.summarizeTopicFromMessages(validMessages, agentName);
+                    if (summarizedTitle) {
+                        await window.electronAPI.saveAgentTopicTitle(agentId, newTopicId, summarizedTitle);
+                        console.log(`[Assistant] Topic summarized: ${summarizedTitle}`);
+                    }
+                }
+            } else {
+                console.error('[Assistant] Failed to create topic for saving history:', result?.error);
+            }
+        } catch (error) {
+            console.error('[Assistant] Error saving assistant chat history:', error);
+        }
+    }
 // --- Click Handler for Images and Links ---
 chatMessagesDiv.addEventListener('click', (event) => {
     const target = event.target;
@@ -116,7 +157,7 @@ window.electronAPI.onAssistantData(async (data) => {
                 electronAPI: window.electronAPI,
                 markedInstance: markedInstance,
                 uiHelper: window.uiHelperFunctions,
-                summarizeTopicFromMessages: async () => "", // Stub
+                summarizeTopicFromMessages: window.summarizeTopicFromMessages || (async () => ""),
                 handleCreateBranch: () => {}, // Stub
                 interruptHandler: interruptHandler // Provide the interrupt handler
             });
