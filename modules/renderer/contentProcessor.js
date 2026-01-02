@@ -11,6 +11,36 @@ function initializeContentProcessor(refs) {
 }
 
 /**
+ * A helper function to escape HTML special characters.
+ * @param {string} text The text to escape.
+ * @returns {string} The escaped text.
+ */
+function escapeHtml(text) {
+    if (typeof text !== 'string') return '';
+    return text
+        .replace(/&/g, '\x26amp;')    // & -> &
+        .replace(/</g, '\x26lt;')     // < -> <
+        .replace(/>/g, '\x26gt;')     // > -> >
+        .replace(/"/g, '\x26quot;')   // " -> "
+        .replace(/'/g, '\x26#039;');  // ' -> &#039;
+}
+
+/**
+ * 处理「始」和「末」之间的内容，将其视为纯文本并转义。
+ * 支持流式传输中未闭合的情况。
+ * @param {string} text 输入文本
+ * @returns {string} 处理后的文本
+ */
+function processStartEndMarkers(text) {
+    if (typeof text !== 'string' || !text.includes('「始」')) return text;
+    
+    // 使用非贪婪匹配，同时支持匹配到字符串末尾（处理流式传输中未闭合的情况）
+    return text.replace(/「始」([\s\S]*?)(「末」|$)/g, (match, content, end) => {
+        return `「始」${escapeHtml(content)}${end}`;
+    });
+}
+
+/**
  * Ensures that triple backticks for code blocks are followed by a newline.
  * @param {string} text The input string.
  * @returns {string} The processed string with newlines after ``` if they were missing.
@@ -334,8 +364,19 @@ function processAllPreBlocksInContentDiv(contentDiv) {
 
     const allPreElements = contentDiv.querySelectorAll('pre');
     allPreElements.forEach(preElement => {
-        if (preElement.dataset.vcpPrettified === "true" || preElement.dataset.maidDiaryPrettified === "true" || preElement.dataset.vcpHtmlPreview === "true") {
-            return; // Already processed
+        if (preElement.dataset.vcpPrettified === "true" ||
+            preElement.dataset.maidDiaryPrettified === "true" ||
+            preElement.dataset.vcpHtmlPreview === "true" ||
+            preElement.dataset.vcpHtmlPreview === "blocked") {
+            return; // Already processed or blocked
+        }
+
+        // 🟢 首先检查是否在 VCP 气泡内
+        const isInsideVcpBubble = preElement.closest('.vcp-tool-use-bubble, .vcp-tool-result-bubble, .maid-diary-bubble');
+        if (isInsideVcpBubble) {
+            // 在气泡内的 pre 不应该被处理为可预览的 HTML
+            preElement.dataset.vcpHtmlPreview = "blocked";
+            return;
         }
 
         const codeElement = preElement.querySelector('code');
@@ -369,7 +410,24 @@ function processAllPreBlocksInContentDiv(contentDiv) {
  * @param {string} htmlContent - The raw HTML content.
  */
 function setupHtmlPreview(preElement, htmlContent) {
-    if (preElement.dataset.vcpHtmlPreview === "true") return;
+    if (preElement.dataset.vcpHtmlPreview === "true" ||
+        preElement.dataset.vcpHtmlPreview === "blocked") return;
+
+    // 🟢 核心修复：检查是否在 VCP 气泡内
+    const isInsideVcpBubble = preElement.closest('.vcp-tool-use-bubble, .vcp-tool-result-bubble, .maid-diary-bubble');
+    if (isInsideVcpBubble) {
+        console.log('[ContentProcessor] Skipping HTML preview: inside VCP bubble');
+        preElement.dataset.vcpHtmlPreview = "blocked";
+        return;
+    }
+    
+    // 🟢 额外检查：内容是否包含「始」「末」标记
+    if (htmlContent.includes('「始」') || htmlContent.includes('「末」')) {
+        console.log('[ContentProcessor] Skipping HTML preview: contains tool markers');
+        preElement.dataset.vcpHtmlPreview = "blocked";
+        return;
+    }
+
     preElement.dataset.vcpHtmlPreview = "true";
 
     // Create container for the whole block to manage positioning
@@ -920,5 +978,7 @@ export {
     highlightAllPatternsInMessage, // Export the new async highlighter
     sendButtonMessage,
     scopeCss, // Export the new CSS scoping function
-    applyContentProcessors // Export the new batch processor
+    applyContentProcessors, // Export the new batch processor
+    escapeHtml,
+    processStartEndMarkers
 };

@@ -201,6 +201,11 @@ function applyStreamingPreprocessors(text) {
         processedText = refs.deIndentMisinterpretedCodeBlocks(processedText);
     }
     
+    // 🔴 关键安全修复：在流式传输中也转义「始」和「末」之间的内容
+    if (refs.processStartEndMarkers) {
+        processedText = refs.processStartEndMarkers(processedText);
+    }
+    
     return processedText
         .replace(SPEAKER_TAG_REGEX, '')
         .replace(NEWLINE_AFTER_CODE_REGEX, '$1\n')

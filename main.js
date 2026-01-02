@@ -1,5 +1,17 @@
 // main.js - Electron 主窗口
 
+// --- 模块加载性能诊断 ---
+const originalRequire = require;
+require = function(id) {
+    const start = Date.now();
+    const result = originalRequire(id);
+    const duration = Date.now() - start;
+    if (duration > 50) { // 只显示超过 50ms 的模块
+        console.log(`⏱️ require('${id}') took ${duration}ms`);
+    }
+    return result;
+};
+
 const sharp = require('sharp'); // 确保在文件顶部引入
 
 const { app, BrowserWindow, ipcMain, nativeTheme, globalShortcut, screen, clipboard, shell, dialog, protocol, Tray, Menu } = require('electron'); // Added screen, clipboard, and shell

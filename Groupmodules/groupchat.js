@@ -3,9 +3,6 @@
 const fs = require('fs-extra');
 const path = require('path');
 const { ipcMain } = require('electron');
-const fileManager = require('../modules/fileManager'); // Import fileManager
-const canvasHandlers = require('../modules/ipc/canvasHandlers'); // 新增：直接引用canvas处理器
-const contextSanitizer = require('../modules/contextSanitizer');
 // const { v4: uuidv4 } = require('uuid'); // 如果需要唯一ID生成
 
 const activeRequestControllers = new Map();
@@ -470,6 +467,7 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
                 
                 if (textForAIContext.includes(CANVAS_PLACEHOLDER)) {
                     try {
+                        const canvasHandlers = require('../modules/ipc/canvasHandlers');
                         const canvasData = await canvasHandlers.handleGetLatestCanvasContent();
                         if (canvasData && !canvasData.error) {
                             const formattedCanvasContent = `
@@ -522,6 +520,7 @@ ${att._fileManagerData.extractedText}
                     const isSupportedMediaType = att._fileManagerData.type.startsWith('image/') || att._fileManagerData.type.startsWith('audio/') || att._fileManagerData.type.startsWith('video/');
                     if (att._fileManagerData && att._fileManagerData.type && isSupportedMediaType && att._fileManagerData.internalPath) {
                         try {
+                            const fileManager = require('../modules/fileManager');
                             const result = await fileManager.getFileAsBase64(att._fileManagerData.internalPath);
                             if (result && result.success && result.base64Frames && result.base64Frames.length > 0) {
                                 // 对于多帧的媒体（如GIF），我们这里只取第一帧给AI，以避免上下文过长。
@@ -566,10 +565,11 @@ ${att._fileManagerData.extractedText}
             const systemMessages = messagesForAI.filter(m => m.role === 'system');    
             const nonSystemMessages = messagesForAI.filter(m => m.role !== 'system');    
               
-            // 直接使用已引入的 contextSanitizer  
-            const sanitizedNonSystemMessages = contextSanitizer.sanitizeMessages(nonSystemMessages, sanitizerDepth);    
+            // 延迟加载净化器
+            const contextSanitizer = require('../modules/contextSanitizer');
+            const sanitizedNonSystemMessages = contextSanitizer.sanitizeMessages(nonSystemMessages, sanitizerDepth);
               
-            messagesForAI = [...systemMessages, ...sanitizedNonSystemMessages];    
+            messagesForAI = [...systemMessages, ...sanitizedNonSystemMessages];
               
             console.log(`[GroupChat Context Sanitizer] Messages processed successfully`);    
         }
@@ -965,6 +965,7 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
         // 仅当是最后一条用户消息时，才解析Canvas占位符
         if (isLastUserMessageInContext && textForAIContext.includes(CANVAS_PLACEHOLDER)) {
             try {
+                const canvasHandlers = require('../modules/ipc/canvasHandlers');
                 const canvasData = await canvasHandlers.handleGetLatestCanvasContent();
                 if (canvasData && !canvasData.error) {
                     const formattedCanvasContent = `
@@ -1010,6 +1011,7 @@ ${att._fileManagerData.extractedText}
                 const isSupportedMediaType = att._fileManagerData.type.startsWith('image/') || att._fileManagerData.type.startsWith('audio/') || att._fileManagerData.type.startsWith('video/');
                 if (att._fileManagerData && att._fileManagerData.type && isSupportedMediaType && att._fileManagerData.internalPath) {
                     try {
+                        const fileManager = require('../modules/fileManager');
                         const result = await fileManager.getFileAsBase64(att._fileManagerData.internalPath);
                         if (result && result.success && result.base64Frames && result.base64Frames.length > 0) {
                             vcpMessageContent.push({
@@ -1051,10 +1053,11 @@ ${att._fileManagerData.extractedText}
         const systemMessages = messagesForAI.filter(m => m.role === 'system');    
         const nonSystemMessages = messagesForAI.filter(m => m.role !== 'system');    
           
-        // 直接使用已引入的 contextSanitizer  
-        const sanitizedNonSystemMessages = contextSanitizer.sanitizeMessages(nonSystemMessages, sanitizerDepth);    
+        // 延迟加载净化器
+        const contextSanitizer = require('../modules/contextSanitizer');
+        const sanitizedNonSystemMessages = contextSanitizer.sanitizeMessages(nonSystemMessages, sanitizerDepth);
           
-        messagesForAI = [...systemMessages, ...sanitizedNonSystemMessages];    
+        messagesForAI = [...systemMessages, ...sanitizedNonSystemMessages];
           
         console.log(`[GroupChat Context Sanitizer] Messages processed successfully`);    
     }
@@ -1679,6 +1682,7 @@ async function saveAgentGroupAvatar(groupId, avatarData) {
         const groupDir = path.join(mainAppPaths.AGENT_GROUPS_DIR, groupId);
         await fs.ensureDir(groupDir);
 
+        const fileManager = require('../modules/fileManager');
         const allowedExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
         let newExt = path.extname(avatarData.name).toLowerCase();
         if (!allowedExtensions.includes(newExt)) {

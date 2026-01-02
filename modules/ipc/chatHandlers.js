@@ -2,8 +2,6 @@
 const { ipcMain, dialog, BrowserWindow } = require('electron');
 const fs = require('fs-extra');
 const path = require('path');
-const fileManager = require('../fileManager');
-const contextSanitizer = require('../contextSanitizer');
 
 /**
  * Initializes chat and topic related IPC handlers.
@@ -378,8 +376,10 @@ function initialize(mainWindow, context) {
                     fileTypeHint = `video/${ext.substring(1)}`;
                 }
 
+                const fileManager = require('../fileManager');
                 storedFileObject = await fileManager.storeFile(fileData.path, originalFileName, agentId, topicId, fileTypeHint);
             } else if (fileData.type === 'base64') {
+                const fileManager = require('../fileManager');
                 const originalFileName = `pasted_image_${Date.now()}.${fileData.extension || 'png'}`;
                 const buffer = Buffer.from(fileData.data, 'base64');
                 const fileTypeHint = `image/${fileData.extension || 'png'}`;
@@ -434,6 +434,7 @@ function initialize(mainWindow, context) {
                         fileTypeHint = `video/${ext.substring(1)}`;
                     }
 
+                    const fileManager = require('../fileManager');
                     const storedFile = await fileManager.storeFile(filePath, originalName, agentId, topicId, fileTypeHint);
                     storedFilesInfo.push(storedFile);
                 } catch (error) {
@@ -453,6 +454,7 @@ function initialize(mainWindow, context) {
         try {
             const originalFileName = `pasted_text_${Date.now()}.txt`;
             const buffer = Buffer.from(textContent, 'utf8');
+            const fileManager = require('../fileManager');
             const storedFileObject = await fileManager.storeFile(buffer, originalFileName, agentId, topicId, 'text/plain');
             return { success: true, attachment: storedFileObject };
         } catch (error) {
@@ -503,6 +505,7 @@ function initialize(mainWindow, context) {
                 
                 console.log(`[Main - handle-file-drop] Attempting to store dropped file: ${fileData.name} (Type: ${fileTypeHint}) for Agent: ${agentId}, Topic: ${topicId}`);
                 
+                const fileManager = require('../fileManager');
                 const storedFile = await fileManager.storeFile(fileSource, fileData.name, agentId, topicId, fileTypeHint);
                 storedFilesInfo.push({ success: true, attachment: storedFile, name: fileData.name });
 
@@ -521,6 +524,7 @@ function initialize(mainWindow, context) {
 
         try {
             const buffer = Buffer.from(imageData.data, 'base64');
+            const fileManager = require('../fileManager');
             const storedFileObject = await fileManager.storeFile(
                 buffer,
                 `pasted_image_${Date.now()}.${imageData.extension}`,
@@ -718,6 +722,7 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
                     const nonSystemMessages = messages.filter(m => m.role !== 'system');
                     
                     // 对非系统消息应用净化
+                    const contextSanitizer = require('../contextSanitizer');
                     const sanitizedNonSystemMessages = contextSanitizer.sanitizeMessages(nonSystemMessages, sanitizerDepth);
                     
                     // 重新组合消息数组（保持系统消息在最前面）
