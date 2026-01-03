@@ -1,4 +1,3 @@
-const puppeteer = require('puppeteer');
 const path = require('path');
 
 let browser = null;
@@ -12,6 +11,7 @@ async function initializeBrowser() {
     if (browser) return; // Already initialized
 
     console.log('[SpeechRecognizer] Initializing Puppeteer browser...');
+    const puppeteer = require('puppeteer'); // Lazy load
     
     // Try to find system Chrome as Chromium doesn't support WebSpeech API well
     let executablePath = puppeteer.executablePath();

@@ -2,7 +2,7 @@
 const { ipcMain, dialog, shell, clipboard, net, nativeImage, BrowserWindow, Menu, app } = require('electron');
 const fs = require('fs-extra');
 const path = require('path');
-const sharp = require('sharp');
+// sharp is now lazy-loaded
 
 /**
  * Initializes file and dialog related IPC handlers.
@@ -108,6 +108,7 @@ function initialize(mainWindow, context) {
                 if (fileExtension === '.gif') {
                     console.log('[Main Sharp] GIF detected. Starting frame extraction.');
                     try {
+                        const sharp = require('sharp'); // Lazy load
                         const image = sharp(originalFileBuffer, { animated: true });
                         const metadata = await image.metadata();
                         const frameDelays = metadata.delay || [];
@@ -123,6 +124,7 @@ function initialize(mainWindow, context) {
                             if (i === 0 || accumulatedDelay >= targetInterval) {
                                 console.log(`[Main Sharp] Extracting frame ${i} (Accumulated delay: ${accumulatedDelay}ms)`);
                                 
+                                const sharp = require('sharp'); // Lazy load
                                 const frameBuffer = await sharp(originalFileBuffer, { page: i })
                                     .resize({
                                         width: MAX_DIMENSION,
@@ -145,6 +147,7 @@ function initialize(mainWindow, context) {
                         }
                         
                         if (frameBase64s.length === 0 && totalFrames > 0) {
+                             const sharp = require('sharp'); // Lazy load
                              const frameBuffer = await sharp(originalFileBuffer, { page: 0 })
                                 .resize({ width: MAX_DIMENSION, height: MAX_DIMENSION, fit: sharp.fit.inside, withoutEnlargement: true })
                                 .jpeg({ quality: JPEG_QUALITY })
@@ -158,6 +161,7 @@ function initialize(mainWindow, context) {
     
                     } catch (sharpError) {
                         console.error(`[Main Sharp] Error processing animated GIF: ${sharpError.message}. Falling back to single frame.`, sharpError);
+                        const sharp = require('sharp'); // Lazy load
                         const fallbackBuffer = await sharp(originalFileBuffer)
                             .resize({ width: MAX_DIMENSION, height: MAX_DIMENSION, fit: sharp.fit.inside, withoutEnlargement: true })
                             .jpeg({ quality: JPEG_QUALITY }).toBuffer();
@@ -165,6 +169,7 @@ function initialize(mainWindow, context) {
                     }
                 } else { // For other images (PNG, JPG, etc.)
                     try {
+                        const sharp = require('sharp'); // Lazy load
                         const processedBuffer = await sharp(originalFileBuffer)
                             .resize({
                                 width: MAX_DIMENSION,

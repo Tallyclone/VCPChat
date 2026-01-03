@@ -3,7 +3,6 @@
 const { ipcMain, BrowserWindow, screen, nativeTheme, globalShortcut, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs-extra');
-const { GlobalKeyboardListener } = require('node-global-key-listener');
 const { getAgentConfigById } = require('./agentHandlers'); // Assuming agentHandlers is where this now lives
 const notesHandlers = require('./notesHandlers');
 
@@ -134,6 +133,7 @@ function registerSuspendHotkey() {
 
 function startGlobalMouseListener() {
     if (mouseListener) return;
+    const { GlobalKeyboardListener } = require('node-global-key-listener');
     mouseListener = new GlobalKeyboardListener();
     mouseListener.addListener((e, down) => {
         if (e.state === 'DOWN') {

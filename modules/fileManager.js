@@ -3,8 +3,6 @@ const fs = require('fs-extra');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto'); // 引入 crypto 模块
-const pdf = require('pdf-parse'); // For PDF text extraction
-const mammoth = require('mammoth'); // For DOCX text extraction
 // const { exec } = require('child_process'); // For potential future use with textract or other CLI tools
 
 // Base directory for all user-specific data, including attachments.
@@ -174,8 +172,6 @@ async function getFileAsBase64(internalPath) {
     }
 }
 
-const poppler = require('pdf-poppler');
-
 async function getTextContent(internalFilePath, fileType) {
     let effectiveFileType = fileType;
     const cleanPath = internalFilePath.startsWith('file://') ? internalFilePath.substring(7) : internalFilePath;
@@ -213,6 +209,7 @@ async function getTextContent(internalFilePath, fileType) {
     } else if (effectiveFileType === 'application/pdf') {
         try {
             const dataBuffer = await fs.readFile(cleanPath);
+            const pdf = require('pdf-parse'); // Lazy load
             const data = await pdf(dataBuffer);
             // To determine if a PDF is scanned, we check not just the length of the extracted text,
             // but also the number of alphabetic characters. This helps filter out OCR noise or PDFs
@@ -253,6 +250,7 @@ async function getTextContent(internalFilePath, fileType) {
     } else if (effectiveFileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
         try {
             const dataBuffer = await fs.readFile(cleanPath);
+            const mammoth = require('mammoth'); // Lazy load
             const result = await mammoth.extractRawText({ buffer: dataBuffer });
             return { text: result.value };
         } catch (error) {
@@ -284,6 +282,7 @@ async function _convertPdfToImages(pdfPath) {
             page: null // Convert all pages
         };
 
+        const poppler = require('pdf-poppler'); // Lazy load
         await poppler.convert(pdfPath, opts);
 
         const files = await fs.readdir(tempDir);

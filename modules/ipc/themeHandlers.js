@@ -4,7 +4,7 @@ const { ipcMain, BrowserWindow, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs-extra');
 const crypto = require('crypto');
-const sharp = require('sharp');
+// sharp is now lazy-loaded
 
 let themesWindow = null;
 let mainWindow = null; // To be initialized
@@ -182,6 +182,7 @@ function initialize(options) {
         }
 
         try {
+            const sharp = require('sharp'); // Lazy load
             await sharp(absolutePath)
                 .resize(THUMBNAIL_WIDTH)
                 .jpeg({ quality: 80 })

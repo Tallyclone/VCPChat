@@ -2,7 +2,7 @@
 
 const { ipcMain, BrowserWindow, dialog } = require('electron');
 const path = require('path');
-const express = require('express');
+// express is now lazy-loaded
 
 let diceWindow = null;
 let diceServer = null;
@@ -15,6 +15,7 @@ function startDiceServer(projectRoot) {
             return resolve();
         }
 
+        const express = require('express'); // Lazy load
         const app = express();
         const port = 6677;
 
