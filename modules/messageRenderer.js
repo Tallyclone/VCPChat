@@ -222,29 +222,48 @@ function transformSpecialBlocks(text) {
     // Process VCP Tool Results
     processed = processed.replace(TOOL_RESULT_REGEX, (match, rawContent) => {
         const content = rawContent.trim();
-        const lines = content.split('\n').filter(line => line.trim() !== '');
+        const lines = content.split('\n');
 
         let toolName = 'Unknown Tool';
         let status = 'Unknown Status';
         const details = [];
         let otherContent = [];
+        
+        let currentKey = null;
+        let currentValue = [];
 
         lines.forEach(line => {
-            const kvMatch = line.match(/-\s*([^:]+):\s*(.*)/);
+            const kvMatch = line.match(/^-\s*([^:]+):\s*(.*)/);
             if (kvMatch) {
-                const key = kvMatch[1].trim();
-                const value = kvMatch[2].trim();
-                if (key === '工具名称') {
-                    toolName = value;
-                } else if (key === '执行状态') {
-                    status = value;
-                } else {
-                    details.push({ key, value });
+                if (currentKey) {
+                    const val = currentValue.join('\n').trim();
+                    if (currentKey === '工具名称') {
+                        toolName = val;
+                    } else if (currentKey === '执行状态') {
+                        status = val;
+                    } else {
+                        details.push({ key: currentKey, value: val });
+                    }
                 }
-            } else {
+                currentKey = kvMatch[1].trim();
+                currentValue = [kvMatch[2].trim()];
+            } else if (currentKey) {
+                currentValue.push(line);
+            } else if (line.trim() !== '') {
                 otherContent.push(line);
             }
         });
+
+        if (currentKey) {
+            const val = currentValue.join('\n').trim();
+            if (currentKey === '工具名称') {
+                toolName = val;
+            } else if (currentKey === '执行状态') {
+                status = val;
+            } else {
+                details.push({ key: currentKey, value: val });
+            }
+        }
 
         // Add 'collapsible' class for the new functionality, default to collapsed
         let html = `<div class="vcp-tool-result-bubble collapsible">`;
@@ -260,28 +279,52 @@ function transformSpecialBlocks(text) {
 
         html += `<div class="vcp-tool-result-details">`;
         details.forEach(({ key, value }) => {
-            const urlRegex = /(https?:\/\/[^\s]+)/g;
-            let processedValue = escapeHtml(value);
-            
-            if ((key === '可访问URL' || key === '返回内容') && value.match(/\.(jpeg|jpg|png|gif)$/i)) {
-                 processedValue = `<a href="${value}" target="_blank" rel="noopener noreferrer" title="点击预览"><img src="${value}" class="vcp-tool-result-image" alt="Generated Image"></a>`;
+            const isMarkdownField = (key === '返回内容' || key === '内容' || key === 'Result' || key === '返回结果' || key === 'output');
+            const isImageUrl = typeof value === 'string' && value.match(/^https?:\/\/[^\s]+\.(jpeg|jpg|png|gif|webp)$/i);
+            let processedValue;
+
+            if (isImageUrl && (key === '可访问URL' || key === '返回内容' || key === 'url' || key === 'image')) {
+                processedValue = `<a href="${value}" target="_blank" rel="noopener noreferrer" title="点击预览"><img src="${value}" class="vcp-tool-result-image" alt="Generated Image"></a>`;
+            } else if (isMarkdownField && mainRendererReferences.markedInstance) {
+                try {
+                    // Use marked for markdown fields
+                    processedValue = mainRendererReferences.markedInstance.parse(value);
+                } catch (e) {
+                    console.error('Failed to parse markdown in tool result', e);
+                    processedValue = escapeHtml(value);
+                }
             } else {
+                const urlRegex = /(https?:\/\/[^\s]+)/g;
+                processedValue = escapeHtml(value);
                 processedValue = processedValue.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
-            }
-            
-            if (key === '返回内容') {
-                processedValue = processedValue.replace(/###(.*?)###/g, '<strong>$1</strong>');
+                
+                if (key === '返回内容') {
+                    processedValue = processedValue.replace(/###(.*?)###/g, '<strong>$1</strong>');
+                }
             }
 
             html += `<div class="vcp-tool-result-item">`;
             html += `<span class="vcp-tool-result-item-key">${escapeHtml(key)}:</span> `;
-            html += `<span class="vcp-tool-result-item-value">${processedValue}</span>`;
+            const valueTag = (isMarkdownField && !isImageUrl) ? 'div' : 'span';
+            html += `<${valueTag} class="vcp-tool-result-item-value">${processedValue}</${valueTag}>`;
             html += `</div>`;
         });
         html += `</div>`; // End of vcp-tool-result-details
 
         if (otherContent.length > 0) {
-            html += `<div class="vcp-tool-result-footer"><pre>${escapeHtml(otherContent.join('\n'))}</pre></div>`;
+            const footerText = otherContent.join('\n');
+            let processedFooter;
+            if (mainRendererReferences.markedInstance) {
+                try {
+                    processedFooter = mainRendererReferences.markedInstance.parse(footerText);
+                } catch (e) {
+                    console.error('Failed to parse markdown in tool result footer', e);
+                    processedFooter = `<pre>${escapeHtml(footerText)}</pre>`;
+                }
+            } else {
+                processedFooter = `<pre>${escapeHtml(footerText)}</pre>`;
+            }
+            html += `<div class="vcp-tool-result-footer">${processedFooter}</div>`;
         }
 
         html += `</div>`; // End of vcp-tool-result-collapsible-content
@@ -325,7 +368,17 @@ function transformSpecialBlocks(text) {
                 html += `</div>`;
             }
 
-            html += `<div class="diary-content">${escapeHtml(diaryContent)}</div>`;
+            let processedDiaryContent;
+            if (mainRendererReferences.markedInstance) {
+                try {
+                    processedDiaryContent = mainRendererReferences.markedInstance.parse(diaryContent);
+                } catch (e) {
+                    processedDiaryContent = escapeHtml(diaryContent);
+                }
+            } else {
+                processedDiaryContent = escapeHtml(diaryContent);
+            }
+            html += `<div class="diary-content">${processedDiaryContent}</div>`;
             html += `</div>`;
 
             return html;
@@ -387,7 +440,17 @@ function transformSpecialBlocks(text) {
             html += `</div>`;
         }
 
-        html += `<div class="diary-content">${escapeHtml(diaryContent)}</div>`;
+        let processedDiaryContent;
+        if (mainRendererReferences.markedInstance) {
+            try {
+                processedDiaryContent = mainRendererReferences.markedInstance.parse(diaryContent);
+            } catch (e) {
+                processedDiaryContent = escapeHtml(diaryContent);
+            }
+        } else {
+            processedDiaryContent = escapeHtml(diaryContent);
+        }
+        html += `<div class="diary-content">${processedDiaryContent}</div>`;
         html += `</div>`;
 
         return html;

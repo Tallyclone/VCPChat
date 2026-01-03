@@ -233,6 +233,14 @@
     word-break: break-word !important;
 }
 
+/* Remove extra spacing in diary content caused by markdown paragraphs */
+.diary-content > p:first-child {
+    margin-top: 0;
+}
+.diary-content > p:last-child {
+    margin-bottom: 0;
+}
+
 /* The decorative icon on the top left, changed to a quill */
 .maid-diary-bubble::before {
     content: "✒️";
@@ -299,7 +307,7 @@
 .diary-content {
     font-size: 0.95em;
     color: #4e342e; /* A dark, rich brown for readability */
-    white-space: pre-wrap;
+    white-space: normal; /* Changed from pre-wrap to normal to avoid extra line breaks from MD */
     word-break: break-word;
 }
 
@@ -757,7 +765,42 @@ body.light-theme .vcp-tool-result-status:containing("SUCCESS") {
 
 .vcp-tool-result-item-value {
     color: var(--tool-result-item-value-color);
-    word-break: break-all;
+    word-break: break-word;
+}
+
+/* Markdown support inside tool result bubble */
+.vcp-tool-result-item-value > p:first-child,
+.vcp-tool-result-footer > p:first-child {
+    margin-top: 0;
+}
+.vcp-tool-result-item-value > p:last-child,
+.vcp-tool-result-footer > p:last-child {
+    margin-bottom: 0;
+}
+
+.vcp-tool-result-bubble table {
+    margin: 0.5em 0;
+    border-color: var(--tool-result-border-color);
+    background-color: rgba(0, 0, 0, 0.05);
+    width: 100%;
+}
+
+body:not(.light-theme) .vcp-tool-result-bubble table {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.vcp-tool-result-bubble th,
+.vcp-tool-result-bubble td {
+    border-color: var(--tool-result-border-color);
+    padding: 6px 10px;
+}
+
+.vcp-tool-result-bubble th {
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
+body:not(.light-theme) .vcp-tool-result-bubble th {
+    background-color: rgba(255, 255, 255, 0.1);
 }
 
 .vcp-tool-result-item-value a {
@@ -805,13 +848,29 @@ body.light-theme .vcp-tool-result-status:containing("SUCCESS") {
 .vcp-tool-result-collapsible-content {
     max-height: 0;
     opacity: 0;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto; /* Enable vertical scrolling */
     transition: max-height 0.5s ease-in-out, opacity 0.4s ease-in-out, margin-top 0.5s ease-in-out;
     margin-top: 0;
+    scrollbar-width: thin; /* Firefox */
+    scrollbar-color: var(--tool-result-item-key-color) transparent;
+}
+
+/* Custom scrollbar for Webkit */
+.vcp-tool-result-collapsible-content::-webkit-scrollbar {
+    width: 4px;
+}
+.vcp-tool-result-collapsible-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+.vcp-tool-result-collapsible-content::-webkit-scrollbar-thumb {
+    background-color: var(--tool-result-item-key-color);
+    border-radius: 10px;
+    opacity: 0.5;
 }
 
 .vcp-tool-result-bubble.expanded .vcp-tool-result-collapsible-content {
-    max-height: 1000px; /* Adjust as needed, should be large enough for content */
+    max-height: 500px; /* Set a reasonable max height for scrolling */
     opacity: 1;
     margin-top: 10px; /* Add space when expanded */
 }
