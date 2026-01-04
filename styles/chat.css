@@ -63,13 +63,21 @@ body.light-theme #moon-icon {
 }
 
 /* --- Message Item QQ Style --- */
+.message-item.vcp-paused * {
+    animation-play-state: paused !important;
+}
+
 .message-item {
     margin-bottom: 18px; /* Increased margin for QQ style */
-    max-width: 100%; 
+    max-width: 100%;
     display: flex;
-    align-items: flex-start; 
-    gap: 10px; 
-    position: relative; 
+    align-items: flex-start;
+    gap: 10px;
+    position: relative;
+    /* 核心优化：跳过视界外元素的布局和绘制 */
+    content-visibility: auto;
+    /* 配合 content-visibility 防止滚动条抖动，默认给一个预估值 */
+    contain-intrinsic-size: auto 100px;
 }
 
 .message-item.user {

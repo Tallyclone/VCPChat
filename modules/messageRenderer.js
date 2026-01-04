@@ -8,6 +8,7 @@ const enhancedRenderDebounceTimers = new WeakMap(); // For debouncing prettify c
 import { avatarColorCache, getDominantAvatarColor } from './renderer/colorUtils.js';
 import { initializeImageHandler, setContentAndProcessImages } from './renderer/imageHandler.js';
 import { processAnimationsInContent, cleanupAnimationsInContent } from './renderer/animation.js';
+import * as visibilityOptimizer from './renderer/visibilityOptimizer.js';
 import { createMessageSkeleton } from './renderer/domBuilder.js';
 import * as streamManager from './renderer/streamManager.js';
 import * as emoticonUrlFixer from './renderer/emoticonUrlFixer.js';
@@ -836,6 +837,8 @@ function removeMessageById(messageId, saveHistory = false) {
         if (contentDiv) {
             cleanupAnimationsInContent(contentDiv);
         }
+        // 停止观察消息可见性
+        visibilityOptimizer.unobserveMessage(item);
         item.remove();
     }
     
@@ -869,6 +872,7 @@ function clearChat() {
             if (contentDiv) {
                 cleanupAnimationsInContent(contentDiv);
             }
+            visibilityOptimizer.unobserveMessage(item);
         });
         
         // 🟢 清理所有注入的 scoped CSS
@@ -893,6 +897,11 @@ function initializeMessageRenderer(refs) {
     // Start the emoticon fixer initialization, but don't wait for it here.
     // The await will happen inside renderMessage to ensure it's ready before rendering.
     emoticonUrlFixer.initialize(mainRendererReferences.electronAPI);
+
+    // 初始化可见性优化器
+    // 🟢 关键修复：IntersectionObserver 的 root 必须是产生滚动条的那个父容器
+    const scrollContainer = mainRendererReferences.chatMessagesDiv.closest('.chat-messages-container');
+    visibilityOptimizer.initializeVisibilityOptimizer(scrollContainer || mainRendererReferences.chatMessagesDiv);
 
     // --- Event Delegation ---
     mainRendererReferences.chatMessagesDiv.addEventListener('click', (e) => {
@@ -1213,6 +1222,8 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
     // 先添加到DOM
     if (appendToDom) {
         chatMessagesDiv.appendChild(messageItem);
+        // 观察新消息的可见性
+        visibilityOptimizer.observeMessage(messageItem);
     }
 
     if (message.isThinking) {
@@ -1777,6 +1788,9 @@ async function renderMessageBatch(messages, scrollToBottom = false) {
             
             // Step 2: Now that they are in the DOM, run the deferred processing for each.
             messageElements.forEach(el => {
+                // 观察批量渲染的消息
+                visibilityOptimizer.observeMessage(el);
+                
                 if (typeof el._vcp_process === 'function') {
                     el._vcp_process();
                     delete el._vcp_process; // Clean up to avoid memory leaks
@@ -1836,6 +1850,9 @@ async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay
                 }
 
                 elementsForProcessing.forEach(el => {
+                    // 观察批量渲染的历史消息
+                    visibilityOptimizer.observeMessage(el);
+
                     if (typeof el._vcp_process === 'function') {
                         el._vcp_process();
                         delete el._vcp_process;
@@ -1887,6 +1904,9 @@ async function renderHistoryLegacy(history) {
 
             // Step 2: Run the deferred processing for each element now that it's attached.
             allMessageElements.forEach(el => {
+                // 观察历史消息
+                visibilityOptimizer.observeMessage(el);
+
                 if (typeof el._vcp_process === 'function') {
                     el._vcp_process();
                     delete el._vcp_process; // Clean up
