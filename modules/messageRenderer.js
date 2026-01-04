@@ -105,7 +105,11 @@ async function renderMermaidDiagrams(container) {
         if (code) {
             try {
                 // The placeholder div itself will become the mermaid container
-                placeholder.textContent = decodeURIComponent(code);
+                let decodedCode = decodeURIComponent(code);
+                // 修复 AI 常用的“智能字符”导致的 Mermaid 语法错误
+                decodedCode = decodedCode.replace(/[—–－]/g, '--');
+                
+                placeholder.textContent = decodedCode;
                 placeholder.classList.remove('mermaid-placeholder');
                 placeholder.classList.add('mermaid');
             } catch (e) {
@@ -119,16 +123,18 @@ async function renderMermaidDiagrams(container) {
     const elementsToRender = placeholders.filter(el => el.classList.contains('mermaid'));
 
     if (elementsToRender.length > 0 && typeof mermaid !== 'undefined') {
-        try {
-            // Initialize mermaid if it hasn't been already
-            mermaid.initialize({ startOnLoad: false });
-            await mermaid.run({ nodes: elementsToRender });
-        } catch (error) {
-            console.error("Error rendering Mermaid diagrams:", error);
-            elementsToRender.forEach(el => {
+        // Initialize mermaid if it hasn't been already
+        mermaid.initialize({ startOnLoad: false });
+        
+        // 逐个渲染以防止单个图表错误导致所有图表显示错误
+        for (const el of elementsToRender) {
+            try {
+                await mermaid.run({ nodes: [el] });
+            } catch (error) {
+                console.error("Error rendering Mermaid diagram:", error);
                 const originalCode = el.textContent;
-                el.innerHTML = `<div class="mermaid-error">Mermaid render error: ${error.message}</div><pre>${escapeHtml(originalCode)}</pre>`;
-            });
+                el.innerHTML = `<div class="mermaid-error">Mermaid 渲染错误: ${error.message}</div><pre>${escapeHtml(originalCode)}</pre>`;
+            }
         }
     }
 }
