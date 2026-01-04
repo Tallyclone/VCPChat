@@ -303,13 +303,33 @@ function renderStreamFrame(messageId) {
 
     const textForRendering = accumulatedStreamText.get(messageId) || "";
 
-    // 移除思考指示器
-    const streamingIndicator = contentDiv.querySelector('.streaming-indicator, .thinking-indicator');
-    if (streamingIndicator) streamingIndicator.remove();
-
     // 🟢 使用批量处理函数
     const processedText = applyStreamingPreprocessors(textForRendering);
     const rawHtml = refs.markedInstance.parse(processedText);
+
+    // 检查是否已经开始输出“可见”正文
+    // 如果 processedText 经过 marked 解析后，其 textContent 仍然为空（或只有空白），
+    // 说明当前可能处于思维链输出阶段（被过滤了）
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = rawHtml;
+    const hasVisibleContent = tempDiv.textContent.trim().length > 0;
+
+    if (!hasVisibleContent && textForRendering.length > 0) {
+        // 处于“有输入但无可见正文”阶段（思维链阶段）
+        cachedDom.messageItem.classList.add('vcp-thinking-shimmer');
+        // 此时我们手动插入一个带流光的“思考中”占位符
+        if (!contentDiv.querySelector('.thinking-indicator')) {
+            contentDiv.innerHTML = `<span class="thinking-indicator">思考中<span class="thinking-indicator-dots">...</span></span>`;
+        }
+        return; // 跳过 morphdom，因为还没有正文要渲染
+    } else {
+        // 已经有正文了，移除流光
+        cachedDom.messageItem.classList.remove('vcp-thinking-shimmer');
+    }
+
+    // 移除思考指示器（仅在有正文时移除）
+    const streamingIndicator = contentDiv.querySelector('.streaming-indicator, .thinking-indicator');
+    if (streamingIndicator) streamingIndicator.remove();
 
     if (refs.morphdom) {
         try {
@@ -889,7 +909,7 @@ export async function finalizeStreamedMessage(messageId, finishReason, context) 
         
         const messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
         if (messageItem) {
-            messageItem.classList.remove('streaming', 'thinking');
+            messageItem.classList.remove('streaming', 'thinking', 'vcp-thinking-shimmer');
             
             const contentDiv = messageItem.querySelector('.md-content');
             if (contentDiv) {
