@@ -82,22 +82,18 @@ body.light-theme .topic-item.active-topic-glowing::before {
  * =======================================================
  */
 
-/* 1. 定义一个名为 "textShimmer" 的动画过程 */
+/* 暂时注释掉流光动画，以减少视觉干扰 */
+/*
 @keyframes textShimmer {
   from {
-    /* 动画开始时，背景渐变的位置在最右侧 */
     background-position: 200% center;
   }
   to {
-    /* 动画结束时，背景渐变的位置移动到最左侧，形成流动效果 */
     background-position: -200% center;
   }
 }
 
-/* 2. 将此效果应用到正在流式输出的消息内容上 */
-/* 这个选择器精确地指向了正在流式输出(有.streaming类)的消息项(message-item)中的内容区域(md-content) */
 .message-item.streaming .md-content {
-  /* 创建一个从透明到高亮再到透明的线性渐变作为背景 */
   background-image: linear-gradient(
     to right,
     var(--shimmer-color-transparent) 20%,
@@ -105,19 +101,16 @@ body.light-theme .topic-item.active-topic-glowing::before {
     var(--shimmer-color-transparent) 80%
   );
   
-  /* 关键魔法#1：将背景的范围裁切成文字的形状 */
   background-clip: text;
-  -webkit-background-clip: text; /* 兼容Webkit内核浏览器 */
+  -webkit-background-clip: text;
 
-  /* 关键魔法#2：将文字本身的颜色设为透明，这样才能“透”出后面的背景渐变 */
   color: transparent;
   
-  /* 将背景尺寸扩大，以便渐变效果有足够的空间进行移动 */
   background-size: 200% auto;
   
-  /* 应用我们之前定义的动画 */
-  animation: textShimmer 2.5s linear infinite; /* 设置动画速度 */
+  animation: textShimmer 2.5s linear infinite;
 }
+*/
 
 /*
  * =======================================================
