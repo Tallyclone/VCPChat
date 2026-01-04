@@ -323,6 +323,14 @@ window.itemListManager = (() => {
         }
 
         // Asynchronously fetch and update unread counts to avoid blocking initial render
+        refreshUnreadCounts();
+    }
+
+    /**
+     * 仅刷新未读计数，而不重新加载整个列表
+     */
+    function refreshUnreadCounts() {
+        if (!electronAPI) return;
         electronAPI.getUnreadTopicCounts().then(result => {
             if (result && result.success) {
                 updateUnreadBadges(result.counts);
@@ -487,47 +495,64 @@ window.itemListManager = (() => {
      * @param {object} counts - An object mapping agentId to its unread count.
      */
     function updateUnreadBadges(counts) {
-        // First, remove all existing badges to handle refreshes correctly
-        document.querySelectorAll('#agentList .unread-badge').forEach(badge => badge.remove());
-
-        // Then, add the new ones
-        for (const agentId in counts) {
+        // 获取当前所有的列表项
+        const listItems = itemListUl.querySelectorAll('li[data-item-type="agent"]');
+        
+        listItems.forEach(listItem => {
+            const agentId = listItem.dataset.itemId;
             const count = counts[agentId];
-            const listItem = itemListUl.querySelector(`li[data-item-id="${agentId}"][data-item-type="agent"]`);
+            const avatarWrapper = listItem.querySelector('.avatar-wrapper');
+            const existingBadge = listItem.querySelector('.unread-badge');
             
-            if (listItem) {
-                // Avoid adding a badge if one already exists (defensive)
-                if (listItem.querySelector('.unread-badge')) continue;
+            // 检查是否需要显示徽章 (count 为数字且 >= 0)
+            if (count !== undefined && (count > 0 || count === 0)) {
+                const displayCount = count > 0 ? count.toString() : '';
+                const isDotOnly = count === 0;
                 
-                // 找到头像包装器
-                const avatarWrapper = listItem.querySelector('.avatar-wrapper');
-                if (!avatarWrapper) continue;
-                
-                const avatarImg = avatarWrapper.querySelector('.avatar');
-                if (!avatarImg) continue;
-                
-                const unreadBadge = document.createElement('span');
-                unreadBadge.className = 'unread-badge';
-                
-                if (count > 0) {
-                    // 显示数字
-                    unreadBadge.textContent = count;
-                } else if (count === 0) {
-                    // count === 0 但在 counts 对象中，表示有未读标记但无计数，显示小点但无数字
-                    unreadBadge.classList.add('unread-badge-dot-only');
-                    unreadBadge.textContent = '';
+                if (existingBadge) {
+                    // 徽章已存在，检查内容是否变化
+                    const currentCount = existingBadge.textContent;
+                    const currentIsDot = existingBadge.classList.contains('unread-badge-dot-only');
+                    
+                    if (currentCount !== displayCount || currentIsDot !== isDotOnly) {
+                        // 内容有变化，更新内容并触发动画
+                        existingBadge.textContent = displayCount;
+                        existingBadge.classList.toggle('unread-badge-dot-only', isDotOnly);
+                        
+                        // 触发徽章更新动画
+                        existingBadge.classList.remove('badge-appear');
+                        void existingBadge.offsetWidth; // 强制重绘
+                        existingBadge.classList.add('badge-appear');
+                        
+                        // 触发头像动画
+                        const avatarImg = avatarWrapper.querySelector('.avatar');
+                        triggerAvatarAnimation(avatarImg);
+                    }
+                } else {
+                    // 徽章不存在，创建新徽章
+                    if (!avatarWrapper) return;
+                    
+                    const unreadBadge = document.createElement('span');
+                    unreadBadge.className = 'unread-badge';
+                    if (isDotOnly) {
+                        unreadBadge.classList.add('unread-badge-dot-only');
+                    }
+                    unreadBadge.textContent = displayCount;
+                    unreadBadge.classList.add('badge-appear');
+                    
+                    avatarWrapper.appendChild(unreadBadge);
+                    
+                    // 触发头像动画
+                    const avatarImg = avatarWrapper.querySelector('.avatar');
+                    triggerAvatarAnimation(avatarImg);
                 }
-                
-                // 添加动画效果
-                unreadBadge.classList.add('badge-appear');
-                
-                // 将徽章添加到头像包装器中，而不是列表项
-                avatarWrapper.appendChild(unreadBadge);
-                
-                // Part C: 触发头像缩放动画
-                triggerAvatarAnimation(avatarImg);
+            } else {
+                // 不需要显示徽章，如果存在则移除
+                if (existingBadge) {
+                    existingBadge.remove();
+                }
             }
-        }
+        });
     }
 
     /**
@@ -559,6 +584,7 @@ window.itemListManager = (() => {
         highlightActiveItem,
         resetMouseEventStates,
         findItemById, // Expose the new function
-        updateUnreadBadges // Part C: 暴露更新徽章函数供外部调用
+        updateUnreadBadges, // Part C: 暴露更新徽章函数供外部调用
+        refreshUnreadCounts
     };
 })();

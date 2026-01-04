@@ -649,8 +649,10 @@ window.chatManager = (() => {
         // Save history with the user message before adding the thinking message or making API calls
         await electronAPI.saveChatHistory(currentSelectedItem.id, currentTopicId, currentChatHistory);
 
-        // After saving history (which marks the topic as read), refresh the item list to update unread counts.
-        if (itemListManager) {
+        // After saving history (which marks the topic as read), refresh the unread counts.
+        if (itemListManager && typeof itemListManager.refreshUnreadCounts === 'function') {
+            itemListManager.refreshUnreadCounts();
+        } else if (itemListManager) {
             itemListManager.loadItems();
         }
 
