@@ -322,8 +322,17 @@ function renderStreamFrame(messageId) {
                     return false;
                 }
                 
+                // 🟢 关键修复：保留正在进行的动画类，防止 morphdom 在下一帧将其移除
+                // 因为 toEl 是从 marked 重新生成的，不包含这些动态添加的动画类
+                if (fromEl.classList.contains('vcp-stream-element-fade-in')) {
+                    toEl.classList.add('vcp-stream-element-fade-in');
+                }
+                if (fromEl.classList.contains('vcp-stream-content-pulse')) {
+                    toEl.classList.add('vcp-stream-content-pulse');
+                }
+
                 // 🟢 检测块级元素的显著内容增长
-                if (/^(P|DIV|UL|OL|PRE|BLOCKQUOTE|H[1-6])$/.test(fromEl.tagName)) {
+                if (/^(P|DIV|UL|OL|LI|PRE|BLOCKQUOTE|H[1-6]|TABLE|TR|FIGURE)$/.test(fromEl.tagName)) {
                     const oldLength = elementContentLengthCache.get(fromEl) || fromEl.textContent.length;
                     const newLength = toEl.textContent.length;
                     const lengthDiff = newLength - oldLength;
@@ -401,18 +410,20 @@ function renderStreamFrame(messageId) {
             },
             
             onNodeAdded: function(node) {
-                // Animate block-level elements as they are added to the DOM
-                if (node.nodeType === 1 && /^(P|DIV|UL|OL|PRE|BLOCKQUOTE|H[1-6]|TABLE|FIGURE)$/.test(node.tagName)) {
-                    // 新节点使用滑入动画
+                // 增强：包含更多常见的块级元素，确保列表、表格等都能触发横向渐入
+                if (node.nodeType === 1 && /^(P|DIV|UL|OL|LI|PRE|BLOCKQUOTE|H[1-6]|TABLE|TR|FIGURE)$/.test(node.tagName)) {
+                    // 确保新节点应用横向渐入类
                     node.classList.add('vcp-stream-element-fade-in');
                     
-                    // 初始化长度缓存
+                    // 初始化长度缓存用于后续的脉冲检测
                     elementContentLengthCache.set(node, node.textContent.length);
                     
-                    // Clean up the class after the animation completes to prevent re-triggering
-                    node.addEventListener('animationend', () => {
-                        node.classList.remove('vcp-stream-element-fade-in');
-                    }, { once: true });
+                    // 动画结束后清理类名，但保留一小段时间确保渲染稳定
+                    setTimeout(() => {
+                        if (node && node.classList) {
+                            node.classList.remove('vcp-stream-element-fade-in');
+                        }
+                    }, 1000);
                 }
                 return node;
             }
