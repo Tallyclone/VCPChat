@@ -78,6 +78,8 @@ body.light-theme #moon-icon {
     content-visibility: auto;
     /* 配合 content-visibility 防止滚动条抖动，默认给一个预估值 */
     contain-intrinsic-size: auto 100px;
+    /* 进一步优化：提升为独立层，避免局部刷新引起全局重绘 */
+    will-change: transform;
 }
 
 .message-item.user {

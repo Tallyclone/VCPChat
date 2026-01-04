@@ -87,6 +87,7 @@
     white-space: pre-wrap !important; /* Restore: Allow wrapping but preserve whitespace */
     word-break: break-all !important; /* Restore: Break long strings */
     transition: all 0.4s ease-in-out; /* Add transition for smooth hover effect */
+    will-change: transform; /* 优化：工具气泡通常包含动画，提升为独立层 */
 }
 
 /* Animated Border for VCP ToolUse */
@@ -231,6 +232,7 @@
     font-size: 1em !important;
     white-space: normal !important; /* Allow text to wrap naturally */
     word-break: break-word !important;
+    will-change: transform; /* 优化：日记气泡提升为独立层 */
 }
 
 /* Remove extra spacing in diary content caused by markdown paragraphs */
@@ -645,6 +647,7 @@ body.light-theme {
     width: fit-content;
     max-width: 95%;
     transition: background 0.3s, color 0.3s, border-color 0.3s, box-shadow 0.3s; /* Add transition for smooth theme change */
+    will-change: transform; /* 优化：结果气泡提升为独立层 */
 }
 
 .vcp-tool-result-bubble::before {
