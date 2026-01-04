@@ -511,7 +511,7 @@ function processAndInjectScopedCss(content, scopeId) {
             document.head.appendChild(styleElement);
             styleInjected = true;
             
-            console.log(`[ScopedCSS] Injected scoped styles for ID: #${scopeId}`);
+            console.debug(`[ScopedCSS] Injected scoped styles for ID: #${scopeId}`);
         } catch (error) {
             console.error(`[ScopedCSS] Failed to scope or inject CSS for ID: ${scopeId}`, error);
         }
@@ -759,7 +759,7 @@ function fixEmoticonUrlsInMarkdown(text) {
         if (emoticonUrlFixer && emoticonUrlFixer.fixEmoticonUrl) {
             const fixedUrl = emoticonUrlFixer.fixEmoticonUrl(url);
             if (fixedUrl !== url) {
-                console.log(`[PreprocessFix] Markdown图片: ${url} → ${fixedUrl}`);
+                console.debug(`[PreprocessFix] Markdown图片: ${url} → ${fixedUrl}`);
             }
             return `![${alt}](${fixedUrl})`;
         }
@@ -771,7 +771,7 @@ function fixEmoticonUrlsInMarkdown(text) {
         if (emoticonUrlFixer && emoticonUrlFixer.fixEmoticonUrl) {
             const fixedUrl = emoticonUrlFixer.fixEmoticonUrl(url);
             if (fixedUrl !== url) {
-                console.log(`[PreprocessFix] HTML图片: ${url} → ${fixedUrl}`);
+                console.debug(`[PreprocessFix] HTML图片: ${url} → ${fixedUrl}`);
             }
             return `<img${before}src="${fixedUrl}"${after}>`;
         }
@@ -1131,7 +1131,7 @@ async function renderAttachments(message, contentDiv) {
 }
 
 async function renderMessage(message, isInitialLoad = false, appendToDom = true) {
-    console.log('[MessageRenderer renderMessage] Received message:', JSON.parse(JSON.stringify(message))); // Log incoming message
+    // console.debug('[MessageRenderer renderMessage] Received message:', JSON.parse(JSON.stringify(message)));
     const { chatMessagesDiv, electronAPI, markedInstance, uiHelper } = mainRendererReferences;
     const globalSettings = mainRendererReferences.globalSettingsRef.get();
     const currentSelectedItem = mainRendererReferences.currentSelectedItemRef.get();
@@ -1337,7 +1337,7 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
     if ((message.role === 'user' || message.role === 'assistant') && avatarImg && senderNameDiv) {
         const applyColorToElements = (colorStr) => {
             if (colorStr) {
-                console.log(`[DEBUG] Applying color ${colorStr} to message item ${messageItem.dataset.messageId}`);
+                console.debug(`[DEBUG] Applying color ${colorStr} to message item ${messageItem.dataset.messageId}`);
                 messageItem.style.setProperty('--dynamic-avatar-color', colorStr);
                 
                 // 后备方案：直接应用到avatarImg
@@ -1352,14 +1352,14 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
                     senderNameDiv.style.color = colorStr;
                 }
             } else {
-                console.log(`[DEBUG] No color to apply, using default`);
+                console.debug(`[DEBUG] No color to apply, using default`);
                 messageItem.style.removeProperty('--dynamic-avatar-color');
             }
         };
 
         // 如果启用了主题颜色模式，不应用任何自定义颜色，让CSS主题接管
         if (useThemeColors) {
-            console.log(`[DEBUG] Using theme colors for message ${messageItem.dataset.messageId}`);
+            console.debug(`[DEBUG] Using theme colors for message ${messageItem.dataset.messageId}`);
             messageItem.style.removeProperty('--dynamic-avatar-color');
             if (avatarImg) {
                 avatarImg.style.removeProperty('border-color');
@@ -1369,7 +1369,7 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
             }
         } else if (customBorderColor && avatarImg) {
             // 优先应用自定义颜色（如果启用且未启用主题颜色）
-            console.log(`[DEBUG] Applying custom border color ${customBorderColor} to avatar`);
+            console.debug(`[DEBUG] Applying custom border color ${customBorderColor} to avatar`);
             avatarImg.style.borderColor = customBorderColor;
             avatarImg.style.borderWidth = '2px';
             avatarImg.style.borderStyle = 'solid';
@@ -1431,7 +1431,7 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
         
         // 应用自定义名称文字颜色
         if (customNameColor && senderNameDiv) {
-            console.log(`[DEBUG] Applying custom name color ${customNameColor} to sender name`);
+            console.debug(`[DEBUG] Applying custom name color ${customNameColor} to sender name`);
             senderNameDiv.style.color = customNameColor;
         }
         
@@ -1451,7 +1451,7 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
             
             // 通过动态注入<style>标签应用会话CSS
             if (chatCss && chatCss.trim()) {
-                console.log(`[DEBUG] Applying chat CSS to message ${message.id}:`, chatCss);
+                console.debug(`[DEBUG] Applying chat CSS to message ${message.id}:`, chatCss);
                 
                 // 为此消息创建唯一的scope ID
                 const chatScopeId = `vcp-chat-${message.id}`;
@@ -1561,7 +1561,7 @@ async function finalizeStreamedMessage(messageId, finishReason, context) {
  * @param {string} agentId - The ID of the agent sending the message.
  */
 async function renderFullMessage(messageId, fullContent, agentName, agentId) {
-    console.log(`[MessageRenderer renderFullMessage] Rendering full message for ID: ${messageId}`);
+    console.debug(`[MessageRenderer renderFullMessage] Rendering full message for ID: ${messageId}`);
     const { chatMessagesDiv, electronAPI, uiHelper, markedInstance } = mainRendererReferences;
     const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
     const currentSelectedItem = mainRendererReferences.currentSelectedItemRef.get();
@@ -1595,7 +1595,7 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId) {
 
     const messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
     if (!messageItem) {
-        console.log(`[renderFullMessage] No DOM element for ${messageId}. History updated, UI skipped.`);
+        console.debug(`[renderFullMessage] No DOM element for ${messageId}. History updated, UI skipped.`);
         return; // No UI to update, but history is now consistent.
     }
 
@@ -1734,7 +1734,7 @@ async function renderHistory(history, options = {}) {
         return renderHistoryLegacy(history);
     }
 
-    console.log(`[MessageRenderer] 开始分批渲染 ${history.length} 条消息，首批 ${initialBatch} 条，后续每批 ${batchSize} 条`);
+    console.debug(`[MessageRenderer] 开始分批渲染 ${history.length} 条消息，首批 ${initialBatch} 条，后续每批 ${batchSize} 条`);
 
     // 分离最新的消息和历史消息
     const latestMessages = history.slice(-initialBatch);
@@ -1742,7 +1742,7 @@ async function renderHistory(history, options = {}) {
 
     // 第一阶段：立即渲染最新的消息
     await renderMessageBatch(latestMessages, true);
-    console.log(`[MessageRenderer] 首批 ${latestMessages.length} 条最新消息已渲染`);
+    console.debug(`[MessageRenderer] 首批 ${latestMessages.length} 条最新消息已渲染`);
 
     // 第二阶段：分批渲染历史消息（从旧到新）
     if (olderMessages.length > 0) {
@@ -1751,7 +1751,7 @@ async function renderHistory(history, options = {}) {
 
     // 最终滚动到底部
     mainRendererReferences.uiHelper.scrollToBottom();
-    console.log(`[MessageRenderer] 所有 ${history.length} 条消息渲染完成`);
+    console.debug(`[MessageRenderer] 所有 ${history.length} 条消息渲染完成`);
 }
 
 /**

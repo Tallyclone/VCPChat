@@ -610,7 +610,7 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
     // Process any chunks that were pre-buffered during initialization.
     const bufferedChunks = preBufferedChunks.get(messageId);
     if (bufferedChunks && bufferedChunks.length > 0) {
-        console.log(`[StreamManager] Processing ${bufferedChunks.length} pre-buffered chunks for message ${messageId}`);
+        console.debug(`[StreamManager] Processing ${bufferedChunks.length} pre-buffered chunks for message ${messageId}`);
         for (const chunkData of bufferedChunks) {
             appendStreamChunk(messageId, chunkData.chunk, chunkData.context);
         }
@@ -724,7 +724,7 @@ export function appendStreamChunk(messageId, chunkData, context) {
         if (!preBufferedChunks.has(messageId)) {
             preBufferedChunks.set(messageId, []);
             // 只在第一次创建缓冲区时打印日志
-            console.log(`[StreamManager] Started pre-buffering for message ${messageId}`);
+            console.debug(`[StreamManager] Started pre-buffering for message ${messageId}`);
         }
         const buffer = preBufferedChunks.get(messageId);
         buffer.push({ chunk: chunkData, context });

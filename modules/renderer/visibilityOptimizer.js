@@ -71,7 +71,7 @@ export function initializeVisibilityOptimizer(chatContainer) {
     // 观察所有现有消息
     chatContainer.querySelectorAll('.message-item').forEach(observeMessage);
     
-    console.log('[VisibilityOptimizer] Initialized with global interceptors');
+    console.debug('[VisibilityOptimizer] Initialized with global interceptors');
 }
 
 /**
@@ -109,7 +109,7 @@ function injectGlobalInterceptors() {
             return animation;
         };
         
-        console.log('[VisibilityOptimizer] Element.animate interceptor installed');
+        console.debug('[VisibilityOptimizer] Element.animate interceptor installed');
     }
 }
 
@@ -263,7 +263,7 @@ function scanAnimatedElements(messageItem) {
     // 只在有动画内容时输出日志
     const total = Object.values(stats).reduce((a, b) => a + b, 0);
     if (total > 0) {
-        console.log(`[VisibilityOptimizer] Scanned ${messageItem.dataset.messageId}:`, stats);
+        console.debug(`[VisibilityOptimizer] Scanned ${messageItem.dataset.messageId}:`, stats);
     }
 }
 
@@ -673,5 +673,5 @@ export function destroyVisibilityOptimizer() {
     pendingResume.clear();
     chatContainerRef = null;
     
-    console.log('[VisibilityOptimizer] Destroyed');
+    console.debug('[VisibilityOptimizer] Destroyed');
 }
