@@ -261,7 +261,8 @@ body.light-theme .notes-section #openCanvasBtn:hover {
         var(--notification-bg) 100%
     );
     background-size: 250% 100%;
-    animation: vcp-shimmer-bg 7s linear infinite;
+    /* 移除通知项的持续流光动画，减少空闲时的重绘 */
+    /* animation: vcp-shimmer-bg 7s linear infinite; */
 }
 
 .notification-item.visible {
@@ -380,7 +381,8 @@ body.light-theme .notification-item {
         transparent 100%
     );
     background-size: 300% 100%;
-    animation: vcp-shimmer-bg 5s linear infinite;
+    /* 移除悬浮通知的持续流光动画，减少空闲时的重绘 */
+    /* animation: vcp-shimmer-bg 5s linear infinite; */
 }
 
 body.dark-theme .floating-toast-notification {

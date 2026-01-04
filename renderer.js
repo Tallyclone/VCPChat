@@ -45,10 +45,10 @@ const attachFileBtn = document.getElementById('attachFileBtn');
 const attachmentPreviewArea = document.getElementById('attachmentPreviewArea');
 
 const globalSettingsBtn = document.getElementById('globalSettingsBtn');
-const globalSettingsModal = document.getElementById('globalSettingsModal');
-const globalSettingsForm = document.getElementById('globalSettingsForm');
-const userAvatarInput = document.getElementById('userAvatarInput');
-const userAvatarPreview = document.getElementById('userAvatarPreview');
+// 模态框及其内部元素现在延迟加载，不再在顶层缓存引用
+let globalSettingsForm = null;
+let userAvatarInput = null;
+let userAvatarPreview = null;
 
 const createNewAgentBtn = document.getElementById('createNewAgentBtn'); // Text will change
 const createNewGroupBtn = document.getElementById('createNewGroupBtn'); // New button
@@ -117,15 +117,16 @@ let inviteAgentButtonsContainerElement; // 新增：邀请发言按钮容器的�
 
 // Assistant settings elements
 const toggleAssistantBtn = document.getElementById('toggleAssistantBtn'); // New button
-const assistantAgentContainer = document.getElementById('assistantAgentContainer');
-const assistantAgentSelect = document.getElementById('assistantAgent');
+// 模态框内部元素延迟加载
+let assistantAgentContainer = null;
+let assistantAgentSelect = null;
 
 // Model selection elements
 const openModelSelectBtn = document.getElementById('openModelSelectBtn');
-const modelSelectModal = document.getElementById('modelSelectModal');
-const modelList = document.getElementById('modelList');
-const modelSearchInput = document.getElementById('modelSearchInput');
-const refreshModelsBtn = document.getElementById('refreshModelsBtn');
+let modelSelectModal = null;
+let modelList = null;
+let modelSearchInput = null;
+let refreshModelsBtn = null;
 
 // UI Helper functions to be passed to modules
 // The main uiHelperFunctions object is now defined in modules/ui-helpers.js
@@ -1374,84 +1375,8 @@ async function loadAndApplyGlobalSettings() {
     const settings = await window.electronAPI.loadSettings();
     if (settings && !settings.error) {
         globalSettings = { ...globalSettings, ...settings }; // Merge with defaults
-        document.getElementById('userName').value = globalSettings.userName || '用户';
         
-        // Load user custom colors
-        const userAvatarBorderColorInput = document.getElementById('userAvatarBorderColor');
-        const userAvatarBorderColorTextInput = document.getElementById('userAvatarBorderColorText');
-        const userNameTextColorInput = document.getElementById('userNameTextColor');
-        const userNameTextColorTextInput = document.getElementById('userNameTextColorText');
-        
-        if (userAvatarBorderColorInput && userAvatarBorderColorTextInput) {
-            const borderColor = globalSettings.userAvatarBorderColor || '#3d5a80';
-            userAvatarBorderColorInput.value = borderColor;
-            userAvatarBorderColorTextInput.value = borderColor;
-        }
-        
-        if (userNameTextColorInput && userNameTextColorTextInput) {
-            const nameColor = globalSettings.userNameTextColor || '#ffffff';
-            userNameTextColorInput.value = nameColor;
-            userNameTextColorTextInput.value = nameColor;
-        }
-        
-        // Load userUseThemeColorsInChat setting
-        const userUseThemeColorsInChatCheckbox = document.getElementById('userUseThemeColorsInChat');
-        if (userUseThemeColorsInChatCheckbox) {
-            userUseThemeColorsInChatCheckbox.checked = globalSettings.userUseThemeColorsInChat || false;
-        }
-        // Ensure the loaded URL is displayed in its complete form
-        const completedUrl = window.settingsManager.completeVcpUrl(globalSettings.vcpServerUrl || '');
-        document.getElementById('vcpServerUrl').value = completedUrl;
-        document.getElementById('vcpApiKey').value = globalSettings.vcpApiKey || '';
-        document.getElementById('vcpLogUrl').value = globalSettings.vcpLogUrl || '';
-        document.getElementById('vcpLogKey').value = globalSettings.vcpLogKey || '';
-        document.getElementById('topicSummaryModel').value = globalSettings.topicSummaryModel || '';
-        document.getElementById('continueWritingPrompt').value = globalSettings.continueWritingPrompt || '请继续';
-        document.getElementById('flowlockContinueDelay').value = globalSettings.flowlockContinueDelay !== undefined ? globalSettings.flowlockContinueDelay : 5;
-        
-        // --- Load Network Notes Paths ---
-        const networkNotesPathsContainer = document.getElementById('networkNotesPathsContainer');
-        networkNotesPathsContainer.innerHTML = ''; // Clear existing
-        const paths = Array.isArray(settings.networkNotesPaths)
-            ? settings.networkNotesPaths
-            : (settings.networkNotesPath ? [settings.networkNotesPath] : []);
-        
-        if (paths.length === 0) {
-            // Add one empty path input if none are saved
-            uiHelperFunctions.addNetworkPathInput('');
-        } else {
-            paths.forEach(path => uiHelperFunctions.addNetworkPathInput(path));
-        }
-        // --- End Load Network Notes Paths ---
-
-        // Load smooth streaming settings
-        document.getElementById('enableAgentBubbleTheme').checked = globalSettings.enableAgentBubbleTheme !== false; // Default to true
-        document.getElementById('enableSmoothStreaming').checked = globalSettings.enableSmoothStreaming === true; // Default to false
-        document.getElementById('minChunkBufferSize').value = globalSettings.minChunkBufferSize !== undefined ? globalSettings.minChunkBufferSize : 16;
-        document.getElementById('smoothStreamIntervalMs').value = globalSettings.smoothStreamIntervalMs !== undefined ? globalSettings.smoothStreamIntervalMs : 100;
-
-
-        // 管理用户头像的 .no-avatar 类
-        const userAvatarWrapper = userAvatarPreview?.closest('.agent-avatar-wrapper');
-        if (globalSettings.userAvatarUrl && userAvatarPreview) {
-            userAvatarPreview.src = globalSettings.userAvatarUrl; // Already has timestamp from main
-            userAvatarPreview.style.display = 'block';
-            if (userAvatarWrapper) {
-                userAvatarWrapper.classList.remove('no-avatar');
-            }
-        } else if (userAvatarPreview) {
-            userAvatarPreview.src = '#';
-            userAvatarPreview.style.display = 'none';
-            if (userAvatarWrapper) {
-                userAvatarWrapper.classList.add('no-avatar'); // 确保相机图标始终显示
-            }
-        }
-        if (window.messageRenderer) { // Update messageRenderer with user avatar info
-            window.messageRenderer.setUserAvatar(globalSettings.userAvatarUrl);
-            window.messageRenderer.setUserAvatarColor(globalSettings.userAvatarCalculatedColor);
-        }
-
-
+        // 🟢 优化：仅更新始终存在的 UI 元素
         if (globalSettings.sidebarWidth && leftSidebar) {
             leftSidebar.style.width = `${globalSettings.sidebarWidth}px`;
         }
@@ -1467,109 +1392,136 @@ async function loadAndApplyGlobalSettings() {
         } else {
             if (window.notificationRenderer) window.notificationRenderer.updateVCPLogStatus({ status: 'error', message: 'VCPLog未配置' }, vcpLogConnectionStatusDiv);
         }
-        
-        // Load assistant settings
-        // The container is now always visible in settings, just the agent selection.
-        assistantAgentContainer.style.display = 'block';
-        await window.settingsManager.populateAssistantAgentSelect();
-        if (globalSettings.assistantAgent) {
-            assistantAgentSelect.value = globalSettings.assistantAgent;
-        }
 
         // Set the initial state of the new toggle button in the main UI
         if (toggleAssistantBtn) {
-            if (globalSettings.assistantEnabled) {
-                toggleAssistantBtn.classList.add('active');
-            } else {
-                toggleAssistantBtn.classList.remove('active');
+            toggleAssistantBtn.classList.toggle('active', !!globalSettings.assistantEnabled);
+        }
+        window.electronAPI.toggleSelectionListener(!!globalSettings.assistantEnabled);
+
+        // Load filter mode setting
+        let filterEnabled = globalSettings.filterEnabled ?? globalSettings.doNotDisturbLogMode ?? (localStorage.getItem('doNotDisturbLogMode') === 'true');
+        globalSettings.filterEnabled = filterEnabled;
+        doNotDisturbBtn.classList.toggle('active', !!filterEnabled);
+
+        // 🟢 核心逻辑：监听模态框就绪事件，届时再同步模态框内部 UI
+        document.addEventListener('modal-ready', (e) => {
+            const { modalId } = e.detail;
+            if (modalId === 'globalSettingsModal') {
+                syncGlobalSettingsToUI();
             }
+        });
+
+        if (window.messageRenderer) {
+            window.messageRenderer.setUserAvatar(globalSettings.userAvatarUrl);
+            window.messageRenderer.setUserAvatarColor(globalSettings.userAvatarCalculatedColor);
         }
-        
-        // Initial toggle of the listener based on settings
-        window.electronAPI.toggleSelectionListener(globalSettings.assistantEnabled);
-
-        // Load distributed server setting
-        document.getElementById('enableDistributedServer').checked = globalSettings.enableDistributedServer === true;
-        document.getElementById('agentMusicControl').checked = globalSettings.agentMusicControl === true;
-        document.getElementById('enableVcpToolInjection').checked = globalSettings.enableVcpToolInjection === true;
-        document.getElementById('enableContextSanitizer').checked = globalSettings.enableContextSanitizer === true;  
-        document.getElementById('contextSanitizerDepth').value = globalSettings.contextSanitizerDepth !== undefined ? globalSettings.contextSanitizerDepth : 2;  
-        // 同时更新深度容器的显示状态  
-        const contextSanitizerDepthContainer = document.getElementById('contextSanitizerDepthContainer');  
-        if (contextSanitizerDepthContainer) {
-            contextSanitizerDepthContainer.style.display = globalSettings.enableContextSanitizer === true ? 'block' : 'none';
-        }
-
-        // Load AI message button setting
-        document.getElementById('enableAiMessageButtons').checked = globalSettings.enableAiMessageButtons !== false; // Default to true
-
-        // Load filter mode setting (migrate from old doNotDisturbLogMode if exists)
-        let filterEnabled = globalSettings.filterEnabled;
-        if (filterEnabled === undefined) {
-            // Migrate from old doNotDisturbLogMode setting for backward compatibility
-            const oldDoNotDisturbMode = globalSettings.doNotDisturbLogMode || (localStorage.getItem('doNotDisturbLogMode') === 'true');
-            filterEnabled = oldDoNotDisturbMode;
-            globalSettings.filterEnabled = filterEnabled;
-            // Also migrate to new setting name for consistency
-            globalSettings.doNotDisturbLogMode = filterEnabled;
-        }
-
-        if (filterEnabled) {
-            doNotDisturbBtn.classList.add('active');
-            globalSettings.filterEnabled = true;
-        } else {
-            doNotDisturbBtn.classList.remove('active');
-            globalSettings.filterEnabled = false;
-        }
-
-        // Load filter rules
-        if (!Array.isArray(globalSettings.filterRules)) {
-            globalSettings.filterRules = [];
-        }
-
-        // Load middle click quick action settings
-        document.getElementById('enableMiddleClickQuickAction').checked = globalSettings.enableMiddleClickQuickAction === true;
-        document.getElementById('middleClickQuickAction').value = globalSettings.middleClickQuickAction || '';
-
-        // Load advanced middle click settings
-        document.getElementById('enableMiddleClickAdvanced').checked = globalSettings.enableMiddleClickAdvanced === true;
-        const advancedDelayInput = document.getElementById('middleClickAdvancedDelay');
-        const delayValue = globalSettings.middleClickAdvancedDelay || 1000;
-        advancedDelayInput.value = delayValue >= 1000 ? delayValue : 1000; // Ensure minimum 1000ms
-
-        // Load regenerate confirmation setting
-        const regenerateConfirmationCheckbox = document.getElementById('enableRegenerateConfirmation');
-        if (regenerateConfirmationCheckbox) {
-            regenerateConfirmationCheckbox.checked = globalSettings.enableRegenerateConfirmation !== false;
-        }
-
-        // Show/hide containers based on enable settings
-        const middleClickContainer = document.getElementById('middleClickQuickActionContainer');
-        const middleClickAdvancedContainer = document.getElementById('middleClickAdvancedContainer');
-        const middleClickAdvancedSettings = document.getElementById('middleClickAdvancedSettings');
-
-        if (middleClickContainer) {
-            middleClickContainer.style.display = globalSettings.enableMiddleClickQuickAction === true ? 'block' : 'none';
-        }
-        if (middleClickAdvancedContainer) {
-            middleClickAdvancedContainer.style.display = globalSettings.enableMiddleClickQuickAction === true ? 'block' : 'none';
-        }
-        if (middleClickAdvancedSettings) {
-            middleClickAdvancedSettings.style.display = globalSettings.enableMiddleClickAdvanced === true ? 'block' : 'none';
-        }
-
-        // Apply the theme mode from settings on startup
-        // This is now handled by uiManager.js to avoid redundancy
-        // if (globalSettings.currentThemeMode && window.electronAPI) {
-        //     console.log(`[Renderer] Applying initial theme mode from settings: ${globalSettings.currentThemeMode}`);
-        //     window.electronAPI.setThemeMode(globalSettings.currentThemeMode);
-        // }
-
     } else {
         console.warn('加载全局设置失败或无设置:', settings?.error);
         if (window.notificationRenderer) window.notificationRenderer.updateVCPLogStatus({ status: 'error', message: 'VCPLog未配置' }, vcpLogConnectionStatusDiv);
     }
 }
+
+/**
+ * 🟢 将全局设置同步到 UI 元素（仅在模态框实例化后调用）
+ */
+async function syncGlobalSettingsToUI() {
+    const safeSet = (id, value, prop = 'value') => {
+        const el = document.getElementById(id);
+        if (el) el[prop] = value;
+    };
+    const safeCheck = (id, checked) => {
+        const el = document.getElementById(id);
+        if (el) el.checked = !!checked;
+    };
+
+    safeSet('userName', globalSettings.userName || '用户');
+    
+    const borderColor = globalSettings.userAvatarBorderColor || '#3d5a80';
+    safeSet('userAvatarBorderColor', borderColor);
+    safeSet('userAvatarBorderColorText', borderColor);
+    
+    const nameColor = globalSettings.userNameTextColor || '#ffffff';
+    safeSet('userNameTextColor', nameColor);
+    safeSet('userNameTextColorText', nameColor);
+    
+    safeCheck('userUseThemeColorsInChat', globalSettings.userUseThemeColorsInChat);
+    
+    const completedUrl = window.settingsManager.completeVcpUrl(globalSettings.vcpServerUrl || '');
+    safeSet('vcpServerUrl', completedUrl);
+    safeSet('vcpApiKey', globalSettings.vcpApiKey || '');
+    safeSet('vcpLogUrl', globalSettings.vcpLogUrl || '');
+    safeSet('vcpLogKey', globalSettings.vcpLogKey || '');
+    safeSet('topicSummaryModel', globalSettings.topicSummaryModel || '');
+    safeSet('continueWritingPrompt', globalSettings.continueWritingPrompt || '请继续');
+    safeSet('flowlockContinueDelay', globalSettings.flowlockContinueDelay ?? 5);
+    
+    // Network Notes Paths
+    const networkNotesPathsContainer = document.getElementById('networkNotesPathsContainer');
+    if (networkNotesPathsContainer) {
+        networkNotesPathsContainer.innerHTML = '';
+        const paths = Array.isArray(globalSettings.networkNotesPaths) ? globalSettings.networkNotesPaths : (globalSettings.networkNotesPath ? [globalSettings.networkNotesPath] : []);
+        if (paths.length === 0) {
+            uiHelperFunctions.addNetworkPathInput('');
+        } else {
+            paths.forEach(path => uiHelperFunctions.addNetworkPathInput(path));
+        }
+    }
+
+    safeCheck('enableAgentBubbleTheme', globalSettings.enableAgentBubbleTheme !== false);
+    safeCheck('enableSmoothStreaming', globalSettings.enableSmoothStreaming === true);
+    safeSet('minChunkBufferSize', globalSettings.minChunkBufferSize ?? 16);
+    safeSet('smoothStreamIntervalMs', globalSettings.smoothStreamIntervalMs ?? 100);
+
+    // User Avatar Preview
+    const userAvatarPreview = document.getElementById('userAvatarPreview');
+    const userAvatarWrapper = userAvatarPreview?.closest('.agent-avatar-wrapper');
+    if (userAvatarPreview) {
+        if (globalSettings.userAvatarUrl) {
+            userAvatarPreview.src = globalSettings.userAvatarUrl;
+            userAvatarPreview.style.display = 'block';
+            userAvatarWrapper?.classList.remove('no-avatar');
+        } else {
+            userAvatarPreview.src = '#';
+            userAvatarPreview.style.display = 'none';
+            userAvatarWrapper?.classList.add('no-avatar');
+        }
+    }
+
+    // Assistant Select
+    const assistantAgentSelect = document.getElementById('assistantAgent');
+    if (assistantAgentSelect) {
+        await window.settingsManager.populateAssistantAgentSelect();
+        assistantAgentSelect.value = globalSettings.assistantAgent || '';
+    }
+
+    safeCheck('enableDistributedServer', globalSettings.enableDistributedServer === true);
+    safeCheck('agentMusicControl', globalSettings.agentMusicControl === true);
+    safeCheck('enableVcpToolInjection', globalSettings.enableVcpToolInjection === true);
+    safeCheck('enableContextSanitizer', globalSettings.enableContextSanitizer === true);
+    safeSet('contextSanitizerDepth', globalSettings.contextSanitizerDepth ?? 2);
+    
+    const contextSanitizerDepthContainer = document.getElementById('contextSanitizerDepthContainer');
+    if (contextSanitizerDepthContainer) {
+        contextSanitizerDepthContainer.style.display = globalSettings.enableContextSanitizer === true ? 'block' : 'none';
+    }
+
+    safeCheck('enableAiMessageButtons', globalSettings.enableAiMessageButtons !== false);
+    safeCheck('enableMiddleClickQuickAction', globalSettings.enableMiddleClickQuickAction === true);
+    safeSet('middleClickQuickAction', globalSettings.middleClickQuickAction || '');
+    safeCheck('enableMiddleClickAdvanced', globalSettings.enableMiddleClickAdvanced === true);
+    safeSet('middleClickAdvancedDelay', Math.max(1000, globalSettings.middleClickAdvancedDelay ?? 1000));
+    safeCheck('enableRegenerateConfirmation', globalSettings.enableRegenerateConfirmation !== false);
+
+    // Visibility toggles
+    const middleClickContainer = document.getElementById('middleClickQuickActionContainer');
+    if (middleClickContainer) middleClickContainer.style.display = globalSettings.enableMiddleClickQuickAction ? 'block' : 'none';
+    const middleClickAdvancedContainer = document.getElementById('middleClickAdvancedContainer');
+    if (middleClickAdvancedContainer) middleClickAdvancedContainer.style.display = globalSettings.enableMiddleClickQuickAction ? 'block' : 'none';
+    const middleClickAdvancedSettings = document.getElementById('middleClickAdvancedSettings');
+    if (middleClickAdvancedSettings) middleClickAdvancedSettings.style.display = globalSettings.enableMiddleClickAdvanced ? 'block' : 'none';
+}
+
 // --- Chat Functionality ---
 // --- UI Event Listeners & Helpers ---
 // These functions have been moved to modules/ui-helpers.js

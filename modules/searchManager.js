@@ -32,8 +32,15 @@ const searchManager = {
         this.chatManager = dependencies.modules.chatManager;
         this.currentSelectedItemRef = dependencies.refs.currentSelectedItemRef;
 
-        this.cacheDOMElements();
-        this.setupEventListeners();
+        this.setupGlobalShortcuts();
+        
+        // 🟢 监听模态框就绪事件
+        document.addEventListener('modal-ready', (e) => {
+            if (e.detail.modalId === 'globalSearchModal') {
+                this.cacheDOMElements();
+                this.setupModalEventListeners();
+            }
+        });
     },
 
     cacheDOMElements() {
@@ -45,18 +52,23 @@ const searchManager = {
         this.elements.paginationContainer = document.getElementById('global-search-pagination');
     },
 
-    setupEventListeners() {
-        // Global key listener for opening (Ctrl+F or Command+F) and closing (Esc) the modal
+    setupGlobalShortcuts() {
+        // 仅绑定全局快捷键，不涉及模态框内部元素
         window.addEventListener('keydown', (e) => {
             if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
                 e.preventDefault();
                 this.openModal();
             }
-            if (e.key === 'Escape' && this.elements.modal.style.display !== 'none') {
+            // Esc 键关闭逻辑移至 setupModalEventListeners 或在 openModal 中动态判断
+            if (e.key === 'Escape' && this.elements.modal && this.elements.modal.style.display !== 'none') {
                 e.preventDefault();
                 this.closeModal();
             }
         });
+    },
+
+    setupModalEventListeners() {
+        if (!this.elements.closeButton) return;
 
         // Close button
         this.elements.closeButton.addEventListener('click', () => this.closeModal());
@@ -64,7 +76,6 @@ const searchManager = {
         // Perform search on Ctrl+Enter or Enter (if not multiline)
         this.elements.input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
-                // Ctrl+Enter 或 Shift+Enter 触发搜索
                 if (e.ctrlKey || e.shiftKey) {
                     e.preventDefault();
                     const query = this.elements.input.value.trim();
@@ -72,15 +83,12 @@ const searchManager = {
                         this.performSearch(query);
                     }
                 }
-                // 单独的 Enter 键允许换行，不触发搜索
             }
         });
 
-        // 也保留原来的 keyup 事件，但只在单行内容时触发
         this.elements.input.addEventListener('keyup', (e) => {
             if (e.key === 'Enter' && !e.ctrlKey && !e.shiftKey) {
                 const query = this.elements.input.value.trim();
-                // 只有当内容不包含换行符时才自动搜索
                 if (query && !query.includes('\n') && query !== this.state.currentQuery) {
                     this.performSearch(query);
                 }
@@ -89,8 +97,16 @@ const searchManager = {
     },
 
     async openModal() {
-        this.elements.modal.style.display = 'flex';
-        this.elements.input.focus();
+        // 🟢 确保模态框已实例化
+        if (!this.elements.modal) {
+            this.uiHelper.openModal('globalSearchModal');
+            // openModal 会触发 modal-ready，进而调用 cacheDOMElements
+        }
+        
+        if (this.elements.modal) {
+            this.elements.modal.style.display = 'flex';
+            this.elements.input.focus();
+        }
         this.elements.input.select();
         await this.populateAgentSelect();
     },

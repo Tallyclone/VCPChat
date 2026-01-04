@@ -450,14 +450,38 @@ export function setupEventListeners(deps) {
     
  
     globalSettingsBtn.addEventListener('click', () => uiHelperFunctions.openModal('globalSettingsModal'));
-    globalSettingsForm.addEventListener('submit', (e) => handleSaveGlobalSettings(e, deps));
+    
+    // 🟢 优化：监听模态框就绪事件，动态绑定内部元素的事件
+    document.addEventListener('modal-ready', (e) => {
+        const { modalId } = e.detail;
+        if (modalId === 'globalSettingsModal') {
+            const form = document.getElementById('globalSettingsForm');
+            if (form) form.addEventListener('submit', (ev) => handleSaveGlobalSettings(ev, deps));
+            
+            const addPathBtn = document.getElementById('addNetworkPathBtn');
+            if (addPathBtn) addPathBtn.addEventListener('click', () => addNetworkPathInput());
+            
+            const avatarInput = document.getElementById('userAvatarInput');
+            if (avatarInput) setupUserAvatarListener(avatarInput);
 
-    if (addNetworkPathBtn) {
-        addNetworkPathBtn.addEventListener('click', () => addNetworkPathInput());
-    }
+            const resetBtn = document.getElementById('resetUserAvatarColorsBtn');
+            if (resetBtn) setupResetUserColorsListener(resetBtn);
 
-    if (userAvatarInput) {
-        userAvatarInput.addEventListener('change', (event) => {
+            const styleHeader = document.getElementById('userStyleCollapseHeader');
+            if (styleHeader) {
+                styleHeader.addEventListener('click', () => {
+                    const container = styleHeader.closest('.agent-style-collapsible-container');
+                    if (container) container.classList.toggle('collapsed');
+                });
+            }
+
+            // 绑定颜色选择器同步
+            setupColorSyncListeners();
+        }
+    });
+
+    function setupUserAvatarListener(input) {
+        input.addEventListener('change', (event) => {
             const file = event.target.files[0];
             if (file) {
                 uiHelperFunctions.openAvatarCropper(file, (croppedFile) => {
@@ -468,7 +492,6 @@ export function setupEventListeners(deps) {
                         userAvatarPreview.src = previewUrl;
                         userAvatarPreview.style.display = 'block';
                         
-                        // 裁切完成后立即计算颜色并填充到输入框
                         if (window.getDominantAvatarColor) {
                             window.getDominantAvatarColor(previewUrl).then((avgColor) => {
                                 const userAvatarBorderColorInput = document.getElementById('userAvatarBorderColor');
@@ -492,13 +515,9 @@ export function setupEventListeners(deps) {
                                         userNameTextColorInput.value = hexColor;
                                         userNameTextColorTextInput.value = hexColor;
                                         userAvatarPreview.style.borderColor = hexColor;
-                                        
-                                        console.log('[EventListeners] Auto-filled user colors from avatar:', hexColor);
                                     }
                                 }
-                            }).catch(err => {
-                                console.error('[EventListeners] Error extracting user avatar color:', err);
-                            });
+                            }).catch(err => console.error('[EventListeners] Error extracting user avatar color:', err));
                         }
                     }
                 }, 'user');
@@ -508,6 +527,57 @@ export function setupEventListeners(deps) {
                 setCroppedFile('user', null);
             }
         });
+    }
+
+    function setupResetUserColorsListener(btn) {
+        btn.addEventListener('click', () => {
+            const userAvatarPreview = document.getElementById('userAvatarPreview');
+            if (!userAvatarPreview || !userAvatarPreview.src || userAvatarPreview.src.includes('default_user_avatar.png')) {
+                uiHelperFunctions.showToastNotification('请先上传头像后再重置颜色', 'warning');
+                return;
+            }
+            if (window.getDominantAvatarColor) {
+                window.getDominantAvatarColor(userAvatarPreview.src).then((avgColor) => {
+                    const borderColorInput = document.getElementById('userAvatarBorderColor');
+                    const nameColorInput = document.getElementById('userNameTextColor');
+                    if (avgColor && borderColorInput && nameColorInput) {
+                        const rgbMatch = avgColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+                        if (rgbMatch) {
+                            const r = parseInt(rgbMatch[1]), g = parseInt(rgbMatch[2]), b = parseInt(rgbMatch[3]);
+                            const hexColor = '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
+                            borderColorInput.value = hexColor;
+                            document.getElementById('userAvatarBorderColorText').value = hexColor;
+                            nameColorInput.value = hexColor;
+                            document.getElementById('userNameTextColorText').value = hexColor;
+                            userAvatarPreview.style.borderColor = hexColor;
+                            uiHelperFunctions.showToastNotification('已重置为头像默认颜色', 'success');
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    function setupColorSyncListeners() {
+        const sync = (pickerId, textId, previewId) => {
+            const picker = document.getElementById(pickerId);
+            const text = document.getElementById(textId);
+            const preview = previewId ? document.getElementById(previewId) : null;
+            if (picker && text) {
+                picker.addEventListener('input', (e) => {
+                    text.value = e.target.value;
+                    if (preview) preview.style.borderColor = e.target.value;
+                });
+                text.addEventListener('input', (e) => {
+                    if (/^#[0-9A-F]{6}$/i.test(e.target.value)) {
+                        picker.value = e.target.value;
+                        if (preview) preview.style.borderColor = e.target.value;
+                    }
+                });
+            }
+        };
+        sync('userAvatarBorderColor', 'userAvatarBorderColorText', 'userAvatarPreview');
+        sync('userNameTextColor', 'userNameTextColorText');
     }
     
     // 用户样式设置折叠功能

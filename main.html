@@ -434,318 +434,563 @@
         </aside>
     </div>
  
-    <div class="modal" id="globalSettingsModal">
-        <div class="modal-content">
-            <span class="close-button" onclick="uiHelperFunctions.closeModal('globalSettingsModal')">×</span>
-            <h2>全局设置</h2>
-            <form id="globalSettingsForm">
-                <!-- 用户身份容器 -->
-                <div class="agent-identity-container">
-                    <div class="agent-identity-main">
-                        <div class="agent-avatar-wrapper">
-                            <img id="userAvatarPreview" src="assets/default_user_avatar.png" alt="用户头像预览" class="agent-avatar-display" style="display: block;">
-                            <label for="userAvatarInput" class="avatar-upload-overlay">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
-                                    <circle cx="12" cy="13" r="4"></circle>
-                                </svg>
-                            </label>
-                            <input type="file" id="userAvatarInput" name="userAvatar" accept="image/png, image/jpeg, image/gif" style="display: none;">
+    <div id="modal-container"></div>
+    <template id="globalSettingsModalTemplate">
+        <div class="modal" id="globalSettingsModal">
+            <div class="modal-content">
+                <span class="close-button" onclick="uiHelperFunctions.closeModal('globalSettingsModal')">×</span>
+                <h2>全局设置</h2>
+                <form id="globalSettingsForm">
+                    <!-- 用户身份容器 -->
+                    <div class="agent-identity-container">
+                        <div class="agent-identity-main">
+                            <div class="agent-avatar-wrapper">
+                                <img id="userAvatarPreview" src="assets/default_user_avatar.png" alt="用户头像预览" class="agent-avatar-display" style="display: block;">
+                                <label for="userAvatarInput" class="avatar-upload-overlay">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                                        <circle cx="12" cy="13" r="4"></circle>
+                                    </svg>
+                                </label>
+                                <input type="file" id="userAvatarInput" name="userAvatar" accept="image/png, image/jpeg, image/gif" style="display: none;">
+                            </div>
+                            <div class="agent-name-wrapper">
+                                <label for="userName">用户名:</label>
+                                <input type="text" id="userName" name="userName" placeholder="您的用户名" required>
+                            </div>
                         </div>
-                        <div class="agent-name-wrapper">
-                            <label for="userName">用户名:</label>
-                            <input type="text" id="userName" name="userName" placeholder="您的用户名" required>
+                        
+                        <!-- 用户自定义样式设置 - 可折叠 -->
+                        <div class="agent-style-collapsible-container collapsed">
+                            <div class="style-collapse-header" id="userStyleCollapseHeader">
+                                <span class="style-collapse-icon">▶</span>
+                                <span class="style-collapse-title">自定义样式设置</span>
+                            </div>
+                            <div class="agent-style-controls">
+                                <div class="style-control-item">
+                                    <label for="userAvatarBorderColor">头像外框颜色:</label>
+                                    <div class="color-input-group">
+                                        <input type="color" id="userAvatarBorderColor" name="userAvatarBorderColor" value="#3d5a80">
+                                        <input type="text" id="userAvatarBorderColorText" placeholder="#3d5a80" maxlength="7">
+                                    </div>
+                                </div>
+                                <div class="style-control-item">
+                                    <label for="userNameTextColor">名称文字颜色:</label>
+                                    <div class="color-input-group">
+                                        <input type="color" id="userNameTextColor" name="userNameTextColor" value="#ffffff">
+                                        <input type="text" id="userNameTextColorText" placeholder="#ffffff" maxlength="7">
+                                    </div>
+                                </div>
+                                
+                                <!-- 重置颜色按钮 -->
+                                <div class="style-control-item full-width">
+                                    <button type="button" id="resetUserAvatarColorsBtn" class="reset-colors-btn">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
+                                            <path d="M21 3v5h-5"></path>
+                                            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
+                                            <path d="M3 21v-5h5"></path>
+                                        </svg>
+                                        重置为头像默认颜色
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     
-                    <!-- 用户自定义样式设置 - 可折叠 -->
-                    <div class="agent-style-collapsible-container collapsed">
-                        <div class="style-collapse-header" id="userStyleCollapseHeader">
-                            <span class="style-collapse-icon">▶</span>
-                            <span class="style-collapse-title">自定义样式设置</span>
-                        </div>
-                        <div class="agent-style-controls">
-                            <div class="style-control-item">
-                                <label for="userAvatarBorderColor">头像外框颜色:</label>
-                                <div class="color-input-group">
-                                    <input type="color" id="userAvatarBorderColor" name="userAvatarBorderColor" value="#3d5a80">
-                                    <input type="text" id="userAvatarBorderColorText" placeholder="#3d5a80" maxlength="7">
-                                </div>
-                            </div>
-                            <div class="style-control-item">
-                                <label for="userNameTextColor">名称文字颜色:</label>
-                                <div class="color-input-group">
-                                    <input type="color" id="userNameTextColor" name="userNameTextColor" value="#ffffff">
-                                    <input type="text" id="userNameTextColorText" placeholder="#ffffff" maxlength="7">
-                                </div>
-                            </div>
-                            
-                            <!-- 重置颜色按钮 -->
-                            <div class="style-control-item full-width">
-                                <button type="button" id="resetUserAvatarColorsBtn" class="reset-colors-btn">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
-                                        <path d="M21 3v5h-5"></path>
-                                        <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
-                                        <path d="M3 21v-5h5"></path>
-                                    </svg>
-                                    重置为头像默认颜色
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <hr style="border: none; border-top: 1px solid var(--border-color); margin: 20px 0;">
-                <div>
-                    <label for="vcpServerUrl">VCP 服务器 URL:</label>
-                    <input type="url" id="vcpServerUrl" name="vcpServerUrl" placeholder="将自动补全 /v1/chat/completions" required>
-                </div>
-                <div>
-                    <label for="vcpApiKey">VCP API Key:</label>
-                    <input type="password" id="vcpApiKey" name="vcpApiKey">
-                </div>
-                <div>
-                    <label for="vcpLogUrl">VCP WebSocket服务器 URL:</label>
-                    <input type="url" id="vcpLogUrl" name="vcpLogUrl">
-                </div>
-                <div>
-                    <label for="vcpLogKey">VCP WebSocket鉴权 Key:</label>
-                    <input type="password" id="vcpLogKey" name="vcpLogKey">
-                </div>
-                <div class="form-group">
-                    <label>网络笔记路径:</label>
-                    <div id="networkNotesPathsContainer" style="display: flex; flex-direction: column; gap: 8px;">
-                        <!-- Path inputs will be dynamically added here -->
-                    </div>
-                    <button type="button" id="addNetworkPathBtn" class="sidebar-button small-button" style="margin-top: 8px; width: auto; padding: 4px 10px;">添加路径</button>
-                </div>
-                <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                    <label for="enableAgentBubbleTheme">开启Agent自定义气泡主题</label>
-                    <label class="switch">
-                        <input type="checkbox" id="enableAgentBubbleTheme" name="enableAgentBubbleTheme" checked>
-                        <span class="slider round"></span>
-                    </label>
-                </div>
-                <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                    <label for="enableSmoothStreaming">开启高级流式渲染</label>
-                    <label class="switch">
-                        <input type="checkbox" id="enableSmoothStreaming" name="enableSmoothStreaming">
-                        <span class="slider round"></span>
-                    </label>
-                </div>
-                <div class="form-group-inline">
+                    <hr style="border: none; border-top: 1px solid var(--border-color); margin: 20px 0;">
                     <div>
-                        <label for="minChunkBufferSize" style="display: block; margin-bottom: 4px;">最小渲染Chunk字数 (≥1):</label>
-                        <input type="number" id="minChunkBufferSize" name="minChunkBufferSize" min="1" value="16" style="width: 80px;">
+                        <label for="vcpServerUrl">VCP 服务器 URL:</label>
+                        <input type="url" id="vcpServerUrl" name="vcpServerUrl" placeholder="将自动补全 /v1/chat/completions" required>
                     </div>
-                    <div style="margin-left: 20px;">
-                        <label for="smoothStreamIntervalMs" style="display: block; margin-bottom: 4px;">最小渲染Chunk间隔 (ms, ≥1):</label>
-                        <input type="number" id="smoothStreamIntervalMs" name="smoothStreamIntervalMs" min="1" value="100" style="width: 80px;">
+                    <div>
+                        <label for="vcpApiKey">VCP API Key:</label>
+                        <input type="password" id="vcpApiKey" name="vcpApiKey">
                     </div>
-                </div>
-                <div>
-                </div>
-
-                <hr style="border: none; border-top: 1px solid var(--border-color); margin: 20px 0;">
-
-                <div id="assistantAgentContainer" style="margin-top: 15px;">
-                    <label for="assistantAgent">划词助手 Agent:</label>
-                    <select id="assistantAgent" name="assistantAgent">
-                        <option value="">请选择一个Agent</option>
-                        <!-- Agent list will be populated by JS -->
-                    </select>
-                </div>
-
-                <div id="topicSummaryModelContainer" style="margin-top: 15px;">
-                    <label for="topicSummaryModel">话题总结模型:</label>
-                    <div class="model-input-container">
-                        <input type="text" id="topicSummaryModel" name="topicSummaryModel" placeholder="默认: gemini-2.5-flash-preview-05-20">
-                        <button type="button" id="openTopicSummaryModelSelectBtn" class="small-button" title="选择模型">
-                            <svg data-slot="icon" fill="none" stroke-width="1.5" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="16" height="16">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 15L12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9"></path>
-                            </svg>
-                        </button>
+                    <div>
+                        <label for="vcpLogUrl">VCP WebSocket服务器 URL:</label>
+                        <input type="url" id="vcpLogUrl" name="vcpLogUrl">
                     </div>
-                </div>
-
-                <hr style="border: none; border-top: 1px solid var(--border-color); margin: 20px 0;">
-
-                <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                    <label for="enableDistributedServer">启用VCP分布式服务器</label>
-                    <label class="switch">
-                        <input type="checkbox" id="enableDistributedServer" name="enableDistributedServer">
-                        <span class="slider round"></span>
-                    </label>
-                </div>
-
-                <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                    <label for="enableVcpToolInjection">开启VCP工具信息注入上下文</label>
-                    <label class="switch">
-                        <input type="checkbox" id="enableVcpToolInjection" name="enableVcpToolInjection">
-                        <span class="slider round"></span>
-                    </label>
-                </div>
-
-                <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                    <label for="enableAiMessageButtons" title="开启后，AI回复中的按钮将可以点击并自动发送消息">启用AI消息快捷按钮</label>
-                    <label class="switch">
-                        <input type="checkbox" id="enableAiMessageButtons" name="enableAiMessageButtons">
-                        <span class="slider round"></span>
-                    </label>
-                </div>
-                <hr style="border: none; border-top: 1px solid var(--border-color); margin: 20px 0;">
- 
-                 <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                     <label for="enableContextSanitizer" title="开启后，在提交给AI的上下文中，较早的AI消息的HTML将被转换为Markdown以节省Token。">上下文HTML标签转MD净化器</label>
-                    <label class="switch">
-                        <input type="checkbox" id="enableContextSanitizer" name="enableContextSanitizer">
-                        <span class="slider round"></span>
-                    </label>
-                </div>
-
-                <div class="form-group" id="contextSanitizerDepthContainer" style="display: none; margin-bottom: 20px;">
-                    <label for="contextSanitizerDepth">净化初始深度:</label>
-                    <input type="number" id="contextSanitizerDepth" name="contextSanitizerDepth" min="0" value="2" style="width: 80px;">
-                    <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                        例如: 设置为2，则从倒数第3条AI消息开始净化。设置为0，则净化所有AI消息。
-                    </small>
-                </div>
-
-                <div class="form-group-inline" style="justify-content: space-between; align-items: center;">
-                    <label for="agentMusicControl">启用Agent音乐控制</label>
-                    <label class="switch">
-                        <input type="checkbox" id="agentMusicControl" name="agentMusicControl">
-                        <span class="slider round"></span>
-                    </label>
-                </div>
-
-                <hr style="border: none; border-top: 1px solid var(--border-color); margin: 20px 0;">
-
-                <div class="form-group" style="margin-bottom: 20px;">
-                    <label for="continueWritingPrompt">中键续写默认提示词:</label>
-                    <input type="text" id="continueWritingPrompt" name="continueWritingPrompt" placeholder="默认: 请继续" value="请继续">
-                    <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                        提示：在输入框上中键点击时，如果输入框为空则使用此提示词进行续写；使用 ctrl/command+d 快速使用。
-                    </small>
-                </div>
-
-                <div class="form-group" style="margin-bottom: 20px;">
-                    <label for="flowlockContinueDelay">心流锁续写延迟 (秒):</label>
-                    <input type="number" id="flowlockContinueDelay" name="flowlockContinueDelay" min="1" max="300" step="1" value="5" style="width: 80px;">
-                    <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                        提示：AI完成一次续写后，等待指定秒数再开始下一次续写。
-                    </small>
-                </div>
-
-                <hr style="border: none; border-top: 1px solid var(--border-color); margin: 20px 0;">
-
-                <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                    <label for="enableMiddleClickQuickAction">启用在聊天气泡中的中键快捷功能</label>
-                    <label class="switch">
-                        <input type="checkbox" id="enableMiddleClickQuickAction" name="enableMiddleClickQuickAction">
-                        <span class="slider round"></span>
-                    </label>
-                </div>
-
-                <div class="form-group" id="middleClickQuickActionContainer" style="display: none; margin-bottom: 20px;">
-                    <label for="middleClickQuickAction">中键快速执行功能:</label>
-                    <select id="middleClickQuickAction" name="middleClickQuickAction">
-                        <option value="">请选择要快速执行的功能</option>
-                        <option value="edit">编辑消息</option>
-                        <option value="copy">复制文本</option>
-                        <option value="createBranch">创建分支</option>
-                        <option value="forward">转发消息</option>
-                        <option value="readAloud">朗读气泡</option>
-                        <option value="readMode">阅读模式</option>
-                        <option value="regenerate">重新回复</option>
-                        <option value="delete">删除消息</option>
-                    </select>
-                    <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                        提示：启用后，中键按下消息气泡，1 秒内松开将快速执行选中的右键菜单功能
-                    </small>
-                </div>
-
-                <!-- 重新回复保险机制开关 - 仅在中键快速执行功能为重新回复时显示 -->
-                <div class="form-group" id="regenerateConfirmationContainer" style="display: none; margin-bottom: 15px;">
-                    <div class="form-group-inline" style="justify-content: space-between; align-items: center;">
-                        <label for="enableRegenerateConfirmation" title="开启后，当重新回复的消息不是最后一条时会显示确认对话框">重新回复保险机制</label>
-                        <label class="switch">
-                            <input type="checkbox" id="enableRegenerateConfirmation" name="enableRegenerateConfirmation">
-                            <span class="slider round"></span>
-                        </label>
+                    <div>
+                        <label for="vcpLogKey">VCP WebSocket鉴权 Key:</label>
+                        <input type="password" id="vcpLogKey" name="vcpLogKey">
                     </div>
-                </div>
-
-                <div class="form-group" id="middleClickAdvancedContainer" style="display: none; margin-bottom: 20px;">
+                    <div class="form-group">
+                        <label>网络笔记路径:</label>
+                        <div id="networkNotesPathsContainer" style="display: flex; flex-direction: column; gap: 8px;">
+                            <!-- Path inputs will be dynamically added here -->
+                        </div>
+                        <button type="button" id="addNetworkPathBtn" class="sidebar-button small-button" style="margin-top: 8px; width: auto; padding: 4px 10px;">添加路径</button>
+                    </div>
                     <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                        <label for="enableMiddleClickAdvanced">启用高级中键九宫格选择</label>
+                        <label for="enableAgentBubbleTheme">开启Agent自定义气泡主题</label>
                         <label class="switch">
-                            <input type="checkbox" id="enableMiddleClickAdvanced" name="enableMiddleClickAdvanced">
+                            <input type="checkbox" id="enableAgentBubbleTheme" name="enableAgentBubbleTheme" checked>
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                    <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <label for="enableSmoothStreaming">开启高级流式渲染</label>
+                        <label class="switch">
+                            <input type="checkbox" id="enableSmoothStreaming" name="enableSmoothStreaming">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                    <div class="form-group-inline">
+                        <div>
+                            <label for="minChunkBufferSize" style="display: block; margin-bottom: 4px;">最小渲染Chunk字数 (≥1):</label>
+                            <input type="number" id="minChunkBufferSize" name="minChunkBufferSize" min="1" value="16" style="width: 80px;">
+                        </div>
+                        <div style="margin-left: 20px;">
+                            <label for="smoothStreamIntervalMs" style="display: block; margin-bottom: 4px;">最小渲染Chunk间隔 (ms, ≥1):</label>
+                            <input type="number" id="smoothStreamIntervalMs" name="smoothStreamIntervalMs" min="1" value="100" style="width: 80px;">
+                        </div>
+                    </div>
+                    <div>
+                    </div>
+
+                    <hr style="border: none; border-top: 1px solid var(--border-color); margin: 20px 0;">
+
+                    <div id="assistantAgentContainer" style="margin-top: 15px;">
+                        <label for="assistantAgent">划词助手 Agent:</label>
+                        <select id="assistantAgent" name="assistantAgent">
+                            <option value="">请选择一个Agent</option>
+                            <!-- Agent list will be populated by JS -->
+                        </select>
+                    </div>
+
+                    <div id="topicSummaryModelContainer" style="margin-top: 15px;">
+                        <label for="topicSummaryModel">话题总结模型:</label>
+                        <div class="model-input-container">
+                            <input type="text" id="topicSummaryModel" name="topicSummaryModel" placeholder="默认: gemini-2.5-flash-preview-05-20">
+                            <button type="button" id="openTopicSummaryModelSelectBtn" class="small-button" title="选择模型">
+                                <svg data-slot="icon" fill="none" stroke-width="1.5" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="16" height="16">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 15L12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <hr style="border: none; border-top: 1px solid var(--border-color); margin: 20px 0;">
+
+                    <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <label for="enableDistributedServer">启用VCP分布式服务器</label>
+                        <label class="switch">
+                            <input type="checkbox" id="enableDistributedServer" name="enableDistributedServer">
                             <span class="slider round"></span>
                         </label>
                     </div>
 
-                    <div class="form-group" id="middleClickAdvancedSettings" style="display: none; margin-bottom: 15px;">
-                        <label for="middleClickAdvancedDelay">九宫格出现延迟 (毫秒):</label>
-                        <input type="number" id="middleClickAdvancedDelay" name="middleClickAdvancedDelay" min="1000" max="5000" step="100" value="1000" style="width: 100px;">
+                    <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <label for="enableVcpToolInjection">开启VCP工具信息注入上下文</label>
+                        <label class="switch">
+                            <input type="checkbox" id="enableVcpToolInjection" name="enableVcpToolInjection">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+
+                    <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <label for="enableAiMessageButtons" title="开启后，AI回复中的按钮将可以点击并自动发送消息">启用AI消息快捷按钮</label>
+                        <label class="switch">
+                            <input type="checkbox" id="enableAiMessageButtons" name="enableAiMessageButtons">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                    <hr style="border: none; border-top: 1px solid var(--border-color); margin: 20px 0;">
+    
+                    <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <label for="enableContextSanitizer" title="开启后，在提交给AI的上下文中，较早的AI消息的HTML将被转换为Markdown以节省Token。">上下文HTML标签转MD净化器</label>
+                        <label class="switch">
+                            <input type="checkbox" id="enableContextSanitizer" name="enableContextSanitizer">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+
+                    <div class="form-group" id="contextSanitizerDepthContainer" style="display: none; margin-bottom: 20px;">
+                        <label for="contextSanitizerDepth">净化初始深度:</label>
+                        <input type="number" id="contextSanitizerDepth" name="contextSanitizerDepth" min="0" value="2" style="width: 80px;">
                         <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                            提示：中键按下后不松开，延迟若干时间 (1000-5000ms) 后出现九宫格选择界面，按住鼠标移动到相关功能后松开即可完成快速设置。
+                            例如: 设置为2，则从倒数第3条AI消息开始净化。设置为0，则净化所有AI消息。
                         </small>
                     </div>
-                </div>
 
-                <button type="submit" style="margin-top: 20px;">保存全局设置</button>
-            </form>
+                    <div class="form-group-inline" style="justify-content: space-between; align-items: center;">
+                        <label for="agentMusicControl">启用Agent音乐控制</label>
+                        <label class="switch">
+                            <input type="checkbox" id="agentMusicControl" name="agentMusicControl">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+
+                    <hr style="border: none; border-top: 1px solid var(--border-color); margin: 20px 0;">
+
+                    <div class="form-group" style="margin-bottom: 20px;">
+                        <label for="continueWritingPrompt">中键续写默认提示词:</label>
+                        <input type="text" id="continueWritingPrompt" name="continueWritingPrompt" placeholder="默认: 请继续" value="请继续">
+                        <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                            提示：在输入框上中键点击时，如果输入框为空则使用此提示词进行续写；使用 ctrl/command+d 快速使用。
+                        </small>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 20px;">
+                        <label for="flowlockContinueDelay">心流锁续写延迟 (秒):</label>
+                        <input type="number" id="flowlockContinueDelay" name="flowlockContinueDelay" min="1" max="300" step="1" value="5" style="width: 80px;">
+                        <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                            提示：AI完成一次续写后，等待指定秒数再开始下一次续写。
+                        </small>
+                    </div>
+
+                    <hr style="border: none; border-top: 1px solid var(--border-color); margin: 20px 0;">
+
+                    <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <label for="enableMiddleClickQuickAction">启用在聊天气泡中的中键快捷功能</label>
+                        <label class="switch">
+                            <input type="checkbox" id="enableMiddleClickQuickAction" name="enableMiddleClickQuickAction">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+
+                    <div class="form-group" id="middleClickQuickActionContainer" style="display: none; margin-bottom: 20px;">
+                        <label for="middleClickQuickAction">中键快速执行功能:</label>
+                        <select id="middleClickQuickAction" name="middleClickQuickAction">
+                            <option value="">请选择要快速执行的功能</option>
+                            <option value="edit">编辑消息</option>
+                            <option value="copy">复制文本</option>
+                            <option value="createBranch">创建分支</option>
+                            <option value="forward">转发消息</option>
+                            <option value="readAloud">朗读气泡</option>
+                            <option value="readMode">阅读模式</option>
+                            <option value="regenerate">重新回复</option>
+                            <option value="delete">删除消息</option>
+                        </select>
+                        <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                            提示：启用后，中键按下消息气泡，1 秒内松开将快速执行选中的右键菜单功能
+                        </small>
+                    </div>
+
+                    <!-- 重新回复保险机制开关 - 仅在中键快速执行功能为重新回复时显示 -->
+                    <div class="form-group" id="regenerateConfirmationContainer" style="display: none; margin-bottom: 15px;">
+                        <div class="form-group-inline" style="justify-content: space-between; align-items: center;">
+                            <label for="enableRegenerateConfirmation" title="开启后，当重新回复的消息不是最后一条时会显示确认对话框">重新回复保险机制</label>
+                            <label class="switch">
+                                <input type="checkbox" id="enableRegenerateConfirmation" name="enableRegenerateConfirmation">
+                                <span class="slider round"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-group" id="middleClickAdvancedContainer" style="display: none; margin-bottom: 20px;">
+                        <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <label for="enableMiddleClickAdvanced">启用高级中键九宫格选择</label>
+                            <label class="switch">
+                                <input type="checkbox" id="enableMiddleClickAdvanced" name="enableMiddleClickAdvanced">
+                                <span class="slider round"></span>
+                            </label>
+                        </div>
+
+                        <div class="form-group" id="middleClickAdvancedSettings" style="display: none; margin-bottom: 15px;">
+                            <label for="middleClickAdvancedDelay">九宫格出现延迟 (毫秒):</label>
+                            <input type="number" id="middleClickAdvancedDelay" name="middleClickAdvancedDelay" min="1000" max="5000" step="100" value="1000" style="width: 100px;">
+                            <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                提示：中键按下后不松开，延迟若干时间 (1000-5000ms) 后出现九宫格选择界面，按住鼠标移动到相关功能后松开即可完成快速设置。
+                            </small>
+                        </div>
+                    </div>
+
+                    <button type="submit" style="margin-top: 20px;">保存全局设置</button>
+                </form>
+            </div>
         </div>
-    </div>
+    </template>
 
-    <div class="modal" id="avatarCropperModal">
-        <div class="modal-content" style="max-width: 420px;"> <!-- Adjusted width for cropper -->
-            <span class="close-button" onclick="uiHelperFunctions.closeModal('avatarCropperModal'); document.getElementById('agentAvatarInput').value = ''; if(document.getElementById('userAvatarInput')) document.getElementById('userAvatarInput').value = '';">&times;</span>
-            <h2>裁剪头像</h2>
-            <div id="avatarCropperContainer" style="width: 360px; height: 360px; margin: 10px auto; position: relative; border: 1px solid var(--border-color); overflow: hidden; background-color: #ccc;">
-                <!-- Canvas for the image -->
-                <canvas id="avatarCanvas" width="360" height="360"></canvas>
-                <!-- Div for the circular overlay -->
-                <div id="avatarCropOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; cursor: grab;">
-                    <svg width="100%" height="100%" viewBox="0 0 360 360" style="pointer-events: none;"> <!-- SVG itself non-interactive -->
-                        <defs>
-                            <mask id="circleMask">
-                                <rect width="360" height="360" fill="white"/>
-                                <circle id="cropCircle" cx="180" cy="180" r="100" fill="black"/>
-                            </mask>
-                        </defs>
-                        <rect width="360" height="360" fill="rgba(0,0,0,0.5)" mask="url(#circleMask)"/>
-                        <circle id="cropCircleBorder" cx="180" cy="180" r="100" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="2" stroke-dasharray="5,5"/>
-                    </svg>
+    <template id="avatarCropperModalTemplate">
+        <div class="modal" id="avatarCropperModal">
+            <div class="modal-content" style="max-width: 420px;"> <!-- Adjusted width for cropper -->
+                <span class="close-button" onclick="uiHelperFunctions.closeModal('avatarCropperModal'); document.getElementById('agentAvatarInput').value = ''; if(document.getElementById('userAvatarInput')) document.getElementById('userAvatarInput').value = '';">&times;</span>
+                <h2>裁剪头像</h2>
+                <div id="avatarCropperContainer" style="width: 360px; height: 360px; margin: 10px auto; position: relative; border: 1px solid var(--border-color); overflow: hidden; background-color: #ccc;">
+                    <!-- Canvas for the image -->
+                    <canvas id="avatarCanvas" width="360" height="360"></canvas>
+                    <!-- Div for the circular overlay -->
+                    <div id="avatarCropOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; cursor: grab;">
+                        <svg width="100%" height="100%" viewBox="0 0 360 360" style="pointer-events: none;"> <!-- SVG itself non-interactive -->
+                            <defs>
+                                <mask id="circleMask">
+                                    <rect width="360" height="360" fill="white"/>
+                                    <circle id="cropCircle" cx="180" cy="180" r="100" fill="black"/>
+                                </mask>
+                            </defs>
+                            <rect width="360" height="360" fill="rgba(0,0,0,0.5)" mask="url(#circleMask)"/>
+                            <circle id="cropCircleBorder" cx="180" cy="180" r="100" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="2" stroke-dasharray="5,5"/>
+                        </svg>
+                    </div>
+                </div>
+                <div style="text-align: center; margin-top: 0px; margin-bottom:15px; font-size: 0.9em; color: var(--secondary-text);"><small>使用鼠标滚轮缩放, 拖动选区</small></div>
+                <div class="form-actions" style="margin-top: 10px;">
+                    <button type="button" id="cancelCropBtn" class="sidebar-button" style="background-color: var(--button-bg); color: var(--primary-text);">取消</button>
+                    <button type="button" id="confirmCropBtn" class="sidebar-button" style="background-color: var(--user-bubble-bg); color: white;">确认裁剪</button>
                 </div>
             </div>
-            <div style="text-align: center; margin-top: 0px; margin-bottom:15px; font-size: 0.9em; color: var(--secondary-text);"><small>使用鼠标滚轮缩放, 拖动选区</small></div>
-            <div class="form-actions" style="margin-top: 10px;">
-                <button type="button" id="cancelCropBtn" class="sidebar-button" style="background-color: var(--button-bg); color: var(--primary-text);">取消</button>
-                <button type="button" id="confirmCropBtn" class="sidebar-button" style="background-color: var(--user-bubble-bg); color: white;">确认裁剪</button>
+        </div>
+    </template>
+
+    <template id="createGroupModalTemplate">
+        <div class="modal" id="createGroupModal">
+            <div class="modal-content">
+                <span class="close-button" onclick="uiHelperFunctions.closeModal('createGroupModal')">×</span>
+                <h2>创建新群组</h2>
+                <form id="createGroupForm">
+                    <div>
+                        <label for="newGroupNameInput">群组名称:</label>
+                        <input type="text" id="newGroupNameInput" name="groupName" placeholder="请输入群组名称" required>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="button-secondary" onclick="uiHelperFunctions.closeModal('createGroupModal')">取消</button>
+                        <button type="submit" class="button-primary">创建</button>
+                    </div>
+                </form>
             </div>
         </div>
-    </div>
+    </template>
 
-<div class="modal" id="createGroupModal">
-        <div class="modal-content">
-            <span class="close-button" onclick="uiHelperFunctions.closeModal('createGroupModal')">×</span>
-            <h2>创建新群组</h2>
-            <form id="createGroupForm">
-                <div>
-                    <label for="newGroupNameInput">群组名称:</label>
-                    <input type="text" id="newGroupNameInput" name="groupName" placeholder="请输入群组名称" required>
+    <template id="modelSelectModalTemplate">
+        <div class="modal" id="modelSelectModal">
+            <div class="modal-content">
+                <span class="close-button" onclick="uiHelperFunctions.closeModal('modelSelectModal')">×</span>
+                <h2>选择模型</h2>
+                <div class="model-search-container">
+                    <input type="text" id="modelSearchInput" placeholder="搜索模型..." class="model-search-input">
+                    <button type="button" id="refreshModelsBtn" class="small-button" title="刷新模型列表">
+                        <svg data-slot="icon" fill="none" stroke-width="1.5" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="16" height="16">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 11.667 0l3.181-3.183m-4.991-2.691v-2.985h-4.992v2.985h4.992Zm-4.993 0v4.992h4.992v-4.992h-4.992Z"></path>
+                        </svg>
+                    </button>
                 </div>
-                <div class="form-actions">
-                    <button type="button" class="button-secondary" onclick="uiHelperFunctions.closeModal('createGroupModal')">取消</button>
-                    <button type="submit" class="button-primary">创建</button>
-                </div>
-            </form>
+                <ul id="modelList" class="model-list">
+                    <!-- Models will be dynamically loaded here -->
+                </ul>
+            </div>
         </div>
-    </div>
-    <!-- Agent Settings Modal is now removed, its content moved to #tabContentSettings -->
+    </template>
+
+    <template id="globalSearchModalTemplate">
+        <div id="global-search-modal" class="search-modal-overlay" style="display: none;">
+            <div class="search-modal-content">
+                <div class="search-modal-header">
+                    <h3>全局搜索</h3>
+                    <button id="global-search-close-button" class="search-modal-close-button">&times;</button>
+                </div>
+                <div class="search-modal-body">
+                    <div class="search-controls">
+                        <select id="global-search-agent-select" class="search-agent-select">
+                            <option value="all">所有助手和群组</option>
+                        </select>
+                    </div>
+                    <textarea id="global-search-input" placeholder="搜索聊天记录 (Ctrl+F)...&#10;支持多行搜索，Ctrl+Enter 或 Shift+Enter 执行搜索" rows="3"></textarea>
+                    <div id="global-search-results"></div>
+                    <div id="global-search-pagination"></div>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <template id="forwardMessageModalTemplate">
+        <div class="modal" id="forwardMessageModal">
+            <div class="modal-content">
+                <span class="close-button" onclick="uiHelperFunctions.closeModal('forwardMessageModal')">×</span>
+                <h2>转发消息</h2>
+                <div id="forward-modal-body">
+                    <div class="form-group">
+                        <label for="forwardTargetSearch">转发给:</label>
+                        <input type="text" id="forwardTargetSearch" placeholder="搜索 Agent 或群组...">
+                    </div>
+                    <ul id="forwardTargetList" class="agent-list">
+                        <!-- Target agents will be populated here -->
+                    </ul>
+                    <div class="form-group">
+                        <label for="forwardAdditionalComment">附加评论 (可选):</label>
+                        <textarea id="forwardAdditionalComment" rows="3" placeholder="例如：你怎么看？"></textarea>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="button-secondary" onclick="uiHelperFunctions.closeModal('forwardMessageModal')">取消</button>
+                        <button type="button" id="confirmForwardBtn" class="button-primary">确认转发</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <template id="regexRuleModalTemplate">
+        <div class="modal" id="regexRuleModal">
+            <div class="modal-content">
+                <span class="close-button" id="closeRegexRuleModal">×</span>
+                <h2>编辑正则表达式规则</h2>
+                <form id="regexRuleForm">
+                    <input type="hidden" id="editingRegexRuleId">
+
+                    <div>
+                        <label for="regexRuleTitle">规则标题:</label>
+                        <input type="text" id="regexRuleTitle" name="title" placeholder="例如：隐藏VCP内部标签" required>
+                    </div>
+
+                    <div>
+                        <label for="regexRuleFind">查找内容 (正则表达式):</label>
+                        <textarea id="regexRuleFind" name="findPattern" rows="3" placeholder="例如：/\[VCP.*?\]/g"></textarea>
+                    </div>
+
+                    <div>
+                        <label for="regexRuleReplace">替换为 (留空则为删除):</label>
+                        <textarea id="regexRuleReplace" name="replaceWith" rows="2" placeholder="例如：[内容已隐藏]"></textarea>
+                    </div>
+
+                    <div class="form-fieldset">
+                        <label>影响角色:</label>
+                        <div class="checkbox-group">
+                            <label><input type="checkbox" name="applyToRoles" value="assistant"> AI</label>
+                            <label><input type="checkbox" name="applyToRoles" value="user"> 用户</label>
+                        </div>
+                    </div>
+
+                    <div class="form-fieldset">
+                        <label>影响范围:</label>
+                        <div class="checkbox-group">
+                            <label title="仅影响聊天界面的显示，不改变实际数据">
+                                <input type="checkbox" id="applyToFrontend"> 应用于前端显示
+                            </label>
+                            <label title="仅影响发送给AI的上下文，不改变聊天界面">
+                                <input type="checkbox" id="applyToContext"> 应用于AI上下文
+                            </label>
+                        </div>
+                        <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                            提示：可以同时勾选两项，或只勾选其中一项实现特定效果
+                        </small>
+                    </div>
+
+                    <div class="form-fieldset">
+                        <label>深度控制 (-1代表无限):</label>
+                        <div class="depth-control-group">
+                            <div>
+                                <label for="regexRuleMinDepth">最小深度:</label>
+                                <input type="number" id="regexRuleMinDepth" name="minDepth" value="0" min="-1">
+                            </div>
+                            <div>
+                                <label for="regexRuleMaxDepth">最大深度:</label>
+                                <input type="number" id="regexRuleMaxDepth" name="maxDepth" value="-1" min="-1">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" id="cancelRegexRule" class="button-secondary">取消</button>
+                        <button type="submit" class="button-primary">保存规则</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </template>
+
+    <template id="filterRulesModalTemplate">
+        <div class="modal" id="filterRulesModal">
+            <div class="modal-content" style="max-width: 800px; max-height: 80vh; overflow-y: auto;">
+                <span class="close-button" id="closeFilterRulesModal">×</span>
+                <h2>过滤规则设置</h2>
+
+                <div class="filter-rules-header" style="margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 15px;">
+                    <div style="display: flex; align-items: center; gap: 8px; flex: 0 1 auto;">
+                        <span style="font-weight: 500; color: var(--secondary-text); white-space: nowrap;">当前状态:</span>
+                        <span id="filterStatus" style="color: var(--text-secondary); font-size: 0.95em; white-space: nowrap;"></span>
+                    </div>
+                    <button type="button" id="addFilterRuleBtn" class="sidebar-button small-button" style="width: 130px; flex-shrink: 0; margin-left: auto;">添加过滤规则</button>
+                </div>
+
+                <div id="filterRulesList" class="filter-rules-list">
+                    <!-- 过滤规则将在这里动态显示 -->
+                </div>
+
+                <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--border-color);">
+                    <div style="font-size: 0.9em; color: var(--text-secondary);">
+                        <p><strong>使用说明：</strong></p>
+                        <p>• <strong>过滤总开关关闭：</strong>显示所有通知</p>
+                        <p>• <strong>过滤总开关开启：</strong>只显示白名单规则匹配的消息，其他消息都被过滤掉</p>
+                        <p>• <strong>停留时间：</strong>可设置每条规则对应的通知显示时长，支持永久显示</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <template id="filterRuleEditorModalTemplate">
+        <div class="modal" id="filterRuleEditorModal">
+            <div class="modal-content">
+                <span class="close-button" id="closeFilterRuleEditorModal">×</span>
+                <h2 id="filterRuleEditorTitle">添加过滤规则</h2>
+                <form id="filterRuleEditorForm">
+                    <input type="hidden" id="editingFilterRuleId">
+
+                    <div>
+                        <label for="filterRuleName">规则名称:</label>
+                        <input type="text" id="filterRuleName" name="name" placeholder="例如：系统消息过滤" required>
+                    </div>
+
+                    <div class="form-fieldset">
+                        <label>规则类型:</label>
+                        <div class="radio-group">
+                            <label for="ruleTypeWhitelist" style="display: flex; align-items: center; gap: 5px;">
+                                <input type="radio" id="ruleTypeWhitelist" name="ruleType" value="whitelist" checked>
+                                白名单（总是显示匹配的消息）
+                            </label>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label for="filterRulePattern">匹配模式:</label>
+                        <input type="text" id="filterRulePattern" name="pattern" placeholder="消息标题中包含的关键字或正则表达式" required>
+                        <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                            支持简单的关键字匹配或正则表达式（无需/包围）
+                        </small>
+                    </div>
+
+                    <div class="form-fieldset">
+                        <label>匹配位置:</label>
+                        <div class="checkbox-group">
+                            <label><input type="checkbox" name="matchPosition" value="start"> 标题开头</label>
+                            <label><input type="checkbox" name="matchPosition" value="end"> 标题结尾</label>
+                            <label><input type="checkbox" name="matchPosition" value="contain"> 标题包含</label>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label for="filterRuleDuration">消息停留时间（秒）:</label>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <input type="number" id="filterRuleDuration" name="duration" min="0" max="300" value="7" style="width: 80px;" oninput="this.value = Math.max(0, Math.min(300, parseInt(this.value) || 0))">
+                            <span>秒</span>
+                            <label for="filterRuleDurationInfinite" style="display: flex; align-items: center; gap: 5px;">
+                                <input type="checkbox" id="filterRuleDurationInfinite" name="durationInfinite">
+                                永久显示（不自动消失）
+                            </label>
+                        </div>
+                        <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                            设为0表示立即消失，1-300秒表示停留指定时间后消失，勾选永久显示则不自动消失
+                        </small>
+                    </div>
+
+                    <div class="form-fieldset">
+                        <label for="filterRuleEnabled" style="display: flex; align-items: center; gap: 5px;">
+                            <input type="checkbox" id="filterRuleEnabled" name="enabled" checked>
+                            启用此规则
+                        </label>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" id="cancelFilterRuleEditor" class="button-secondary">取消</button>
+                        <button type="submit" class="button-primary">保存规则</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </template>
+
+    <div id="floating-toast-notifications-container"></div>
 
     <script src="modules/topicSummarizer.js"></script>
     <script src="modules/notificationRenderer.js"></script>
@@ -776,239 +1021,6 @@
     <script src="Flowlockmodules/flowlock.js"></script>
     <script src="Flowlockmodules/flowlock-integration.js"></script>
     <script type="module" src="renderer.js" defer></script>
-
-    <!-- Model Selection Modal -->
-    <div class="modal" id="modelSelectModal">
-        <div class="modal-content">
-            <span class="close-button" onclick="uiHelperFunctions.closeModal('modelSelectModal')">×</span>
-            <h2>选择模型</h2>
-            <div class="model-search-container">
-                <input type="text" id="modelSearchInput" placeholder="搜索模型..." class="model-search-input">
-                <button type="button" id="refreshModelsBtn" class="small-button" title="刷新模型列表">
-                    <svg data-slot="icon" fill="none" stroke-width="1.5" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="16" height="16">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 11.667 0l3.181-3.183m-4.991-2.691v-2.985h-4.992v2.985h4.992Zm-4.993 0v4.992h4.992v-4.992h-4.992Z"></path>
-                    </svg>
-                </button>
-            </div>
-            <ul id="modelList" class="model-list">
-                <!-- Models will be dynamically loaded here -->
-            </ul>
-        </div>
-    </div>
-
-    <!-- Global Search Modal -->
-    <div id="global-search-modal" class="search-modal-overlay" style="display: none;">
-        <div class="search-modal-content">
-            <div class="search-modal-header">
-                <h3>全局搜索</h3>
-                <button id="global-search-close-button" class="search-modal-close-button">&times;</button>
-            </div>
-            <div class="search-modal-body">
-                <div class="search-controls">
-                    <select id="global-search-agent-select" class="search-agent-select">
-                        <option value="all">所有助手和群组</option>
-                    </select>
-                </div>
-                <textarea id="global-search-input" placeholder="搜索聊天记录 (Ctrl+F)...&#10;支持多行搜索，Ctrl+Enter 或 Shift+Enter 执行搜索" rows="3"></textarea>
-                <div id="global-search-results"></div>
-                <div id="global-search-pagination"></div>
-            </div>
-        </div>
-    </div>
-
-    <div id="floating-toast-notifications-container"></div>
-
-    <!-- Forward Message Modal -->
-    <div class="modal" id="forwardMessageModal">
-        <div class="modal-content">
-            <span class="close-button" onclick="uiHelperFunctions.closeModal('forwardMessageModal')">×</span>
-            <h2>转发消息</h2>
-            <div id="forward-modal-body">
-                <div class="form-group">
-                    <label for="forwardTargetSearch">转发给:</label>
-                    <input type="text" id="forwardTargetSearch" placeholder="搜索 Agent 或群组...">
-                </div>
-                <ul id="forwardTargetList" class="agent-list">
-                    <!-- Target agents will be populated here -->
-                </ul>
-                <div class="form-group">
-                    <label for="forwardAdditionalComment">附加评论 (可选):</label>
-                    <textarea id="forwardAdditionalComment" rows="3" placeholder="例如：你怎么看？"></textarea>
-                </div>
-                <div class="form-actions">
-                    <button type="button" class="button-secondary" onclick="uiHelperFunctions.closeModal('forwardMessageModal')">取消</button>
-                    <button type="button" id="confirmForwardBtn" class="button-primary">确认转发</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Regex Rule Editor Modal -->
-    <div class="modal" id="regexRuleModal">
-        <div class="modal-content">
-            <span class="close-button" id="closeRegexRuleModal">×</span>
-            <h2>编辑正则表达式规则</h2>
-            <form id="regexRuleForm">
-                <input type="hidden" id="editingRegexRuleId">
-
-                <div>
-                    <label for="regexRuleTitle">规则标题:</label>
-                    <input type="text" id="regexRuleTitle" name="title" placeholder="例如：隐藏VCP内部标签" required>
-                </div>
-
-                <div>
-                    <label for="regexRuleFind">查找内容 (正则表达式):</label>
-                    <textarea id="regexRuleFind" name="findPattern" rows="3" placeholder="例如：/\[VCP.*?\]/g"></textarea>
-                </div>
-
-                <div>
-                    <label for="regexRuleReplace">替换为 (留空则为删除):</label>
-                    <textarea id="regexRuleReplace" name="replaceWith" rows="2" placeholder="例如：[内容已隐藏]"></textarea>
-                </div>
-
-                <div class="form-fieldset">
-                    <label>影响角色:</label>
-                    <div class="checkbox-group">
-                        <label><input type="checkbox" name="applyToRoles" value="assistant"> AI</label>
-                        <label><input type="checkbox" name="applyToRoles" value="user"> 用户</label>
-                    </div>
-                </div>
-
-                <div class="form-fieldset">
-                    <label>影响范围:</label>
-                    <div class="checkbox-group">
-                        <label title="仅影响聊天界面的显示，不改变实际数据">
-                            <input type="checkbox" id="applyToFrontend"> 应用于前端显示
-                        </label>
-                        <label title="仅影响发送给AI的上下文，不改变聊天界面">
-                            <input type="checkbox" id="applyToContext"> 应用于AI上下文
-                        </label>
-                    </div>
-                    <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                        提示：可以同时勾选两项，或只勾选其中一项实现特定效果
-                    </small>
-                </div>
-
-                <div class="form-fieldset">
-                    <label>深度控制 (-1代表无限):</label>
-                    <div class="depth-control-group">
-                        <div>
-                            <label for="regexRuleMinDepth">最小深度:</label>
-                            <input type="number" id="regexRuleMinDepth" name="minDepth" value="0" min="-1">
-                        </div>
-                        <div>
-                            <label for="regexRuleMaxDepth">最大深度:</label>
-                            <input type="number" id="regexRuleMaxDepth" name="maxDepth" value="-1" min="-1">
-                        </div>
-                    </div>
-                </div>
-
-                <div class="form-actions">
-                    <button type="button" id="cancelRegexRule" class="button-secondary">取消</button>
-                    <button type="submit" class="button-primary">保存规则</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Filter Rules Modal -->
-    <div class="modal" id="filterRulesModal">
-        <div class="modal-content" style="max-width: 800px; max-height: 80vh; overflow-y: auto;">
-            <span class="close-button" id="closeFilterRulesModal">×</span>
-            <h2>过滤规则设置</h2>
-
-            <div class="filter-rules-header" style="margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 15px;">
-                <div style="display: flex; align-items: center; gap: 8px; flex: 0 1 auto;">
-                    <span style="font-weight: 500; color: var(--secondary-text); white-space: nowrap;">当前状态:</span>
-                    <span id="filterStatus" style="color: var(--text-secondary); font-size: 0.95em; white-space: nowrap;"></span>
-                </div>
-                <button type="button" id="addFilterRuleBtn" class="sidebar-button small-button" style="width: 130px; flex-shrink: 0; margin-left: auto;">添加过滤规则</button>
-            </div>
-
-            <div id="filterRulesList" class="filter-rules-list">
-                <!-- 过滤规则将在这里动态显示 -->
-            </div>
-
-            <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--border-color);">
-                <div style="font-size: 0.9em; color: var(--text-secondary);">
-                    <p><strong>使用说明：</strong></p>
-                    <p>• <strong>过滤总开关关闭：</strong>显示所有通知</p>
-                    <p>• <strong>过滤总开关开启：</strong>只显示白名单规则匹配的消息，其他消息都被过滤掉</p>
-                    <p>• <strong>停留时间：</strong>可设置每条规则对应的通知显示时长，支持永久显示</p>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Filter Rule Editor Modal -->
-    <div class="modal" id="filterRuleEditorModal">
-        <div class="modal-content">
-            <span class="close-button" id="closeFilterRuleEditorModal">×</span>
-            <h2 id="filterRuleEditorTitle">添加过滤规则</h2>
-            <form id="filterRuleEditorForm">
-                <input type="hidden" id="editingFilterRuleId">
-
-                <div>
-                    <label for="filterRuleName">规则名称:</label>
-                    <input type="text" id="filterRuleName" name="name" placeholder="例如：系统消息过滤" required>
-                </div>
-
-                <div class="form-fieldset">
-                    <label>规则类型:</label>
-                    <div class="radio-group">
-                        <label for="ruleTypeWhitelist" style="display: flex; align-items: center; gap: 5px;">
-                            <input type="radio" id="ruleTypeWhitelist" name="ruleType" value="whitelist" checked>
-                            白名单（总是显示匹配的消息）
-                        </label>
-                    </div>
-                </div>
-
-                <div>
-                    <label for="filterRulePattern">匹配模式:</label>
-                    <input type="text" id="filterRulePattern" name="pattern" placeholder="消息标题中包含的关键字或正则表达式" required>
-                    <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                        支持简单的关键字匹配或正则表达式（无需/包围）
-                    </small>
-                </div>
-
-                <div class="form-fieldset">
-                    <label>匹配位置:</label>
-                    <div class="checkbox-group">
-                        <label><input type="checkbox" name="matchPosition" value="start"> 标题开头</label>
-                        <label><input type="checkbox" name="matchPosition" value="end"> 标题结尾</label>
-                        <label><input type="checkbox" name="matchPosition" value="contain"> 标题包含</label>
-                    </div>
-                </div>
-
-                <div>
-                    <label for="filterRuleDuration">消息停留时间（秒）:</label>
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <input type="number" id="filterRuleDuration" name="duration" min="0" max="300" value="7" style="width: 80px;" oninput="this.value = Math.max(0, Math.min(300, parseInt(this.value) || 0))">
-                        <span>秒</span>
-                        <label for="filterRuleDurationInfinite" style="display: flex; align-items: center; gap: 5px;">
-                            <input type="checkbox" id="filterRuleDurationInfinite" name="durationInfinite">
-                            永久显示（不自动消失）
-                        </label>
-                    </div>
-                    <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                        设为0表示立即消失，1-300秒表示停留指定时间后消失，勾选永久显示则不自动消失
-                    </small>
-                </div>
-
-                <div class="form-fieldset">
-                    <label for="filterRuleEnabled" style="display: flex; align-items: center; gap: 5px;">
-                        <input type="checkbox" id="filterRuleEnabled" name="enabled" checked>
-                        启用此规则
-                    </label>
-                </div>
-
-                <div class="form-actions">
-                    <button type="button" id="cancelFilterRuleEditor" class="button-secondary">取消</button>
-                    <button type="submit" class="button-primary">保存规则</button>
-                </div>
-            </form>
-        </div>
-    </div>
 
     <!-- User Emoticon Panel -->
     <div id="emoticonPanel" class="emoticon-panel"></div>

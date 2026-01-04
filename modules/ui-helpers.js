@@ -81,8 +81,31 @@
      * @param {string} modalId The ID of the modal element.
      */
     uiHelperFunctions.openModal = function(modalId) {
-        const modalElement = document.getElementById(modalId);
-        if (modalElement) modalElement.classList.add('active');
+        let modalElement = document.getElementById(modalId);
+        
+        // 如果元素不存在，尝试从模板加载
+        if (!modalElement) {
+            const template = document.getElementById(modalId + 'Template');
+            if (template) {
+                const container = document.getElementById('modal-container');
+                if (container) {
+                    const clone = template.content.cloneNode(true);
+                    container.appendChild(clone);
+                    modalElement = document.getElementById(modalId);
+                    console.log(`[UI Helper] Modal "${modalId}" instantiated from template.`);
+                    
+                    // 🟢 关键：触发一个自定义事件，通知其他模块该模态框已就绪
+                    // 这样可以延迟绑定事件监听器
+                    document.dispatchEvent(new CustomEvent('modal-ready', { detail: { modalId } }));
+                }
+            }
+        }
+
+        if (modalElement) {
+            modalElement.classList.add('active');
+        } else {
+            console.warn(`[UI Helper] Modal "${modalId}" not found and no template available.`);
+        }
     };
 
     /**

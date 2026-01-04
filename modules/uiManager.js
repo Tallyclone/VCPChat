@@ -233,7 +233,8 @@ const uiManager = (() => {
         if (digitalClockElement && notificationTitleElement && dateDisplayElement) {
             notificationTitleElement.style.display = 'none';
             updateDateTimeDisplay();
-            setInterval(updateDateTimeDisplay, 1000);
+            // 每分钟更新一次时间显示，减少不必要的每秒刷新
+            setInterval(updateDateTimeDisplay, 60000);
         } else {
             console.error('Digital clock, notification title, or date display element not found.');
         }

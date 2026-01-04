@@ -529,7 +529,7 @@ const settingsManager = (() => {
             refs = options.refs;
             mainRendererFunctions = options.mainRendererFunctions;
 
-            // DOM Elements
+            // DOM Elements (Always present)
             agentSettingsContainer = options.elements.agentSettingsContainer;
             groupSettingsContainer = options.elements.groupSettingsContainer;
             selectItemPromptForSettings = options.elements.selectItemPromptForSettings;
@@ -541,7 +541,6 @@ const settingsManager = (() => {
             agentNameInput = options.elements.agentNameInput;
             agentAvatarInput = options.elements.agentAvatarInput;
             agentAvatarPreview = options.elements.agentAvatarPreview;
-            // agentSystemPromptTextarea removed - now using PromptManager
             agentModelInput = options.elements.agentModelInput;
             agentTemperatureInput = options.elements.agentTemperatureInput;
             agentContextTokenLimitInput = options.elements.agentContextTokenLimitInput;
@@ -549,23 +548,15 @@ const settingsManager = (() => {
             agentTopPInput = document.getElementById('agentTopP');
             agentTopKInput = document.getElementById('agentTopK');
             
-            // Custom style inputs
             agentAvatarBorderColorInput = document.getElementById('agentAvatarBorderColor');
             agentAvatarBorderColorTextInput = document.getElementById('agentAvatarBorderColorText');
             agentNameTextColorInput = document.getElementById('agentNameTextColor');
             agentNameTextColorTextInput = document.getElementById('agentNameTextColorText');
             agentCustomCssInput = document.getElementById('agentCustomCss');
-            const disableCustomColorsCheckbox = document.getElementById('disableCustomColors');
-            const resetAvatarColorsBtn = document.getElementById('resetAvatarColorsBtn');
             openModelSelectBtn = options.elements.openModelSelectBtn;
-            modelSelectModal = options.elements.modelSelectModal;
-            modelList = options.elements.modelList;
-            modelSearchInput = options.elements.modelSearchInput;
-            refreshModelsBtn = options.elements.refreshModelsBtn;
-            topicSummaryModelInput = options.elements.topicSummaryModelInput; // Get new element
-            openTopicSummaryModelSelectBtn = options.elements.openTopicSummaryModelSelectBtn; // Get new element
+            topicSummaryModelInput = options.elements.topicSummaryModelInput;
+            openTopicSummaryModelSelectBtn = options.elements.openTopicSummaryModelSelectBtn;
             
-            // TTS Elements
             agentTtsVoicePrimarySelect = document.getElementById('agentTtsVoicePrimary');
             agentTtsRegexPrimaryInput = document.getElementById('agentTtsRegexPrimary');
             agentTtsVoiceSecondarySelect = document.getElementById('agentTtsVoiceSecondary');
@@ -574,37 +565,44 @@ const settingsManager = (() => {
             agentTtsSpeedSlider = options.elements.agentTtsSpeedSlider;
             ttsSpeedValueSpan = options.elements.ttsSpeedValueSpan;
 
-            // --- New Regex Modal Elements ---
-            regexRuleModal = document.getElementById('regexRuleModal');
-            regexRuleForm = document.getElementById('regexRuleForm');
-            editingRegexRuleId = document.getElementById('editingRegexRuleId');
-            regexRuleTitle = document.getElementById('regexRuleTitle');
-            regexRuleFind = document.getElementById('regexRuleFind');
-            regexRuleReplace = document.getElementById('regexRuleReplace');
-            regexRuleMinDepth = document.getElementById('regexRuleMinDepth');
-            regexRuleMaxDepth = document.getElementById('regexRuleMaxDepth');
-            cancelRegexRuleBtn = document.getElementById('cancelRegexRule');
-            closeRegexRuleModalBtn = document.getElementById('closeRegexRuleModal');
+            // 🟢 监听模态框就绪事件，动态绑定延迟加载的元素
+            document.addEventListener('modal-ready', (e) => {
+                const { modalId } = e.detail;
+                if (modalId === 'modelSelectModal') {
+                    modelSelectModal = document.getElementById('modelSelectModal');
+                    modelList = document.getElementById('modelList');
+                    modelSearchInput = document.getElementById('modelSearchInput');
+                    refreshModelsBtn = document.getElementById('refreshModelsBtn');
+                    
+                    if (modelSearchInput) modelSearchInput.addEventListener('input', filterModels);
+                    if (refreshModelsBtn) refreshModelsBtn.addEventListener('click', handleRefreshModels);
+                }
+                if (modalId === 'regexRuleModal') {
+                    regexRuleModal = document.getElementById('regexRuleModal');
+                    regexRuleForm = document.getElementById('regexRuleForm');
+                    editingRegexRuleId = document.getElementById('editingRegexRuleId');
+                    regexRuleTitle = document.getElementById('regexRuleTitle');
+                    regexRuleFind = document.getElementById('regexRuleFind');
+                    regexRuleReplace = document.getElementById('regexRuleReplace');
+                    regexRuleMinDepth = document.getElementById('regexRuleMinDepth');
+                    regexRuleMaxDepth = document.getElementById('regexRuleMaxDepth');
+                    cancelRegexRuleBtn = document.getElementById('cancelRegexRule');
+                    closeRegexRuleModalBtn = document.getElementById('closeRegexRuleModal');
 
-            // Event Listeners
+                    if (regexRuleForm) regexRuleForm.addEventListener('submit', handleRegexFormSubmit);
+                    if (cancelRegexRuleBtn) cancelRegexRuleBtn.addEventListener('click', closeRegexModal);
+                    if (closeRegexRuleModalBtn) closeRegexRuleModalBtn.addEventListener('click', closeRegexModal);
+                    if (regexRuleModal) {
+                        regexRuleModal.addEventListener('click', (ev) => {
+                            if (ev.target === regexRuleModal) closeRegexModal();
+                        });
+                    }
+                }
+            });
+
+            // Event Listeners for always-present elements
             if (agentSettingsForm) {
                 agentSettingsForm.addEventListener('submit', saveCurrentAgentSettings);
-            }
-            if (regexRuleForm) {
-                regexRuleForm.addEventListener('submit', handleRegexFormSubmit);
-            }
-            if (cancelRegexRuleBtn) {
-                cancelRegexRuleBtn.addEventListener('click', closeRegexModal);
-            }
-            if (closeRegexRuleModalBtn) {
-                closeRegexRuleModalBtn.addEventListener('click', closeRegexModal);
-            }
-            if (regexRuleModal) {
-                regexRuleModal.addEventListener('click', (e) => {
-                    if (e.target === regexRuleModal) {
-                        closeRegexModal();
-                    }
-                });
             }
             if (deleteItemBtn) {
                 deleteItemBtn.addEventListener('click', handleDeleteCurrentItem);

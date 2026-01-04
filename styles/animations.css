@@ -11,8 +11,10 @@
 }
 
 .digital-clock .colon {
-    animation: blinkColon 2s infinite;
+    /* 移除每秒触发重绘的冒号闪烁动画 */
+    /* animation: blinkColon 2s infinite; */
     position: relative;
+    opacity: 0.8;
 }
 
 @keyframes st-colon-blink {
@@ -38,6 +40,9 @@
 .topic-item.active-topic-glowing {
     position: relative;
     overflow: hidden;
+    /* 替代动画的高亮效果：使用静态的背景色和边框 */
+    background-color: var(--accent-bg) !important;
+    border-left: 4px solid var(--highlight-text) !important;
 }
 
 .topic-item.active-topic-glowing::before {
@@ -56,7 +61,9 @@
     border-radius: 50%;
     transform: translate(-50%, -50%) scale(0);
     opacity: 0;
-    animation: st-soft-circular-ripple-effect 3.8s ease-out infinite;
+    /* 移除话题列表激活项的持续波纹动画，减少空闲时的重绘 */
+    /* animation: st-soft-circular-ripple-effect 3.8s ease-out infinite; */
+    will-change: transform, opacity;
     z-index: 0;
     pointer-events: none;
 }
@@ -132,6 +139,7 @@ body.light-theme .topic-item.active-topic-glowing::before {
   animation: speaking-glow 2s ease-in-out infinite;
   cursor: pointer; /* Indicate it's clickable */
   transition: transform 0.3s ease, box-shadow 0.3s ease;
+  will-change: transform, box-shadow;
 }
 
 /* =======================================================
