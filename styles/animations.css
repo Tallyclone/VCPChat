@@ -82,11 +82,9 @@ body.light-theme .topic-item.active-topic-glowing::before {
  * =======================================================
  */
 
+/* 暂时注释掉流光动画，以减少视觉干扰 */
 /*
- * 流式文字动态“流光”效果 (Text Shimmer Effect)
- * 用于 AI 正在输出思维链（Reasoning）但尚未输出正文的阶段
- */
-@keyframes vcp-text-shimmer {
+@keyframes textShimmer {
   from {
     background-position: 200% center;
   }
@@ -95,32 +93,24 @@ body.light-theme .topic-item.active-topic-glowing::before {
   }
 }
 
-.message-item.vcp-thinking-shimmer .md-content {
+.message-item.streaming .md-content {
   background-image: linear-gradient(
     to right,
-    var(--shimmer-color-transparent, rgba(255, 255, 255, 0)) 20%,
-    var(--shimmer-color-highlight, rgba(255, 255, 255, 0.8)) 50%,
-    var(--shimmer-color-transparent, rgba(255, 255, 255, 0)) 80%
+    var(--shimmer-color-transparent) 20%,
+    var(--shimmer-color-highlight) 50%,
+    var(--shimmer-color-transparent) 80%
   );
   
   background-clip: text;
   -webkit-background-clip: text;
-  color: transparent !important;
-  background-size: 200% auto;
-  animation: vcp-text-shimmer 2s linear infinite;
-  display: inline-block;
-  min-width: 4em; /* 确保即使没字也有宽度显示流光 */
-}
 
-/* 适配亮色模式 */
-body.light-theme .message-item.vcp-thinking-shimmer .md-content {
-  background-image: linear-gradient(
-    to right,
-    rgba(0, 0, 0, 0) 20%,
-    rgba(0, 0, 0, 0.4) 50%,
-    rgba(0, 0, 0, 0) 80%
-  );
+  color: transparent;
+  
+  background-size: 200% auto;
+  
+  animation: textShimmer 2.5s linear infinite;
 }
+*/
 
 /*
  * =======================================================
