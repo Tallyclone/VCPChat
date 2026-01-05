@@ -216,21 +216,22 @@
      * @param {string} [cropType='agent'] The type of avatar ('agent', 'group', 'user').
      */
     uiHelperFunctions.openAvatarCropper = async function(file, onCropConfirmedCallback, cropType = 'agent') {
+        // 🟢 修复：先调用 openModal 确保从模板实例化 DOM 元素
+        uiHelperFunctions.openModal('avatarCropperModal');
+
         const cropperContainer = document.getElementById('avatarCropperContainer');
         const canvas = document.getElementById('avatarCanvas');
         const confirmCropBtn = document.getElementById('confirmCropBtn');
         const cancelCropBtn = document.getElementById('cancelCropBtn');
+        const cropCircleSVG = document.getElementById('cropCircle');
+        const cropCircleBorderSVG = document.getElementById('cropCircleBorder');
 
-        if (!cropperContainer || !canvas || !confirmCropBtn || !cancelCropBtn) {
-            console.error("Avatar cropper elements not found!");
+        if (!cropperContainer || !canvas || !confirmCropBtn || !cancelCropBtn || !cropCircleSVG || !cropCircleBorderSVG) {
+            console.error("Avatar cropper elements not found even after modal open!");
             return;
         }
         
         const ctx = canvas.getContext('2d');
-        const cropCircleSVG = document.getElementById('cropCircle');
-        const cropCircleBorderSVG = document.getElementById('cropCircleBorder');
-
-        uiHelperFunctions.openModal('avatarCropperModal');
         canvas.style.display = 'block';
         cropperContainer.style.cursor = 'grab';
 
