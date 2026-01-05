@@ -64,6 +64,7 @@ const settingsManager = (() => {
     
     // A private variable to hold the regex rules for the currently edited agent
     let currentAgentRegexes = [];
+    let currentModelSelectCallback = null;
 
     /**
      * Displays the appropriate settings view (agent, group, or default prompt)
@@ -706,7 +707,7 @@ const settingsManager = (() => {
             if (electronAPI.onModelsUpdated) {
                 electronAPI.onModelsUpdated((models) => {
                     console.log('[SettingsManager] Received models-updated event. Repopulating list.');
-                    populateModelList(models);
+                    populateModelList(models, currentModelSelectCallback);
                     uiHelper.showToastNotification('模型列表已刷新', 'success');
                 });
             }
@@ -941,12 +942,13 @@ const settingsManager = (() => {
     async function handleOpenModelSelect(targetInputElement) {
         try {
             const models = await electronAPI.getCachedModels();
-            populateModelList(models, (modelId) => {
+            currentModelSelectCallback = (modelId) => {
                 if (targetInputElement) {
                     targetInputElement.value = modelId;
                 }
                 uiHelper.closeModal('modelSelectModal');
-            });
+            };
+            populateModelList(models, currentModelSelectCallback);
             uiHelper.openModal('modelSelectModal');
         } catch (error) {
             console.error('Failed to get cached models:', error);
