@@ -1576,18 +1576,25 @@ let selectedForwardTarget = null;
 async function showForwardModal(message) {
     messageToForward = message;
     selectedForwardTarget = null; // Reset selection
+    
+    // 🟢 修复：先调用 openModal 确保从模板实例化 DOM 元素
+    uiHelperFunctions.openModal('forwardMessageModal');
+
     const modal = document.getElementById('forwardMessageModal');
     const targetList = document.getElementById('forwardTargetList');
     const searchInput = document.getElementById('forwardTargetSearch');
     const commentInput = document.getElementById('forwardAdditionalComment');
     const confirmBtn = document.getElementById('confirmForwardBtn');
 
+    if (!targetList || !searchInput || !commentInput || !confirmBtn) {
+        console.error("[Forward Modal] Elements not found even after modal open!");
+        return;
+    }
+
     targetList.innerHTML = '<li>Loading...</li>';
     commentInput.value = '';
     searchInput.value = '';
     confirmBtn.disabled = true;
-
-    uiHelperFunctions.openModal('forwardMessageModal');
 
     const result = await window.electronAPI.getAllItems();
     if (result.success) {
