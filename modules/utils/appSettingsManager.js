@@ -38,6 +38,16 @@ class SettingsValidator {
             validated.networkNotesPaths = [];
             hasIssues = true;
         }
+
+        if (!Array.isArray(validated.combinedItemOrder)) {
+            validated.combinedItemOrder = [];
+            hasIssues = true;
+        }
+
+        if (!Array.isArray(validated.agentOrder)) {
+            validated.agentOrder = [];
+            hasIssues = true;
+        }
         
         return { validated, hasIssues };
     }
@@ -74,7 +84,9 @@ class SettingsManager extends EventEmitter {
             enableVcpToolInjection: false,
             lastOpenItemId: null,
             lastOpenItemType: null,
-            lastOpenTopicId: null
+            lastOpenTopicId: null,
+            combinedItemOrder: [],
+            agentOrder: []
         };
     }
 
