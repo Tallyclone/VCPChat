@@ -364,6 +364,10 @@ function processAllPreBlocksInContentDiv(contentDiv) {
 
     const allPreElements = contentDiv.querySelectorAll('pre');
     allPreElements.forEach(preElement => {
+        // 🟢 增加防御性检查：确保 preElement 仍在 DOM 中
+        // 在嵌套的 pre 场景下，外层 pre 的处理可能会导致内层 pre 被移出 DOM
+        if (!preElement || !preElement.parentElement) return;
+
         if (preElement.dataset.vcpPrettified === "true" ||
             preElement.dataset.maidDiaryPrettified === "true" ||
             preElement.dataset.vcpHtmlPreview === "true" ||
@@ -804,9 +808,13 @@ function processRenderedContent(contentDiv, settings = {}) {
     // Apply syntax highlighting to code blocks
     if (window.hljs) {
         contentDiv.querySelectorAll('pre code').forEach((block) => {
-            // Only highlight if the block hasn't been specially prettified (e.g., DailyNote or VCP ToolUse)
-            if (!block.parentElement.dataset.vcpPrettified && !block.parentElement.dataset.maidDiaryPrettified) {
-                window.hljs.highlightElement(block);
+            // 🟢 增加防御性检查：确保 block 及其父元素存在
+            // 在嵌套的 code block 场景下，外层 block 的高亮可能会导致内层 block 被移出 DOM
+            if (block && block.parentElement) {
+                // Only highlight if the block hasn't been specially prettified (e.g., DailyNote or VCP ToolUse)
+                if (!block.parentElement.dataset.vcpPrettified && !block.parentElement.dataset.maidDiaryPrettified) {
+                    window.hljs.highlightElement(block);
+                }
             }
         });
     }
