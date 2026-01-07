@@ -87,24 +87,27 @@ class AgentConfigManager extends EventEmitter {
                 try {
                     const backupContent = await fs.readFile(backupPath, 'utf8');
                     const backupConfig = JSON.parse(backupContent);
-                    console.log(`Recovered agent ${agentId} config from backup`);
-                    return { ...backupConfig };
+
+                    // 验证备份数据是否有效且包含用户自定义数据（例如非默认的 systemPrompt 或 topics）
+                    const isNonDefault = backupConfig && (
+                        (Array.isArray(backupConfig.topics) && backupConfig.topics.length > 0 && backupConfig.topics[0].id !== 'default') ||
+                        (backupConfig.systemPrompt && !backupConfig.systemPrompt.includes(`你是 ${agentId}`)) ||
+                        backupConfig.model
+                    );
+
+                    if (isNonDefault) {
+                        console.log(`Recovered agent ${agentId} config from valid backup`);
+                        return { ...backupConfig };
+                    } else {
+                        console.warn(`Agent ${agentId} backup exists but appears to be default or empty, skipping recovery to prevent overwrite`);
+                    }
                 } catch (backupError) {
                     console.error(`Agent ${agentId} backup also corrupted:`, backupError);
                 }
             }
             
-            // 最后的手段：返回默认配置
-            const defaultConfig = {
-                name: agentId,
-                systemPrompt: `你是 ${agentId}。`,
-                model: 'gemini-2.5-flash-preview-05-20',
-                temperature: 0.7,
-                contextTokenLimit: 1000000,
-                maxOutputTokens: 60000,
-                topics: [{ id: "default", name: "主要对话", createdAt: Date.now() }]
-            };
-            return { ...defaultConfig };
+            // 如果主文件损坏且没有有效的备份，抛出错误以防止覆盖
+            throw new Error(`Agent config for ${agentId} corrupted and no valid backup found: ${error.message}`);
         }
     }
 
