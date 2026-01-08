@@ -26,10 +26,11 @@ window.filterManager = (() => {
      * 打开过滤规则设置模态框
      */
     function openFilterRulesModal() {
-        const modal = document.getElementById('filterRulesModal');
+        _uiHelper.openModal('filterRulesModal');
         
+        const modal = document.getElementById('filterRulesModal');
         if (!modal) {
-            console.error("[FilterManager] Modal elements not found!");
+            console.error("[FilterManager] Modal elements not found even after openModal!");
             return;
         }
 
@@ -38,8 +39,6 @@ window.filterManager = (() => {
 
         // 渲染规则列表
         renderFilterRulesList();
-
-        _uiHelper.openModal('filterRulesModal');
     }
 
     /**
@@ -198,6 +197,8 @@ window.filterManager = (() => {
      * @param {FilterRule|null} ruleToEdit
      */
     function openFilterRuleEditor(ruleToEdit = null) {
+        _uiHelper.openModal('filterRuleEditorModal');
+        
         const modal = document.getElementById('filterRuleEditorModal');
         const form = document.getElementById('filterRuleEditorForm');
         const title = document.getElementById('filterRuleEditorTitle');
@@ -377,40 +378,43 @@ window.filterManager = (() => {
             });
         }
 
-        // Setup event listeners that were previously in renderer.js
-        const addFilterRuleBtn = document.getElementById('addFilterRuleBtn');
-        if (addFilterRuleBtn) {
-            addFilterRuleBtn.addEventListener('click', addFilterRule);
-        }
-
-        const filterRuleEditorForm = document.getElementById('filterRuleEditorForm');
-        if (filterRuleEditorForm) {
-            filterRuleEditorForm.addEventListener('submit', (e) => {
-                e.preventDefault();
-                saveFilterRule();
-            });
-        }
-
-        const cancelFilterRuleEditorBtn = document.getElementById('cancelFilterRuleEditor');
-        if (cancelFilterRuleEditorBtn) {
-            cancelFilterRuleEditorBtn.addEventListener('click', () => {
-                _uiHelper.closeModal('filterRuleEditorModal');
-            });
-        }
-
-        const closeFilterRuleEditorBtn = document.getElementById('closeFilterRuleEditorModal');
-        if (closeFilterRuleEditorBtn) {
-            closeFilterRuleEditorBtn.addEventListener('click', () => {
-                _uiHelper.closeModal('filterRuleEditorModal');
-            });
-        }
-
-        const closeFilterRulesBtn = document.getElementById('closeFilterRulesModal');
-        if (closeFilterRulesBtn) {
-            closeFilterRulesBtn.addEventListener('click', () => {
-                _uiHelper.closeModal('filterRulesModal');
-            });
-        }
+        // 🟢 监听模态框就绪事件，动态绑定延迟加载的元素
+        document.addEventListener('modal-ready', (e) => {
+            const { modalId } = e.detail;
+            if (modalId === 'filterRulesModal') {
+                const addFilterRuleBtn = document.getElementById('addFilterRuleBtn');
+                if (addFilterRuleBtn) {
+                    addFilterRuleBtn.addEventListener('click', addFilterRule);
+                }
+                const closeFilterRulesBtn = document.getElementById('closeFilterRulesModal');
+                if (closeFilterRulesBtn) {
+                    closeFilterRulesBtn.addEventListener('click', () => {
+                        _uiHelper.closeModal('filterRulesModal');
+                    });
+                }
+            }
+            if (modalId === 'filterRuleEditorModal') {
+                const filterRuleEditorForm = document.getElementById('filterRuleEditorForm');
+                if (filterRuleEditorForm) {
+                    filterRuleEditorForm.addEventListener('submit', (e) => {
+                        e.preventDefault();
+                        saveFilterRule();
+                    });
+                }
+                const cancelFilterRuleEditorBtn = document.getElementById('cancelFilterRuleEditor');
+                if (cancelFilterRuleEditorBtn) {
+                    cancelFilterRuleEditorBtn.addEventListener('click', () => {
+                        _uiHelper.closeModal('filterRuleEditorModal');
+                    });
+                }
+                const closeFilterRuleEditorBtn = document.getElementById('closeFilterRuleEditorModal');
+                if (closeFilterRuleEditorBtn) {
+                    closeFilterRuleEditorBtn.addEventListener('click', () => {
+                        _uiHelper.closeModal('filterRuleEditorModal');
+                    });
+                }
+            }
+        });
 
         // 移除了 globalFilterCheckbox 的事件监听器，因为现在通过左键点击 doNotDisturbBtn 来切换总开关
     }

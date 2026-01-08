@@ -813,9 +813,75 @@ const settingsManager = (() => {
             await electronAPI.saveAgentConfig(agentId, newConfig);
         },
         
-        
+        /**
+         * 重新加载当前 Agent 的设置（用于外部触发刷新）
+         * @param {string} agentId - Agent ID
+         */
+        reloadAgentSettings: async (agentId) => {
+            // 检查是否正在编辑该 Agent
+            if (editingAgentIdInput && editingAgentIdInput.value === agentId) {
+                console.log('[SettingsManager] Reloading settings for agent:', agentId);
+                
+                // 确保设置页面是激活状态
+                const settingsTab = document.getElementById('tabContentSettings');
+                const isSettingsVisible = settingsTab && settingsTab.classList.contains('active');
+                
+                if (!isSettingsVisible) {
+                    console.log('[SettingsManager] Settings tab not visible, performing silent config reload');
+                    
+                    try {
+                        // 方案1：直接重新加载配置并填充表单，不切换标签
+                        const config = await electronAPI.getAgentConfig(agentId);
+                        if (config && !config.error) {
+                            // 临时激活设置标签内容（不改变按钮状态）
+                            const originalDisplay = settingsTab.style.display;
+                            settingsTab.style.display = 'block';
+                            settingsTab.classList.add('active');
+                            
+                            // 等待 DOM 准备好
+                            await new Promise(resolve => setTimeout(resolve, 50));
+                            
+                            // 重新填充表单
+                            await populateAgentSettingsForm(agentId, config);
+                            console.log('[SettingsManager] Agent settings reloaded silently');
+                            
+                            // 恢复原始显示状态
+                            await new Promise(resolve => setTimeout(resolve, 50));
+                            settingsTab.classList.remove('active');
+                            if (originalDisplay !== 'block') {
+                                settingsTab.style.display = originalDisplay;
+                            }
+                            
+                            return { success: true, silent: true };
+                        } else {
+                            console.error('[SettingsManager] Failed to load config for silent reload:', config?.error);
+                            return await performFullTabSwitch(agentId);
+                        }
+                    } catch (error) {
+                        console.error('[SettingsManager] Error during silent reload:', error);
+                        return await performFullTabSwitch(agentId);
+                    }
+                }
+                
+                // 重新加载配置（设置页面可见的情况）
+                const config = await electronAPI.getAgentConfig(agentId);
+                if (config && !config.error) {
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                    await populateAgentSettingsForm(agentId, config);
+                    console.log('[SettingsManager] Agent settings reloaded successfully');
+                    sessionStorage.removeItem('pendingAgentReload');
+                    return { success: true };
+                } else {
+                    console.error('[SettingsManager] Failed to reload agent config:', config?.error);
+                    return { success: false, error: config?.error || 'Failed to load config' };
+                }
+            } else {
+                console.log('[SettingsManager] Agent not currently being edited, skipping reload');
+                return { success: true, skipped: true };
+            }
+        }
     };
-    
+
     /**
      * 执行完整的标签切换刷新（降级方案 - 内部辅助函数）
      * @param {string} agentId - Agent ID
@@ -851,90 +917,6 @@ const settingsManager = (() => {
             return { success: true, deferred: true };
         }
     }
-
-    // --- Public API ---
-    return {
-        init: (options) => {
-            // ... existing init code ...
-        },
-        displaySettingsForItem: displaySettingsForItem,
-        populateAssistantAgentSelect: populateAssistantAgentSelect,
-        completeVcpUrl: completeVcpUrl,
-        triggerAgentSave: async () => {
-            // ... existing triggerAgentSave code ...
-        },
-        
-        /**
-         * 重新加载当前 Agent 的设置（用于外部触发刷新）
-         * @param {string} agentId - Agent ID
-         */
-        reloadAgentSettings: async (agentId) => {
-            // 检查是否正在编辑该 Agent
-            if (editingAgentIdInput && editingAgentIdInput.value === agentId) {
-                console.log('[SettingsManager] Reloading settings for agent:', agentId);
-                
-                // 确保设置页面是激活状态
-                const settingsTab = document.getElementById('tabContentSettings');
-                const isSettingsVisible = settingsTab && settingsTab.classList.contains('active');
-                
-                if (!isSettingsVisible) {
-                    console.log('[SettingsManager] Settings tab not visible, performing silent config reload');
-                    
-                    try {
-                        // 方案1：直接重新加载配置并填充表单，不切换标签
-                        // 这是最快速的方案，直接调用 populateAgentSettingsForm
-                        const config = await electronAPI.getAgentConfig(agentId);
-                        if (config && !config.error) {
-                            // 临时激活设置标签内容（不改变按钮状态）
-                            const originalDisplay = settingsTab.style.display;
-                            settingsTab.style.display = 'block';
-                            settingsTab.classList.add('active');
-                            
-                            // 等待 DOM 准备好
-                            await new Promise(resolve => setTimeout(resolve, 50));
-                            
-                            // 重新填充表单（这会触发 PromptManager 的初始化）
-                            await populateAgentSettingsForm(agentId, config);
-                            console.log('[SettingsManager] Agent settings reloaded silently');
-                            
-                            // 恢复原始显示状态
-                            await new Promise(resolve => setTimeout(resolve, 50));
-                            settingsTab.classList.remove('active');
-                            if (originalDisplay !== 'block') {
-                                settingsTab.style.display = originalDisplay;
-                            }
-                            
-                            return { success: true, silent: true };
-                        } else {
-                            console.error('[SettingsManager] Failed to load config for silent reload:', config?.error);
-                            // 降级到完整的标签切换方案
-                            return await performFullTabSwitch(agentId);
-                        }
-                    } catch (error) {
-                        console.error('[SettingsManager] Error during silent reload:', error);
-                        // 降级到完整的标签切换方案
-                        return await performFullTabSwitch(agentId);
-                    }
-                }
-                
-                // 重新加载配置（设置页面可见的情况）
-                const config = await electronAPI.getAgentConfig(agentId);
-                if (config && !config.error) {
-                    await new Promise(resolve => setTimeout(resolve, 50));
-                    await populateAgentSettingsForm(agentId, config);
-                    console.log('[SettingsManager] Agent settings reloaded successfully');
-                    sessionStorage.removeItem('pendingAgentReload');
-                    return { success: true };
-                } else {
-                    console.error('[SettingsManager] Failed to reload agent config:', config?.error);
-                    return { success: false, error: config?.error || 'Failed to load config' };
-                }
-            } else {
-                console.log('[SettingsManager] Agent not currently being edited, skipping reload');
-                return { success: true, skipped: true };
-            }
-        }
-    };
 
     /**
      * Opens the model selection modal and populates it with cached models.
@@ -1126,6 +1108,24 @@ const settingsManager = (() => {
     }
 
     function openRegexModal(ruleData = null) {
+        uiHelper.openModal('regexRuleModal');
+        
+        // Ensure elements are captured if they weren't already
+        if (!regexRuleForm) {
+            regexRuleModal = document.getElementById('regexRuleModal');
+            regexRuleForm = document.getElementById('regexRuleForm');
+            editingRegexRuleId = document.getElementById('editingRegexRuleId');
+            regexRuleTitle = document.getElementById('regexRuleTitle');
+            regexRuleFind = document.getElementById('regexRuleFind');
+            regexRuleReplace = document.getElementById('regexRuleReplace');
+            regexRuleMinDepth = document.getElementById('regexRuleMinDepth');
+            regexRuleMaxDepth = document.getElementById('regexRuleMaxDepth');
+            cancelRegexRuleBtn = document.getElementById('cancelRegexRule');
+            closeRegexRuleModalBtn = document.getElementById('closeRegexRuleModal');
+        }
+
+        if (!regexRuleForm) return;
+
         regexRuleForm.reset();
         if (ruleData) {
             // Edit mode
@@ -1166,11 +1166,10 @@ const settingsManager = (() => {
             regexRuleMinDepth.value = 0;
             regexRuleMaxDepth.value = -1;
         }
-        regexRuleModal.style.display = 'block';
     }
 
     function closeRegexModal() {
-        regexRuleModal.style.display = 'none';
+        uiHelper.closeModal('regexRuleModal');
     }
 
     function handleRegexFormSubmit(event) {
