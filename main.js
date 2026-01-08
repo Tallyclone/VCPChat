@@ -230,6 +230,14 @@ function createWindow() {
 
     mainWindow.loadFile('main.html');
 
+    // 拦截主窗口内的直接导航（防止在应用内打开外部网页）
+    mainWindow.webContents.on('will-navigate', (event, url) => {
+        if (url !== mainWindow.webContents.getURL() && (url.startsWith('http:') || url.startsWith('https:'))) {
+            event.preventDefault();
+            shell.openExternal(url);
+        }
+    });
+
     // 当主窗口关闭时，退出整个应用程序
     // 这将触发 'will-quit' 事件，用于执行所有清理操作
     mainWindow.on('close', (event) => {
@@ -367,6 +375,17 @@ if (!gotTheLock) {
 
 
   app.whenReady().then(async () => { // Make the function async
+    // 全局处理所有窗口的新窗口打开请求，确保外部链接在系统浏览器中打开
+    app.on('web-contents-created', (event, contents) => {
+        contents.setWindowOpenHandler(({ url }) => {
+            if (url.startsWith('http:') || url.startsWith('https:')) {
+                shell.openExternal(url);
+                return { action: 'deny' };
+            }
+            return { action: 'allow' };
+        });
+    });
+
     // Handle the emergency close request from the splash screen
     ipcMain.on('close-app', () => {
         console.log('[Main] Received close-app request from splash screen. Quitting.');
