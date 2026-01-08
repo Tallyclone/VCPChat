@@ -509,6 +509,15 @@ function renderChunkDirectlyToDOM(messageId, textToAppend) {
 export async function startStreamingMessage(message, passedMessageItem = null) {
     const messageId = message.id;
     
+    // 🟢 修复：如果消息已在处理中，直接返回现有状态
+    const currentStatus = messageInitializationStatus.get(messageId);
+    if (currentStatus === 'pending' || currentStatus === 'ready') {
+        console.debug(`[StreamManager] Message ${messageId} already initialized (${currentStatus}), skipping re-init`);
+        // 返回已缓存的 DOM 引用（如果有）
+        const cached = getCachedMessageDom(messageId);
+        return cached?.messageItem || null;
+    }
+
     // Store the context for this message - ensure proper context structure
     const context = {
         agentId: message.agentId || message.context?.agentId || (message.isGroupMessage ? undefined : refs.currentSelectedItemRef.get()?.id),
@@ -527,7 +536,12 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
     }
     
     messageContextMap.set(messageId, context);
-    messageInitializationStatus.set(messageId, 'pending');
+    
+    // 🟢 关键修复：如果消息已经初始化过，不要重新设为 pending，避免阻塞后续 chunk
+    if (!currentStatus || currentStatus === 'finalized') {
+        messageInitializationStatus.set(messageId, 'pending');
+    }
+    
     activeStreamingMessageId = messageId;
     
     const { chatMessagesDiv, electronAPI, currentChatHistoryRef, uiHelper } = refs;
@@ -581,9 +595,21 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
     
     // Initialize streaming state
     if (shouldEnableSmoothStreaming()) {
-        streamingChunkQueues.set(messageId, []);
+        if (!streamingChunkQueues.has(messageId)) {
+            streamingChunkQueues.set(messageId, []);
+        }
     }
-    accumulatedStreamText.set(messageId, message.content || '');
+    
+    // 🟢 使用更明确的覆盖逻辑
+    const existingText = accumulatedStreamText.get(messageId);
+    const newText = message.content || '';
+    const shouldOverwrite = !existingText
+        || existingText === '思考中...'
+        || newText.length > existingText.length;
+    
+    if (shouldOverwrite) {
+        accumulatedStreamText.set(messageId, newText);
+    }
     
     // Prepare placeholder for history
     const placeholderForHistory = {
