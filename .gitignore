@@ -8,6 +8,7 @@ AppData/
 node_modules/
 
 .env
+!audio_engine/.env
 
 /public/assets
 
