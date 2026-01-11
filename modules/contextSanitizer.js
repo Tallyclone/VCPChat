@@ -164,6 +164,30 @@ class ContextSanitizer {
                 return text;
             }
         });
+
+        // 规则5：清理 VCP 元思考链
+        this.turndownService.addRule('vcpThoughtChains', {
+            filter: (node) => {
+                if (node.nodeName !== 'DIV') return false;
+                return node.classList.contains('vcp-thought-chain-bubble');
+            },
+            replacement: (content, node) => {
+                // 默认不注入元思考链到请求上下文
+                // 如果以后有开关，可以在这里判断
+                return '';
+            }
+        });
+    }
+
+    /**
+     * 清理元思考链（明文形式）
+     * @param {string} content - 原始内容
+     * @returns {string} - 清理后的内容
+     */
+    stripThoughtChains(content) {
+        if (typeof content !== 'string') return content;
+        const THOUGHT_CHAIN_REGEX = /\[--- VCP元思考链(?::\s*"([^"]*)")?\s*---\][\s\S]*?\[--- 元思考链结束 ---\]/gs;
+        return content.replace(THOUGHT_CHAIN_REGEX, '');
     }
 
     /**

@@ -1130,3 +1130,82 @@ body:not(.light-theme) .mermaid-error {
 body:not(.light-theme) .vcp-html-preview-container {
     border-color: rgba(255, 255, 255, 0.1);
 }
+
+/* --- VCP Thought Chain Bubble --- */
+.vcp-thought-chain-bubble {
+    display: block !important;
+    background: rgba(120, 120, 128, 0.05) !important;
+    border-radius: 12px !important;
+    border: 1px solid rgba(120, 120, 128, 0.2);
+    padding: 10px 15px !important;
+    margin: 10px 0 !important;
+    position: relative;
+    font-family: var(--font-family, sans-serif) !important;
+    font-size: 0.92em !important;
+    line-height: 1.6;
+    width: fit-content;
+    max-width: 98%;
+    transition: all 0.3s ease;
+}
+
+body.light-theme .vcp-thought-chain-bubble {
+    background: rgba(0, 0, 0, 0.03) !important;
+    border-color: rgba(0, 0, 0, 0.1);
+}
+
+.vcp-thought-chain-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+    opacity: 0.8;
+    transition: opacity 0.2s;
+}
+
+.vcp-thought-chain-header:hover {
+    opacity: 1;
+}
+
+.vcp-thought-chain-icon {
+    font-size: 1.1em;
+    filter: grayscale(0.5);
+}
+
+.vcp-thought-chain-label {
+    font-weight: 600;
+    color: var(--primary-text);
+    font-size: 0.95em;
+}
+
+.vcp-thought-chain-collapsible-content {
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+}
+
+.vcp-thought-chain-bubble.expanded .vcp-thought-chain-collapsible-content {
+    max-height: 2000px;
+    opacity: 1;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed rgba(120, 120, 128, 0.2);
+}
+
+.vcp-thought-chain-body {
+    color: var(--primary-text);
+    font-style: italic;
+}
+
+.vcp-thought-chain-body pre {
+    background: rgba(0, 0, 0, 0.05);
+    padding: 8px;
+    border-radius: 6px;
+    font-style: normal;
+}
+
+/* Reuse the toggle icon from tool results */
+.vcp-thought-chain-bubble .vcp-result-toggle-icon {
+    margin-left: 10px;
+}

@@ -40,6 +40,7 @@ const HTML_FENCE_CHECK_REGEX = /```\w*\n<!DOCTYPE html>/i;
 const MERMAID_CODE_REGEX = /<code.*?>\s*(flowchart|graph|mermaid)\s+([\s\S]*?)<\/code>/gi;
 const MERMAID_FENCE_REGEX = /```(mermaid|flowchart|graph)\n([\s\S]*?)```/g;
 const CODE_FENCE_REGEX = /```\w*([\s\S]*?)```/g;
+const THOUGHT_CHAIN_REGEX = /\[--- VCP元思考链(?::\s*"([^"]*)")?\s*---\]([\s\S]*?)\[--- 元思考链结束 ---\]/gs;
 
 
 // --- Enhanced Rendering Styles (from UserScript) ---
@@ -459,6 +460,39 @@ function transformSpecialBlocks(text) {
         }
         html += `<div class="diary-content">${processedDiaryContent}</div>`;
         html += `</div>`;
+
+        return html;
+    });
+
+    // Process VCP Thought Chains
+    processed = processed.replace(THOUGHT_CHAIN_REGEX, (match, theme, rawContent) => {
+        const displayTheme = theme ? theme.trim() : "元思考链";
+        const content = rawContent.trim();
+        const escapedContent = escapeHtml(content);
+
+        let html = `<div class="vcp-thought-chain-bubble collapsible">`;
+        html += `<div class="vcp-thought-chain-header">`;
+        html += `<span class="vcp-thought-chain-icon">🧠</span>`;
+        html += `<span class="vcp-thought-chain-label">${escapeHtml(displayTheme)}</span>`;
+        html += `<span class="vcp-result-toggle-icon"></span>`;
+        html += `</div>`;
+
+        html += `<div class="vcp-thought-chain-collapsible-content">`;
+        
+        let processedContent;
+        if (mainRendererReferences.markedInstance) {
+            try {
+                processedContent = mainRendererReferences.markedInstance.parse(content);
+            } catch (e) {
+                processedContent = `<pre>${escapedContent}</pre>`;
+            }
+        } else {
+            processedContent = `<pre>${escapedContent}</pre>`;
+        }
+
+        html += `<div class="vcp-thought-chain-body">${processedContent}</div>`;
+        html += `</div>`; // End of vcp-thought-chain-collapsible-content
+        html += `</div>`; // End of vcp-thought-chain-bubble
 
         return html;
     });
@@ -905,10 +939,19 @@ function initializeMessageRenderer(refs) {
 
     // --- Event Delegation ---
     mainRendererReferences.chatMessagesDiv.addEventListener('click', (e) => {
-        // 1. Handle collapsible tool results
-        const header = e.target.closest('.vcp-tool-result-header');
-        if (header) {
-            const bubble = header.closest('.vcp-tool-result-bubble.collapsible');
+        // 1. Handle collapsible tool results and thought chains
+        const toolHeader = e.target.closest('.vcp-tool-result-header');
+        if (toolHeader) {
+            const bubble = toolHeader.closest('.vcp-tool-result-bubble.collapsible');
+            if (bubble) {
+                bubble.classList.toggle('expanded');
+            }
+            return;
+        }
+
+        const thoughtHeader = e.target.closest('.vcp-thought-chain-header');
+        if (thoughtHeader) {
+            const bubble = thoughtHeader.closest('.vcp-thought-chain-bubble.collapsible');
             if (bubble) {
                 bubble.classList.toggle('expanded');
             }

@@ -711,6 +711,34 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
                 console.error('[Agent Bubble Theme] Failed to inject bubble theme info:', e);
             }
             // --- End of Injection ---
+
+            // --- VCP Thought Chain Stripping ---
+            try {
+                // 默认不注入元思考链，除非明确开启
+                if (settings.enableThoughtChainInjection !== true) {
+                    const contextSanitizer = require('../contextSanitizer');
+                    messages = messages.map(msg => {
+                        if (typeof msg.content === 'string') {
+                            return { ...msg, content: contextSanitizer.stripThoughtChains(msg.content) };
+                        } else if (Array.isArray(msg.content)) {
+                            return {
+                                ...msg,
+                                content: msg.content.map(part => {
+                                    if (part.type === 'text' && typeof part.text === 'string') {
+                                        return { ...part, text: contextSanitizer.stripThoughtChains(part.text) };
+                                    }
+                                    return part;
+                                })
+                            };
+                        }
+                        return msg;
+                    });
+                    console.log(`[ThoughtChain] Thought chains stripped from context`);
+                }
+            } catch (e) {
+                console.error('[ThoughtChain] Failed to strip thought chains:', e);
+            }
+
             // --- Context Sanitizer Integration ---
             try {
                 if (settings.enableContextSanitizer === true) {
