@@ -6,6 +6,7 @@ const path = require('path');
 let AGENT_DIR_CACHE; // Cache the agent directory path
 let USER_DATA_DIR_CACHE; // Cache the user data directory path
 let AVATAR_IMAGE_DIR; // Centralized avatar storage directory
+let agentConfigManagerInstance; // Cache the agentConfigManager instance
 
 async function getAgentConfigById(agentId) {
     if (!AGENT_DIR_CACHE) {
@@ -16,9 +17,20 @@ async function getAgentConfigById(agentId) {
     const configPath = path.join(agentDir, 'config.json');
     const regexPath = path.join(agentDir, 'regex_rules.json');
 
-    if (await fs.pathExists(configPath)) {
-        const config = await fs.readJson(configPath);
+    // 优先使用 agentConfigManager 读取，以获得锁保护和缓存支持
+    let config;
+    try {
+        if (agentConfigManagerInstance) {
+            config = await agentConfigManagerInstance.readAgentConfig(agentId);
+        } else if (await fs.pathExists(configPath)) {
+            config = await fs.readJson(configPath);
+        }
+    } catch (e) {
+        console.error(`Error reading config for agent ${agentId}:`, e);
+        return { error: `读取 Agent 配置失败: ${e.message}` };
+    }
 
+    if (config) {
         // Check for external regex rules file
         if (await fs.pathExists(regexPath)) {
             try {
@@ -68,6 +80,7 @@ function initialize(context) {
     const { AGENT_DIR, USER_DATA_DIR, SETTINGS_FILE, USER_AVATAR_FILE, settingsManager, agentConfigManager } = context;
     AGENT_DIR_CACHE = AGENT_DIR; // Cache the directory path
     USER_DATA_DIR_CACHE = USER_DATA_DIR; // Cache the user data directory path
+    agentConfigManagerInstance = agentConfigManager; // Cache the manager instance
 
     // Calculate the centralized avatar directory path based on the structure used in getGroupsInternal
     // Assuming USER_DATA_DIR is inside a structure like .../VCPChat/UserData
@@ -504,9 +517,21 @@ async function getAgentsInternal({ AGENT_DIR }) {
         const agentDirs = await fs.readdir(AGENT_DIR);
         const agentConfigs = await Promise.all(agentDirs.map(async (agentId) => {
             const configPath = path.join(AGENT_DIR, agentId, 'config.json');
-            if (await fs.pathExists(configPath)) {
+            
+            let config;
+            try {
+                if (agentConfigManagerInstance) {
+                    config = await agentConfigManagerInstance.readAgentConfig(agentId);
+                } else if (await fs.pathExists(configPath)) {
+                    config = await fs.readJson(configPath);
+                }
+            } catch (e) {
+                console.error(`Error reading agent config for ${agentId} in getAgentsInternal:`, e);
+                return null;
+            }
+
+            if (config) {
                 try {
-                    const config = await fs.readJson(configPath);
                     const agentDir = path.join(AGENT_DIR, agentId);
                     const avatarPathPng = path.join(agentDir, 'avatar.png');
                     const avatarPathJpg = path.join(agentDir, 'avatar.jpg');

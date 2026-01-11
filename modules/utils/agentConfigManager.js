@@ -25,16 +25,28 @@ class AgentConfigManager extends EventEmitter {
         const { lockFile } = this.getAgentPaths(agentId);
         const startTime = Date.now();
         
-        while (await fs.pathExists(lockFile)) {
-            if (Date.now() - startTime > timeout) {
-                console.warn(`Agent ${agentId} lock acquisition timeout, removing stale lock`);
-                await fs.remove(lockFile).catch(() => {});
-                break;
+        while (true) {
+            try {
+                // 使用 'wx' 标志进行原子性写入，如果文件已存在则会抛出错误
+                await fs.writeFile(lockFile, `${process.pid}-${Date.now()}`, { flag: 'wx' });
+                return; // 成功获取锁
+            } catch (error) {
+                if (error.code === 'EEXIST') {
+                    // 锁文件已存在，检查是否超时
+                    if (Date.now() - startTime > timeout) {
+                        console.warn(`Agent ${agentId} lock acquisition timeout, removing stale lock`);
+                        await fs.remove(lockFile).catch(() => {});
+                        // 继续循环尝试重新创建
+                    } else {
+                        // 等待一段时间后重试
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                    }
+                } else {
+                    // 其他错误
+                    throw error;
+                }
             }
-            await new Promise(resolve => setTimeout(resolve, 100));
         }
-        
-        await fs.writeFile(lockFile, `${process.pid}-${Date.now()}`);
     }
 
     async releaseLock(agentId) {
@@ -66,7 +78,14 @@ class AgentConfigManager extends EventEmitter {
             return { ...config };
         } catch (error) {
             if (error.code === 'ENOENT') {
-                // 返回默认配置
+                // 检查是否是因为文件正在被移动（原子性替换过程中）
+                // 如果文件不存在，我们稍微等待一下再试一次，以防正处于 move 操作的瞬间
+                await new Promise(resolve => setTimeout(resolve, 50));
+                if (await fs.pathExists(configPath)) {
+                    return await this.readAgentConfig(agentId);
+                }
+
+                // 确实不存在，返回默认配置
                 const defaultConfig = {
                     name: agentId,
                     systemPrompt: `你是 ${agentId}。`,

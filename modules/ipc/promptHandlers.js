@@ -161,13 +161,22 @@ function setupHandlers() {
     // 获取当前激活的系统提示词（用于发送消息时）
     ipcMain.handle('get-active-system-prompt', async (event, agentId) => {
         try {
-            const configPath = path.join(AGENT_DIR, `${agentId}.json`);
+            const configPath = path.join(AGENT_DIR, agentId, 'config.json');
             
-            if (!await fs.pathExists(configPath)) {
-                return { success: false, error: 'Agent配置不存在' };
+            let config;
+            try {
+                // 尝试从 agentHandlers 获取配置（它现在使用了 AgentConfigManager）
+                const { getAgentConfigById } = require('./agentHandlers');
+                config = await getAgentConfigById(agentId);
+                if (config.error) throw new Error(config.error);
+            } catch (e) {
+                if (await fs.pathExists(configPath)) {
+                    config = await fs.readJson(configPath);
+                } else {
+                    return { success: false, error: 'Agent配置不存在' };
+                }
             }
 
-            const config = await fs.readJson(configPath);
             const promptMode = config.promptMode || 'original';
 
             let systemPrompt = '';
@@ -224,13 +233,20 @@ function setupHandlers() {
                 return { success: false, error: `Invalid mode: ${mode}` };
             }
 
-            const configPath = path.join(AGENT_DIR, `${agentId}.json`);
+            const configPath = path.join(AGENT_DIR, agentId, 'config.json');
             
-            if (!await fs.pathExists(configPath)) {
-                return { success: false, error: 'Agent配置不存在' };
+            let config;
+            try {
+                const { getAgentConfigById } = require('./agentHandlers');
+                config = await getAgentConfigById(agentId);
+                if (config.error) throw new Error(config.error);
+            } catch (e) {
+                if (await fs.pathExists(configPath)) {
+                    config = await fs.readJson(configPath);
+                } else {
+                    return { success: false, error: 'Agent配置不存在' };
+                }
             }
-
-            const config = await fs.readJson(configPath);
             config.promptMode = mode;
             
             // 更新 systemPrompt 字段
@@ -265,6 +281,12 @@ function setupHandlers() {
             }
             
             config.systemPrompt = systemPrompt;
+            // 使用 IPC 处理器保存，以确保通过 AgentConfigManager
+            const { ipcMain } = require('electron');
+            // 注意：这里我们直接调用内部逻辑或通过 ipcMain.emit 模拟，
+            // 但最稳妥的是直接使用 agentConfigManagerInstance 如果能访问到。
+            // 由于 promptHandlers.js 没拿到 manager 实例，我们暂时使用 fs.writeJson，
+            // 但路径必须修正。
             await fs.writeJson(configPath, config, { spaces: 2 });
 
             console.log(`[PromptHandlers] Programmatically switched agent ${agentId} to mode: ${mode}`);
