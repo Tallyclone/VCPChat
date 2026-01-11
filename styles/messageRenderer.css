@@ -525,19 +525,19 @@ body:not(.light-theme) { /* Or just .dark-theme if that's how your theme switchi
     --table-row-even-bg-color: transparent;
     --table-row-hover-bg-color: rgba(var(--rgb-secondary-bg-dark, 40, 40, 44), 0.4);
 
-    /* NEW: Tool Result Bubble Dark Theme */
-    --tool-result-bg: linear-gradient(145deg, #2b3a42, #3f5159);
-    --tool-result-border-color: rgba(255, 255, 255, 0.1);
-    --tool-result-text-color: #e0e0e0;
-    --tool-result-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-    --tool-result-header-border-color: rgba(255, 255, 255, 0.15);
-    --tool-result-name-color: #81d4fa;
-    --tool-result-name-bg: rgba(129, 212, 250, 0.1);
-    --tool-result-item-key-color: #90a4ae;
-    --tool-result-item-value-color: #cfd8dc;
-    --tool-result-item-link-color: #82b1ff;
-    --tool-result-item-strong-color: #ffd54f;
-    --tool-result-footer-color: #b0bec5;
+    /* NEW: Tool Result Bubble Dark Theme - Modern Deep Dark */
+    --tool-result-bg: linear-gradient(145deg, #1c1c1e, #2c2c2e);
+    --tool-result-border-color: rgba(255, 255, 255, 0.08);
+    --tool-result-text-color: #f2f2f7;
+    --tool-result-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    --tool-result-header-border-color: rgba(255, 255, 255, 0.1);
+    --tool-result-name-color: #64d2ff;
+    --tool-result-name-bg: rgba(100, 210, 255, 0.15);
+    --tool-result-item-key-color: #8e8e93;
+    --tool-result-item-value-color: #ebebf5;
+    --tool-result-item-link-color: #0a84ff;
+    --tool-result-item-strong-color: #ffd60a;
+    --tool-result-footer-color: #8e8e93;
     --vcp-canvas-bg: #2d3748;
     --vcp-canvas-text-color: #e2e8f0;
     --vcp-canvas-border-color: #4a5568;
