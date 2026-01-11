@@ -705,7 +705,7 @@ async function handleRegenerateResponse(originalAssistantMessage) {
         name: currentSelectedItemVal.name || 'AI',
         content: '',
         timestamp: Date.now(),
-        id: `regen_${Date.now()}`,
+        id: `msg_${Date.now()}_assistant_${Math.random().toString(36).substring(2, 9)}`,
         isThinking: true,
         avatarUrl: currentSelectedItemVal.avatarUrl,
         avatarColor: currentSelectedItemVal.config?.avatarCalculatedColor,
@@ -954,7 +954,7 @@ async function handleRegenerateResponse(originalAssistantMessage) {
                     avatarColor: agentConfig.avatarCalculatedColor,
                     content: assistantMessageContent,
                     timestamp: Date.now(),
-                    id: response.id || `regen_nonstream_${Date.now()}`
+                    id: response.id || `msg_${Date.now()}_assistant_${Math.random().toString(36).substring(2, 9)}`
                 };
 
                 // 【修复2】采用更健壮的“读-改-写”模式
