@@ -12,3 +12,6 @@ node_modules/
 /public/assets
 
 **/.DS_Store
+
+# Rust build artifacts
+rust_audio_engine/target/

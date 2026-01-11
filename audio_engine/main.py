@@ -4,7 +4,8 @@ import time
 import numpy as np
 import soundfile as sf
 import sounddevice as sd
-from scipy.signal import tf2sos, sosfilt # resample is now handled by Rust
+from scipy.signal import tf2sos, sosfilt, firwin2, lfilter # resample is now handled by Rust
+from mutagen import File as MutagenFile
 from flask import Flask, request, jsonify
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
@@ -13,6 +14,14 @@ import argparse
 import hashlib
 import subprocess
 import io
+# --- 尝试加载 .env 配置文件 ---
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    logging.info("Loaded environment variables from .env file.")
+except ImportError:
+    logging.warning("python-dotenv not installed, skipping .env loading.")
+
 # --- 动态导入 Rust 模块，增强鲁棒性 ---
 try:
     import rust_audio_resampler
@@ -57,7 +66,19 @@ class AudioEngine:
         self.num_log_bins = 48 # Number of bars for the visualizer
         self.device_id = None # Can be None for default device
         self.exclusive_mode = False
-        self.target_samplerate = None  # None代表不进行升频
+        # --- 从环境变量读取初始配置，实现简单的持久化/预设 ---
+        env_target_sr = os.environ.get('VCP_AUDIO_TARGET_SAMPLERATE')
+        self.target_samplerate = int(env_target_sr) if env_target_sr and env_target_sr.isdigit() else None
+        
+        env_eq_type = os.environ.get('VCP_AUDIO_EQ_TYPE', 'IIR').upper()
+        self.eq_type = env_eq_type if env_eq_type in ['IIR', 'FIR'] else 'IIR'
+        
+        # 是否启用抢跑重采样
+        self.preemptive_resample = os.environ.get('VCP_AUDIO_PREEMPTIVE_RESAMPLE', 'true').lower() != 'false'
+        
+        # 重采样质量档位: low, std, hq, uhq
+        self.resample_quality = os.environ.get('VCP_AUDIO_RESAMPLE_QUALITY', 'hq').lower()
+
        # --- EQ Settings ---
         self.eq_enabled = False
         self.eq_bands = {
@@ -67,6 +88,38 @@ class AudioEngine:
         self.eq_filters = {} # To store SOS filter coefficients
         self.eq_zi = {} # To store initial filter conditions for each channel
         self.resample_cache_dir = None
+        
+        # --- New Optimization States ---
+        self.dither_enabled = True
+        self.dither_bits = 24  # Target output bit depth
+        
+        self._current_volume = 1.0   # Actually applied volume
+        self._target_volume = 1.0    # Target volume
+        self._volume_smoothing = 0.995  # Smoothing coefficient
+        
+        self.eq_type = 'IIR' # 'IIR' or 'FIR'
+        self.fir_coeffs = None
+        self.fir_zi = None
+        
+        self.replaygain_enabled = True
+
+    def _apply_dither(self, audio_data):
+        """
+        TPDF (Triangular PDF) 抖动
+        这是CD质量标准中使用的方法，防止量化失真
+        """
+        if not self.dither_enabled:
+            return audio_data
+        
+        # 计算量化步长 (LSB)
+        quant_level = 2.0 ** (1 - self.dither_bits)
+        
+        # 生成TPDF抖动噪声 (两个均匀分布之和 = 三角分布)
+        noise1 = np.random.uniform(-0.5, 0.5, audio_data.shape)
+        noise2 = np.random.uniform(-0.5, 0.5, audio_data.shape)
+        tpdf_noise = (noise1 + noise2) * quant_level
+        
+        return audio_data + tpdf_noise
 
     def _stream_callback(self, outdata, frames, time, status):
         """sounddevice的回调函数，用于填充音频数据"""
@@ -82,40 +135,65 @@ class AudioEngine:
             chunk = self.data[self.position : self.position + frames].copy() # Use a copy to modify
                 
             # --- Apply EQ if enabled ---
-            if self.eq_enabled and self.eq_filters:
-                # 性能优化 (B2): 将所有启用的SOS滤波器级联后一次性处理
-                active_sos_list = [self.eq_filters[band] for band in self.eq_filters if self.eq_bands.get(band, 0) != 0]
-                if active_sos_list:
-                    cascaded_sos = np.vstack(active_sos_list)
+            if self.eq_enabled:
+                if self.eq_type == 'IIR' and self.eq_filters:
+                    # 性能优化 (B2): 将所有启用的SOS滤波器级联后一次性处理
+                    active_sos_list = [self.eq_filters[band] for band in self.eq_filters if self.eq_bands.get(band, 0) != 0]
+                    if active_sos_list:
+                        cascaded_sos = np.vstack(active_sos_list)
+                        
+                        for i in range(self.channels):
+                            if i not in self.eq_zi:
+                                self._initialize_eq_zi(i)
+                            
+                            channel_data = chunk[:, i] if self.channels > 1 else chunk
+                            
+                            # 从 self.eq_zi 中提取对应激活的滤波器的 zi
+                            active_zi = np.vstack([self.eq_zi[i][band] for band in self.eq_filters if self.eq_bands.get(band, 0) != 0])
+                            
+                            channel_data, updated_zi = sosfilt(cascaded_sos, channel_data, zi=active_zi)
+                            
+                            # 将更新后的 zi 写回 self.eq_zi
+                            zi_counter = 0
+                            for band in self.eq_filters:
+                                if self.eq_bands.get(band, 0) != 0:
+                                    num_sections = self.eq_filters[band].shape[0]
+                                    self.eq_zi[i][band] = updated_zi[zi_counter : zi_counter + num_sections, :]
+                                    zi_counter += num_sections
+
+                            if self.channels > 1:
+                                chunk[:, i] = channel_data
+                            else:
+                                chunk = channel_data
+                elif self.eq_type == 'FIR' and self.fir_coeffs is not None:
+                    if self.fir_zi is None or len(self.fir_zi) != self.channels:
+                        self._initialize_fir_zi()
                     
                     for i in range(self.channels):
-                        if i not in self.eq_zi:
-                            self._initialize_eq_zi(i)
-                        
                         channel_data = chunk[:, i] if self.channels > 1 else chunk
-                        
-                        # 从 self.eq_zi 中提取对应激活的滤波器的 zi
-                        active_zi = np.vstack([self.eq_zi[i][band] for band in self.eq_filters if self.eq_bands.get(band, 0) != 0])
-                        
-                        channel_data, updated_zi = sosfilt(cascaded_sos, channel_data, zi=active_zi)
-                        
-                        # 将更新后的 zi 写回 self.eq_zi
-                        zi_counter = 0
-                        for band in self.eq_filters:
-                            if self.eq_bands.get(band, 0) != 0:
-                                num_sections = self.eq_filters[band].shape[0]
-                                self.eq_zi[i][band] = updated_zi[zi_counter : zi_counter + num_sections, :]
-                                zi_counter += num_sections
-
+                        channel_data, self.fir_zi[i] = lfilter(self.fir_coeffs, 1.0, channel_data, zi=self.fir_zi[i])
                         if self.channels > 1:
                             chunk[:, i] = channel_data
                         else:
                             chunk = channel_data
 
-            # 应用音量并进行限幅
-            mixed = chunk * self.volume
+            # --- Apply Volume Smoothing (Anti-Zipper Noise) ---
+            volume_ramp = np.zeros(frames)
+            for i in range(frames):
+                self._current_volume += (self._target_volume - self._current_volume) * (1 - self._volume_smoothing)
+                volume_ramp[i] = self._current_volume
+            
+            if self.channels > 1:
+                mixed = chunk * volume_ramp[:, np.newaxis]
+            else:
+                mixed = chunk * volume_ramp
+
+            # --- Apply Dither ---
+            mixed = self._apply_dither(mixed)
+
+            # 限幅并输出
             np.clip(mixed, -1.0, 1.0, out=mixed)
-            outdata[:] = mixed
+            outdata[:] = mixed.astype(np.float32)
             self.position += frames
 
     def _playback_thread(self):
@@ -206,6 +284,31 @@ class AudioEngine:
             # 短暂休眠以降低CPU使用率
             time.sleep(0.01)
 
+    def _read_replaygain(self, file_path):
+        """读取ReplayGain标签"""
+        try:
+            audio_file = MutagenFile(file_path, easy=True)
+            if audio_file is None:
+                return 0.0
+            
+            # 尝试不同的tag格式
+            rg_tags = [
+                'replaygain_track_gain',
+                'REPLAYGAIN_TRACK_GAIN',
+                'R128_TRACK_GAIN'
+            ]
+            
+            for tag in rg_tags:
+                if tag in audio_file:
+                    gain_str = audio_file[tag][0]
+                    # 解析 "+3.5 dB" 格式
+                    gain_db = float(gain_str.replace('dB', '').strip())
+                    return gain_db
+            return 0.0
+        except Exception as e:
+            logging.debug(f"Could not read ReplayGain: {e}")
+            return 0.0
+
     def load(self, file_path):
         """加载音频文件，应用缓存，并为播放做准备。"""
         try:
@@ -254,9 +357,12 @@ class AudioEngine:
 
                 # --- 3. Determine Target Samplerate ---
                 target_sr = original_samplerate
-                if self.target_samplerate and self.target_samplerate > target_sr:
+                
+                # 优先级 1: 用户手动设置的强制升频
+                if self.target_samplerate:
                     target_sr = self.target_samplerate
                 
+                # 优先级 2: 独占模式下，匹配硬件原生采样率
                 if self.exclusive_mode and self.device_id is not None:
                     try:
                         device_info = sd.query_devices(self.device_id)
@@ -265,13 +371,22 @@ class AudioEngine:
                             target_sr = int(device_info.get('default_samplerate', target_sr))
                     except Exception as e:
                         logging.warning(f"Could not query device for WASAPI default samplerate: {e}")
+                
+                # 优先级 3: 共享模式下的“抢跑”重采样 (Preemptive Resampling)
+                elif not self.exclusive_mode and self.preemptive_resample:
+                    mixer_sr = self._get_system_mixer_samplerate()
+                    if mixer_sr != target_sr:
+                        logging.info(f"Preemptive Resampling active: Target changed from {target_sr} to system mixer rate {mixer_sr}")
+                        target_sr = mixer_sr
 
                 # --- 4. Robust Caching Logic ---
                 # 修复：使用更健壮的缓存键
                 st = os.stat(file_path)
                 key = f"{file_path}|{st.st_mtime_ns}|{st.st_size}|sr={target_sr}|fmt=f32le|ch={channels}"
                 cache_filename = hashlib.md5(key.encode()).hexdigest() + '.wav'
-                cache_filepath = os.path.join(self.resample_cache_dir, cache_filename) if self.resample_cache_dir else None
+                # 检查是否通过环境变量禁用了缓存
+                use_cache = os.environ.get('VCP_AUDIO_USE_CACHE', 'true').lower() != 'false'
+                cache_filepath = os.path.join(self.resample_cache_dir, cache_filename) if (self.resample_cache_dir and use_cache) else None
 
                 if cache_filepath and os.path.exists(cache_filepath):
                     logging.info(f"Loading resampled data from cache: {cache_filepath}")
@@ -288,7 +403,8 @@ class AudioEngine:
                                 flat_data,
                                 original_samplerate,
                                 target_sr,
-                                channels # 使用局部变量 `channels`
+                                channels, # 使用局部变量 `channels`
+                                quality=self.resample_quality
                             )
                             
                             self.data = resampled_flat.reshape((-1, channels)) # 使用局部变量 `channels`
@@ -306,6 +422,14 @@ class AudioEngine:
                         self.data = original_data
                         self.samplerate = original_samplerate
 
+                # --- 5.5 Apply ReplayGain ---
+                if self.replaygain_enabled:
+                    rg_db = self._read_replaygain(file_path)
+                    if rg_db != 0:
+                        rg_linear = 10 ** (rg_db / 20.0)
+                        self.data = self.data * rg_linear
+                        logging.info(f"Applied ReplayGain: {rg_db:.1f} dB")
+
                 # --- 6. Finalize State ---
                 self.file_path = file_path
                 self.channels = channels # 使用我们之前确定的正确通道数
@@ -314,7 +438,7 @@ class AudioEngine:
                 self.is_paused = False
                 
                 # 为新加载的音轨（可能有多声道）重新初始化EQ状态
-                self._initialize_eq_zi()
+                self._design_eq_filters()
 
                 logging.info(f"Loaded '{file_path}', Samplerate: {self.samplerate}, Channels: {self.channels}, Duration: {len(self.data)/self.samplerate:.2f}s")
                 return True
@@ -421,15 +545,59 @@ class AudioEngine:
                 'file_path': self.file_path,
                 'volume': self.volume,
                 'device_id': self.device_id,
-                'exclusive_mode': self.exclusive_mode
+                'exclusive_mode': self.exclusive_mode,
+                'eq_type': self.eq_type,
+                'dither_enabled': self.dither_enabled,
+                'replaygain_enabled': self.replaygain_enabled
             }
+
+    def _get_system_mixer_samplerate(self):
+        """获取Windows混音器的当前采样率"""
+        try:
+            # 查询默认输出设备
+            device_info = sd.query_devices(kind='output')
+            return int(device_info.get('default_samplerate', 48000))
+        except Exception as e:
+            logging.warning(f"Could not query system mixer samplerate: {e}")
+            return 48000
 
     def set_volume(self, volume_level):
         """设置音量"""
         with self.lock:
-            self.volume = float(volume_level)
-            logging.info(f"Volume set to {self.volume}")
+            self._target_volume = float(volume_level)
+            self.volume = self._target_volume # Keep for API compatibility
+            logging.info(f"Target volume set to {self._target_volume}")
             return True
+
+    def _design_linear_phase_eq(self):
+        """设计线性相位FIR均衡器 (计算量大但无相位失真)"""
+        if self.samplerate == 0:
+            return None
+        
+        # 构建目标频率响应
+        num_taps = 4097  # 必须是奇数
+        nyquist = self.samplerate / 2
+        
+        # 频率点 (归一化)
+        freq_points = [0, 31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000, nyquist]
+        freq_points_normalized = [f / nyquist for f in freq_points]
+        
+        # 对应的增益 (从dB转为线性)
+        bands_list = ['31', '62', '125', '250', '500', '1k', '2k', '4k', '8k', '16k']
+        gain_db = [0] + [self.eq_bands.get(b, 0) for b in bands_list] + [self.eq_bands.get('16k', 0)]
+        gain_linear = [10 ** (g / 20.0) for g in gain_db]
+        
+        # 确保频率点单调递增且在有效范围内
+        freq_points_normalized = np.clip(freq_points_normalized, 0, 1)
+        
+        # 设计FIR滤波器
+        fir_coeffs = firwin2(num_taps, freq_points_normalized, gain_linear)
+        return fir_coeffs
+
+    def _initialize_fir_zi(self):
+        """Initialize FIR filter state"""
+        if self.fir_coeffs is not None:
+            self.fir_zi = [np.zeros(len(self.fir_coeffs) - 1) for _ in range(self.channels if self.channels > 0 else 1)]
 
     def _design_eq_filters(self):
         """根据当前的EQ设置设计IIR滤波器。"""
@@ -480,8 +648,13 @@ class AudioEngine:
             sos = tf2sos(b, a, analog=False)
             self.eq_filters[band] = sos
             
-        self._initialize_eq_zi()
-        logging.info(f"Designed EQ filters for bands: {list(self.eq_filters.keys())}")
+        if self.eq_type == 'FIR':
+            self.fir_coeffs = self._design_linear_phase_eq()
+            self._initialize_fir_zi()
+            logging.info("Designed Linear Phase FIR EQ filter.")
+        else:
+            self._initialize_eq_zi()
+            logging.info(f"Designed IIR EQ filters for bands: {list(self.eq_filters.keys())}")
 
     def _initialize_eq_zi(self, channel_index=None):
         """Initialize or reset the initial conditions for the EQ filters."""
@@ -512,8 +685,18 @@ class AudioEngine:
                         self.eq_bands[band] = np.clip(gain, -15.0, 15.0)
             
             self._design_eq_filters()
-            logging.info(f"EQ set. Enabled: {self.eq_enabled}, Bands: {self.eq_bands}")
+            logging.info(f"EQ set. Enabled: {self.eq_enabled}, Type: {self.eq_type}, Bands: {self.eq_bands}")
         return True
+
+    def set_eq_type(self, eq_type):
+        """Set EQ type (IIR or FIR)"""
+        with self.lock:
+            if eq_type.upper() in ['IIR', 'FIR']:
+                self.eq_type = eq_type.upper()
+                self._design_eq_filters()
+                logging.info(f"EQ type set to {self.eq_type}")
+                return True
+        return False
 
     def configure_output(self, device_id=None, exclusive=False):
         """配置音频输出设备和模式"""
@@ -654,6 +837,25 @@ def set_eq():
    else:
        return jsonify({'status': 'error', 'message': 'Failed to update EQ settings'}), 500
 
+@app.route('/set_eq_type', methods=['POST'])
+def set_eq_type():
+    data = request.get_json()
+    eq_type = data.get('type')
+    if audio_engine.set_eq_type(eq_type):
+        return jsonify({'status': 'success', 'message': f'EQ type set to {eq_type}', 'state': audio_engine.get_state()})
+    else:
+        return jsonify({'status': 'error', 'message': 'Failed to set EQ type'}), 500
+
+@app.route('/configure_optimizations', methods=['POST'])
+def configure_optimizations():
+    data = request.get_json()
+    with audio_engine.lock:
+        if 'dither_enabled' in data:
+            audio_engine.dither_enabled = bool(data['dither_enabled'])
+        if 'replaygain_enabled' in data:
+            audio_engine.replaygain_enabled = bool(data['replaygain_enabled'])
+    return jsonify({'status': 'success', 'message': 'Optimizations updated', 'state': audio_engine.get_state()})
+
 @app.route('/load', methods=['POST'])
 def load_track():
     data = request.get_json()
@@ -729,8 +931,10 @@ if __name__ == '__main__':
     parser.add_argument('--resample-cache-dir', type=str, help='Directory to store resampled audio files.')
     args = parser.parse_args()
 
-    if args.resample_cache_dir:
-        audio_engine.resample_cache_dir = args.resample_cache_dir
+    # 优先从命令行参数读取，其次从环境变量读取
+    cache_dir = args.resample_cache_dir or os.environ.get('VCP_AUDIO_CACHE_DIR')
+    if cache_dir:
+        audio_engine.resample_cache_dir = cache_dir
         logging.info(f"Resample cache directory set to: {audio_engine.resample_cache_dir}")
 
     port = 5555

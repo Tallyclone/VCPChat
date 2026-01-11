@@ -504,233 +504,245 @@ body.light-theme #search-input:focus {
     filter: brightness(1.15);
 }
 
-/* --- New Settings Section Styles --- */
-.settings-section {
+/* ------------------------- */
+/* --- 极简设置面板样式 --- */
+/* ------------------------- */
+
+.settings-container {
+    padding: 20px; /* 增加一点内边距让呼吸感更强 */
+    flex-shrink: 0;
+}
+
+/* 通用行样式 */
+.setting-row {
     display: flex;
-    flex-direction: column; /* Stack items vertically */
-    padding: 0;
-    gap: 15px; /* Adjust gap */
-    border-bottom: 1px solid var(--glass-border);
-    padding-bottom: 15px;
-    margin-bottom: 15px;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
 }
 
-.device-selection, .wasapi-toggle, .upsampling-selection {
-    width: 100%; /* Make items take full width */
-}
-
-.wasapi-toggle {
-    justify-content: space-between; /* Push label and switch to opposite ends */
-}
-
-.device-selection, .upsampling-selection {
-   display: flex;
-   flex-direction: column; /* Stack label and select vertically */
-   align-items: flex-start;
-   gap: 8px;
-   font-size: 0.9em;
-   color: var(--music-text-secondary);
-}
-
-#device-select, #upsampling-select {
-    background-color: var(--hover-bg);
-    color: var(--music-text);
-    border: 1px solid var(--glass-border);
-    border-radius: 6px;
-    padding: 5px 8px;
-    outline: none;
-    width: 100%; /* Make it fill the container */
-    box-sizing: border-box; /* Include padding and border in the element's total width and height */
-}
-
-#upsampling-select {
-    flex-grow: 1;
-}
- 
- /* --- Toggle Switch Styles --- */
-.switch {
- position: relative;
- display: inline-block;
- width: 44px;
- height: 24px;
-}
-
-.switch input {
- opacity: 0;
- width: 0;
- height: 0;
-}
-
-.slider {
- position: absolute;
- cursor: pointer;
- top: 0;
- left: 0;
- right: 0;
- bottom: 0;
- background-color: var(--hover-bg);
- transition: .4s;
-}
-
-.slider:before {
- position: absolute;
- content: "";
- height: 18px;
- width: 18px;
- left: 3px;
- bottom: 3px;
- background-color: white;
- transition: .4s;
-}
-
-input:checked + .slider {
- background-color: var(--music-highlight);
-}
-
-input:focus + .slider {
- box-shadow: 0 0 1px var(--music-highlight);
-}
-
-input:checked + .slider:before {
- transform: translateX(20px);
-}
-
-.slider.round {
- border-radius: 24px;
-}
-
-.slider.round:before {
-  border-radius: 50%;
-}
-
-/* --- New EQ Section Styles --- */
-.eq-section {
-   padding: 0;
-}
-
-.eq-header {
-   display: flex;
-   justify-content: space-between;
-   align-items: center;
-   margin-bottom: 15px;
-}
-
-.eq-header h4 {
-    margin: 0;
-    font-size: 1em;
-    font-weight: 500;
+.setting-row label {
+    font-size: 0.85em;
     color: var(--music-text-secondary);
+    font-weight: 500;
+    margin-left: 2px;
 }
 
-.eq-controls {
-   display: flex;
-   align-items: center;
-   gap: 15px;
+/* 分割线 - 极淡的视觉分隔 */
+.divider {
+    height: 1px;
+    background: linear-gradient(to right, transparent, var(--glass-border), transparent);
+    margin: 12px 0;
+    opacity: 0.6;
 }
 
-.eq-preset-select {
+/* 网格布局核心 - 魔法所在 */
+.settings-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr; /* 强制两列 */
+    gap: 12px 20px; /* 行间距12px，列间距20px */
+    align-items: center;
+}
+
+/* 单个设置项 - 去除所有背景和边框 */
+.setting-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    min-height: 28px;
+}
+
+.setting-item label {
+    font-size: 0.85em;
+    color: var(--music-text-secondary);
+    cursor: default;
+}
+
+/* 下拉框美化 - 极简药丸风格 */
+select {
+    appearance: none;
+    -webkit-appearance: none;
     background-color: var(--hover-bg);
     color: var(--music-text);
-    border: 1px solid var(--glass-border);
+    border: 1px solid transparent;
     border-radius: 6px;
-    padding: 4px 8px;
-    font-size: 0.8em;
+    padding: 4px 10px;
+    font-size: 0.85em;
     outline: none;
     cursor: pointer;
     transition: all 0.2s ease;
+    text-align: left;
 }
 
-.eq-preset-select:hover {
+select:hover {
     background-color: rgba(255, 255, 255, 0.15);
+    border-color: var(--glass-border);
 }
 
-body.light-theme .eq-preset-select:hover {
-    background-color: rgba(0, 0, 0, 0.1);
+select:focus {
+    border-color: var(--music-highlight);
+    background-color: rgba(255, 255, 255, 0.2);
 }
 
-/* 为下拉菜单选项在深色模式下设置深色背景 */
-#device-select option,
-#upsampling-select option,
-.eq-preset-select option {
-   background-color: #2c2c2c;
-   color: var(--music-text);
+/* 特殊处理音频设备下拉框 */
+#device-select {
+    width: 100%;
+    padding: 8px 12px;
+    background-color: rgba(0, 0, 0, 0.2); /* 稍微深一点以示区分 */
 }
 
-/* 浅色主题下恢复默认 */
-body.light-theme #device-select option,
-body.light-theme #upsampling-select option,
-body.light-theme .eq-preset-select option {
-    background-color: white;
-    color: initial;
+/* 紧凑型下拉框 (用于升频) */
+.compact-select {
+    width: 80px; /* 固定宽度，对齐更好看 */
+    text-align: center;
+    padding: 2px 5px;
+    height: 24px;
 }
 
+/* --- 开关 (Switch) 优化 --- */
+/* 调整原有 Switch 样式使其更精致 */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 36px; /* 稍微缩小宽度 */
+    height: 20px; /* 稍微缩小高度 */
+    flex-shrink: 0;
+}
+
+.switch input { opacity: 0; width: 0; height: 0; }
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: rgba(255, 255, 255, 0.1); /* 更淡的背景 */
+    transition: .3s cubic-bezier(0.4, 0.0, 0.2, 1);
+    border: 1px solid var(--glass-border); /* 增加极细边框增加质感 */
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 14px;
+    width: 14px;
+    left: 2px;
+    bottom: 2px; /* 居中对齐 */
+    background-color: rgba(255, 255, 255, 0.8);
+    transition: .3s cubic-bezier(0.4, 0.0, 0.2, 1);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+input:checked + .slider {
+    background-color: var(--music-highlight); /* 激活色 */
+    border-color: transparent;
+}
+
+input:checked + .slider:before {
+    transform: translateX(16px); /* 调整位移距离 */
+    background-color: #fff;
+}
+
+.slider.round { border-radius: 20px; }
+.slider.round:before { border-radius: 50%; }
+
+/* 80% 缩放的开关 */
+.scale-80 { transform: scale(0.8); transform-origin: right center; }
+
+/* --- EQ Section 重构 --- */
+.eq-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-top: 5px;
+}
+
+.eq-header {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* 标题和开关一行 */
+.eq-title-group {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.eq-title-group h4 {
+    margin: 0;
+    font-size: 0.9em;
+    font-weight: 600;
+    color: var(--music-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* 控件一行 */
+.eq-controls-row {
+    display: flex;
+    gap: 8px;
+}
+
+.eq-controls-row select {
+    flex: 1; /* 两个下拉框平分宽度 */
+    font-size: 0.8em;
+    padding: 4px 8px;
+}
+
+/* 展开动画 */
 .eq-bands {
-   display: flex;
-   justify-content: space-around;
-   align-items: center;
-   gap: 5px; /* Reduce gap for more bands */
-   max-height: 0;
-   overflow: hidden;
-   transition: max-height 0.4s ease-out, padding 0.4s ease-out;
-   padding-top: 0;
+    display: flex;
+    justify-content: space-between;
+    gap: 2px;
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+    margin-top: 0;
 }
 
 .eq-section.expanded .eq-bands {
-   max-height: 200px; /* A height large enough to show the sliders */
-   padding-top: 15px; /* Add some space when expanded */
+    max-height: 160px;
+    opacity: 1;
+    margin-top: 10px;
 }
 
+/* EQ 推子样式微调 */
 .eq-band {
-   display: flex;
-   flex-direction: column;
-   align-items: center;
-   gap: 8px;
-   /* Add a container for rotation */
-   width: 30px;
-   height: 120px;
-   justify-content: center;
-}
-
-.eq-band label {
-   font-size: 0.75em;
-   color: var(--music-text-secondary);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 24px; /* 更细 */
+    height: 130px;
 }
 
 .eq-band input[type="range"] {
-   -webkit-appearance: none;
-   appearance: none;
-   transform: rotate(-90deg);
-   width: 100px; /* This is the new height */
-   height: 8px; /* This is the new width */
-   background: var(--hover-bg);
-   border-radius: 4px;
-   outline: none;
-   transition: opacity 0.2s;
-   cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    transform: rotate(-90deg);
+    width: 100px; /* 旋转后作为高度 */
+    height: 4px;  /* 旋转后作为宽度 */
+    background: var(--hover-bg);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
 }
-
 .eq-band input[type="range"]::-webkit-slider-thumb {
-   -webkit-appearance: none;
-   appearance: none;
-   width: 16px;
-   height: 16px;
-   background: var(--music-text);
-   border-radius: 50%;
-   transition: background 0.3s ease;
-}
-.eq-band input[type="range"]::-webkit-slider-thumb:hover {
-   background: var(--music-highlight);
+    width: 12px;
+    height: 12px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
 }
 
-.eq-band input[type="range"]::-moz-range-thumb {
-   width: 16px;
-   height: 16px;
-   background: var(--music-text);
-   border-radius: 50%;
-   transition: background 0.3s ease;
+/* 暗色模式下的选项背景 */
+#device-select option, .compact-select option, .eq-controls-row select option {
+    background-color: #1a1a1a;
+    color: #fff;
 }
-.eq-band input[type="range"]::-moz-range-thumb:hover {
-   background: var(--music-highlight);
+body.light-theme option {
+    background-color: #fff;
+    color: #000;
 }
 
 .playlist {

@@ -35,6 +35,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const eqBandsContainer = document.getElementById('eq-bands');
   const eqPresetSelect = document.getElementById('eq-preset-select');
   const eqSection = document.getElementById('eq-section');
+  const eqTypeSelect = document.getElementById('eq-type-select');
+  const ditherSwitch = document.getElementById('dither-switch');
+  const replaygainSwitch = document.getElementById('replaygain-switch');
   const upsamplingSelect = document.getElementById('upsampling-select');
   const lyricsContainer = document.getElementById('lyrics-container');
   const lyricsList = document.getElementById('lyrics-list');
@@ -424,6 +427,15 @@ class WebNowPlayingAdapter {
       if (state.eq_enabled !== undefined && eqSwitch.checked !== state.eq_enabled) {
           eqSwitch.checked = state.eq_enabled;
           eqSection.classList.toggle('expanded', state.eq_enabled);
+      }
+      if (state.eq_type !== undefined && eqTypeSelect.value !== state.eq_type && !eqTypeSelect.matches(':focus')) {
+          eqTypeSelect.value = state.eq_type;
+      }
+      if (state.dither_enabled !== undefined && ditherSwitch.checked !== state.dither_enabled) {
+          ditherSwitch.checked = state.dither_enabled;
+      }
+      if (state.replaygain_enabled !== undefined && replaygainSwitch.checked !== state.replaygain_enabled) {
+          replaygainSwitch.checked = state.replaygain_enabled;
       }
       if (state.eq_bands) {
           for (const [band, gain] of Object.entries(state.eq_bands)) {
@@ -917,6 +929,25 @@ class WebNowPlayingAdapter {
        sendEqSettings();
   });
 
+  eqTypeSelect.addEventListener('change', async () => {
+      if (!window.electron) return;
+      const result = await window.electron.invoke('music-set-eq-type', { type: eqTypeSelect.value });
+      if (result.status === 'success') {
+          updateUIWithState(result.state);
+      }
+  });
+
+  const updateOptimizations = async () => {
+      if (!window.electron) return;
+      await window.electron.invoke('music-configure-optimizations', {
+          dither_enabled: ditherSwitch.checked,
+          replaygain_enabled: replaygainSwitch.checked
+      });
+  };
+
+  ditherSwitch.addEventListener('change', updateOptimizations);
+  replaygainSwitch.addEventListener('change', updateOptimizations);
+
   eqPresetSelect.addEventListener('change', (e) => {
        applyEqPreset(e.target.value);
   });
@@ -1315,6 +1346,15 @@ class WebNowPlayingAdapter {
                eqEnabled = initialDeviceState.state.eq_enabled;
                eqSwitch.checked = eqEnabled;
                eqSection.classList.toggle('expanded', eqEnabled);
+           }
+           if (initialDeviceState.state.eq_type !== undefined) {
+               eqTypeSelect.value = initialDeviceState.state.eq_type;
+           }
+           if (initialDeviceState.state.dither_enabled !== undefined) {
+               ditherSwitch.checked = initialDeviceState.state.dither_enabled;
+           }
+           if (initialDeviceState.state.replaygain_enabled !== undefined) {
+               replaygainSwitch.checked = initialDeviceState.state.replaygain_enabled;
            }
            if (initialDeviceState.state.eq_bands) {
                 for (const [band, gain] of Object.entries(initialDeviceState.state.eq_bands)) {

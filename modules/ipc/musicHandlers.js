@@ -262,6 +262,14 @@ function initialize(options) {
         ipcMain.handle('music-configure-upsampling', (event, { target_samplerate }) => {
             return audioEngineApi('/configure_upsampling', 'POST', { target_samplerate });
         });
+
+        ipcMain.handle('music-set-eq-type', (event, { type }) => {
+            return audioEngineApi('/set_eq_type', 'POST', { type });
+        });
+
+        ipcMain.handle('music-configure-optimizations', (event, data) => {
+            return audioEngineApi('/configure_optimizations', 'POST', data);
+        });
  
          ipcMain.on('open-music-folder', async (event) => {
             const result = await dialog.showOpenDialog(mainWindow, {

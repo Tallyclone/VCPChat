@@ -8,3 +8,5 @@ numpy
 pydub
 gevent-websocket
 gevent
+mutagen
+python-dotenv
