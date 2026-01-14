@@ -129,6 +129,7 @@ class AudioEngine:
         shaped_data, next_state = rust_audio_resampler.apply_noise_shaping_high_order(
             flat_data,
             self.ns_state,
+            sample_rate=self.samplerate,
             bits=self.dither_bits,
             channels=self.channels
         )
