@@ -100,26 +100,41 @@ class AudioEngine:
         self.eq_type = 'IIR' # 'IIR' or 'FIR'
         self.fir_coeffs = None
         self.fir_zi = None
+        self.fir_convolver = None # Rust FFT Convolver instance
         
         self.replaygain_enabled = True
+        self.ns_state = None # Noise shaping state
 
-    def _apply_dither(self, audio_data):
+    def _initialize_ns_state(self):
+        """初始化 5 阶噪声整形的状态"""
+        if self.channels > 0:
+            # 每个通道 5 个误差历史记录
+            self.ns_state = np.zeros(self.channels * 5, dtype=np.float64)
+
+    def _apply_noise_shaping(self, audio_data):
         """
-        TPDF (Triangular PDF) 抖动
-        这是CD质量标准中使用的方法，防止量化失真
+        使用 Rust 实现的高性能 5 阶心理声学噪声整形
         """
-        if not self.dither_enabled:
+        if not self.dither_enabled or not RUST_RESAMPLER_AVAILABLE:
             return audio_data
         
-        # 计算量化步长 (LSB)
-        quant_level = 2.0 ** (1 - self.dither_bits)
+        if self.ns_state is None or len(self.ns_state) != self.channels * 5:
+            self._initialize_ns_state()
         
-        # 生成TPDF抖动噪声 (两个均匀分布之和 = 三角分布)
-        noise1 = np.random.uniform(-0.5, 0.5, audio_data.shape)
-        noise2 = np.random.uniform(-0.5, 0.5, audio_data.shape)
-        tpdf_noise = (noise1 + noise2) * quant_level
+        # 展平数据以适应 Rust 接口
+        original_shape = audio_data.shape
+        flat_data = audio_data.flatten()
         
-        return audio_data + tpdf_noise
+        # 调用 Rust 噪声整形，并更新状态
+        shaped_data, next_state = rust_audio_resampler.apply_noise_shaping_high_order(
+            flat_data,
+            self.ns_state,
+            bits=self.dither_bits,
+            channels=self.channels
+        )
+        
+        self.ns_state = next_state
+        return shaped_data.reshape(original_shape)
 
     def _stream_callback(self, outdata, frames, time, status):
         """sounddevice的回调函数，用于填充音频数据"""
@@ -165,17 +180,24 @@ class AudioEngine:
                                 chunk[:, i] = channel_data
                             else:
                                 chunk = channel_data
-                elif self.eq_type == 'FIR' and self.fir_coeffs is not None:
-                    if self.fir_zi is None or len(self.fir_zi) != self.channels:
-                        self._initialize_fir_zi()
-                    
-                    for i in range(self.channels):
-                        channel_data = chunk[:, i] if self.channels > 1 else chunk
-                        channel_data, self.fir_zi[i] = lfilter(self.fir_coeffs, 1.0, channel_data, zi=self.fir_zi[i])
-                        if self.channels > 1:
-                            chunk[:, i] = channel_data
-                        else:
-                            chunk = channel_data
+                elif self.eq_type == 'FIR':
+                    if self.fir_convolver is not None:
+                        # 使用 Rust FFT 卷积引擎 (Overlap-Save)
+                        flat_chunk = chunk.flatten()
+                        processed_flat = self.fir_convolver.process(flat_chunk)
+                        chunk = processed_flat.reshape(chunk.shape)
+                    elif self.fir_coeffs is not None:
+                        # 回退到 scipy lfilter (仅当 Rust 模块不可用时)
+                        if self.fir_zi is None or len(self.fir_zi) != self.channels:
+                            self._initialize_fir_zi()
+                        
+                        for i in range(self.channels):
+                            channel_data = chunk[:, i] if self.channels > 1 else chunk
+                            channel_data, self.fir_zi[i] = lfilter(self.fir_coeffs, 1.0, channel_data, zi=self.fir_zi[i])
+                            if self.channels > 1:
+                                chunk[:, i] = channel_data
+                            else:
+                                chunk = channel_data
 
             # --- Apply Volume Smoothing (Anti-Zipper Noise) ---
             volume_ramp = np.zeros(frames)
@@ -188,11 +210,15 @@ class AudioEngine:
             else:
                 mixed = chunk * volume_ramp
 
-            # --- Apply Dither ---
-            mixed = self._apply_dither(mixed)
+            # --- Apply High-Order Noise Shaping ---
+            mixed = self._apply_noise_shaping(mixed)
 
-            # 限幅并输出
-            np.clip(mixed, -1.0, 1.0, out=mixed)
+            # --- Soft Clipping / Headroom Protection ---
+            # 预留 0.1dB 的 Headroom 防止某些 DAC 内部插值溢出导致的爆音
+            limit = 0.99
+            np.clip(mixed, -limit, limit, out=mixed)
+            
+            # 最终转换为 32-bit float 输出给驱动
             outdata[:] = mixed.astype(np.float32)
             self.position += frames
 
@@ -437,8 +463,9 @@ class AudioEngine:
                 self.is_playing = False
                 self.is_paused = False
                 
-                # 为新加载的音轨（可能有多声道）重新初始化EQ状态
+                # 为新加载的音轨（可能有多声道）重新初始化EQ和噪声整形状态
                 self._design_eq_filters()
+                self._initialize_ns_state()
 
                 logging.info(f"Loaded '{file_path}', Samplerate: {self.samplerate}, Channels: {self.channels}, Duration: {len(self.data)/self.samplerate:.2f}s")
                 return True
@@ -650,7 +677,20 @@ class AudioEngine:
             
         if self.eq_type == 'FIR':
             self.fir_coeffs = self._design_linear_phase_eq()
-            self._initialize_fir_zi()
+            
+            # 尝试初始化 Rust FFT 卷积器
+            if RUST_RESAMPLER_AVAILABLE and hasattr(rust_audio_resampler, 'FFTConvolver'):
+                try:
+                    # 将单通道 IR 系数扩展并交错排列以匹配多通道输入
+                    full_ir = np.tile(self.fir_coeffs[:, np.newaxis], (1, self.channels)).flatten()
+                    self.fir_convolver = rust_audio_resampler.FFTConvolver(full_ir, self.channels)
+                    logging.info(f"Initialized Rust FFT Convolver for {self.channels} channels.")
+                except Exception as e:
+                    logging.error(f"Failed to initialize Rust FFT Convolver: {e}")
+                    self.fir_convolver = None
+                    self._initialize_fir_zi()
+            else:
+                self._initialize_fir_zi()
             logging.info("Designed Linear Phase FIR EQ filter.")
         else:
             self._initialize_eq_zi()
