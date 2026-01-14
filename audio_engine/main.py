@@ -152,34 +152,52 @@ class AudioEngine:
             # --- Apply EQ if enabled ---
             if self.eq_enabled:
                 if self.eq_type == 'IIR' and self.eq_filters:
-                    # 性能优化 (B2): 将所有启用的SOS滤波器级联后一次性处理
+                    # 性能优化 (B2): 将所有启用的SOS滤波器级联后下沉到 Rust 处理
                     active_sos_list = [self.eq_filters[band] for band in self.eq_filters if self.eq_bands.get(band, 0) != 0]
                     if active_sos_list:
                         cascaded_sos = np.vstack(active_sos_list)
                         
-                        for i in range(self.channels):
-                            if i not in self.eq_zi:
-                                self._initialize_eq_zi(i)
+                        if RUST_RESAMPLER_AVAILABLE and hasattr(rust_audio_resampler, 'apply_iir_sos'):
+                            # 准备连续的 zi 缓冲区 [channels * n_sections * 2]
+                            n_sections = cascaded_sos.shape[0]
+                            flat_zi = np.zeros(self.channels * n_sections * 2, dtype=np.float64)
                             
-                            channel_data = chunk[:, i] if self.channels > 1 else chunk
+                            for i in range(self.channels):
+                                if i not in self.eq_zi: self._initialize_eq_zi(i)
+                                active_zi = np.vstack([self.eq_zi[i][band] for band in self.eq_filters if self.eq_bands.get(band, 0) != 0])
+                                flat_zi[i * n_sections * 2 : (i + 1) * n_sections * 2] = active_zi.flatten()
                             
-                            # 从 self.eq_zi 中提取对应激活的滤波器的 zi
-                            active_zi = np.vstack([self.eq_zi[i][band] for band in self.eq_filters if self.eq_bands.get(band, 0) != 0])
+                            # 调用 Rust 实现的 IIR 滤波
+                            flat_chunk = chunk.flatten()
+                            processed_flat, next_flat_zi = rust_audio_resampler.apply_iir_sos(
+                                flat_chunk, cascaded_sos.flatten(), flat_zi, channels=self.channels
+                            )
+                            chunk = processed_flat.reshape(chunk.shape)
                             
-                            channel_data, updated_zi = sosfilt(cascaded_sos, channel_data, zi=active_zi)
-                            
-                            # 将更新后的 zi 写回 self.eq_zi
-                            zi_counter = 0
-                            for band in self.eq_filters:
-                                if self.eq_bands.get(band, 0) != 0:
-                                    num_sections = self.eq_filters[band].shape[0]
-                                    self.eq_zi[i][band] = updated_zi[zi_counter : zi_counter + num_sections, :]
-                                    zi_counter += num_sections
-
-                            if self.channels > 1:
-                                chunk[:, i] = channel_data
-                            else:
-                                chunk = channel_data
+                            # 写回更新后的 zi
+                            for i in range(self.channels):
+                                updated_zi_ch = next_flat_zi[i * n_sections * 2 : (i + 1) * n_sections * 2].reshape((n_sections, 2))
+                                zi_counter = 0
+                                for band in self.eq_filters:
+                                    if self.eq_bands.get(band, 0) != 0:
+                                        num_sections = self.eq_filters[band].shape[0]
+                                        self.eq_zi[i][band] = updated_zi_ch[zi_counter : zi_counter + num_sections, :]
+                                        zi_counter += num_sections
+                        else:
+                            # 回退到 Python 实现
+                            for i in range(self.channels):
+                                if i not in self.eq_zi: self._initialize_eq_zi(i)
+                                channel_data = chunk[:, i] if self.channels > 1 else chunk
+                                active_zi = np.vstack([self.eq_zi[i][band] for band in self.eq_filters if self.eq_bands.get(band, 0) != 0])
+                                channel_data, updated_zi = sosfilt(cascaded_sos, channel_data, zi=active_zi)
+                                zi_counter = 0
+                                for band in self.eq_filters:
+                                    if self.eq_bands.get(band, 0) != 0:
+                                        num_sections = self.eq_filters[band].shape[0]
+                                        self.eq_zi[i][band] = updated_zi[zi_counter : zi_counter + num_sections, :]
+                                        zi_counter += num_sections
+                                if self.channels > 1: chunk[:, i] = channel_data
+                                else: chunk = channel_data
                 elif self.eq_type == 'FIR':
                     if self.fir_convolver is not None:
                         # 使用 Rust FFT 卷积引擎 (Overlap-Save)
@@ -200,15 +218,24 @@ class AudioEngine:
                                 chunk = channel_data
 
             # --- Apply Volume Smoothing (Anti-Zipper Noise) ---
-            volume_ramp = np.zeros(frames)
-            for i in range(frames):
-                self._current_volume += (self._target_volume - self._current_volume) * (1 - self._volume_smoothing)
-                volume_ramp[i] = self._current_volume
-            
-            if self.channels > 1:
-                mixed = chunk * volume_ramp[:, np.newaxis]
+            if RUST_RESAMPLER_AVAILABLE and hasattr(rust_audio_resampler, 'apply_volume_smoothing'):
+                # 下沉到 Rust 处理音量平滑
+                flat_chunk = chunk.flatten()
+                mixed_flat, self._current_volume = rust_audio_resampler.apply_volume_smoothing(
+                    flat_chunk, self._current_volume, self._target_volume,
+                    smoothing=self._volume_smoothing, channels=self.channels
+                )
+                mixed = mixed_flat.reshape(chunk.shape)
             else:
-                mixed = chunk * volume_ramp
+                volume_ramp = np.zeros(frames)
+                for i in range(frames):
+                    self._current_volume += (self._target_volume - self._current_volume) * (1 - self._volume_smoothing)
+                    volume_ramp[i] = self._current_volume
+                
+                if self.channels > 1:
+                    mixed = chunk * volume_ramp[:, np.newaxis]
+                else:
+                    mixed = chunk * volume_ramp
 
             # --- Apply High-Order Noise Shaping ---
             mixed = self._apply_noise_shaping(mixed)
