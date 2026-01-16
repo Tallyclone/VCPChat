@@ -509,12 +509,13 @@ function renderChunkDirectlyToDOM(messageId, textToAppend) {
 export async function startStreamingMessage(message, passedMessageItem = null) {
     const messageId = message.id;
     
-    // 🟢 修复：如果消息已在处理中，直接返回现有状态
+    // 🟢 修复：如果消息已在处理中，且 isThinking 状态没变，直接返回现有状态
     const currentStatus = messageInitializationStatus.get(messageId);
-    if (currentStatus === 'pending' || currentStatus === 'ready') {
-        console.debug(`[StreamManager] Message ${messageId} already initialized (${currentStatus}), skipping re-init`);
-        // 返回已缓存的 DOM 引用（如果有）
-        const cached = getCachedMessageDom(messageId);
+    const cached = getCachedMessageDom(messageId);
+    const isCurrentlyThinking = cached?.messageItem?.classList.contains('thinking');
+
+    if ((currentStatus === 'pending' || currentStatus === 'ready') && (isCurrentlyThinking === !!message.isThinking)) {
+        console.debug(`[StreamManager] Message ${messageId} already initialized (${currentStatus}) with same thinking state, skipping re-init`);
         return cached?.messageItem || null;
     }
 
@@ -655,6 +656,10 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
     }
     
     if (isForCurrentView) {
+        // 如果从思考转为非思考，立即触发一次渲染以清理占位符
+        if (!message.isThinking && isCurrentlyThinking) {
+            renderStreamFrame(messageId);
+        }
         uiHelper.scrollToBottom();
     }
     
