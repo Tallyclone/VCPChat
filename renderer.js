@@ -372,7 +372,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
             (context.groupId ? context.groupId === currentSelectedItem.id : context.agentId === currentSelectedItem.id) &&
             context.topicId === currentTopicId;
 
-        console.log(`[onVCPStreamEvent] Received event type '${type}' for msg ${messageId}. Relevant to current view: ${isRelevantToCurrentView}`, context);
+        // console.log(`[onVCPStreamEvent] Received event type '${type}' for msg ${messageId}. Relevant to current view: ${isRelevantToCurrentView}`, context);
 
         // Data model updates should ALWAYS happen, regardless of the current view.
         // UI updates (creating new DOM elements) should only happen if the view is relevant.
