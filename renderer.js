@@ -12,6 +12,7 @@ let globalSettings = {
     filterRules: [], // 过滤规则列表
     enableRegenerateConfirmation: true, // 重新回复确认机制开关
     flowlockContinueDelay: 5, // 心流锁续写延迟（秒）
+    enableThoughtChainInjection: false, // 元思考注入上下文开关
 };
 // Unified selected item state
 let currentSelectedItem = {
@@ -1498,6 +1499,7 @@ async function syncGlobalSettingsToUI() {
     safeCheck('enableDistributedServer', globalSettings.enableDistributedServer === true);
     safeCheck('agentMusicControl', globalSettings.agentMusicControl === true);
     safeCheck('enableVcpToolInjection', globalSettings.enableVcpToolInjection === true);
+    safeCheck('enableThoughtChainInjection', globalSettings.enableThoughtChainInjection === true);
     safeCheck('enableContextSanitizer', globalSettings.enableContextSanitizer === true);
     safeSet('contextSanitizerDepth', globalSettings.contextSanitizerDepth ?? 2);
     

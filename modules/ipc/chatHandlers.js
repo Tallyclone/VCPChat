@@ -751,7 +751,11 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
                     
                     // 对非系统消息应用净化
                     const contextSanitizer = require('../contextSanitizer');
-                    const sanitizedNonSystemMessages = contextSanitizer.sanitizeMessages(nonSystemMessages, sanitizerDepth);
+                    const sanitizedNonSystemMessages = contextSanitizer.sanitizeMessages(
+                        nonSystemMessages,
+                        sanitizerDepth,
+                        settings.enableThoughtChainInjection === true
+                    );
                     
                     // 重新组合消息数组（保持系统消息在最前面）
                     messages = [...systemMessages, ...sanitizedNonSystemMessages];

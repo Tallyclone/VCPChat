@@ -44,6 +44,7 @@ export async function handleSaveGlobalSettings(e, deps) {
         enableDistributedServer: document.getElementById('enableDistributedServer').checked,
         agentMusicControl: document.getElementById('agentMusicControl').checked,
         enableVcpToolInjection: document.getElementById('enableVcpToolInjection').checked,
+        enableThoughtChainInjection: document.getElementById('enableThoughtChainInjection').checked,
         enableContextSanitizer: document.getElementById('enableContextSanitizer').checked,
         contextSanitizerDepth: parseInt(document.getElementById('contextSanitizerDepth').value, 10) || 0,
         enableAiMessageButtons: document.getElementById('enableAiMessageButtons').checked,
