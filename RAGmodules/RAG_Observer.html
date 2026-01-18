@@ -401,6 +401,47 @@
 
         @keyframes pulse { 0% { opacity: 0.5; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1.1); } 100% { opacity: 0.5; transform: scale(0.9); } }
 
+        /* --- Core Tag Highlighting --- */
+        .core-tags-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 12px;
+            padding: 10px;
+            background: rgba(255, 193, 7, 0.05);
+            border-radius: 10px;
+            border: 1px dashed rgba(255, 193, 7, 0.2);
+        }
+        .core-tag-pill {
+            font-size: 0.75rem;
+            padding: 4px 10px;
+            background: linear-gradient(135deg, rgba(255, 193, 7, 0.3), rgba(255, 152, 0, 0.2));
+            color: #fff;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+            border-radius: 8px;
+            border: 1px solid rgba(255, 193, 7, 0.5);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 2px 10px rgba(255, 193, 7, 0.2);
+            font-weight: bold;
+            animation: glow 2s infinite alternate;
+        }
+        .core-tag-pill::before {
+            content: '✨';
+            font-size: 0.9em;
+            filter: drop-shadow(0 0 2px #ffc107);
+        }
+        @keyframes glow {
+            from { box-shadow: 0 0 5px rgba(255, 193, 7, 0.2); border-color: rgba(255, 193, 7, 0.4); }
+            to { box-shadow: 0 0 15px rgba(255, 193, 7, 0.5); border-color: rgba(255, 193, 7, 0.8); }
+        }
+        .tag-match-highlight {
+            color: #ffc107 !important;
+            font-weight: bold;
+            text-shadow: 0 0 8px rgba(255, 193, 7, 0.4);
+        }
+
     </style>
     <script src="../vendor/marked.min.js"></script>
     <script>marked.setOptions({ gfm: true, breaks: true });</script>
@@ -622,6 +663,16 @@
             const block = document.createElement('div');
             block.className = 'card-base type-rag card-enter';
             
+            // Core Tags (Spotlight)
+            let coreTagsHTML = '';
+            if (data.coreTags && data.coreTags.length > 0) {
+                coreTagsHTML = `
+                    <div class="core-tags-container" title="显性意图核心标签">
+                        ${data.coreTags.map(tag => `<span class="core-tag-pill">${tag}</span>`).join('')}
+                    </div>
+                `;
+            }
+
             // Header
             let headerHTML = `
                 <h3>
@@ -634,6 +685,7 @@
                     <span class="meta-pill">ReRank: ${data.useRerank}</span>
                     ${data.useTagMemo ? `<span class="meta-pill" style="color:#ffc107; border-color:#ffc107;">TagBoost: ${data.tagWeight}</span>` : ''}
                 </div>
+                ${coreTagsHTML}
                 ${createContentHTML(data.query)}
             `;
             
@@ -649,7 +701,29 @@
                 
                 let tagsHTML = '';
                 if(r.matchedTags && r.matchedTags.length) {
-                    tagsHTML = `<div style="margin-top:4px; font-size:0.75em; color:#ffc107;">🏷️ ${r.matchedTags.join(', ')}</div>`;
+                    const coreMatched = r.coreTagsMatched || [];
+                    // 排序：核心匹配的标签排在前面
+                    const sortedTags = [...r.matchedTags].sort((a, b) => {
+                        const aIsCore = coreMatched.includes(a);
+                        const bIsCore = coreMatched.includes(b);
+                        if (aIsCore && !bIsCore) return -1;
+                        if (!aIsCore && bIsCore) return 1;
+                        return 0;
+                    });
+
+                    const renderedTags = sortedTags.map(tag => {
+                        if (coreMatched.includes(tag)) {
+                            return `<span class="tag-match-highlight">${tag}</span>`;
+                        }
+                        return tag;
+                    }).join(', ');
+                    
+                    const hasCoreMatch = coreMatched.length > 0;
+                    const tagIcon = hasCoreMatch ?
+                        `<span style="filter: drop-shadow(0 0 5px #ffc107); color: #ffc107; font-weight: bold;">🏷️</span>` :
+                        `🏷️`;
+
+                    tagsHTML = `<div style="margin-top:4px; font-size:0.75em; color:rgba(255,193,7,0.6);">${tagIcon} ${renderedTags}</div>`;
                 }
 
                 resultsHTML += `

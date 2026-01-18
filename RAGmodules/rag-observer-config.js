@@ -74,6 +74,8 @@ class RAGObserverConfig {
         this.wsConnection.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);
+                console.log('DEBUG: [RAG Observer] Received WebSocket Data:', data);
+                
                 // 检查是否为RAG、元思考链或Agent私聊预览的详细信息
                 if (data.type === 'RAG_RETRIEVAL_DETAILS' || data.type === 'META_THINKING_CHAIN' || data.type === 'AGENT_PRIVATE_CHAT_PREVIEW' || data.type === 'AI_MEMO_RETRIEVAL') {
                     if (window.startSpectrumAnimation) {
