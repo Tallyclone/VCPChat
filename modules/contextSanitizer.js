@@ -1,8 +1,9 @@
 // modules/contextSanitizer.js
 // 上下文HTML标签转MD净化器模块
 
-const { JSDOM } = require('jsdom'); // ✅ 使用 jsdom
-const TurndownService = require('turndown');
+// 🔴 优化：将沉重的模块改为按需加载，防止阻塞主进程发送消息
+let JSDOM = null;
+let TurndownService = null;
 
 /**
  * LRU缓存类，支持过期时间
@@ -71,7 +72,19 @@ class ContextSanitizer {
         // 初始化 LRU 缓存，最大100条，1小时过期
         this.cache = new LRUCache(100, 3600000);
 
-        // 初始化 Turndown 服务
+        this.turndownService = null;
+    }
+
+    /**
+     * 延迟初始化 Turndown 和 JSDOM
+     */
+    _ensureService() {
+        if (this.turndownService) return;
+
+        console.log('[ContextSanitizer] Initializing heavy dependencies (JSDOM, Turndown)...');
+        if (!JSDOM) JSDOM = require('jsdom').JSDOM;
+        if (!TurndownService) TurndownService = require('turndown');
+
         this.turndownService = new TurndownService({
             headingStyle: 'atx',
             hr: '---',
@@ -247,6 +260,8 @@ class ContextSanitizer {
         }
 
         try {
+            this._ensureService();
+            
             // ✅ 使用 jsdom 解析
             const dom = new JSDOM(content);
             const body = dom.window.document.body;

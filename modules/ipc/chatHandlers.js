@@ -2,6 +2,7 @@
 const { ipcMain, dialog, BrowserWindow } = require('electron');
 const fs = require('fs-extra');
 const path = require('path');
+const contextSanitizer = require('../contextSanitizer');
 
 /**
  * Initializes chat and topic related IPC handlers.
@@ -716,7 +717,6 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
             try {
                 // 默认不注入元思考链，除非明确开启
                 if (settings.enableThoughtChainInjection !== true) {
-                    const contextSanitizer = require('../contextSanitizer');
                     messages = messages.map(msg => {
                         if (typeof msg.content === 'string') {
                             return { ...msg, content: contextSanitizer.stripThoughtChains(msg.content) };
@@ -750,7 +750,6 @@ ipcMain.handle('get-original-message-content', async (event, itemId, itemType, t
                     const nonSystemMessages = messages.filter(m => m.role !== 'system');
                     
                     // 对非系统消息应用净化
-                    const contextSanitizer = require('../contextSanitizer');
                     const sanitizedNonSystemMessages = contextSanitizer.sanitizeMessages(
                         nonSystemMessages,
                         sanitizerDepth,
