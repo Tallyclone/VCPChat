@@ -103,6 +103,8 @@
 
         if (modalElement) {
             modalElement.classList.add('active');
+            // 确保新打开的模态框获得焦点
+            modalElement.focus();
         } else {
             console.warn(`[UI Helper] Modal "${modalId}" not found and no template available.`);
         }
