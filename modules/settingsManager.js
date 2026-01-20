@@ -599,6 +599,14 @@ const settingsManager = (() => {
                         });
                     }
                 }
+                if (modalId === 'globalSettingsModal') {
+                    topicSummaryModelInput = document.getElementById('topicSummaryModel');
+                    openTopicSummaryModelSelectBtn = document.getElementById('openTopicSummaryModelSelectBtn');
+                    
+                    if (openTopicSummaryModelSelectBtn) {
+                        openTopicSummaryModelSelectBtn.addEventListener('click', () => handleOpenModelSelect(topicSummaryModelInput));
+                    }
+                }
             });
 
             // Event Listeners for always-present elements
@@ -694,9 +702,6 @@ const settingsManager = (() => {
 
             if (openModelSelectBtn) {
                 openModelSelectBtn.addEventListener('click', () => handleOpenModelSelect(agentModelInput));
-            }
-            if (openTopicSummaryModelSelectBtn) {
-                openTopicSummaryModelSelectBtn.addEventListener('click', () => handleOpenModelSelect(topicSummaryModelInput));
             }
             if (modelSearchInput) {
                 modelSearchInput.addEventListener('input', filterModels);
@@ -923,15 +928,30 @@ const settingsManager = (() => {
      */
     async function handleOpenModelSelect(targetInputElement) {
         try {
-            const models = await electronAPI.getCachedModels();
+            let models = await electronAPI.getCachedModels();
+            
+            // 如果缓存为空，尝试触发一次刷新并等待
+            if (!models || models.length === 0) {
+                console.log('[SettingsManager] Cached models empty, requesting refresh...');
+                if (electronAPI.refreshModels) {
+                    electronAPI.refreshModels();
+                    // 等待一小会儿让主进程获取模型
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    models = await electronAPI.getCachedModels();
+                }
+            }
+
             currentModelSelectCallback = (modelId) => {
                 if (targetInputElement) {
                     targetInputElement.value = modelId;
                 }
                 uiHelper.closeModal('modelSelectModal');
             };
-            populateModelList(models, currentModelSelectCallback);
             uiHelper.openModal('modelSelectModal');
+            // 确保在模态框打开后（DOM 元素已从模板实例化）再填充列表
+            setTimeout(() => {
+                populateModelList(models, currentModelSelectCallback);
+            }, 0);
         } catch (error) {
             console.error('Failed to get cached models:', error);
             uiHelper.showToastNotification('获取模型列表失败', 'error');
@@ -943,7 +963,12 @@ const settingsManager = (() => {
      * @param {Array} models - An array of model objects.
      */
     function populateModelList(models, onModelSelect) {
-        if (!modelList) return;
+        // 重新获取元素引用，因为它们可能是动态从模板生成的
+        modelList = document.getElementById('modelList');
+        if (!modelList) {
+            console.warn('[SettingsManager] modelList element not found during populateModelList');
+            return;
+        }
         modelList.innerHTML = ''; // Clear existing list
 
         if (!models || models.length === 0) {

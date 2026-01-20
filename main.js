@@ -424,6 +424,7 @@ if (!gotTheLock) {
 
    // Function to fetch and cache models from the VCP server
    async function fetchAndCacheModels() {
+       console.log('[Main] fetchAndCacheModels called');
        try {
            const settings = await appSettingsManager.readSettings();
            const vcpServerUrl = settings.vcpServerUrl;

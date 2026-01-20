@@ -17,6 +17,8 @@ numpy = "*"
 pydub = "*"
 gevent-websocket = "*"
 gevent = "*"
+python-dotenv = "*"
+mutagen = "*"
 
 [build-system]
 requires = ["poetry-core"]
