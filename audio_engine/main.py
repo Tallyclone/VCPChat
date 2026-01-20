@@ -1,4 +1,5 @@
 import os
+import sys
 import threading
 import time
 import numpy as np
@@ -378,7 +379,7 @@ class AudioEngine:
                     # 修改：对所有 soundfile 错误都尝试 FFmpeg 回退
                     # 这样可以解决 Windows 中文路径 MP3 文件的问题
                     logging.warning(f"Soundfile failed: {e}. Falling back to FFmpeg.")
-                    if os.name == 'nt':
+                    if sys.platform == 'win32':
                         ffmpeg_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'bin', 'ffmpeg.exe'))
                         if not os.path.exists(ffmpeg_path):
                             logging.warning(f"ffmpeg.exe not found at {ffmpeg_path}, assuming it's in PATH.")
@@ -623,7 +624,7 @@ class AudioEngine:
             }
 
     def _get_system_mixer_samplerate(self):
-        """获取系统混音器的当前采样率 (Windows/macOS)"""
+        """获取系统混音器的当前采样率 (Windows/macOS/Linux)"""
         try:
             # 查询默认输出设备
             device_info = sd.query_devices(kind='output')
@@ -859,7 +860,13 @@ def get_audio_devices():
         default_output_idx = sd.default.device[1]
         
         # Find the preferred host API index (WASAPI for Windows, Core Audio for macOS)
-        preferred_api_name = 'WASAPI' if os.name == 'nt' else 'Core Audio'
+        if sys.platform == 'win32':
+            preferred_api_name = 'WASAPI'
+        elif sys.platform == 'darwin':
+            preferred_api_name = 'Core Audio'
+        else:
+            preferred_api_name = 'ALSA' # Default for Linux
+            
         preferred_index = -1
         for i, api in enumerate(hostapis):
             if preferred_api_name in api['name']:
