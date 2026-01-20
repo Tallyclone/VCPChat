@@ -11,7 +11,9 @@ crate-type = ["cdylib"]
 pyo3 = { version = "0.23.3", features = ["extension-module"] }
 numpy = "0.23.0"
 ndarray = "0.15.4"
-rubato = "0.14.1"
+soxr = "0.6"
+rustfft = "6.2.0"
+rand = "0.8"
 
 [profile.release]
 lto = "fat"              # 全程序链接时优化
