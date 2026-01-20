@@ -531,8 +531,8 @@ class AudioEngine:
                 
                 # 针对 macOS 蓝牙设备，增加缓冲区大小以防止 underrun 导致的杂音
                 if sys.platform == 'darwin':
-                    stream_args['blocksize'] = 2048 # 增加缓冲区到 2048 帧，以追求更高的稳定性
-                    logging.info("Setting blocksize to 2048 for macOS stability (Stability Priority).")
+                    stream_args['blocksize'] = 1024 # 增加缓冲区到 1024 帧
+                    logging.info("Setting blocksize to 1024 for macOS stability (Stability Priority).")
                     
                 if self.device_id is not None:
                     stream_args['device'] = self.device_id
@@ -564,12 +564,34 @@ class AudioEngine:
         return True
 
     def pause(self):
-        """暂停播放"""
+        """暂停播放，实现音量渐降以消除爆音/滋声"""
         with self.lock:
             if self.is_playing and not self.is_paused:
+                # 1. 记录原始目标音量
+                original_target_volume = self._target_volume
+                
+                # 2. 设置新的目标音量为 0
+                self._target_volume = 0.0
+                
+                # 3. 计算渐降时间并等待
+                # 增加渐降时间到 100ms，以确保在蓝牙设备上完全消除“滋声”
+                fade_time_ms = 100
+                time_to_wait = fade_time_ms / 1000.0
+                
+                # 释放锁，让回调函数在后台执行音量平滑
+                self.lock.__exit__(None, None, None)
+                time.sleep(time_to_wait)
+                self.lock.__enter__()
+                
+                # 4. 停止流
                 self.stream.stop()
+                
+                # 5. 恢复原始目标音量
+                self._target_volume = original_target_volume
+                self.volume = original_target_volume # 保持 API 状态一致
+                
                 self.is_paused = True
-                logging.info("Playback paused.")
+                logging.info("Playback paused with fade-out.")
         return True
 
     def seek(self, position_seconds):
