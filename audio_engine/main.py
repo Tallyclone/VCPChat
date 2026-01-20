@@ -528,6 +528,12 @@ class AudioEngine:
                     'channels': self.channels,
                     'callback': self._stream_callback
                 }
+                
+                # 针对 macOS 蓝牙设备，增加缓冲区大小以防止 underrun 导致的杂音
+                if sys.platform == 'darwin':
+                    stream_args['blocksize'] = 2048 # 增加缓冲区到 2048 帧，以追求更高的稳定性
+                    logging.info("Setting blocksize to 2048 for macOS stability (Stability Priority).")
+                    
                 if self.device_id is not None:
                     stream_args['device'] = self.device_id
                 
