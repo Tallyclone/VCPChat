@@ -254,10 +254,31 @@ class WebNowPlayingAdapter {
         if (!('mediaSession' in navigator)) {
             return;
         }
-        navigator.mediaSession.setActionHandler('play', playTrack);
-        navigator.mediaSession.setActionHandler('pause', pauseTrack);
+        // 显式绑定 MediaSession 动作，确保 AirPods 手势能触发 playTrack/pauseTrack
+        navigator.mediaSession.setActionHandler('play', () => {
+            console.log('[MediaSession] Play action triggered');
+            playTrack();
+        });
+        navigator.mediaSession.setActionHandler('pause', () => {
+            console.log('[MediaSession] Pause action triggered');
+            pauseTrack();
+        });
         navigator.mediaSession.setActionHandler('previoustrack', prevTrack);
         navigator.mediaSession.setActionHandler('nexttrack', nextTrack);
+
+        // 监听 phantomAudio 的播放事件，作为 AirPods 手势的补充触发源
+        phantomAudio.onplay = () => {
+            if (!isPlaying) {
+                console.log('[PhantomAudio] Play event detected');
+                playTrack();
+            }
+        };
+        phantomAudio.onpause = () => {
+            if (isPlaying) {
+                console.log('[PhantomAudio] Pause event detected');
+                pauseTrack();
+            }
+        };
     };
 
     const updateMediaSessionMetadata = () => {
@@ -273,6 +294,9 @@ class WebNowPlayingAdapter {
             album: track.album || 'VCP Music Player', // Default album name
             artwork: artworkSrc ? [{ src: artworkSrc }] : []
         });
+        
+        // 强制更新播放状态，确保系统控制中心与引擎同步
+        navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
     };
 
     // --- Core Player Logic ---
@@ -334,7 +358,14 @@ class WebNowPlayingAdapter {
         if (result.status === 'success') {
             isPlaying = true;
             playPauseBtn.classList.add('is-playing');
+            // AirPods 手势恢复播放依赖于 phantomAudio 的状态同步
+            // 循环播放占位音频，防止其结束后导致 MediaSession 状态失效
+            phantomAudio.loop = true;
             phantomAudio.play().catch(e => console.error("Phantom audio play failed:", e));
+            
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.playbackState = 'playing';
+            }
             startStatePolling();
             if (wnpAdapter) wnpAdapter.sendUpdate();
         }
@@ -345,7 +376,11 @@ class WebNowPlayingAdapter {
         if (result.status === 'success') {
             isPlaying = false;
             playPauseBtn.classList.remove('is-playing');
+            // AirPods 离开耳朵或手势暂停时，同步暂停 phantomAudio
             phantomAudio.pause();
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.playbackState = 'paused';
+            }
             stopStatePolling();
             if (wnpAdapter) wnpAdapter.sendUpdate();
         }
@@ -780,30 +815,51 @@ class WebNowPlayingAdapter {
    // --- WASAPI and Device Control ---
    const populateDeviceList = async () => {
        if (!window.electron) return;
-       const result = await window.electron.invoke('music-get-devices');
-       if (result.status === 'success' && result.devices) {
-           deviceSelect.innerHTML = ''; // Clear existing options
+       try {
+           const result = await window.electron.invoke('music-get-devices');
+           if (result.status === 'success' && result.devices) {
+               deviceSelect.innerHTML = ''; // Clear existing options
 
-           // Add default device option
-           const defaultOption = document.createElement('option');
-           defaultOption.value = 'default';
-           defaultOption.textContent = '默认设备';
-           deviceSelect.appendChild(defaultOption);
+               // Add default device option
+               const defaultOption = document.createElement('option');
+               defaultOption.value = 'default';
+               defaultOption.textContent = '默认设备';
+               deviceSelect.appendChild(defaultOption);
 
-           // Add WASAPI devices
-           if (result.devices.wasapi && result.devices.wasapi.length > 0) {
-               const wasapiGroup = document.createElement('optgroup');
-               wasapiGroup.label = 'WASAPI';
-               result.devices.wasapi.forEach(device => {
-                   const option = document.createElement('option');
-                   option.value = device.id;
-                   option.textContent = device.name;
-                   wasapiGroup.appendChild(option);
-               });
-               deviceSelect.appendChild(wasapiGroup);
+               // Add Preferred devices (WASAPI or Core Audio)
+               const preferredDevices = result.devices.preferred || [];
+               const preferredName = result.devices.preferred_name || '推荐设备';
+               
+               if (preferredDevices.length > 0) {
+                   const preferredGroup = document.createElement('optgroup');
+                   preferredGroup.label = preferredName;
+                   preferredDevices.forEach(device => {
+                       const option = document.createElement('option');
+                       option.value = device.id;
+                       option.textContent = device.name;
+                       preferredGroup.appendChild(option);
+                   });
+                   deviceSelect.appendChild(preferredGroup);
+               }
+
+               // Add Other devices
+               const otherDevices = result.devices.other || [];
+               if (otherDevices.length > 0) {
+                   const otherGroup = document.createElement('optgroup');
+                   otherGroup.label = '其他设备';
+                   otherDevices.forEach(device => {
+                       const option = document.createElement('option');
+                       option.value = device.id;
+                       option.textContent = device.name;
+                       otherGroup.appendChild(option);
+                   });
+                   deviceSelect.appendChild(otherGroup);
+               }
+           } else {
+               console.error("Failed to get audio devices:", result.message);
            }
-       } else {
-           console.error("Failed to get audio devices:", result.message);
+       } catch (error) {
+           console.error("Error populating device list:", error);
        }
    };
 
@@ -813,20 +869,35 @@ class WebNowPlayingAdapter {
        const selectedDeviceId = deviceSelect.value === 'default' ? null : parseInt(deviceSelect.value, 10);
        const useExclusive = wasapiSwitch.checked;
 
-       console.log(`Configuring output: Device ID=${selectedDeviceId}, Exclusive=${useExclusive}`);
-       
        // Prevent re-configuration if nothing changed
        if (selectedDeviceId === currentDeviceId && useExclusive === useWasapiExclusive) {
            return;
        }
 
-       currentDeviceId = selectedDeviceId;
-       useWasapiExclusive = useExclusive;
+       console.log(`Configuring output: Device ID=${selectedDeviceId}, Exclusive=${useExclusive}`);
+       
+       // 禁用选择框防止重复触发
+       deviceSelect.disabled = true;
+       wasapiSwitch.disabled = true;
 
-       await window.electron.invoke('music-configure-output', {
-           device_id: currentDeviceId,
-           exclusive: useWasapiExclusive
-       });
+       try {
+           currentDeviceId = selectedDeviceId;
+           useWasapiExclusive = useExclusive;
+
+           await window.electron.invoke('music-configure-output', {
+               device_id: currentDeviceId,
+               exclusive: useWasapiExclusive
+           });
+           
+           // 切换后重新获取设备列表，以更新“(系统默认)”标记
+           await populateDeviceList();
+           deviceSelect.value = currentDeviceId === null ? 'default' : currentDeviceId;
+       } catch (error) {
+           console.error("Error configuring output:", error);
+       } finally {
+           deviceSelect.disabled = false;
+           wasapiSwitch.disabled = false;
+       }
    };
 
    deviceSelect.addEventListener('change', configureOutput);
@@ -1235,7 +1306,7 @@ class WebNowPlayingAdapter {
     const createSilentAudio = () => {
         const context = new (window.AudioContext || window.webkitAudioContext)();
         const sampleRate = 44100;
-        const duration = 1; // 1 second
+        const duration = 3600; // 增加到 1 小时，防止频繁循环导致的 MediaSession 状态重置
         const frameCount = sampleRate * duration;
         const buffer = context.createBuffer(1, frameCount, sampleRate);
         // The buffer is already filled with zeros (silence)
@@ -1331,6 +1402,8 @@ class WebNowPlayingAdapter {
         }
        
        // --- New: Populate devices and set initial state ---
+       // 刷新页面后，先让 Python 引擎重新扫描设备，再填充列表
+       await window.electron.invoke('music-configure-output', { device_id: null });
        await populateDeviceList();
       createEqBands(); // Create EQ sliders
       populateEqPresets(); // Populate EQ presets

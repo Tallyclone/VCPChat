@@ -378,9 +378,12 @@ class AudioEngine:
                     # 修改：对所有 soundfile 错误都尝试 FFmpeg 回退
                     # 这样可以解决 Windows 中文路径 MP3 文件的问题
                     logging.warning(f"Soundfile failed: {e}. Falling back to FFmpeg.")
-                    ffmpeg_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'bin', 'ffmpeg.exe'))
-                    if not os.path.exists(ffmpeg_path):
-                        logging.warning(f"ffmpeg.exe not found at {ffmpeg_path}, assuming it's in PATH.")
+                    if os.name == 'nt':
+                        ffmpeg_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'bin', 'ffmpeg.exe'))
+                        if not os.path.exists(ffmpeg_path):
+                            logging.warning(f"ffmpeg.exe not found at {ffmpeg_path}, assuming it's in PATH.")
+                            ffmpeg_path = 'ffmpeg'
+                    else:
                         ffmpeg_path = 'ffmpeg'
 
                     # 改进的 FFmpeg 命令：降低日志噪音，并标准化输出为 f32le PCM
@@ -421,7 +424,7 @@ class AudioEngine:
                     try:
                         device_info = sd.query_devices(self.device_id)
                         hostapi_info = sd.query_hostapis(device_info['hostapi'])
-                        if 'WASAPI' in hostapi_info['name']:
+                        if 'WASAPI' in hostapi_info['name'] or 'Core Audio' in hostapi_info['name']:
                             target_sr = int(device_info.get('default_samplerate', target_sr))
                     except Exception as e:
                         logging.warning(f"Could not query device for WASAPI default samplerate: {e}")
@@ -534,6 +537,9 @@ class AudioEngine:
                         if 'WASAPI' in hostapi_info['name']:
                             stream_args['extra_settings'] = sd.WasapiSettings(exclusive=True)
                             logging.info(f"Attempting to open device {self.device_id} in WASAPI Exclusive Mode.")
+                        elif 'Core Audio' in hostapi_info['name']:
+                            # Core Audio doesn't use WasapiSettings, but we log it
+                            logging.info(f"Opening device {self.device_id} on Core Audio.")
                     except Exception as e:
                         logging.error(f"Could not set WASAPI exclusive mode: {e}")
 
@@ -572,19 +578,29 @@ class AudioEngine:
 
     def stop(self):
         """停止播放并清理资源"""
-        with self.lock:
-            if self.stream:
+        # 1. 先设置停止事件，让后台线程退出循环，避免持有锁
+        self.stop_event.set()
+        
+        # 2. 停止并关闭流（不持有 self.lock，因为 callback 可能会尝试获取它）
+        # sounddevice 的 stop/close 在某些驱动下是阻塞的，且可能与 callback 产生死锁
+        if self.stream:
+            try:
                 self.stream.stop()
                 self.stream.close()
-                self.stream = None
-            self.is_playing = False
-            self.is_paused = False
-            self.position = 0
-        # 停止后台线程
-        self.stop_event.set()
+            except Exception as e:
+                logging.error(f"Error closing stream: {e}")
+            self.stream = None
+
+        # 3. 等待后台线程结束
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=1)
         self.thread = None
+
+        # 4. 最后更新状态
+        with self.lock:
+            self.is_playing = False
+            self.is_paused = False
+            self.position = 0
         logging.info("Playback stopped and resources cleaned up.")
 
     def get_state(self):
@@ -607,7 +623,7 @@ class AudioEngine:
             }
 
     def _get_system_mixer_samplerate(self):
-        """获取Windows混音器的当前采样率"""
+        """获取系统混音器的当前采样率 (Windows/macOS)"""
         try:
             # 查询默认输出设备
             device_info = sd.query_devices(kind='output')
@@ -768,34 +784,37 @@ class AudioEngine:
 
     def configure_output(self, device_id=None, exclusive=False):
         """配置音频输出设备和模式"""
+        # 保存状态，不要在锁内调用 stop()
         with self.lock:
             was_playing = self.is_playing and not self.is_paused
-            
-            # Stop current playback before changing device
-            if self.is_playing:
-                self.stop()
+            current_file = self.file_path
+            old_position_frames = self.position
+            old_samplerate = self.samplerate if self.samplerate > 0 else 1
 
+        # 1. 在锁外停止播放，避免切换设备时的死锁
+        if was_playing or self.stream:
+            self.stop()
+
+        # 2. 更新配置
+        with self.lock:
             self.device_id = device_id
             self.exclusive_mode = exclusive
             logging.info(f"Audio output configured. Device: {self.device_id}, Exclusive: {self.exclusive_mode}")
 
-            # If a track was playing, reload and play it on the new device
-            if was_playing and self.file_path:
-                # D1: 修正热切换时的seek逻辑
-                # 保存切换前的采样帧索引和采样率
-                old_position_frames = self.position
-                old_samplerate = self.samplerate if self.samplerate > 0 else 1
-
-                # 重要：重新加载文件以应用新的设备/模式设置（如重采样）
-                if self.load(self.file_path):
-                    # 按比例计算新的采样帧索引
-                    new_position_frames = int(old_position_frames * (self.samplerate / old_samplerate))
+        # 3. 如果之前在播放，恢复播放
+        if was_playing and current_file:
+            # D1: 修正热切换时的seek逻辑
+            # 重要：重新加载文件以应用新的设备/模式设置（如重采样）
+            if self.load(current_file):
+                # 按比例计算新的采样帧索引
+                new_position_frames = int(old_position_frames * (self.samplerate / old_samplerate))
+                with self.lock:
                     self.position = new_position_frames
-                    logging.info(f"Reloaded track for device change, mapped position from {old_position_frames} to {self.position}")
-                    self.play()
+                logging.info(f"Reloaded track for device change, mapped position from {old_position_frames} to {new_position_frames}")
+                self.play()
            
-            # Redesign filters for the new sample rate if necessary
-            self._design_eq_filters()
+        # Redesign filters for the new sample rate if necessary
+        self._design_eq_filters()
         return True
 
     def configure_upsampling(self, target_rate):
@@ -830,39 +849,55 @@ audio_engine = AudioEngine(socketio)
 
 # --- Helper Functions ---
 def get_audio_devices():
-    devices = sd.query_devices()
-    hostapis = sd.query_hostapis()
-    
-    # Find the WASAPI host API index
-    wasapi_index = -1
-    for i, api in enumerate(hostapis):
-        if 'WASAPI' in api['name']:
-            wasapi_index = i
-            break
-            
-    if wasapi_index == -1:
-        logging.warning("WASAPI host API not found.")
-        return {'wasapi': [], 'other': []}
-
-    wasapi_devices = []
-    other_devices = []
-    
-    for device in devices:
-        # We only care about output devices
-        if device['max_output_channels'] > 0:
-            device_info = {
-                'id': device['index'],
-                'name': device['name'],
-                'hostapi': device['hostapi'],
-                'max_output_channels': device['max_output_channels'],
-                'default_samplerate': device['default_samplerate']
-            }
-            if device['hostapi'] == wasapi_index:
-                wasapi_devices.append(device_info)
-            else:
-                other_devices.append(device_info)
+    try:
+        # 强制重新扫描音频设备，解决刷新后无法识别新连接设备的问题
+        sd._terminate()
+        sd._initialize()
+        
+        devices = sd.query_devices()
+        hostapis = sd.query_hostapis()
+        default_output_idx = sd.default.device[1]
+        
+        # Find the preferred host API index (WASAPI for Windows, Core Audio for macOS)
+        preferred_api_name = 'WASAPI' if os.name == 'nt' else 'Core Audio'
+        preferred_index = -1
+        for i, api in enumerate(hostapis):
+            if preferred_api_name in api['name']:
+                preferred_index = i
+                break
                 
-    return {'wasapi': wasapi_devices, 'other': other_devices}
+        preferred_devices = []
+        other_devices = []
+        
+        for i, device in enumerate(devices):
+            # We only care about output devices
+            if device['max_output_channels'] > 0:
+                is_default = (i == default_output_idx)
+                name = device['name']
+                if is_default:
+                    name += " (系统默认)"
+                
+                device_info = {
+                    'id': i,
+                    'name': name,
+                    'hostapi': device['hostapi'],
+                    'max_output_channels': device['max_output_channels'],
+                    'default_samplerate': device['default_samplerate'],
+                    'is_default': is_default
+                }
+                if preferred_index != -1 and device['hostapi'] == preferred_index:
+                    preferred_devices.append(device_info)
+                else:
+                    other_devices.append(device_info)
+                    
+        return {
+            'preferred': preferred_devices,
+            'other': other_devices,
+            'preferred_name': preferred_api_name
+        }
+    except Exception as e:
+        logging.error(f"Error in get_audio_devices: {e}")
+        return {'preferred': [], 'other': [], 'preferred_name': 'Unknown'}
 
 # --- Flask API 路由 ---
 @app.route('/devices', methods=['GET'])
