@@ -245,8 +245,9 @@ function initialize(options) {
         });
 
         // --- New handlers for WASAPI and device selection ---
-        ipcMain.handle('music-get-devices', async () => {
-            return await audioEngineApi('/devices', 'GET');
+        ipcMain.handle('music-get-devices', async (event, options = {}) => {
+            const refresh = options.refresh ? '?refresh=true' : '';
+            return await audioEngineApi(`/devices${refresh}`, 'GET');
         });
 
         ipcMain.handle('music-configure-output', (event, { device_id, exclusive }) => {

@@ -877,11 +877,14 @@ class AudioEngine:
 audio_engine = AudioEngine(socketio)
 
 # --- Helper Functions ---
-def get_audio_devices():
+def get_audio_devices(force_rescan=False):
     try:
-        # 强制重新扫描音频设备，解决刷新后无法识别新连接设备的问题
-        sd._terminate()
-        sd._initialize()
+        if force_rescan:
+            # 强制重新扫描音频设备，解决刷新后无法识别新连接设备的问题
+            # 注意：在 Windows 上这可能需要好几秒
+            logging.info("Forcing audio device rescan...")
+            sd._terminate()
+            sd._initialize()
         
         devices = sd.query_devices()
         hostapis = sd.query_hostapis()
@@ -938,7 +941,9 @@ def get_audio_devices():
 @app.route('/devices', methods=['GET'])
 def list_devices():
     try:
-        devices = get_audio_devices()
+        # 默认不强制刷新，以提高启动速度。如果需要刷新，可以增加参数。
+        force_refresh = request.args.get('refresh', 'false').lower() == 'true'
+        devices = get_audio_devices(force_rescan=force_refresh)
         return jsonify({'status': 'success', 'devices': devices})
     except Exception as e:
         logging.error(f"Failed to list audio devices: {e}", exc_info=True)
