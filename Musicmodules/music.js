@@ -80,6 +80,7 @@ document.addEventListener('DOMContentLoaded', () => {
        'pop': { '31': 2, '62': 4, '125': 5, '250': 2, '500': -1, '1k': -2, '2k': 0, '4k': 3, '8k': 4, '16k': 5 },
        'rock': { '31': 5, '62': 3, '125': -2, '250': -4, '500': -1, '1k': 2, '2k': 5, '4k': 6, '8k': 7, '16k': 7 },
        'electronic': { '31': 6, '62': 5, '125': 2, '250': 0, '500': -2, '1k': 0, '2k': 3, '4k': 5, '8k': 6, '16k': 7 },
+       'acg_vocal': { '31': 1, '62': 2, '125': -1, '250': 1, '500': -2, '1k': 2, '2k': 5, '4k': 4, '8k': 3, '16k': 2 },
   };
 let isDraggingProgress = false;
 
@@ -929,7 +930,8 @@ class WebNowPlayingAdapter {
            'classical': '古典',
            'pop': '流行',
            'rock': '摇滚',
-           'electronic': '电子'
+           'electronic': '电子',
+           'acg_vocal': '萌系ACG'
        };
        for (const preset in eqPresets) {
            const option = document.createElement('option');
