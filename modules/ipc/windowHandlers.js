@@ -48,6 +48,13 @@ function initialize(mainWindow, openChildWindows) {
         }
     });
 
+    ipcMain.on('hide-window', (event) => {
+        const win = BrowserWindow.fromWebContents(event.sender);
+        if (win) {
+            win.hide();
+        }
+    });
+
     ipcMain.on('toggle-notifications-sidebar', () => {
         if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
             mainWindow.webContents.send('do-toggle-notifications-sidebar');

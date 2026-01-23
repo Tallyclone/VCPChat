@@ -24,9 +24,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Main Logic ---
 
+    let isClosing = false;
     closeBtn.addEventListener('click', async () => {
-        await saveAssistantChatToHistory();
-        window.close();
+        if (isClosing) return;
+        isClosing = true;
+
+        // 立即隐藏窗口，解决“卡顿”感
+        if (window.electronAPI.hideWindow) {
+            window.electronAPI.hideWindow();
+        } else {
+            // 退而求其次，改变透明度
+            document.body.style.opacity = '0';
+            document.body.style.pointerEvents = 'none';
+        }
+
+        try {
+            await saveAssistantChatToHistory();
+        } catch (error) {
+            console.error('[Assistant] Error saving history on close:', error);
+        } finally {
+            window.close();
+        }
     });
 
     async function saveAssistantChatToHistory() {

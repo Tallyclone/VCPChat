@@ -226,6 +226,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     maximizeWindow: () => ipcRenderer.send('maximize-window'),
     unmaximizeWindow: () => ipcRenderer.send('unmaximize-window'),
     closeWindow: () => ipcRenderer.send('close-window'),
+    hideWindow: () => ipcRenderer.send('hide-window'),
     openDevTools: () => ipcRenderer.send('open-dev-tools'),
     sendToggleNotificationsSidebar: () => ipcRenderer.send('toggle-notifications-sidebar'), 
     onDoToggleNotificationsSidebar: (callback) => ipcRenderer.on('do-toggle-notifications-sidebar', (_event) => callback()), 
