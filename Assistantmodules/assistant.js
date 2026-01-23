@@ -144,7 +144,7 @@ window.electronAPI.onAssistantData(async (data) => {
                         // Notify the main process to stop the VCP request.
                         // The main process should then send an 'end' or 'error' stream event,
                         // which will trigger finalizeStreamedMessage correctly.
-                        await window.electronAPI.cancelVCPRequest(messageId);
+                        await window.electronAPI.interruptVcpRequest({ messageId });
                         return { success: true };
                     }
                     return { success: false, error: "Message not actively streaming." };
