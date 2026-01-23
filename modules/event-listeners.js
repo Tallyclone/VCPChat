@@ -971,7 +971,30 @@ export function setupEventListeners(deps) {
     }
 
     if (toggleAssistantBtn) {
+        let longPressTimer;
+        toggleAssistantBtn.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return; // Only left click
+            longPressTimer = setTimeout(() => {
+                console.log('[Assistant] Long press detected on toggle button');
+                window.electronAPI.assistantAction('open');
+                longPressTimer = null;
+            }, 600);
+        });
+
+        const clearLongPress = () => {
+            if (longPressTimer) {
+                clearTimeout(longPressTimer);
+                longPressTimer = null;
+            }
+        };
+
+        toggleAssistantBtn.addEventListener('mouseup', clearLongPress);
+        toggleAssistantBtn.addEventListener('mouseleave', clearLongPress);
+
         toggleAssistantBtn.addEventListener('click', async () => {
+            if (longPressTimer === null) return; // Was a long press
+            clearLongPress();
+
             const globalSettings = refs.globalSettings.get();
             const isActive = toggleAssistantBtn.classList.toggle('active');
             globalSettings.assistantEnabled = isActive;

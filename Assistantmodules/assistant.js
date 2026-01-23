@@ -4,6 +4,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const chatMessagesDiv = document.getElementById('chatMessages');
     const messageInput = document.getElementById('messageInput');
     const sendMessageBtn = document.getElementById('sendMessageBtn');
+    const attachFileBtn = document.getElementById('attachFileBtn');
+    const attachmentPreviewArea = document.getElementById('attachmentPreviewArea');
     const agentAvatarImg = document.getElementById('agentAvatar');
     const agentNameSpan = document.getElementById('currentChatAgentName');
     const closeBtn = document.getElementById('close-btn-assistant');
@@ -12,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let agentId = null;
     let globalSettings = {};
     let currentChatHistory = [];
+    let attachedFiles = [];
     let activeStreamingMessageId = null;
     const markedInstance = new window.marked.Marked({ gfm: true, breaks: true });
 
@@ -177,6 +180,13 @@ window.electronAPI.onAssistantData(async (data) => {
             image:'请根据引用文本内容，调用已有生图工具生成一张配图。',
             table: '根据引用文本内容，构建摘要来生成一个MD表格'
         };
+        if (action === 'open') {
+            chatMessagesDiv.innerHTML = '';
+            currentChatHistory = [];
+            messageInput.focus();
+            return;
+        }
+
         const actionPrompt = prompts[action] || '';
         const initialPrompt = `[引用文本：${selectedText}]\n\n${actionPrompt}`;
 
@@ -192,16 +202,72 @@ window.electronAPI.onAssistantData(async (data) => {
         document.body.classList.toggle('dark-theme', theme !== 'light'); // Ensure dark is set correctly
     });
 
-    const sendMessage = async (messageContent) => {
-        if (!messageContent.trim() || !agentConfig || !window.messageRenderer) return;
+    const updateAttachmentPreview = () => {
+        if (!attachmentPreviewArea) return;
+        attachmentPreviewArea.innerHTML = '';
+        attachedFiles.forEach((fileObj, index) => {
+            const item = document.createElement('div');
+            item.className = 'attachment-preview-item';
+            
+            const isImage = fileObj.file.type.startsWith('image/');
+            if (isImage) {
+                const img = document.createElement('img');
+                img.src = fileObj.localPath;
+                item.appendChild(img);
+            } else {
+                const icon = document.createElement('div');
+                icon.className = 'file-icon';
+                icon.textContent = '📄';
+                item.appendChild(icon);
+            }
 
-        const userMessage = { role: 'user', content: messageContent, timestamp: Date.now(), id: `user_msg_${Date.now()}` };
+            const removeBtn = document.createElement('div');
+            removeBtn.className = 'remove-attachment';
+            removeBtn.textContent = '×';
+            removeBtn.onclick = () => {
+                attachedFiles.splice(index, 1);
+                updateAttachmentPreview();
+            };
+            item.appendChild(removeBtn);
+            attachmentPreviewArea.appendChild(item);
+        });
+    };
+
+    const sendMessage = async (messageContent) => {
+        if (!messageContent.trim() && attachedFiles.length === 0) return;
+        if (!agentConfig || !window.messageRenderer) return;
+
+        const uiAttachments = [];
+        if (attachedFiles.length > 0) {
+            attachedFiles.forEach(af => {
+                const fileManagerData = af._fileManagerData || {};
+                uiAttachments.push({
+                    type: fileManagerData.type,
+                    src: af.localPath,
+                    name: af.originalName,
+                    size: af.file.size,
+                    _fileManagerData: fileManagerData
+                });
+            });
+        }
+
+        const userMessage = {
+            role: 'user',
+            content: messageContent,
+            timestamp: Date.now(),
+            id: `user_msg_${Date.now()}`,
+            attachments: uiAttachments
+        };
         await window.messageRenderer.renderMessage(userMessage, false);
-        currentChatHistory.push(userMessage); // 核心修复：将用户消息手动添加到历史记录中
+        currentChatHistory.push(userMessage);
 
         messageInput.value = '';
+        attachedFiles = [];
+        updateAttachmentPreview();
+
         messageInput.disabled = true;
         sendMessageBtn.disabled = true;
+        if (attachFileBtn) attachFileBtn.disabled = true;
 
         const thinkingMessageId = `assistant_msg_${Date.now()}`;
         activeStreamingMessageId = thinkingMessageId; // Set active stream ID
@@ -234,17 +300,45 @@ window.electronAPI.onAssistantData(async (data) => {
                 messagesForVCP.push({ role: 'system', content: [{ type: 'text', text: systemPrompt }] });
             }
 
-            const historyForVCP = currentChatHistory.filter(msg => !msg.isThinking).map(msg => {
-                // The new VCP API expects content to be an array of parts (e.g., text, image)
-                const contentPayload = (typeof msg.content === 'string')
-                    ? [{ type: 'text', text: msg.content }]
-                    : msg.content; // Assume it's already in the correct format if not a string
+            const historyForVCP = await Promise.all(currentChatHistory.filter(msg => !msg.isThinking).map(async msg => {
+                let currentMessageTextContent = msg.content;
+                let vcpImageAttachmentsPayload = [];
+
+                if (msg.role === 'user' && msg.attachments && msg.attachments.length > 0) {
+                    let appendedText = "";
+                    for (const att of msg.attachments) {
+                        const fileManagerData = att._fileManagerData || {};
+                        const filePathForContext = att.src || att.name;
+
+                        if (fileManagerData.extractedText) {
+                            appendedText += `\n\n[附加文件: ${filePathForContext}]\n${fileManagerData.extractedText}\n[/附加文件结束: ${att.name}]`;
+                        } else {
+                            appendedText += `\n\n[附加文件: ${filePathForContext}]`;
+                        }
+
+                        if (att.type.startsWith('image/')) {
+                            const result = await window.electronAPI.getFileAsBase64(att.src);
+                            if (result && result.success) {
+                                result.base64Frames.forEach(frameData => {
+                                    vcpImageAttachmentsPayload.push({
+                                        type: 'image_url',
+                                        image_url: { url: `data:image/jpeg;base64,${frameData}` }
+                                    });
+                                });
+                            }
+                        }
+                    }
+                    currentMessageTextContent += appendedText;
+                }
+
+                const contentPayload = [{ type: 'text', text: currentMessageTextContent }];
+                contentPayload.push(...vcpImageAttachmentsPayload);
 
                 return {
                     role: msg.role,
                     content: contentPayload
                 };
-            });
+            }));
             messagesForVCP.push(...historyForVCP);
 
             const modelConfig = {
@@ -273,6 +367,7 @@ window.electronAPI.onAssistantData(async (data) => {
             activeStreamingMessageId = null;
             messageInput.disabled = false;
             sendMessageBtn.disabled = false;
+            if (attachFileBtn) attachFileBtn.disabled = false;
             messageInput.focus();
         }
     };
@@ -304,6 +399,7 @@ window.electronAPI.onAssistantData(async (data) => {
             activeStreamingMessageId = null;
             messageInput.disabled = false;
             sendMessageBtn.disabled = false;
+            if (attachFileBtn) attachFileBtn.disabled = false;
             messageInput.focus();
         } else if (type === 'error') {
             window.messageRenderer.finalizeStreamedMessage(messageId, 'error', context);
@@ -315,9 +411,32 @@ window.electronAPI.onAssistantData(async (data) => {
             activeStreamingMessageId = null;
             messageInput.disabled = false;
             sendMessageBtn.disabled = false;
+            if (attachFileBtn) attachFileBtn.disabled = false;
             messageInput.focus();
         }
     });
+
+    if (attachFileBtn) {
+        attachFileBtn.addEventListener('click', async () => {
+            if (!agentId) return;
+            const result = await window.electronAPI.selectFilesToSend(agentId, 'assistant_chat');
+            if (result && result.success && result.attachments) {
+                result.attachments.forEach(att => {
+                    if (!att.error) {
+                        attachedFiles.push({
+                            file: { name: att.name, type: att.type, size: att.size },
+                            localPath: att.internalPath,
+                            originalName: att.name,
+                            _fileManagerData: att
+                        });
+                    }
+                });
+                updateAttachmentPreview();
+                // 修复：附加文件后强制聚焦输入框，防止窗口丢失焦点
+                messageInput.focus();
+            }
+        });
+    }
 
     sendMessageBtn.addEventListener('click', () => sendMessage(messageInput.value));
     messageInput.addEventListener('keydown', (e) => {
@@ -326,4 +445,59 @@ window.electronAPI.onAssistantData(async (data) => {
             sendMessage(messageInput.value);
         }
     });
+
+    // --- Paste Handler ---
+    messageInput.addEventListener('paste', async (event) => {
+        const clipboardData = event.clipboardData || window.clipboardData;
+        if (!clipboardData) return;
+
+        const items = clipboardData.items;
+        let hasFile = false;
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].kind === 'file') {
+                hasFile = true;
+                break;
+            }
+        }
+
+        if (hasFile) {
+            event.preventDefault();
+            if (!agentId) return;
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].kind === 'file') {
+                    const file = items[i].getAsFile();
+                    if (file) {
+                        await handlePastedFile(file);
+                    }
+                }
+            }
+        }
+    });
+
+    async function handlePastedFile(file) {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            const arrayBuffer = e.target.result;
+            const fileBuffer = new Uint8Array(arrayBuffer);
+            const results = await window.electronAPI.handleFileDrop(agentId, 'assistant_chat', [{
+                name: file.name,
+                type: file.type || 'application/octet-stream',
+                data: fileBuffer,
+                size: file.size
+            }]);
+            if (results && results.length > 0 && results[0].success && results[0].attachment) {
+                const att = results[0].attachment;
+                attachedFiles.push({
+                    file: { name: att.name, type: att.type, size: att.size },
+                    localPath: att.internalPath,
+                    originalName: att.name,
+                    _fileManagerData: att
+                });
+                updateAttachmentPreview();
+                // 修复：粘贴文件后强制聚焦输入框，防止窗口丢失焦点
+                messageInput.focus();
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    }
 });

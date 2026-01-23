@@ -370,7 +370,7 @@ async function initialize(options) {
         try {
             const settings = await fs.readJson(SETTINGS_FILE);
             createAssistantWindow({
-                selectedText: lastProcessedSelection,
+                selectedText: action === 'open' ? '' : lastProcessedSelection,
                 action: action,
                 agentId: settings.assistantAgent,
             });
