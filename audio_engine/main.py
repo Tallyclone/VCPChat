@@ -64,7 +64,7 @@ class AudioEngine:
         self.fft_size = 2048  # FFT窗口大小, for better low-freq resolution
         self.hanning_window = np.hanning(self.fft_size) # 性能优化：预计算汉宁窗
         self.fft_update_interval = 1.0 / 20.0  # B3: 更新频率降至20Hz，降低前端负载
-        self.num_log_bins = 48 # Number of bars for the visualizer
+        self.num_log_bins = 64 # Number of bars for the visualizer
         self.device_id = None # Can be None for default device
         self.exclusive_mode = False
         # --- 从环境变量读取初始配置，实现简单的持久化/预设 ---
@@ -303,7 +303,7 @@ class AudioEngine:
                         log_binned_magnitude = np.zeros(self.num_log_bins)
                         if len(freqs) > 0:
                             # Define logarithmic bin edges
-                            min_freq = 20
+                            min_freq = 10 # Lowered from 20Hz to 10Hz to show more sub-bass and avoid "cut-off" look
                             max_freq = self.samplerate / 2
                             if max_freq > min_freq:
                                 log_min = np.log10(min_freq)
