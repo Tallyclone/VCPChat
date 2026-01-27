@@ -320,6 +320,20 @@ class AudioEngine:
                                         # Use Root Mean Square (RMS) for a perceptually accurate representation of power.
                                         log_binned_magnitude[i-1] = np.sqrt(np.mean(np.square(magnitude[in_bin_mask])))
 
+                                # FIX: Interpolate to fill empty bins caused by low FFT resolution at low frequencies
+                                non_zero_mask = log_binned_magnitude > 0
+                                non_zero_indices = np.where(non_zero_mask)[0]
+                                
+                                if len(non_zero_indices) >= 2:
+                                    all_indices = np.arange(self.num_log_bins)
+                                    log_binned_magnitude = np.interp(
+                                        all_indices,
+                                        non_zero_indices,
+                                        log_binned_magnitude[non_zero_indices]
+                                    )
+                                elif len(non_zero_indices) == 1:
+                                    log_binned_magnitude[:] = log_binned_magnitude[non_zero_indices[0]]
+
                         # 转换为分贝并归一化
                         log_magnitude = 20 * np.log10(log_binned_magnitude + 1e-9) # 避免log(0)
                         
