@@ -1031,10 +1031,27 @@ async function applyDiff(parameters) {
       throw new Error(`Failed to read file for applying diff: ${readResult.error}`);
     }
     // We can only apply diff to string content.
-    if (typeof readResult.data.content !== 'string') {
-        throw new Error('ApplyDiff can only be used on plain text files.');
+    if (readResult.data.isExtracted) {
+      throw new Error('ApplyDiff cannot be used on extracted content (PDF, DOCX, Excel, Images, etc.). It only works on plain text files.');
     }
-    const originalContent = readResult.data.content;
+
+    let originalContent;
+    if (typeof readResult.data.content === 'string') {
+      originalContent = readResult.data.content;
+    } else if (Array.isArray(readResult.data.content)) {
+      // In multimodal format, the actual file content is the last text part
+      const textParts = readResult.data.content.filter(part => part.type === 'text');
+      if (textParts.length >= 2) {
+        // Skip the header message (e.g., "已读取文件...") and take the actual content
+        originalContent = textParts[textParts.length - 1].text;
+      } else if (textParts.length === 1) {
+        originalContent = textParts[0].text;
+      }
+    }
+
+    if (typeof originalContent !== 'string') {
+      throw new Error('ApplyDiff can only be used on plain text files.');
+    }
     let newContent;
 
     if (diffContent) {

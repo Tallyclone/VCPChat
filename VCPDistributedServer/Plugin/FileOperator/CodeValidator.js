@@ -81,8 +81,32 @@ async function validateCode(filePath, content) {
       }
 
       case '.py':
-        // TODO: Implement Python linting (e.g., via child_process)
-        console.log(`Validation for ${extension} files is not yet implemented.`);
+        try {
+          const { execSync } = require('child_process');
+          // Try running compileall to check for syntax errors without executing the script
+          // -q: quiet mode, -f: force, -b: legacy
+          // We use a temporary file approach or just check the content if possible.
+          // For now, we'll use a simple syntax check via python -m py_compile
+          const fs = require('fs');
+          const tempFile = path.join(require('os').tmpdir(), `vcp_val_${Date.now()}.py`);
+          fs.writeFileSync(tempFile, content);
+          try {
+            execSync(`python -m py_compile "${tempFile}"`, { stdio: 'pipe' });
+          } catch (compileError) {
+            const errorMsg = compileError.stderr ? compileError.stderr.toString() : compileError.message;
+            results.push({
+              line: 1,
+              column: 1,
+              severity: 'error',
+              message: `Python Syntax Error: ${errorMsg}`,
+              ruleId: 'python-syntax'
+            });
+          } finally {
+            if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+          }
+        } catch (e) {
+          console.log(`Python validation failed to initialize: ${e.message}`);
+        }
         break;
 
       // Add other file types as needed
