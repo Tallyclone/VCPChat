@@ -2,7 +2,7 @@
 
 // --- 模块加载性能诊断 ---
 const originalRequire = require;
-require = function(id) {
+require = function (id) {
     const start = Date.now();
     const result = originalRequire(id);
     const duration = Date.now() - start;
@@ -42,8 +42,8 @@ const memoHandlers = require('./modules/ipc/memoHandlers'); // Import memo handl
 // speechRecognizer is now lazy-loaded
 const canvasHandlers = require('./modules/ipc/canvasHandlers'); // Import canvas handlers
 // chokidar is now lazy-loaded
- 
- // --- File Watcher ---
+
+// --- File Watcher ---
 let historyWatcher = null;
 let lastInternalSaveTime = 0; // 🔧 改为时间戳记录
 let internalSaveTimeout = null; // 🔧 超时保护
@@ -51,70 +51,70 @@ let isEditingInProgress = false; // 🔧 编辑状态标识
 const INTERNAL_SAVE_WINDOW_MS = 2000; // 🔧 内部保存时间窗口（2秒）
 
 const fileWatcher = {
-  watchFile: (filePath, callback) => {
-    if (historyWatcher) {
-      historyWatcher.close();
-    }
-    console.log(`[FileWatcher] Watching new file: ${filePath}`);
-    const chokidar = require('chokidar'); // Lazy load
-    historyWatcher = chokidar.watch(filePath, {
-        persistent: true,
-        ignoreInitial: true,
-        awaitWriteFinish: {
-            stabilityThreshold: 300, // 🔧 增加稳定性阈值
-            pollInterval: 100
+    watchFile: (filePath, callback) => {
+        if (historyWatcher) {
+            historyWatcher.close();
         }
-    });
-    historyWatcher.on('all', (event, path) => {
-      // 🔧 改进：使用时间窗口而非一次性标志
-      const now = Date.now();
-      const isWithinSaveWindow = (now - lastInternalSaveTime) < INTERNAL_SAVE_WINDOW_MS;
-      
-      if (isWithinSaveWindow || isEditingInProgress) {
-        console.log(`[FileWatcher] Ignored ${isWithinSaveWindow ? 'internal save' : 'editing'} event '${event}' for: ${path} (time since last save: ${now - lastInternalSaveTime}ms)`);
-        return;
-      }
-      console.log(`[FileWatcher] Detected external event '${event}' for: ${path}`);
-      callback(path);
-    });
-    historyWatcher.on('error', error => console.error(`[FileWatcher] Error: ${error}`));
-  },
-  stopWatching: () => {
-    if (historyWatcher) {
-      console.log('[FileWatcher] Stopping file watch.');
-      historyWatcher.close();
-      historyWatcher = null;
+        console.log(`[FileWatcher] Watching new file: ${filePath}`);
+        const chokidar = require('chokidar'); // Lazy load
+        historyWatcher = chokidar.watch(filePath, {
+            persistent: true,
+            ignoreInitial: true,
+            awaitWriteFinish: {
+                stabilityThreshold: 300, // 🔧 增加稳定性阈值
+                pollInterval: 100
+            }
+        });
+        historyWatcher.on('all', (event, path) => {
+            // 🔧 改进：使用时间窗口而非一次性标志
+            const now = Date.now();
+            const isWithinSaveWindow = (now - lastInternalSaveTime) < INTERNAL_SAVE_WINDOW_MS;
+
+            if (isWithinSaveWindow || isEditingInProgress) {
+                console.log(`[FileWatcher] Ignored ${isWithinSaveWindow ? 'internal save' : 'editing'} event '${event}' for: ${path} (time since last save: ${now - lastInternalSaveTime}ms)`);
+                return;
+            }
+            console.log(`[FileWatcher] Detected external event '${event}' for: ${path}`);
+            callback(path);
+        });
+        historyWatcher.on('error', error => console.error(`[FileWatcher] Error: ${error}`));
+    },
+    stopWatching: () => {
+        if (historyWatcher) {
+            console.log('[FileWatcher] Stopping file watch.');
+            historyWatcher.close();
+            historyWatcher = null;
+        }
+        // 🔧 清理状态
+        isEditingInProgress = false;
+        lastInternalSaveTime = 0; // 重置时间戳
+        if (internalSaveTimeout) {
+            clearTimeout(internalSaveTimeout);
+            internalSaveTimeout = null;
+        }
+    },
+    signalInternalSave: () => {
+        // 🔧 记录内部保存时间戳
+        lastInternalSaveTime = Date.now();
+        console.log('[FileWatcher] Internal save signaled at:', lastInternalSaveTime);
+
+        // 🔧 设置超时保护，防止时间窗口失效（虽然理论上不需要了）
+        if (internalSaveTimeout) clearTimeout(internalSaveTimeout);
+        internalSaveTimeout = setTimeout(() => {
+            // 这个超时主要是为了调试，正常情况下时间窗口会自然过期
+            const timeSinceLastSave = Date.now() - lastInternalSaveTime;
+            if (timeSinceLastSave >= INTERNAL_SAVE_WINDOW_MS) {
+                console.log('[FileWatcher] Internal save window naturally expired');
+            }
+        }, INTERNAL_SAVE_WINDOW_MS + 1000);
+    },
+    // 🔧 新增：编辑状态管理
+    setEditingMode: (editing) => {
+        isEditingInProgress = editing;
+        console.log(`[FileWatcher] Editing mode set to: ${editing}`);
     }
-    // 🔧 清理状态
-    isEditingInProgress = false;
-    lastInternalSaveTime = 0; // 重置时间戳
-    if (internalSaveTimeout) {
-      clearTimeout(internalSaveTimeout);
-      internalSaveTimeout = null;
-    }
-  },
-  signalInternalSave: () => {
-    // 🔧 记录内部保存时间戳
-    lastInternalSaveTime = Date.now();
-    console.log('[FileWatcher] Internal save signaled at:', lastInternalSaveTime);
-    
-    // 🔧 设置超时保护，防止时间窗口失效（虽然理论上不需要了）
-    if (internalSaveTimeout) clearTimeout(internalSaveTimeout);
-    internalSaveTimeout = setTimeout(() => {
-      // 这个超时主要是为了调试，正常情况下时间窗口会自然过期
-      const timeSinceLastSave = Date.now() - lastInternalSaveTime;
-      if (timeSinceLastSave >= INTERNAL_SAVE_WINDOW_MS) {
-        console.log('[FileWatcher] Internal save window naturally expired');
-      }
-    }, INTERNAL_SAVE_WINDOW_MS + 1000);
-  },
-  // 🔧 新增：编辑状态管理
-  setEditingMode: (editing) => {
-    isEditingInProgress = editing;
-    console.log(`[FileWatcher] Editing mode set to: ${editing}`);
-  }
 };
- // --- Configuration Paths ---
+// --- Configuration Paths ---
 // Data storage will be within the project's 'AppData' directory
 const PROJECT_ROOT = __dirname; // __dirname is the directory of main.js
 const APP_DATA_ROOT_IN_PROJECT = path.join(PROJECT_ROOT, 'AppData');
@@ -147,6 +147,7 @@ let cachedModels = []; // Cache for models fetched from VCP server
 const NOTES_MODULE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Notemodules');
 
 // --- Audio Engine Management ---
+// Now uses the Rust native audio engine instead of Python
 function startAudioEngine() {
     return new Promise((resolve, reject) => {
         // --- Uniqueness Check ---
@@ -156,23 +157,32 @@ function startAudioEngine() {
             return;
         }
 
-        const scriptPath = path.join(__dirname, 'audio_engine', 'main.py');
-        console.log(`[Main] Starting Python Audio Engine from: ${scriptPath}`);
+        // Use the Rust audio server binary (moved to audio_engine directory)
+        const rustBinaryPath = path.join(__dirname, 'audio_engine', 'audio_server.exe');
+        console.log(`[Main] Starting Rust Audio Engine from: ${rustBinaryPath}`);
 
-        const args = ['-u', scriptPath, '--resample-cache-dir', RESAMPLE_CACHE_DIR];
-        audioEngineProcess = spawn('python', args);
+        // Check if the binary exists
+        if (!fs.existsSync(rustBinaryPath)) {
+            const errorMsg = `Rust audio engine binary not found at: ${rustBinaryPath}. Please run 'cargo build --release' in rust_audio_engine directory.`;
+            console.error(`[Main] ${errorMsg}`);
+            reject(new Error(errorMsg));
+            return;
+        }
+
+        const args = ['--port', '5555'];
+        audioEngineProcess = spawn(rustBinaryPath, args);
 
         const readyTimeout = setTimeout(() => {
-            console.error('[Main] Audio Engine failed to start within 15 seconds.');
+            console.error('[Main] Audio Engine failed to start within 10 seconds.');
             reject(new Error('Audio Engine timed out.'));
-        }, 15000); // 15-second timeout
+        }, 10000); // 10-second timeout (Rust starts faster)
 
         audioEngineProcess.stdout.on('data', (data) => {
             const output = data.toString().trim();
             console.log(`[AudioEngine STDOUT]: ${output}`);
-            // Check for our ready signal
-            if (output.includes('FLASK_SERVER_READY')) {
-                console.log('[Main] Audio Engine is ready.');
+            // Check for our ready signal from Rust server
+            if (output.includes('RUST_AUDIO_ENGINE_READY')) {
+                console.log('[Main] Rust Audio Engine is ready.');
                 clearTimeout(readyTimeout);
                 resolve();
             }
@@ -180,7 +190,7 @@ function startAudioEngine() {
 
         audioEngineProcess.stderr.on('data', (data) => {
             const logLine = data.toString().trim();
-            if (logLine && !logLine.includes('GET /state HTTP/1.1') && !logLine.includes('AudioEngine STDERR')) {
+            if (logLine && !logLine.includes('GET /state HTTP/1.1')) {
                 console.error(`[AudioEngine STDERR]: ${logLine}`);
             }
         });
@@ -200,7 +210,7 @@ function startAudioEngine() {
 
 function stopAudioEngine() {
     if (audioEngineProcess && !audioEngineProcess.killed) {
-        console.log('[Main] Stopping Python Audio Engine...');
+        console.log('[Main] Stopping Rust Audio Engine...');
         // Send a termination signal. The 'close' event handler on the process
         // will handle setting audioEngineProcess to null. This prevents a race condition.
         audioEngineProcess.kill();
@@ -263,7 +273,7 @@ function createWindow() {
         // Signal the native splash screen to close by creating the ready file.
         const readyFile = path.join(__dirname, '.vcp_ready');
         fs.ensureFileSync(readyFile);
-        
+
         // Clean up the file after a few seconds to prevent it from lingering.
         setTimeout(() => {
             if (fs.existsSync(readyFile)) {
@@ -296,11 +306,11 @@ function createWindow() {
 
 function createTray() {
     const iconPath = path.join(__dirname, 'assets', 'icon.png');
-    
+
     // 修复图标体积问题：在 macOS 上，使用 nativeImage 调整图标大小
     const { nativeImage } = require('electron');
     let icon = nativeImage.createFromPath(iconPath);
-    
+
     // 假设 macOS 菜单栏图标的理想尺寸是 16x16 或 20x20
     if (process.platform === 'darwin') {
         // 尝试使用模板图像，并调整大小以适应菜单栏
@@ -338,12 +348,12 @@ function createTray() {
                 mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
             }
         });
-        
+
         // macOS: 右键点击 (tray.on('right-click')) 负责显示菜单
         tray.on('right-click', () => {
             tray.popUpContextMenu(contextMenu);
         });
-        
+
         // 注意：在 macOS 上，不调用 tray.setContextMenu()，以确保左键点击不弹出菜单。
     } else {
         // Windows/Linux: 默认行为。
@@ -360,577 +370,577 @@ function createTray() {
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
-  app.quit();
+    app.quit();
 } else {
-  app.on('second-instance', (event, commandLine, workingDirectory) => {
-    // 有人试图运行第二个实例，我们应该聚焦于我们的窗口
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-    }
-  });
-
-
-
-
-
-  app.whenReady().then(async () => { // Make the function async
-    // 全局处理所有窗口的新窗口打开请求，确保外部链接在系统浏览器中打开
-    app.on('web-contents-created', (event, contents) => {
-        contents.setWindowOpenHandler(({ url }) => {
-            if (url.startsWith('http:') || url.startsWith('https:')) {
-                shell.openExternal(url);
-                return { action: 'deny' };
-            }
-            return { action: 'allow' };
-        });
-    });
-
-    // Handle the emergency close request from the splash screen
-    ipcMain.on('close-app', () => {
-        console.log('[Main] Received close-app request from splash screen. Quitting.');
-        app.quit();
-    });
-
-    // The native splash screen is started by the batch file, so no action is needed here.
-
-    // Pre-warm the audio engine in the background. This doesn't block the main window.
-    startAudioEngine().catch(err => {
-        console.error('[Main] Failed to pre-warm audio engine on startup:', err);
-        // We don't need to show a dialog here, as it will be handled when the
-        // music window is actually opened.
-    });
-    // Register a custom protocol to handle loading local app files securely.
-    fs.ensureDirSync(APP_DATA_ROOT_IN_PROJECT); // Ensure the main AppData directory in project exists
-    fs.ensureDirSync(AGENT_DIR);
-    fs.ensureDirSync(USER_DATA_DIR);
-    fs.ensureDirSync(MUSIC_COVER_CACHE_DIR);
-    fs.ensureDirSync(WALLPAPER_THUMBNAIL_CACHE_DIR); // Ensure the thumbnail cache directory exists
-    fs.ensureDirSync(RESAMPLE_CACHE_DIR); // Ensure the resample cache directory exists
-    fs.ensureDirSync(CANVAS_CACHE_DIR); // Ensure the canvas cache directory exists
-    fileManager.initializeFileManager(USER_DATA_DIR, AGENT_DIR); // Initialize FileManager
-    groupChat.initializePaths({ APP_DATA_ROOT_IN_PROJECT, AGENT_DIR, USER_DATA_DIR, SETTINGS_FILE }); // Initialize GroupChat paths
-
-    const AppSettingsManager = require('./modules/utils/appSettingsManager');
-    const AgentConfigManager = require('./modules/utils/agentConfigManager');
-    const appSettingsManager = new AppSettingsManager(SETTINGS_FILE);
-    const agentConfigManager = new AgentConfigManager(AGENT_DIR);
-    
-    appSettingsManager.startCleanupTimer();
-    appSettingsManager.startAutoBackup(USER_DATA_DIR); // Start auto backup
-    agentConfigManager.startCleanupTimer(); // Start agent config cleanup
-
-    settingsHandlers.initialize({ SETTINGS_FILE, USER_AVATAR_FILE, AGENT_DIR, settingsManager: appSettingsManager, agentConfigManager }); // Initialize settings handlers
-
-   // Function to fetch and cache models from the VCP server
-   async function fetchAndCacheModels() {
-       console.log('[Main] fetchAndCacheModels called');
-       try {
-           const settings = await appSettingsManager.readSettings();
-           const vcpServerUrl = settings.vcpServerUrl;
-           const vcpApiKey = settings.vcpApiKey; // Get the API key
-
-           if (!vcpServerUrl) {
-               console.warn('[Main] VCP Server URL is not configured. Cannot fetch models.');
-               cachedModels = []; // Clear cache if URL is not set
-               return;
-           }
-           // Correctly construct the base URL by removing known API paths.
-           const urlObject = new URL(vcpServerUrl);
-           const baseUrl = `${urlObject.protocol}//${urlObject.host}`;
-           const modelsUrl = new URL('/v1/models', baseUrl).toString();
-
-           console.log(`[Main] Fetching models from: ${modelsUrl}`);
-           const response = await fetch(modelsUrl, {
-               headers: {
-                   'Authorization': `Bearer ${vcpApiKey}` // Add the Authorization header
-               }
-           });
-           if (!response.ok) {
-               throw new Error(`HTTP error! status: ${response.status}`);
-           }
-           const data = await response.json();
-           cachedModels = data.data || []; // Assuming the response has a 'data' field containing the models array
-           console.log('[Main] Models fetched and cached successfully:', cachedModels.map(m => m.id));
-       } catch (error) {
-           console.error('[Main] Failed to fetch and cache models:', error);
-           cachedModels = []; // Clear cache on error
-       }
-   }
-
-   // Create the main window first to give immediate feedback to the user.
-   createWindow();
-   createTray();
-   // --- Application Menu ---
-   const isMac = process.platform === 'darwin';
-   const menuTemplate = [
-       ...(isMac ? [{
-           label: app.name,
-           submenu: [
-               { role: 'about' },
-               { type: 'separator' },
-               { role: 'services' },
-               { type: 'separator' },
-               { role: 'hide' },
-               { role: 'hideothers' },
-               { role: 'unhide' },
-               { type: 'separator' },
-               {
-                   label: '退出 VCPChat',
-                   accelerator: 'Command+Q',
-                   click: () => {
-                       app.isQuitting = true;
-                       app.quit();
-                   }
-               }
-           ]
-       }] : []),
-       {
-           label: '文件',
-           submenu: [
-               {
-                   label: '新建无锁话题',
-                   accelerator: 'CommandOrControl+Shift+N',
-                   click: () => {
-                       if (mainWindow && !mainWindow.isDestroyed()) {
-                           mainWindow.webContents.send('create-unlocked-topic');
-                       }
-                   }
-               }
-           ]
-       },
-       {
-           label: '编辑',
-           submenu: [
-               { role: 'undo' },
-               { role: 'redo' },
-               { type: 'separator' },
-               { role: 'cut' },
-               { role: 'copy' },
-               { role: 'paste' },
-               ...(isMac ? [
-                   { role: 'pasteAndMatchStyle' },
-                   { role: 'delete' },
-                   { role: 'selectAll' },
-                   { type: 'separator' },
-                   {
-                       label: '语音',
-                       submenu: [
-                           { role: 'startSpeaking' },
-                           { role: 'stopSpeaking' }
-                       ]
-                   }
-               ] : [
-                   { role: 'delete' },
-                   { type: 'separator' },
-                   { role: 'selectAll' }
-               ])
-           ]
-       },
-       {
-           label: '视图',
-           submenu: [
-               { role: 'reload' },
-               { role: 'forceReload' },
-               { type: 'separator' },
-               { role: 'resetZoom' },
-               { role: 'zoomIn' },
-               { role: 'zoomOut' },
-               { type: 'separator' },
-               { role: 'togglefullscreen' }
-           ]
-       },
-       {
-           label: '窗口',
-           submenu: [
-               { role: 'minimize' },
-               { role: 'zoom' },
-               ...(isMac ? [
-                   { role: 'close' },
-                   { type: 'separator' },
-                   { role: 'front' },
-                   { type: 'separator' },
-                   { role: 'window' }
-               ] : [
-                   { role: 'close' }
-               ])
-           ]
-       },
-       {
-           label: '开发者',
-           submenu: [
-               {
-                   label: '切换开发者工具',
-                   accelerator: 'Ctrl+Shift+I',
-                   click: (item, focusedWindow) => {
-                       if (focusedWindow) {
-                           focusedWindow.webContents.toggleDevTools();
-                       }
-                   }
-               }
-           ]
-       }
-   ];
-   const menu = Menu.buildFromTemplate(menuTemplate);
-   Menu.setApplicationMenu(menu);
-
-   // Fetch models in the background and notify the renderer when done.
-   console.log('[Main] Fetching models in the background...');
-   fetchAndCacheModels().then(() => {
-       if (mainWindow && !mainWindow.isDestroyed()) {
-           console.log('[Main] Background model fetch complete. Notifying renderer.');
-           mainWindow.webContents.send('models-updated', cachedModels);
-       }
-   }).catch(error => {
-       console.error('[Main] Background model fetch failed:', error);
-       if (mainWindow && !mainWindow.isDestroyed()) {
-           mainWindow.webContents.send('models-update-failed', error.message);
-       }
-   });
-
-   // IPC handler to provide cached models to the renderer process
-   ipcMain.handle('get-cached-models', () => {
-       return cachedModels;
-   });
-
-   // IPC handler to trigger a refresh of the model list
-   ipcMain.on('refresh-models', async () => {
-       console.log('[Main] Received refresh-models request. Re-fetching models...');
-       await fetchAndCacheModels();
-       // Optionally, notify the renderer that models have been updated
-       if (mainWindow && !mainWindow.isDestroyed()) {
-           mainWindow.webContents.send('models-updated', cachedModels);
-       }
-   });
-
-
-    // Add IPC handler for path operations
-    ipcMain.handle('path:dirname', (event, p) => {
-        return path.dirname(p);
-    });
-    // Add IPC handler for getting the extension name of a path
-    ipcMain.handle('path:extname', (event, p) => {
-        return path.extname(p);
-    });
-    ipcMain.handle('path:basename', (event, p) => {
-        return path.basename(p);
-    });
-
-
-    // Group Chat IPC Handlers are now in modules/ipc/groupChatHandlers.js
-    notesHandlers.initialize({
-       openChildWindows,
-       APP_DATA_ROOT_IN_PROJECT,
-       SETTINGS_FILE
-    });
- 
-    // Translator IPC Handlers
-    const TRANSLATOR_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Translatormodules');
-    fs.ensureDirSync(TRANSLATOR_DIR); // Ensure the Translator directory exists
-
-    ipcMain.handle('open-translator-window', async (event) => {
-        if (translatorWindow && !translatorWindow.isDestroyed()) {
-            if (!translatorWindow.isVisible()) {
-                translatorWindow.show();
-            }
-            translatorWindow.focus();
-            return;
-        }
-        translatorWindow = new BrowserWindow({
-            width: 1000,
-            height: 700,
-            minWidth: 800,
-            minHeight: 600,
-            title: '翻译',
-            frame: false, // 移除原生窗口框架
-            ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
-            modal: false,
-            webPreferences: {
-                preload: path.join(__dirname, 'preload.js'),
-                contextIsolation: true,
-                nodeIntegration: false,
-                devTools: true
-            },
-            icon: path.join(__dirname, 'assets', 'icon.png'),
-            show: false
-        });
-
-        let settings = {};
-        try {
-            if (await fs.pathExists(SETTINGS_FILE)) {
-                settings = await fs.readJson(SETTINGS_FILE);
-            }
-        } catch (readError) {
-            console.error('Failed to read settings file for translator window:', readError);
-        }
-
-        const vcpServerUrl = settings.vcpServerUrl || '';
-        const vcpApiKey = settings.vcpApiKey || '';
-
-        const translatorUrl = `file://${path.join(__dirname, 'Translatormodules', 'translator.html')}?vcpServerUrl=${encodeURIComponent(vcpServerUrl)}&vcpApiKey=${encodeURIComponent(vcpApiKey)}`;
-        console.log(`[Main Process] Attempting to load URL in translator window: ${translatorUrl.substring(0, 200)}...`);
-        
-        translatorWindow.webContents.on('did-start-loading', () => {
-            console.log(`[Main Process] translatorWindow webContents did-start-loading for URL: ${translatorUrl.substring(0, 200)}`);
-        });
-
-        translatorWindow.webContents.on('dom-ready', () => {
-            console.log(`[Main Process] translatorWindow webContents dom-ready for URL: ${translatorWindow.webContents.getURL()}`);
-        });
-
-        translatorWindow.webContents.on('did-finish-load', () => {
-            console.log(`[Main Process] translatorWindow webContents did-finish-load for URL: ${translatorWindow.webContents.getURL()}`);
-        });
-
-        translatorWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
-            console.error(`[Main Process] translatorWindow webContents did-fail-load: Code ${errorCode}, Desc: ${errorDescription}, URL: ${validatedURL}`);
-        });
-
-        translatorWindow.loadURL(translatorUrl)
-            .then(() => {
-                console.log(`[Main Process] translatorWindow successfully initiated URL loading (loadURL resolved): ${translatorUrl.substring(0, 200)}`);
-            })
-            .catch((err) => {
-                console.error(`[Main Process] translatorWindow FAILED to initiate URL loading (loadURL rejected): ${translatorUrl.substring(0, 200)}`, err);
-            });
-
-        openChildWindows.push(translatorWindow);
-        translatorWindow.setMenu(null);
-
-        translatorWindow.once('ready-to-show', () => {
-            console.log(`[Main Process] translatorWindow is ready-to-show. Window Title: "${translatorWindow.getTitle()}". Calling show().`);
-            translatorWindow.show();
-            console.log('[Main Process] translatorWindow show() called.');
-        });
-
-        translatorWindow.on('close', (event) => {
-            if (process.platform === 'darwin' && !app.isQuitting) {
-                event.preventDefault();
-                translatorWindow.hide();
-            }
-        });
-
-        translatorWindow.on('closed', () => {
-            console.log('[Main Process] translatorWindow has been closed.');
-            openChildWindows = openChildWindows.filter(win => win !== translatorWindow);
-            translatorWindow = null;
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.focus(); // 聚焦主窗口
-            }
-        });
-    });
-
-    // 新增：处理打开RAG Observer窗口的请求
-    ipcMain.handle('open-rag-observer-window', async () => {
-        // 检查窗口是否已存在，如果存在则聚焦
-        if (ragObserverWindow && !ragObserverWindow.isDestroyed()) {
-            if (!ragObserverWindow.isVisible()) {
-                ragObserverWindow.show();
-            }
-            ragObserverWindow.focus();
-            return;
-        }
-
-        ragObserverWindow = new BrowserWindow({
-            width: 500,
-            height: 900,
-            minWidth: 300,
-            minHeight: 600,
-            title: 'VCP - 信息流监听器',
-            frame: false, // 移除原生窗口框架
-            ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
-            webPreferences: {
-                preload: path.join(__dirname, 'preload.js'),
-                contextIsolation: true,
-                nodeIntegration: false,
-            },
-            icon: path.join(__dirname, 'assets', 'icon.png'),
-            show: false
-        });
-
-        let settings = {};
-        try {
-            const AppSettingsManager = require('./modules/utils/appSettingsManager');
-            const sm = new AppSettingsManager(SETTINGS_FILE);
-            settings = await sm.readSettings();
-        } catch (readError) {
-            console.error('Failed to read settings file for RAG observer window:', readError);
-        }
-
-        const vcpLogUrl = settings.vcpLogUrl || '';
-        const vcpLogKey = settings.vcpLogKey || '';
-        const currentThemeMode = settings.currentThemeMode || 'dark';
-
-        // 通过URL查询参数传递配置
-        const observerUrl = `file://${path.join(__dirname, 'RAGmodules', 'RAG_Observer.html')}?vcpLogUrl=${encodeURIComponent(vcpLogUrl)}&vcpLogKey=${encodeURIComponent(vcpLogKey)}&currentThemeMode=${encodeURIComponent(currentThemeMode)}`;
-        
-        ragObserverWindow.loadURL(observerUrl);
-        ragObserverWindow.setMenu(null);
-
-        ragObserverWindow.once('ready-to-show', () => {
-            ragObserverWindow.show();
-        });
-
-        openChildWindows.push(ragObserverWindow);
-
-        ragObserverWindow.on('close', (event) => {
-            if (process.platform === 'darwin' && !app.isQuitting) {
-                event.preventDefault();
-                ragObserverWindow.hide();
-            }
-        });
-
-        ragObserverWindow.on('closed', () => {
-            openChildWindows = openChildWindows.filter(win => win !== ragObserverWindow);
-            ragObserverWindow = null;
-        });
-    });
-
-    windowHandlers.initialize(mainWindow, openChildWindows);
-    forumHandlers.initialize({ USER_DATA_DIR }); // Initialize forum handlers
-    memoHandlers.initialize({ USER_DATA_DIR }); // Initialize memo handlers
-    await assistantHandlers.initialize({ SETTINGS_FILE });
-    fileDialogHandlers.initialize(mainWindow, {
-        getSelectionListenerStatus: assistantHandlers.getSelectionListenerStatus,
-        stopSelectionListener: assistantHandlers.stopSelectionListener,
-        startSelectionListener: assistantHandlers.startSelectionListener,
-        openChildWindows
-    });
-    groupChatHandlers.initialize(mainWindow, {
-        AGENT_DIR,
-        USER_DATA_DIR,
-        getSelectionListenerStatus: assistantHandlers.getSelectionListenerStatus,
-        stopSelectionListener: assistantHandlers.stopSelectionListener,
-        startSelectionListener: assistantHandlers.startSelectionListener,
-        fileWatcher // Inject fileWatcher here as well
-    });
-    agentHandlers.initialize({
-        AGENT_DIR,
-        USER_DATA_DIR,
-        SETTINGS_FILE,
-        USER_AVATAR_FILE,
-        getSelectionListenerStatus: assistantHandlers.getSelectionListenerStatus,
-        stopSelectionListener: assistantHandlers.stopSelectionListener,
-        startSelectionListener: assistantHandlers.startSelectionListener,
-        settingsManager: appSettingsManager,
-        agentConfigManager
-    });
-    regexHandlers.initialize({ AGENT_DIR });
-    chatHandlers.initialize(mainWindow, {
-        AGENT_DIR,
-        USER_DATA_DIR,
-        APP_DATA_ROOT_IN_PROJECT,
-        NOTES_AGENT_ID,
-        getSelectionListenerStatus: assistantHandlers.getSelectionListenerStatus,
-        stopSelectionListener: assistantHandlers.stopSelectionListener,
-        startSelectionListener: assistantHandlers.startSelectionListener,
-        getMusicState: musicHandlers.getMusicState,
-        fileWatcher, // 注入文件监控器
-        agentConfigManager
-    });
-
-    // New dedicated watcher IPC handlers
-    ipcMain.handle('watcher:start', (event, filePath, agentId, topicId) => {
-        if (fileWatcher) {
-            fileWatcher.watchFile(filePath, (changedPath) => {
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    // Pass back the agentId and topicId to the renderer for context
-                    mainWindow.webContents.send('history-file-updated', { path: changedPath, agentId, topicId });
-                }
-            });
-            return { success: true, watching: filePath };
-        }
-        return { success: false, error: 'File watcher not initialized.' };
-    });
-
-    ipcMain.handle('watcher:stop', () => {
-        if (fileWatcher) {
-            fileWatcher.stopWatching();
-            return { success: true };
-        }
-        return { success: false, error: 'File watcher not initialized.' };
-    });
-    sovitsHandlers.initialize(mainWindow); // Initialize SovitsTTS handlers
-    musicHandlers.initialize({ mainWindow, openChildWindows, APP_DATA_ROOT_IN_PROJECT, startAudioEngine, stopAudioEngine });
-    diceHandlers.initialize({ projectRoot: PROJECT_ROOT });
-    themeHandlers.initialize({ mainWindow, openChildWindows, projectRoot: PROJECT_ROOT, APP_DATA_ROOT_IN_PROJECT, settingsManager: appSettingsManager });
-    emoticonHandlers.initialize({ SETTINGS_FILE, APP_DATA_ROOT_IN_PROJECT });
-    emoticonHandlers.setupEmoticonHandlers();
-    canvasHandlers.initialize({ mainWindow, openChildWindows, CANVAS_CACHE_DIR });
-    promptHandlers.initialize({ AGENT_DIR, APP_DATA_ROOT_IN_PROJECT });
-
-    ipcMain.on('minimize-to-tray', () => {
-        if (mainWindow) {
-            mainWindow.hide();
-        }
-    });
- 
-     // --- Distributed Server Initialization ---
-     (async () => {
-        try {
-            const settings = await appSettingsManager.readSettings();
-            if (settings.enableDistributedServer) {
-                console.log('[Main] Distributed server is enabled. Initializing...');
-                const DistributedServer = require('./VCPDistributedServer/VCPDistributedServer.js');
-                const config = {
-                    mainServerUrl: settings.vcpLogUrl, // Assuming the distributed server connects to the same base URL as VCPLog
-                    vcpKey: settings.vcpLogKey,
-                    serverName: 'VCP-Desktop-Client-Distributed-Server',
-                    debugMode: true, // Or read from settings if you add this option
-                    rendererProcess: mainWindow.webContents, // Pass the renderer process object
-                    handleMusicControl: musicHandlers.handleMusicControl, // Inject the music control handler
-                    handleDiceControl: diceHandlers.handleDiceControl, // Inject the dice control handler
-                    handleCanvasControl: handleCanvasControl, // Inject the canvas control handler
-                    handleFlowlockControl: handleFlowlockControl // Inject the flowlock control handler
-                };
-                distributedServer = new DistributedServer(config);
-                distributedServer.initialize();
-            } else {
-                console.log('[Main] Distributed server is disabled in settings.');
-            }
-        } catch (error) {
-            console.error('[Main] Failed to read settings or initialize distributed server:', error);
-        }
-    })();
-    // --- End of Distributed Server Initialization ---
-
-    app.on('activate', () => {
-        // On macOS, re-show the main window when the dock icon is clicked.
+    app.on('second-instance', (event, commandLine, workingDirectory) => {
+        // 有人试图运行第二个实例，我们应该聚焦于我们的窗口
         if (mainWindow && !mainWindow.isDestroyed()) {
-            if (!mainWindow.isVisible()) {
-                mainWindow.show();
-            }
+            if (mainWindow.isMinimized()) mainWindow.restore();
             mainWindow.focus();
         }
-        // If the main window has been closed (mainWindow is null), create a new one.
-        else if (BrowserWindow.getAllWindows().length === 0) {
-            createWindow();
+    });
+
+
+
+
+
+    app.whenReady().then(async () => { // Make the function async
+        // 全局处理所有窗口的新窗口打开请求，确保外部链接在系统浏览器中打开
+        app.on('web-contents-created', (event, contents) => {
+            contents.setWindowOpenHandler(({ url }) => {
+                if (url.startsWith('http:') || url.startsWith('https:')) {
+                    shell.openExternal(url);
+                    return { action: 'deny' };
+                }
+                return { action: 'allow' };
+            });
+        });
+
+        // Handle the emergency close request from the splash screen
+        ipcMain.on('close-app', () => {
+            console.log('[Main] Received close-app request from splash screen. Quitting.');
+            app.quit();
+        });
+
+        // The native splash screen is started by the batch file, so no action is needed here.
+
+        // Pre-warm the audio engine in the background. This doesn't block the main window.
+        startAudioEngine().catch(err => {
+            console.error('[Main] Failed to pre-warm audio engine on startup:', err);
+            // We don't need to show a dialog here, as it will be handled when the
+            // music window is actually opened.
+        });
+        // Register a custom protocol to handle loading local app files securely.
+        fs.ensureDirSync(APP_DATA_ROOT_IN_PROJECT); // Ensure the main AppData directory in project exists
+        fs.ensureDirSync(AGENT_DIR);
+        fs.ensureDirSync(USER_DATA_DIR);
+        fs.ensureDirSync(MUSIC_COVER_CACHE_DIR);
+        fs.ensureDirSync(WALLPAPER_THUMBNAIL_CACHE_DIR); // Ensure the thumbnail cache directory exists
+        fs.ensureDirSync(RESAMPLE_CACHE_DIR); // Ensure the resample cache directory exists
+        fs.ensureDirSync(CANVAS_CACHE_DIR); // Ensure the canvas cache directory exists
+        fileManager.initializeFileManager(USER_DATA_DIR, AGENT_DIR); // Initialize FileManager
+        groupChat.initializePaths({ APP_DATA_ROOT_IN_PROJECT, AGENT_DIR, USER_DATA_DIR, SETTINGS_FILE }); // Initialize GroupChat paths
+
+        const AppSettingsManager = require('./modules/utils/appSettingsManager');
+        const AgentConfigManager = require('./modules/utils/agentConfigManager');
+        const appSettingsManager = new AppSettingsManager(SETTINGS_FILE);
+        const agentConfigManager = new AgentConfigManager(AGENT_DIR);
+
+        appSettingsManager.startCleanupTimer();
+        appSettingsManager.startAutoBackup(USER_DATA_DIR); // Start auto backup
+        agentConfigManager.startCleanupTimer(); // Start agent config cleanup
+
+        settingsHandlers.initialize({ SETTINGS_FILE, USER_AVATAR_FILE, AGENT_DIR, settingsManager: appSettingsManager, agentConfigManager }); // Initialize settings handlers
+
+        // Function to fetch and cache models from the VCP server
+        async function fetchAndCacheModels() {
+            console.log('[Main] fetchAndCacheModels called');
+            try {
+                const settings = await appSettingsManager.readSettings();
+                const vcpServerUrl = settings.vcpServerUrl;
+                const vcpApiKey = settings.vcpApiKey; // Get the API key
+
+                if (!vcpServerUrl) {
+                    console.warn('[Main] VCP Server URL is not configured. Cannot fetch models.');
+                    cachedModels = []; // Clear cache if URL is not set
+                    return;
+                }
+                // Correctly construct the base URL by removing known API paths.
+                const urlObject = new URL(vcpServerUrl);
+                const baseUrl = `${urlObject.protocol}//${urlObject.host}`;
+                const modelsUrl = new URL('/v1/models', baseUrl).toString();
+
+                console.log(`[Main] Fetching models from: ${modelsUrl}`);
+                const response = await fetch(modelsUrl, {
+                    headers: {
+                        'Authorization': `Bearer ${vcpApiKey}` // Add the Authorization header
+                    }
+                });
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                cachedModels = data.data || []; // Assuming the response has a 'data' field containing the models array
+                console.log('[Main] Models fetched and cached successfully:', cachedModels.map(m => m.id));
+            } catch (error) {
+                console.error('[Main] Failed to fetch and cache models:', error);
+                cachedModels = []; // Clear cache on error
+            }
         }
+
+        // Create the main window first to give immediate feedback to the user.
+        createWindow();
+        createTray();
+        // --- Application Menu ---
+        const isMac = process.platform === 'darwin';
+        const menuTemplate = [
+            ...(isMac ? [{
+                label: app.name,
+                submenu: [
+                    { role: 'about' },
+                    { type: 'separator' },
+                    { role: 'services' },
+                    { type: 'separator' },
+                    { role: 'hide' },
+                    { role: 'hideothers' },
+                    { role: 'unhide' },
+                    { type: 'separator' },
+                    {
+                        label: '退出 VCPChat',
+                        accelerator: 'Command+Q',
+                        click: () => {
+                            app.isQuitting = true;
+                            app.quit();
+                        }
+                    }
+                ]
+            }] : []),
+            {
+                label: '文件',
+                submenu: [
+                    {
+                        label: '新建无锁话题',
+                        accelerator: 'CommandOrControl+Shift+N',
+                        click: () => {
+                            if (mainWindow && !mainWindow.isDestroyed()) {
+                                mainWindow.webContents.send('create-unlocked-topic');
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                label: '编辑',
+                submenu: [
+                    { role: 'undo' },
+                    { role: 'redo' },
+                    { type: 'separator' },
+                    { role: 'cut' },
+                    { role: 'copy' },
+                    { role: 'paste' },
+                    ...(isMac ? [
+                        { role: 'pasteAndMatchStyle' },
+                        { role: 'delete' },
+                        { role: 'selectAll' },
+                        { type: 'separator' },
+                        {
+                            label: '语音',
+                            submenu: [
+                                { role: 'startSpeaking' },
+                                { role: 'stopSpeaking' }
+                            ]
+                        }
+                    ] : [
+                        { role: 'delete' },
+                        { type: 'separator' },
+                        { role: 'selectAll' }
+                    ])
+                ]
+            },
+            {
+                label: '视图',
+                submenu: [
+                    { role: 'reload' },
+                    { role: 'forceReload' },
+                    { type: 'separator' },
+                    { role: 'resetZoom' },
+                    { role: 'zoomIn' },
+                    { role: 'zoomOut' },
+                    { type: 'separator' },
+                    { role: 'togglefullscreen' }
+                ]
+            },
+            {
+                label: '窗口',
+                submenu: [
+                    { role: 'minimize' },
+                    { role: 'zoom' },
+                    ...(isMac ? [
+                        { role: 'close' },
+                        { type: 'separator' },
+                        { role: 'front' },
+                        { type: 'separator' },
+                        { role: 'window' }
+                    ] : [
+                        { role: 'close' }
+                    ])
+                ]
+            },
+            {
+                label: '开发者',
+                submenu: [
+                    {
+                        label: '切换开发者工具',
+                        accelerator: 'Ctrl+Shift+I',
+                        click: (item, focusedWindow) => {
+                            if (focusedWindow) {
+                                focusedWindow.webContents.toggleDevTools();
+                            }
+                        }
+                    }
+                ]
+            }
+        ];
+        const menu = Menu.buildFromTemplate(menuTemplate);
+        Menu.setApplicationMenu(menu);
+
+        // Fetch models in the background and notify the renderer when done.
+        console.log('[Main] Fetching models in the background...');
+        fetchAndCacheModels().then(() => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                console.log('[Main] Background model fetch complete. Notifying renderer.');
+                mainWindow.webContents.send('models-updated', cachedModels);
+            }
+        }).catch(error => {
+            console.error('[Main] Background model fetch failed:', error);
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('models-update-failed', error.message);
+            }
+        });
+
+        // IPC handler to provide cached models to the renderer process
+        ipcMain.handle('get-cached-models', () => {
+            return cachedModels;
+        });
+
+        // IPC handler to trigger a refresh of the model list
+        ipcMain.on('refresh-models', async () => {
+            console.log('[Main] Received refresh-models request. Re-fetching models...');
+            await fetchAndCacheModels();
+            // Optionally, notify the renderer that models have been updated
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('models-updated', cachedModels);
+            }
+        });
+
+
+        // Add IPC handler for path operations
+        ipcMain.handle('path:dirname', (event, p) => {
+            return path.dirname(p);
+        });
+        // Add IPC handler for getting the extension name of a path
+        ipcMain.handle('path:extname', (event, p) => {
+            return path.extname(p);
+        });
+        ipcMain.handle('path:basename', (event, p) => {
+            return path.basename(p);
+        });
+
+
+        // Group Chat IPC Handlers are now in modules/ipc/groupChatHandlers.js
+        notesHandlers.initialize({
+            openChildWindows,
+            APP_DATA_ROOT_IN_PROJECT,
+            SETTINGS_FILE
+        });
+
+        // Translator IPC Handlers
+        const TRANSLATOR_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Translatormodules');
+        fs.ensureDirSync(TRANSLATOR_DIR); // Ensure the Translator directory exists
+
+        ipcMain.handle('open-translator-window', async (event) => {
+            if (translatorWindow && !translatorWindow.isDestroyed()) {
+                if (!translatorWindow.isVisible()) {
+                    translatorWindow.show();
+                }
+                translatorWindow.focus();
+                return;
+            }
+            translatorWindow = new BrowserWindow({
+                width: 1000,
+                height: 700,
+                minWidth: 800,
+                minHeight: 600,
+                title: '翻译',
+                frame: false, // 移除原生窗口框架
+                ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
+                modal: false,
+                webPreferences: {
+                    preload: path.join(__dirname, 'preload.js'),
+                    contextIsolation: true,
+                    nodeIntegration: false,
+                    devTools: true
+                },
+                icon: path.join(__dirname, 'assets', 'icon.png'),
+                show: false
+            });
+
+            let settings = {};
+            try {
+                if (await fs.pathExists(SETTINGS_FILE)) {
+                    settings = await fs.readJson(SETTINGS_FILE);
+                }
+            } catch (readError) {
+                console.error('Failed to read settings file for translator window:', readError);
+            }
+
+            const vcpServerUrl = settings.vcpServerUrl || '';
+            const vcpApiKey = settings.vcpApiKey || '';
+
+            const translatorUrl = `file://${path.join(__dirname, 'Translatormodules', 'translator.html')}?vcpServerUrl=${encodeURIComponent(vcpServerUrl)}&vcpApiKey=${encodeURIComponent(vcpApiKey)}`;
+            console.log(`[Main Process] Attempting to load URL in translator window: ${translatorUrl.substring(0, 200)}...`);
+
+            translatorWindow.webContents.on('did-start-loading', () => {
+                console.log(`[Main Process] translatorWindow webContents did-start-loading for URL: ${translatorUrl.substring(0, 200)}`);
+            });
+
+            translatorWindow.webContents.on('dom-ready', () => {
+                console.log(`[Main Process] translatorWindow webContents dom-ready for URL: ${translatorWindow.webContents.getURL()}`);
+            });
+
+            translatorWindow.webContents.on('did-finish-load', () => {
+                console.log(`[Main Process] translatorWindow webContents did-finish-load for URL: ${translatorWindow.webContents.getURL()}`);
+            });
+
+            translatorWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+                console.error(`[Main Process] translatorWindow webContents did-fail-load: Code ${errorCode}, Desc: ${errorDescription}, URL: ${validatedURL}`);
+            });
+
+            translatorWindow.loadURL(translatorUrl)
+                .then(() => {
+                    console.log(`[Main Process] translatorWindow successfully initiated URL loading (loadURL resolved): ${translatorUrl.substring(0, 200)}`);
+                })
+                .catch((err) => {
+                    console.error(`[Main Process] translatorWindow FAILED to initiate URL loading (loadURL rejected): ${translatorUrl.substring(0, 200)}`, err);
+                });
+
+            openChildWindows.push(translatorWindow);
+            translatorWindow.setMenu(null);
+
+            translatorWindow.once('ready-to-show', () => {
+                console.log(`[Main Process] translatorWindow is ready-to-show. Window Title: "${translatorWindow.getTitle()}". Calling show().`);
+                translatorWindow.show();
+                console.log('[Main Process] translatorWindow show() called.');
+            });
+
+            translatorWindow.on('close', (event) => {
+                if (process.platform === 'darwin' && !app.isQuitting) {
+                    event.preventDefault();
+                    translatorWindow.hide();
+                }
+            });
+
+            translatorWindow.on('closed', () => {
+                console.log('[Main Process] translatorWindow has been closed.');
+                openChildWindows = openChildWindows.filter(win => win !== translatorWindow);
+                translatorWindow = null;
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.focus(); // 聚焦主窗口
+                }
+            });
+        });
+
+        // 新增：处理打开RAG Observer窗口的请求
+        ipcMain.handle('open-rag-observer-window', async () => {
+            // 检查窗口是否已存在，如果存在则聚焦
+            if (ragObserverWindow && !ragObserverWindow.isDestroyed()) {
+                if (!ragObserverWindow.isVisible()) {
+                    ragObserverWindow.show();
+                }
+                ragObserverWindow.focus();
+                return;
+            }
+
+            ragObserverWindow = new BrowserWindow({
+                width: 500,
+                height: 900,
+                minWidth: 300,
+                minHeight: 600,
+                title: 'VCP - 信息流监听器',
+                frame: false, // 移除原生窗口框架
+                ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
+                webPreferences: {
+                    preload: path.join(__dirname, 'preload.js'),
+                    contextIsolation: true,
+                    nodeIntegration: false,
+                },
+                icon: path.join(__dirname, 'assets', 'icon.png'),
+                show: false
+            });
+
+            let settings = {};
+            try {
+                const AppSettingsManager = require('./modules/utils/appSettingsManager');
+                const sm = new AppSettingsManager(SETTINGS_FILE);
+                settings = await sm.readSettings();
+            } catch (readError) {
+                console.error('Failed to read settings file for RAG observer window:', readError);
+            }
+
+            const vcpLogUrl = settings.vcpLogUrl || '';
+            const vcpLogKey = settings.vcpLogKey || '';
+            const currentThemeMode = settings.currentThemeMode || 'dark';
+
+            // 通过URL查询参数传递配置
+            const observerUrl = `file://${path.join(__dirname, 'RAGmodules', 'RAG_Observer.html')}?vcpLogUrl=${encodeURIComponent(vcpLogUrl)}&vcpLogKey=${encodeURIComponent(vcpLogKey)}&currentThemeMode=${encodeURIComponent(currentThemeMode)}`;
+
+            ragObserverWindow.loadURL(observerUrl);
+            ragObserverWindow.setMenu(null);
+
+            ragObserverWindow.once('ready-to-show', () => {
+                ragObserverWindow.show();
+            });
+
+            openChildWindows.push(ragObserverWindow);
+
+            ragObserverWindow.on('close', (event) => {
+                if (process.platform === 'darwin' && !app.isQuitting) {
+                    event.preventDefault();
+                    ragObserverWindow.hide();
+                }
+            });
+
+            ragObserverWindow.on('closed', () => {
+                openChildWindows = openChildWindows.filter(win => win !== ragObserverWindow);
+                ragObserverWindow = null;
+            });
+        });
+
+        windowHandlers.initialize(mainWindow, openChildWindows);
+        forumHandlers.initialize({ USER_DATA_DIR }); // Initialize forum handlers
+        memoHandlers.initialize({ USER_DATA_DIR }); // Initialize memo handlers
+        await assistantHandlers.initialize({ SETTINGS_FILE });
+        fileDialogHandlers.initialize(mainWindow, {
+            getSelectionListenerStatus: assistantHandlers.getSelectionListenerStatus,
+            stopSelectionListener: assistantHandlers.stopSelectionListener,
+            startSelectionListener: assistantHandlers.startSelectionListener,
+            openChildWindows
+        });
+        groupChatHandlers.initialize(mainWindow, {
+            AGENT_DIR,
+            USER_DATA_DIR,
+            getSelectionListenerStatus: assistantHandlers.getSelectionListenerStatus,
+            stopSelectionListener: assistantHandlers.stopSelectionListener,
+            startSelectionListener: assistantHandlers.startSelectionListener,
+            fileWatcher // Inject fileWatcher here as well
+        });
+        agentHandlers.initialize({
+            AGENT_DIR,
+            USER_DATA_DIR,
+            SETTINGS_FILE,
+            USER_AVATAR_FILE,
+            getSelectionListenerStatus: assistantHandlers.getSelectionListenerStatus,
+            stopSelectionListener: assistantHandlers.stopSelectionListener,
+            startSelectionListener: assistantHandlers.startSelectionListener,
+            settingsManager: appSettingsManager,
+            agentConfigManager
+        });
+        regexHandlers.initialize({ AGENT_DIR });
+        chatHandlers.initialize(mainWindow, {
+            AGENT_DIR,
+            USER_DATA_DIR,
+            APP_DATA_ROOT_IN_PROJECT,
+            NOTES_AGENT_ID,
+            getSelectionListenerStatus: assistantHandlers.getSelectionListenerStatus,
+            stopSelectionListener: assistantHandlers.stopSelectionListener,
+            startSelectionListener: assistantHandlers.startSelectionListener,
+            getMusicState: musicHandlers.getMusicState,
+            fileWatcher, // 注入文件监控器
+            agentConfigManager
+        });
+
+        // New dedicated watcher IPC handlers
+        ipcMain.handle('watcher:start', (event, filePath, agentId, topicId) => {
+            if (fileWatcher) {
+                fileWatcher.watchFile(filePath, (changedPath) => {
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        // Pass back the agentId and topicId to the renderer for context
+                        mainWindow.webContents.send('history-file-updated', { path: changedPath, agentId, topicId });
+                    }
+                });
+                return { success: true, watching: filePath };
+            }
+            return { success: false, error: 'File watcher not initialized.' };
+        });
+
+        ipcMain.handle('watcher:stop', () => {
+            if (fileWatcher) {
+                fileWatcher.stopWatching();
+                return { success: true };
+            }
+            return { success: false, error: 'File watcher not initialized.' };
+        });
+        sovitsHandlers.initialize(mainWindow); // Initialize SovitsTTS handlers
+        musicHandlers.initialize({ mainWindow, openChildWindows, APP_DATA_ROOT_IN_PROJECT, startAudioEngine, stopAudioEngine });
+        diceHandlers.initialize({ projectRoot: PROJECT_ROOT });
+        themeHandlers.initialize({ mainWindow, openChildWindows, projectRoot: PROJECT_ROOT, APP_DATA_ROOT_IN_PROJECT, settingsManager: appSettingsManager });
+        emoticonHandlers.initialize({ SETTINGS_FILE, APP_DATA_ROOT_IN_PROJECT });
+        emoticonHandlers.setupEmoticonHandlers();
+        canvasHandlers.initialize({ mainWindow, openChildWindows, CANVAS_CACHE_DIR });
+        promptHandlers.initialize({ AGENT_DIR, APP_DATA_ROOT_IN_PROJECT });
+
+        ipcMain.on('minimize-to-tray', () => {
+            if (mainWindow) {
+                mainWindow.hide();
+            }
+        });
+
+        // --- Distributed Server Initialization ---
+        (async () => {
+            try {
+                const settings = await appSettingsManager.readSettings();
+                if (settings.enableDistributedServer) {
+                    console.log('[Main] Distributed server is enabled. Initializing...');
+                    const DistributedServer = require('./VCPDistributedServer/VCPDistributedServer.js');
+                    const config = {
+                        mainServerUrl: settings.vcpLogUrl, // Assuming the distributed server connects to the same base URL as VCPLog
+                        vcpKey: settings.vcpLogKey,
+                        serverName: 'VCP-Desktop-Client-Distributed-Server',
+                        debugMode: true, // Or read from settings if you add this option
+                        rendererProcess: mainWindow.webContents, // Pass the renderer process object
+                        handleMusicControl: musicHandlers.handleMusicControl, // Inject the music control handler
+                        handleDiceControl: diceHandlers.handleDiceControl, // Inject the dice control handler
+                        handleCanvasControl: handleCanvasControl, // Inject the canvas control handler
+                        handleFlowlockControl: handleFlowlockControl // Inject the flowlock control handler
+                    };
+                    distributedServer = new DistributedServer(config);
+                    distributedServer.initialize();
+                } else {
+                    console.log('[Main] Distributed server is disabled in settings.');
+                }
+            } catch (error) {
+                console.error('[Main] Failed to read settings or initialize distributed server:', error);
+            }
+        })();
+        // --- End of Distributed Server Initialization ---
+
+        app.on('activate', () => {
+            // On macOS, re-show the main window when the dock icon is clicked.
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                if (!mainWindow.isVisible()) {
+                    mainWindow.show();
+                }
+                mainWindow.focus();
+            }
+            // If the main window has been closed (mainWindow is null), create a new one.
+            else if (BrowserWindow.getAllWindows().length === 0) {
+                createWindow();
+            }
+        });
+
+        globalShortcut.register('Control+Shift+I', () => {
+            const focusedWindow = BrowserWindow.getFocusedWindow();
+            if (focusedWindow && focusedWindow.webContents && !focusedWindow.webContents.isDestroyed()) {
+                focusedWindow.webContents.toggleDevTools();
+            }
+        });
+
+        // 移除全局 Command+Q 快捷键，改用标准的应用程序菜单
+
+        // 全局快捷键 'CommandOrControl+Shift+N' 已通过菜单栏实现
+
+        // --- Music Player IPC Handlers are now in modules/ipc/musicHandlers.js ---
+
+
+        // --- Assistant IPC Handlers are now in modules/ipc/assistantHandlers.js ---
+
+        // --- Theme IPC Handlers are now in modules/ipc/themeHandlers.js ---
+
+        // --- Platform Info IPC Handler ---
+        ipcMain.handle('get-platform', () => {
+            return process.platform;
+        });
     });
-
-    globalShortcut.register('Control+Shift+I', () => {
-        const focusedWindow = BrowserWindow.getFocusedWindow();
-        if (focusedWindow && focusedWindow.webContents && !focusedWindow.webContents.isDestroyed()) {
-            focusedWindow.webContents.toggleDevTools();
-        }
-    });
-
-    // 移除全局 Command+Q 快捷键，改用标准的应用程序菜单
-    
-    // 全局快捷键 'CommandOrControl+Shift+N' 已通过菜单栏实现
-    
-    // --- Music Player IPC Handlers are now in modules/ipc/musicHandlers.js ---
-
-
-   // --- Assistant IPC Handlers are now in modules/ipc/assistantHandlers.js ---
-
-    // --- Theme IPC Handlers are now in modules/ipc/themeHandlers.js ---
-    
-    // --- Platform Info IPC Handler ---
-    ipcMain.handle('get-platform', () => {
-        return process.platform;
-    });
-});
 
     // --- Python Execution IPC Handler ---
     ipcMain.handle('execute-python-code', (event, code) => {
@@ -971,173 +981,173 @@ if (!gotTheLock) {
         });
     });
 
-app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
-        app.quit();
-    }
-});
-
-app.on('will-quit', () => {
-    // 0. Clean up the ready signal file for the native splash screen
-    const readyFile = path.join(__dirname, '.vcp_ready');
-    if (fs.existsSync(readyFile)) {
-        fs.unlinkSync(readyFile);
-    }
-
-    // 1. 停止所有底层监听器
-    console.log('[Main] App is quitting. Stopping all listeners...');
-    assistantHandlers.stopSelectionListener();
-    assistantHandlers.stopMouseListener();
-
-    // 2. 注销所有全局快捷键
-    globalShortcut.unregisterAll();
-    console.log('[Main] All global shortcuts unregistered.');
-
-    // 3. Stop the speech recognizer
-    const speechRecognizer = require('./modules/speechRecognizer');
-    speechRecognizer.shutdown(); // Use the new shutdown function to close the browser
-
-    // 4. 关闭WebSocket连接
-    if (vcpLogWebSocket) {
-        vcpLogWebSocket.close();
-    }
-    if (vcpLogReconnectInterval) {
-        clearTimeout(vcpLogReconnectInterval);
-    }
-    
-    // 5. Stop the distributed server
-    if (distributedServer) {
-        console.log('[Main] Stopping distributed server...');
-        distributedServer.stop();
-        distributedServer = null;
-    }
-    
-    // 6. Stop the dice server
-    diceHandlers.stopDiceServer();
-
-    // 7. Stop the Python Audio Engine
-    stopAudioEngine();
-
-    // 8. 强制销毁所有窗口
-    console.log('[Main] Destroying all open windows...');
-    BrowserWindow.getAllWindows().forEach(win => {
-        if (win && !win.isDestroyed()) {
-            win.destroy();
+    app.on('window-all-closed', () => {
+        if (process.platform !== 'darwin') {
+            app.quit();
         }
     });
-});
 
-// --- Helper Functions ---
+    app.on('will-quit', () => {
+        // 0. Clean up the ready signal file for the native splash screen
+        const readyFile = path.join(__dirname, '.vcp_ready');
+        if (fs.existsSync(readyFile)) {
+            fs.unlinkSync(readyFile);
+        }
 
-function formatTimestampForFilename(timestamp) {
-    const date = new Date(timestamp);
-    const year = date.getFullYear();
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const day = date.getDate().toString().padStart(2, '0');
-    const hours = date.getHours().toString().padStart(2, '0');
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-    const seconds = date.getSeconds().toString().padStart(2, '0');
-    return `${year}${month}${day}_${hours}${minutes}${seconds}`;
-}
+        // 1. 停止所有底层监听器
+        console.log('[Main] App is quitting. Stopping all listeners...');
+        assistantHandlers.stopSelectionListener();
+        assistantHandlers.stopMouseListener();
 
-// --- IPC Handlers ---
-// open-external-link handler is now in modules/ipc/fileDialogHandlers.js
+        // 2. 注销所有全局快捷键
+        globalShortcut.unregisterAll();
+        console.log('[Main] All global shortcuts unregistered.');
 
-// The getAgentConfigById helper function has been moved to agentHandlers.js
+        // 3. Stop the speech recognizer
+        const speechRecognizer = require('./modules/speechRecognizer');
+        speechRecognizer.shutdown(); // Use the new shutdown function to close the browser
 
-// VCP Server Communication is now handled in modules/ipc/chatHandlers.js
-
-// VCPLog WebSocket Connection
-function connectVcpLog(wsUrl, wsKey) {
-    const WebSocket = require('ws'); // Lazy load
-    if (!wsUrl || !wsKey) {
-        if (mainWindow) mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'error', message: 'URL或KEY未配置。' });
-        return;
-    }
-
-    const fullWsUrl = `${wsUrl}/VCPlog/VCP_Key=${wsKey}`;
-    
-    if (vcpLogWebSocket && (vcpLogWebSocket.readyState === WebSocket.OPEN || vcpLogWebSocket.readyState === WebSocket.CONNECTING)) {
-        console.log('VCPLog WebSocket 已连接或正在连接。');
-        return;
-    }
-
-    console.log(`尝试连接 VCPLog WebSocket: ${fullWsUrl}`);
-    if (mainWindow) mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'connecting', message: '连接中...' });
-
-    vcpLogWebSocket = new WebSocket(fullWsUrl);
-
-    vcpLogWebSocket.onopen = () => {
-        console.log('[MAIN_VCP_LOG] WebSocket onopen event triggered.'); 
-        if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
-            console.log('[MAIN_VCP_LOG] Attempting to send vcp-log-status "open" to renderer.'); 
-            mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'open', message: '已连接' });
-            console.log('[MAIN_VCP_LOG] vcp-log-status "open" sent.');
-            mainWindow.webContents.send('vcp-log-message', { type: 'connection_ack', message: 'VCPLog 连接成功！' });
-        } else {
-            console.error('[MAIN_VCP_LOG] mainWindow or webContents not available in onopen. Cannot send status.');
+        // 4. 关闭WebSocket连接
+        if (vcpLogWebSocket) {
+            vcpLogWebSocket.close();
         }
         if (vcpLogReconnectInterval) {
-            clearTimeout(vcpLogReconnectInterval); // Corrected: Use clearTimeout for setTimeout
+            clearTimeout(vcpLogReconnectInterval);
+        }
+
+        // 5. Stop the distributed server
+        if (distributedServer) {
+            console.log('[Main] Stopping distributed server...');
+            distributedServer.stop();
+            distributedServer = null;
+        }
+
+        // 6. Stop the dice server
+        diceHandlers.stopDiceServer();
+
+        // 7. Stop the Python Audio Engine
+        stopAudioEngine();
+
+        // 8. 强制销毁所有窗口
+        console.log('[Main] Destroying all open windows...');
+        BrowserWindow.getAllWindows().forEach(win => {
+            if (win && !win.isDestroyed()) {
+                win.destroy();
+            }
+        });
+    });
+
+    // --- Helper Functions ---
+
+    function formatTimestampForFilename(timestamp) {
+        const date = new Date(timestamp);
+        const year = date.getFullYear();
+        const month = (date.getMonth() + 1).toString().padStart(2, '0');
+        const day = date.getDate().toString().padStart(2, '0');
+        const hours = date.getHours().toString().padStart(2, '0');
+        const minutes = date.getMinutes().toString().padStart(2, '0');
+        const seconds = date.getSeconds().toString().padStart(2, '0');
+        return `${year}${month}${day}_${hours}${minutes}${seconds}`;
+    }
+
+    // --- IPC Handlers ---
+    // open-external-link handler is now in modules/ipc/fileDialogHandlers.js
+
+    // The getAgentConfigById helper function has been moved to agentHandlers.js
+
+    // VCP Server Communication is now handled in modules/ipc/chatHandlers.js
+
+    // VCPLog WebSocket Connection
+    function connectVcpLog(wsUrl, wsKey) {
+        const WebSocket = require('ws'); // Lazy load
+        if (!wsUrl || !wsKey) {
+            if (mainWindow) mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'error', message: 'URL或KEY未配置。' });
+            return;
+        }
+
+        const fullWsUrl = `${wsUrl}/VCPlog/VCP_Key=${wsKey}`;
+
+        if (vcpLogWebSocket && (vcpLogWebSocket.readyState === WebSocket.OPEN || vcpLogWebSocket.readyState === WebSocket.CONNECTING)) {
+            console.log('VCPLog WebSocket 已连接或正在连接。');
+            return;
+        }
+
+        console.log(`尝试连接 VCPLog WebSocket: ${fullWsUrl}`);
+        if (mainWindow) mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'connecting', message: '连接中...' });
+
+        vcpLogWebSocket = new WebSocket(fullWsUrl);
+
+        vcpLogWebSocket.onopen = () => {
+            console.log('[MAIN_VCP_LOG] WebSocket onopen event triggered.');
+            if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+                console.log('[MAIN_VCP_LOG] Attempting to send vcp-log-status "open" to renderer.');
+                mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'open', message: '已连接' });
+                console.log('[MAIN_VCP_LOG] vcp-log-status "open" sent.');
+                mainWindow.webContents.send('vcp-log-message', { type: 'connection_ack', message: 'VCPLog 连接成功！' });
+            } else {
+                console.error('[MAIN_VCP_LOG] mainWindow or webContents not available in onopen. Cannot send status.');
+            }
+            if (vcpLogReconnectInterval) {
+                clearTimeout(vcpLogReconnectInterval); // Corrected: Use clearTimeout for setTimeout
+                vcpLogReconnectInterval = null;
+            }
+        };
+
+        vcpLogWebSocket.onmessage = (event) => {
+            console.log('VCPLog 收到消息:', event.data);
+            try {
+                const data = JSON.parse(event.data.toString());
+                if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('vcp-log-message', data);
+            } catch (e) {
+                console.error('VCPLog 解析消息失败:', e);
+                if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('vcp-log-message', { type: 'error', data: `收到无法解析的消息: ${event.data.toString().substring(0, 100)}...` });
+            }
+        };
+
+        vcpLogWebSocket.onclose = (event) => {
+            console.log('VCPLog WebSocket 连接已关闭:', event.code, event.reason);
+            if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'closed', message: `连接已断开 (${event.code})` });
+            if (!vcpLogReconnectInterval && wsUrl && wsKey) {
+                console.log('将在5秒后尝试重连 VCPLog...');
+                vcpLogReconnectInterval = setTimeout(() => {
+                    vcpLogReconnectInterval = null;
+                    connectVcpLog(wsUrl, wsKey);
+                }, 5000);
+            }
+        };
+
+        vcpLogWebSocket.onerror = (error) => {
+            console.error('[MAIN_VCP_LOG] WebSocket onerror event:', error.message);
+            if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+                mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'error', message: '连接错误' });
+            } else {
+                console.error('[MAIN_VCP_LOG] mainWindow or webContents not available in onerror.');
+            }
+        };
+    }
+
+    ipcMain.on('connect-vcplog', (event, { url, key }) => {
+        if (vcpLogWebSocket) {
+            vcpLogWebSocket.close();
+        }
+        if (vcpLogReconnectInterval) {
+            clearTimeout(vcpLogReconnectInterval);
             vcpLogReconnectInterval = null;
         }
-    };
+        connectVcpLog(url, key);
+    });
 
-    vcpLogWebSocket.onmessage = (event) => {
-        console.log('VCPLog 收到消息:', event.data);
-        try {
-            const data = JSON.parse(event.data.toString()); 
-            if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('vcp-log-message', data);
-        } catch (e) {
-            console.error('VCPLog 解析消息失败:', e);
-            if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('vcp-log-message', { type: 'error', data: `收到无法解析的消息: ${event.data.toString().substring(0,100)}...` });
+    ipcMain.on('disconnect-vcplog', () => {
+        if (vcpLogWebSocket) {
+            vcpLogWebSocket.close();
         }
-    };
-
-    vcpLogWebSocket.onclose = (event) => {
-        console.log('VCPLog WebSocket 连接已关闭:', event.code, event.reason);
-        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'closed', message: `连接已断开 (${event.code})` });
-        if (!vcpLogReconnectInterval && wsUrl && wsKey) {
-            console.log('将在5秒后尝试重连 VCPLog...');
-            vcpLogReconnectInterval = setTimeout(() => {
-                vcpLogReconnectInterval = null;
-                connectVcpLog(wsUrl, wsKey);
-            }, 5000);
+        if (vcpLogReconnectInterval) {
+            clearTimeout(vcpLogReconnectInterval);
+            vcpLogReconnectInterval = null;
         }
-    };
-
-    vcpLogWebSocket.onerror = (error) => {
-        console.error('[MAIN_VCP_LOG] WebSocket onerror event:', error.message); 
-        if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
-            mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'error', message: '连接错误' });
-        } else {
-            console.error('[MAIN_VCP_LOG] mainWindow or webContents not available in onerror.'); 
-        }
-    };
-}
-
-ipcMain.on('connect-vcplog', (event, { url, key }) => {
-    if (vcpLogWebSocket) {
-        vcpLogWebSocket.close();
-    }
-    if (vcpLogReconnectInterval) {
-        clearTimeout(vcpLogReconnectInterval);
-        vcpLogReconnectInterval = null;
-    }
-    connectVcpLog(url, key);
-});
-
-ipcMain.on('disconnect-vcplog', () => {
-    if (vcpLogWebSocket) {
-        vcpLogWebSocket.close();
-    }
-    if (vcpLogReconnectInterval) {
-        clearTimeout(vcpLogReconnectInterval);
-        vcpLogReconnectInterval = null;
-    }
-    if (mainWindow) mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'closed', message: '已手动断开' });
-    console.log('VCPLog 已手动断开');
-});
+        if (mainWindow) mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'closed', message: '已手动断开' });
+        console.log('VCPLog 已手动断开');
+    });
 }
 // --- Voice Chat IPC Handler ---
 ipcMain.on('open-voice-chat-window', (event, { agentId }) => {
@@ -1160,7 +1170,7 @@ ipcMain.on('open-voice-chat-window', (event, { agentId }) => {
     });
 
     voiceChatWindow.loadFile(path.join(__dirname, 'Voicechatmodules/voicechat.html'));
-    
+
     voiceChatWindow.once('ready-to-show', () => {
         const theme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
         voiceChatWindow.show();
@@ -1213,7 +1223,7 @@ ipcMain.handle('export-topic-as-markdown', async (event, exportData) => {
             { name: '所有文件', extensions: ['*'] }
         ]
     });
-    
+
     if (canceled || !filePath) {
         return { success: false, error: '用户取消了导出操作。' };
     }
@@ -1262,25 +1272,25 @@ ipcMain.handle('interrupt-group-request', (event, messageId) => {
 async function handleFlowlockControl(commandPayload) {
     try {
         const { command, agentId, topicId, prompt, promptSource, target, oldText, newText } = commandPayload;
-        
+
         console.log(`[Main] handleFlowlockControl received command: ${command}`, commandPayload);
-        
+
         if (!mainWindow || mainWindow.isDestroyed()) {
             throw new Error('Main window is not available.');
         }
-        
+
         // For 'get' and 'status' commands, we need to wait for a response from renderer
         if (command === 'get' || command === 'status') {
             return new Promise((resolve, reject) => {
                 const timeout = setTimeout(() => {
                     reject(new Error(`${command === 'get' ? '获取输入框内容' : '获取心流锁状态'}超时`));
                 }, 5000); // 5 second timeout
-                
+
                 // Set up one-time listener for the response
                 const responseHandler = (event, responseData) => {
                     clearTimeout(timeout);
                     ipcMain.removeListener('flowlock-response', responseHandler);
-                    
+
                     if (responseData.success) {
                         if (command === 'get') {
                             resolve({
@@ -1303,9 +1313,9 @@ async function handleFlowlockControl(commandPayload) {
                         reject(new Error(responseData.error || `${command === 'get' ? '获取输入框内容' : '获取心流锁状态'}失败`));
                     }
                 };
-                
+
                 ipcMain.on('flowlock-response', responseHandler);
-                
+
                 // Send command to renderer
                 mainWindow.webContents.send('flowlock-command', {
                     command,
@@ -1319,7 +1329,7 @@ async function handleFlowlockControl(commandPayload) {
                 });
             });
         }
-        
+
         // For other commands, send and return immediately
         mainWindow.webContents.send('flowlock-command', {
             command,
@@ -1331,7 +1341,7 @@ async function handleFlowlockControl(commandPayload) {
             oldText,
             newText
         });
-        
+
         // Build natural language response for AI
         let naturalResponse = '';
         switch (command) {
@@ -1359,7 +1369,7 @@ async function handleFlowlockControl(commandPayload) {
             default:
                 naturalResponse = `心流锁命令 "${command}" 已执行。`;
         }
-        
+
         return { status: 'success', message: naturalResponse };
     } catch (error) {
         console.error('[Main] handleFlowlockControl error:', error);

@@ -169,35 +169,47 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // --- WebSocket for Visualization ---
-    const socket = io("http://127.0.0.1:5555");
+    // --- WebSocket for Visualization (Native WebSocket) ---
+    // Replaced socket.io with native WebSocket for Rust server compatibility
+    let ws = null;
+    const connectWebSocket = () => {
+        ws = new WebSocket("ws://127.0.0.1:5555/ws");
 
-    socket.on('connect', () => {
-        // console.log('[Music.js] Connected to Python Audio Engine via WebSocket.');
-        if (!animationFrameId) {
-            startVisualizerAnimation(); // 连接成功后启动动画循环
-        }
-    });
-
-    socket.on('spectrum_data', (specData) => {
-        if (isPlaying) {
-            // 只更新目标数据，让动画循环去处理绘制
-            targetVisualizerData = specData.data;
-            if (currentVisualizerData.length === 0) {
-                // 初始化当前数据，避免从0开始跳变
-                currentVisualizerData = Array(targetVisualizerData.length).fill(0);
+        ws.onopen = () => {
+            console.log('[Music.js] Connected to Rust Audio Engine via WebSocket.');
+            if (!animationFrameId) {
+                startVisualizerAnimation(); // Start animation loop
             }
-        }
-    });
+        };
 
-    socket.on('playback_state', (state) => {
-        // console.log('[Music.js] Received playback state from engine:', state);
-        updateUIWithState(state);
-    });
+        ws.onmessage = (event) => {
+            try {
+                const message = JSON.parse(event.data);
+                if (message.type === 'spectrum_data') {
+                    if (isPlaying) {
+                        targetVisualizerData = message.data;
+                        if (currentVisualizerData.length === 0) {
+                            currentVisualizerData = Array(targetVisualizerData.length).fill(0);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('[Music.js] Failed to parse WebSocket message:', e);
+            }
+        };
 
-    socket.on('disconnect', () => {
-        // console.log('[Music.js] Disconnected from Python Audio Engine WebSocket.');
-    });
+        ws.onclose = () => {
+            // console.log('[Music.js] Disconnected from Rust Audio Engine WebSocket. Retrying in 5s...');
+            setTimeout(connectWebSocket, 5000);
+        };
+
+        ws.onerror = (err) => {
+            console.error('[Music.js] WebSocket error:', err);
+            ws.close();
+        };
+    };
+
+    connectWebSocket();
 
 
     // --- Helper Functions ---
