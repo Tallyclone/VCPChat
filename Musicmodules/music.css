@@ -67,12 +67,26 @@ body {
     0%,
     100% {
         transform: translate(-50%, -50%) scale(1);
-        opacity: 0.3;
+        opacity: 0.15;
     }
 
     50% {
+        transform: translate(-50%, -50%) scale(1.6);
+        opacity: 0.35;
+    }
+}
+
+@keyframes ripple-glow {
+
+    0%,
+    100% {
         transform: translate(-50%, -50%) scale(1.4);
-        opacity: 0.5;
+        opacity: 0.05;
+    }
+
+    50% {
+        transform: translate(-50%, -50%) scale(0.9);
+        opacity: 0.25;
     }
 }
 
@@ -90,20 +104,30 @@ body {
     /* 确保伪元素不会溢出 */
 }
 
-.music-player-container::before {
+.music-player-container::before,
+.music-player-container::after {
     content: '';
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 80%;
-    height: 80%;
+    width: 100%;
+    height: 100%;
     transform: translate(-50%, -50%);
     background: radial-gradient(circle, var(--music-highlight) 0%, transparent 70%);
-    opacity: 0.3;
     filter: blur(120px);
-    animation: subtle-glow 10s ease-in-out infinite;
     z-index: -1;
-    /* 将光晕置于容器内容之后 */
+    pointer-events: none;
+}
+
+.music-player-container::before {
+    animation: subtle-glow 8s ease-in-out infinite;
+}
+
+.music-player-container::after {
+    animation: ripple-glow 12s ease-in-out infinite;
+    background: radial-gradient(circle, var(--music-highlight) 0%, transparent 60%);
+    width: 120%;
+    height: 120%;
 }
 
 .main-content {
