@@ -385,26 +385,18 @@ class AudioEngine:
                 self.stop()
 
                 # --- 1. Load Audio Data (with FFmpeg fallback) ---
-                loaded_via_sf = False
-                
-                # S1: Try loading with soundfile (if not FLAC)
-                if not file_path.lower().endswith('.flac'):
-                    try:
-                        logging.info(f"Attempting to load {file_path} with soundfile...")
-                        original_data, original_samplerate = sf.read(file_path, dtype='float64')
-                        loaded_via_sf = True
-                        logging.info("Successfully loaded with soundfile.")
-                    except Exception as e:
-                        logging.warning(f"Soundfile failed: {e}. Falling back to FFmpeg.")
-                else:
-                    logging.info(f"Detected .flac file: {file_path}. Skipping soundfile and forcing FFmpeg for stability.")
-
-                # S2: Fallback to FFmpeg if soundfile failed or was skipped
-                if not loaded_via_sf:
+                try:
+                    logging.info(f"Attempting to load {file_path} with soundfile...")
+                    original_data, original_samplerate = sf.read(file_path, dtype='float64')
+                    logging.info("Successfully loaded with soundfile.")
+                except sf.LibsndfileError as e:
+                    # 修改：对所有 soundfile 错误都尝试 FFmpeg 回退
+                    # 这样可以解决 Windows 中文路径 MP3 文件的问题
+                    logging.warning(f"Soundfile failed: {e}. Falling back to FFmpeg.")
                     if sys.platform == 'win32':
                         ffmpeg_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'bin', 'ffmpeg.exe'))
                         if not os.path.exists(ffmpeg_path):
-                            # logging.warning(f"ffmpeg.exe not found at {ffmpeg_path}, assuming it's in PATH.")
+                            logging.warning(f"ffmpeg.exe not found at {ffmpeg_path}, assuming it's in PATH.")
                             ffmpeg_path = 'ffmpeg'
                     else:
                         ffmpeg_path = 'ffmpeg'
@@ -416,24 +408,20 @@ class AudioEngine:
                         '-acodec', 'pcm_f32le', # 标准化为 32-bit float
                         '-f', 'wav', '-'
                     ]
-                    logging.info(f"Running FFmpeg command: {command}")
-                    
-                    # Ensure properly encoded environment for subprocess if needed, 
-                    # but usually Python handles filepath args correctly.
+                    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    stdout_data, stderr_data = process.communicate()
+
+                    if process.returncode != 0:
+                        err_msg = f"FFmpeg failed with return code {process.returncode}. Stderr: {stderr_data.decode(errors='ignore')}"
+                        logging.error(err_msg)
+                        raise sf.LibsndfileError(f"FFmpeg decoding failed for {file_path}")
+
                     try:
-                        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                        stdout_data, stderr_data = process.communicate()
-
-                        if process.returncode != 0:
-                            err_msg = f"FFmpeg failed with return code {process.returncode}. Stderr: {stderr_data.decode(errors='ignore')}"
-                            logging.error(err_msg)
-                            raise RuntimeError(err_msg)
-
                         original_data, original_samplerate = sf.read(io.BytesIO(stdout_data), dtype='float64')
                         logging.info(f"Successfully loaded {file_path} via FFmpeg.")
-                    except Exception as ffmpeg_e:
-                        logging.error(f"FFmpeg fallback failed: {ffmpeg_e}")
-                        raise ffmpeg_e
+                    except Exception as read_e:
+                        logging.error(f"Failed to read from FFmpeg stdout stream: {read_e}", exc_info=True)
+                        raise read_e
 
                 # --- 2. Correctly Determine Channels ---
                 # 修复：在读取数据后立即确定通道数
@@ -529,7 +517,6 @@ class AudioEngine:
                 return True
         except Exception as e:
             logging.error(f"Failed to load file {file_path}: {e}", exc_info=True)
-            self.last_error = str(e) # Store error for API response
             with self.lock:
                 self.file_path = None
                 self.data = None
@@ -1033,21 +1020,10 @@ def load_track():
     if not file_path or not os.path.exists(file_path):
         return jsonify({'status': 'error', 'message': 'File not found'}), 400
     
-    try:
-        if audio_engine.load(file_path):
-            return jsonify({'status': 'success', 'message': 'Track loaded', 'state': audio_engine.get_state()})
-        else:
-             # audio_engine.load catches exceptions and returns False, but logs them.
-             # We need to capture the last error to send to the user.
-             # Since we can't easily change the method signature verify quickly, let's rely on the log or 
-             # better, let's modify load to return the error?
-             # For now, let's return a generic error but with a hint to check the server log, 
-             # OR effectively we can't do much without changing `load`. 
-             # Wait, I can change `load` to store `self.last_error`.
-             error_msg = getattr(audio_engine, 'last_error', 'Unknown error')
-             return jsonify({'status': 'error', 'message': f'Failed to load track: {error_msg}'}), 500
-    except Exception as e:
-         return jsonify({'status': 'error', 'message': f'Unexpected error: {str(e)}'}), 500
+    if audio_engine.load(file_path):
+        return jsonify({'status': 'success', 'message': 'Track loaded', 'state': audio_engine.get_state()})
+    else:
+        return jsonify({'status': 'error', 'message': 'Failed to load track'}), 500
 
 @app.route('/play', methods=['POST'])
 def play_track():
