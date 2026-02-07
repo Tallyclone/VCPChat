@@ -273,9 +273,10 @@ impl AudioPlayer {
             }
             
             if !loaded_from_cache {
-                log::info!("SoX VHQ Resampling {} -> {} Hz", original_sr, target_sr);
+                log::info!("SoX VHQ Resampling {} -> {} Hz (Channel Parallel)", original_sr, target_sr);
                 let resampler = Resampler::new(channels, original_sr, target_sr);
-                samples = resampler.resample_parallel(&samples, 65536, self.config.resample_quality);
+                // Chunk size argument is ignored/removed in new API, passing 0 or removing it
+                samples = resampler.resample_parallel(&samples, 0, self.config.resample_quality);
                 
                 if let Some(ref cp) = cache_path {
                     let _ = fs::create_dir_all(cp.parent().unwrap());
@@ -468,14 +469,18 @@ fn audio_callback(
     drop(buf);
     
     if available_frames > 0 {
-        // Use try_lock to avoid priority inversion/blocking, though parking_lot::Mutex is usually fine
-        if let Some(mut eq_guard) = eq.try_lock() {
+        // Use lock() instead of try_lock(). Critical sections in main thread are microsecond-short.
+        // Blocking here is better than skipping effects (which causes popping).
+        {
+            let mut eq_guard = eq.lock();
             eq_guard.process(process_buf);
         }
-        if let Some(mut vol_guard) = volume.try_lock() {
+        {
+            let mut vol_guard = volume.lock();
             vol_guard.process(process_buf, channels);
         }
-        if let Some(mut ns_guard) = noise_shaper.try_lock() {
+        {
+            let mut ns_guard = noise_shaper.lock();
             ns_guard.process(process_buf, channels);
         }
         

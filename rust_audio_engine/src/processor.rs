@@ -24,112 +24,110 @@ impl Resampler {
     
     /// Resample audio data using SoX VHQ polyphase filter
     /// Input and output are interleaved f64 samples for Hi-Fi transparency
-    pub fn resample(&self, input: &[f64], _quality: ResampleQuality) -> Vec<f64> {
+    /// Resample audio data using SoX VHQ polyphase filter
+    /// 
+    /// optimised for multi-channel parallelism:
+    /// - De-interleaves channels
+    /// - Processes each channel on a separate thread (Rayon)
+    /// - Re-interleaves result
+    /// This avoids phase discontinuities from time-chunking while maintaining high performance.
+    pub fn resample_parallel(&self, input: &[f64], _exclude_chunk_size: usize, _quality: ResampleQuality) -> Vec<f64> {
         if self.from_rate == self.to_rate {
             return input.to_vec();
         }
-        
-        // --- Core Configuration: Hi-Fi Engine (Restored from lib.old.rs) ---
-        
-        // 1. Configure VHQ (Very High Quality) + High Precision Phase Clock
-        let quality_spec = QualitySpec::configure(
-            QualityRecipe::very_high(),
-            Rolloff::default(),
-            QualityFlags::HighPrecisionClock,
-        );
 
-        // 2. Configure runtime parameters (Multi-threaded concurrency)
-        let runtime_spec = RuntimeSpec::new(self.channels as u32);
-
+        // 1. De-interleave
         let frames = input.len() / self.channels;
-        let output_frames = (frames as f64 * self.to_rate as f64 / self.from_rate as f64) as usize + 1024;
-        
-        let mut output = vec![0.0_f64; output_frames * self.channels];
-        
-        if self.channels <= 2 {
-            // 1-2 Channels: Efficient processing using Stereo format
-            let mut soxr = Soxr::<Stereo<f64>>::new_with_params(
-                self.from_rate as f64,
-                self.to_rate as f64,
-                quality_spec,
-                runtime_spec,
-            ).expect("Soxr initialization failed");
+        let mut plan_channels: Vec<Vec<f64>> = vec![Vec::with_capacity(frames); self.channels];
+        for (i, sample) in input.iter().enumerate() {
+            plan_channels[i % self.channels].push(*sample);
+        }
 
-            let mut input_frames: Vec<[f64; 2]> = Vec::with_capacity(frames);
-            for f in 0..frames {
-                let left = input[f * self.channels];
-                let right = if self.channels > 1 { input[f * self.channels + 1] } else { left };
-                input_frames.push([left, right]);
-            }
-
-            let mut out_frames = vec![[0.0_f64; 2]; output_frames];
-            let processed = soxr.process(&input_frames, &mut out_frames)
-                .expect("Resampling processing failed");
-            let processed_len = processed.output_frames;
+        // 2. Process channels in parallel
+        let resampled_channels: Vec<Vec<f64>> = plan_channels
+            .into_par_iter()
+            .enumerate()
+            .map(|(ch_idx, channel_data)| {
+                // Configure SoX for this channel
+                let quality_spec = QualitySpec::configure(
+                    QualityRecipe::very_high(),
+                    Rolloff::default(),
+                    QualityFlags::HighPrecisionClock,
+                );
                 
-            // Flatten output frames
-            for f in 0..processed_len {
-                output[f * self.channels] = out_frames[f][0];
-                if self.channels > 1 {
-                    output[f * self.channels + 1] = out_frames[f][1];
-                }
-            }
-            output.truncate(processed_len * self.channels);
-        } else {
-            // 3+ Channels: Mono per-channel processing
-            for ch in 0..self.channels {
+                let runtime_spec = RuntimeSpec::new(1); // 1 channel per thread
+                
                 let mut soxr = Soxr::<Mono<f64>>::new_with_params(
                     self.from_rate as f64,
                     self.to_rate as f64,
-                    QualitySpec::new(QualityRecipe::very_high()),
-                    RuntimeSpec::new(self.channels as u32),
-                ).expect("Soxr initialization failed for multi-channel");
+                    quality_spec,
+                    runtime_spec,
+                ).expect("Soxr initialization failed");
 
-                let mut input_mono: Vec<f64> = Vec::with_capacity(frames);
-                for f in 0..frames {
-                    input_mono.push(input[f * self.channels + ch]);
-                }
-
-                let mut out_mono = vec![0.0_f64; output_frames];
-                let processed = soxr.process(&input_mono, &mut out_mono)
-                    .expect("Resampling processing failed for multi-channel");
-                let processed_len = processed.output_frames;
+                // Output estimation
+                let expected_frames = (channel_data.len() as f64 * self.to_rate as f64 / self.from_rate as f64).ceil() as usize + 100;
+                let mut channel_output = Vec::with_capacity(expected_frames);
                 
-                for f in 0..processed_len {
-                    output[f * self.channels + ch] = out_mono[f];
+                // Chunked processing to avoid massive single-pass overhead
+                // 8192 frames is a good balance for cache usage
+                let inner_chunk_size = 8192; 
+                let mut output_scratch = vec![0.0; (inner_chunk_size as f64 * 1.5) as usize]; // Spare room for resampling ratio
+                
+                let total_chunks = channel_data.len() / inner_chunk_size + 1;
+                
+                // Log only for first channel to avoid spam
+                if ch_idx == 0 {
+                   log::info!("Starting resampling on thread. Total chunks: {}", total_chunks);
                 }
-                if ch == 0 {
-                    output.truncate(processed_len * self.channels);
+
+                for (i, chunk) in channel_data.chunks(inner_chunk_size).enumerate() {
+                    let processed = soxr.process(chunk, &mut output_scratch)
+                        .expect("Resampling process failed");
+                    
+                    if processed.output_frames > 0 {
+                        channel_output.extend_from_slice(&output_scratch[..processed.output_frames]);
+                    }
+                    
+                    // Periodic log check (every ~10%)
+                    if ch_idx == 0 && i > 0 && i % (total_chunks.max(10) / 10).max(1) == 0 {
+                        log::debug!("Resampling progress: {}%", i * 100 / total_chunks);
+                    }
+                }
+                
+                // Flush the resampler (pass empty slice)
+                // Some wrappers accept None, but based on usage `process` usually typically takes slices.
+                // Sending empty slice repeatedly until no output is the standard way if explicit flush isn't available.
+                // For soxr-rs, passing empty slice works for flush if it follows C API.
+                let mut flush_scratch = vec![0.0; 4096];
+                if let Ok(processed) = soxr.process(&[], &mut flush_scratch) {
+                     if processed.output_frames > 0 {
+                         channel_output.extend_from_slice(&flush_scratch[..processed.output_frames]);
+                     }
+                }
+                
+                channel_output
+            })
+            .collect();
+            
+        // 3. Re-interleave
+        if resampled_channels.is_empty() {
+             return Vec::new();
+        }
+        
+        let out_frames = resampled_channels[0].len();
+        let mut final_output = Vec::with_capacity(out_frames * self.channels);
+        
+        for f in 0..out_frames {
+            for ch in 0..self.channels {
+                if f < resampled_channels[ch].len() {
+                    final_output.push(resampled_channels[ch][f]);
+                } else {
+                    final_output.push(0.0);
                 }
             }
         }
         
-        output
-    }
-    
-    /// Parallel resample using Rayon (splits into chunks)
-    pub fn resample_parallel(&self, input: &[f64], chunk_size: usize, quality: ResampleQuality) -> Vec<f64> {
-        if self.from_rate == self.to_rate {
-            return input.to_vec();
-        }
-        
-        let frames = input.len() / self.channels;
-        let frames_per_chunk = chunk_size;
-        
-        let chunks: Vec<&[f64]> = (0..frames)
-            .step_by(frames_per_chunk)
-            .map(|start| {
-                let end = (start + frames_per_chunk).min(frames);
-                &input[start * self.channels..end * self.channels]
-            })
-            .collect();
-        
-        let results: Vec<Vec<f64>> = chunks
-            .par_iter()
-            .map(|chunk| self.resample(chunk, quality))
-            .collect();
-        
-        results.into_iter().flatten().collect()
+        final_output
     }
 }
 
