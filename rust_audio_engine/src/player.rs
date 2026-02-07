@@ -111,6 +111,7 @@ pub struct AudioPlayer {
 
 impl AudioPlayer {
     pub fn new(config: AppConfig) -> Self {
+        log::info!("Initializing AudioPlayer...");
         let shared_state = Arc::new(SharedState::new());
         let (cmd_tx, cmd_rx) = unbounded::<AudioCommand>();
         
@@ -162,27 +163,47 @@ impl AudioPlayer {
     }
     
     pub fn list_devices(&self) -> Vec<AudioDeviceInfo> {
-        let host = cpal::default_host();
-        let default_device = host.default_output_device();
-        let default_name = default_device.as_ref().and_then(|d| d.name().ok());
-        
-        host.output_devices()
-            .map(|devices| {
-                devices
-                    .enumerate()
-                    .filter_map(|(idx, device)| {
-                        let name = device.name().ok()?;
+        log::info!("Listing audio devices across all hosts...");
+        let mut all_devices = Vec::new();
+        let mut global_idx = 0;
+
+        for host_id in cpal::available_hosts() {
+            let host = match cpal::host_from_id(host_id) {
+                Ok(h) => h,
+                Err(e) => {
+                    log::error!("Failed to initialize host {:?}: {}", host_id, e);
+                    continue;
+                }
+            };
+
+            let host_name = format!("{:?}", host_id);
+            let default_device = host.default_output_device();
+            let default_name = default_device.as_ref().and_then(|d| d.name().ok());
+
+            if let Ok(devices) = host.output_devices() {
+                for device in devices {
+                    if let Ok(name) = device.name() {
                         let config = device.default_output_config().ok();
-                        Some(AudioDeviceInfo {
-                            id: idx,
-                            name: name.clone(),
+                        let full_name = format!("{} [{}]", name, host_name);
+                        all_devices.push(AudioDeviceInfo {
+                            id: global_idx,
+                            name: full_name,
                             is_default: Some(&name) == default_name.as_ref(),
                             sample_rate: config.map(|c| c.sample_rate().0),
-                        })
-                    })
-                    .collect()
-            })
-            .unwrap_or_default()
+                        });
+                        global_idx += 1;
+                    }
+                }
+            }
+        }
+        
+        if all_devices.is_empty() {
+            log::warn!("No audio output devices found on any host!");
+        } else {
+            log::info!("Found {} audio devices", all_devices.len());
+        }
+        
+        all_devices
     }
     
     pub fn select_device(&mut self, device_id: Option<usize>) -> Result<(), String> {
@@ -210,9 +231,13 @@ impl AudioPlayer {
     
     pub fn load(&mut self, path: &str) -> Result<(), String> {
         use crate::decoder::StreamingDecoder;
+        log::info!("Loading track: {}", path);
         self.stop();
         
-        let mut decoder = StreamingDecoder::open(path).map_err(|e| e.to_string())?;
+        let mut decoder = StreamingDecoder::open(path).map_err(|e| {
+            log::error!("Failed to open decoder for {}: {}", path, e);
+            e.to_string()
+        })?;
         let info = decoder.info.clone();
         let original_sr = info.sample_rate;
         let channels = info.channels;
@@ -309,21 +334,44 @@ fn audio_thread_main(
     noise_shaper: Arc<Mutex<NoiseShaper>>,
     spectrum_tx: Sender<f64>,
 ) {
+    log::info!("Audio thread started, initializing cpal host...");
     let host = cpal::default_host();
     let mut stream: Option<Stream> = None;
     
     loop {
         match cmd_rx.recv() {
             Ok(AudioCommand::Play) => {
+                log::info!("Received Play command");
                 if *shared_state.state.read() == PlayerState::Paused {
                     if let Some(ref s) = stream { let _ = s.play(); }
                     *shared_state.state.write() = PlayerState::Playing;
                     continue;
                 }
-                let device = host.default_output_device().expect("No audio device");
+                
+                let device = match host.default_output_device() {
+                    Some(d) => d,
+                    None => {
+                        log::error!("Failed to play: No default audio output device found");
+                        *shared_state.state.write() = PlayerState::Stopped;
+                        continue;
+                    }
+                };
+                
                 let sample_rate = shared_state.sample_rate.load(Ordering::Relaxed) as u32;
                 let channels = shared_state.channels.load(Ordering::Relaxed) as u16;
-                let config = StreamConfig { channels, sample_rate: cpal::SampleRate(sample_rate), buffer_size: cpal::BufferSize::Default };
+                
+                if channels == 0 {
+                    log::error!("Failed to play: Invalid channel count (0)");
+                    *shared_state.state.write() = PlayerState::Stopped;
+                    continue;
+                }
+
+                log::info!("Opening stream: {} Hz, {} channels", sample_rate, channels);
+                let config = StreamConfig {
+                    channels,
+                    sample_rate: cpal::SampleRate(sample_rate),
+                    buffer_size: cpal::BufferSize::Default
+                };
                 
                 let cb_shared = Arc::clone(&shared_state);
                 let cb_eq = Arc::clone(&eq);
@@ -332,6 +380,7 @@ fn audio_thread_main(
                 let cb_spectrum_tx = spectrum_tx.clone();
                 
                 let mut process_buffer = Vec::with_capacity(8192);
+                log::info!("Building output stream...");
                 let new_stream = device.build_output_stream(
                     &config,
                     move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
