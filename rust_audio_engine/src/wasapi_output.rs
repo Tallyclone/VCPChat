@@ -24,6 +24,7 @@ pub mod wasapi_exclusive {
         Pause,
         Stop,
         Shutdown,
+        Seek(u64),
     }
     
     /// State of WASAPI playback
@@ -146,10 +147,9 @@ pub mod wasapi_exclusive {
         
         /// Seek to position
         #[allow(dead_code)]
-        pub fn seek(&self, frame: u64) {
-            let total = self.shared_state.total_frames.load(Ordering::Relaxed);
-            let new_pos = frame.min(total);
-            self.shared_state.position_frames.store(new_pos, Ordering::Relaxed);
+        pub fn seek(&self, frame: u64) -> Result<(), String> {
+            self.cmd_tx.send(WasapiCommand::Seek(frame))
+                .map_err(|e| format!("Failed to send seek command: {}", e))
         }
     }
     
@@ -208,6 +208,12 @@ pub mod wasapi_exclusive {
                     log::info!("WASAPI: Stop command");
                     shared_state.position_frames.store(0, Ordering::Relaxed);
                     *shared_state.state.write() = WasapiState::Stopped;
+                }
+                Ok(WasapiCommand::Seek(frame)) => {
+                    log::info!("WASAPI: Seek command to frame {}", frame);
+                    let total = shared_state.total_frames.load(Ordering::Relaxed);
+                    let new_pos = frame.min(total);
+                    shared_state.position_frames.store(new_pos, Ordering::Relaxed);
                 }
                 Ok(WasapiCommand::Shutdown) | Err(_) => {
                     log::info!("WASAPI: Shutting down thread");
@@ -424,6 +430,15 @@ pub mod wasapi_exclusive {
                             paused = false;
                             log::info!("WASAPI: Resumed");
                         }
+                        continue;
+                    }
+                    WasapiCommand::Seek(frame) => {
+                        log::info!("WASAPI: Seek to frame {}", frame);
+                        let total = shared_state.total_frames.load(Ordering::Relaxed);
+                        let new_pos = frame.min(total);
+                        shared_state.position_frames.store(new_pos, Ordering::Relaxed);
+                        // Don't just continue, we need to respect the change in the next read cycle
+                        // But we don't need to restart stream
                         continue;
                     }
                     WasapiCommand::Stop | WasapiCommand::Shutdown => {

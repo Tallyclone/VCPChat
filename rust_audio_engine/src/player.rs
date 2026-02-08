@@ -29,6 +29,7 @@ pub enum AudioCommand {
     Pause,
     Stop,
     Shutdown,
+    Seek(f64),
 }
 
 /// State of the audio player
@@ -381,11 +382,8 @@ impl AudioPlayer {
     pub fn pause(&mut self) -> Result<(), String> { let _ = self.cmd_tx.send(AudioCommand::Pause); Ok(()) }
     pub fn stop(&mut self) { let _ = self.cmd_tx.send(AudioCommand::Stop); }
     pub fn seek(&mut self, time_secs: f64) -> Result<(), String> {
-        let sr = self.shared_state.sample_rate.load(Ordering::Relaxed) as f64;
-        let total = self.shared_state.total_frames.load(Ordering::Relaxed);
-        let new_pos = ((time_secs * sr) as u64).min(total);
-        self.shared_state.position_frames.store(new_pos, Ordering::Relaxed);
-        Ok(())
+        self.cmd_tx.send(AudioCommand::Seek(time_secs))
+            .map_err(|e| format!("Failed to send seek command: {}", e))
     }
     pub fn set_volume(&mut self, vol: f64) { self.volume.lock().set_target(vol); }
     pub fn get_state(&self) -> PlayerState { *self.shared_state.state.read() }
@@ -491,6 +489,11 @@ fn audio_thread_main(
                                         AudioCommand::Play => {
                                             let _ = wasapi_player.play();
                                             *shared_state.state.write() = PlayerState::Playing;
+                                        }
+                                        AudioCommand::Seek(time) => {
+                                            let sr = shared_state.sample_rate.load(Ordering::Relaxed) as f64;
+                                            let frame = (time * sr) as u64;
+                                            let _ = wasapi_player.seek(frame);
                                         }
                                         AudioCommand::Stop => {
                                             let _ = wasapi_player.stop();
@@ -763,6 +766,12 @@ fn audio_thread_main(
             Ok(AudioCommand::Pause) => {
                 if let Some(ref s) = stream { let _ = s.pause(); }
                 *shared_state.state.write() = PlayerState::Paused;
+            }
+            Ok(AudioCommand::Seek(time)) => {
+                let sr = shared_state.sample_rate.load(Ordering::Relaxed) as f64;
+                let total = shared_state.total_frames.load(Ordering::Relaxed);
+                let new_pos = ((time * sr) as u64).min(total);
+                shared_state.position_frames.store(new_pos, Ordering::Relaxed);
             }
             Ok(AudioCommand::Stop) => {
                 stream = None;
