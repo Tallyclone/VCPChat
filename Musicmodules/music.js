@@ -359,7 +359,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const defaultArtUrl = `url('../assets/${currentTheme === 'light' ? 'musiclight.jpeg' : 'musicdark.jpeg'}')`;
             albumArt.style.backgroundImage = defaultArtUrl;
             updateBlurredBackground('none'); // 没有歌曲时，回退到全局背景
-            renderPlaylist();
+            renderPlaylist(currentFilteredTracks);
             return;
         }
 
@@ -385,7 +385,7 @@ document.addEventListener('DOMContentLoaded', () => {
             updateBlurredBackground('none'); // 没有封面时，回退到全局背景
         }
 
-        renderPlaylist();
+        renderPlaylist(currentFilteredTracks);
         fetchAndDisplayLyrics(track.artist, track.title);
         updateMediaSessionMetadata(); // Update OS media controls
         if (wnpAdapter) wnpAdapter.sendUpdate();
@@ -1644,6 +1644,33 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
     };
+    const addSelectedTracksToPlaylist = (playlistId) => {
+        const pl = customPlaylists.find(p => p.id === playlistId);
+        if (!pl || contextMenuTrackIndex === null) return;
+
+        const track = playlist[contextMenuTrackIndex];
+        if (!track) return;
+
+        if (pl.tracks.includes(track.path)) {
+            alert(`歌曲 "${track.title || '未知标题'}" 已在歌单 "${pl.name}" 中`);
+            return;
+        }
+
+        pl.tracks.push(track.path);
+        saveCustomPlaylists();
+        
+        // 如果当前正在查看该歌单，则刷新显示
+        if (filteredPlaylistSource?.type === 'playlist' && filteredPlaylistSource.id === playlistId) {
+            const tracks = pl.tracks.map(path => playlist.find(t => t.path === path)).filter(Boolean);
+            renderPlaylist(tracks);
+        }
+        
+        // 刷新侧边栏以更新歌曲计数
+        if (currentSidebarView === 'playlists') {
+            renderSidebarContent('playlists');
+        }
+    };
+
 
     // ===== PLAYLIST EDIT MODAL FUNCTIONS =====
 
@@ -1820,10 +1847,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const action = item.dataset.action;
             if (!action) return;
 
+            // Capture the index immediately to avoid issues with async callbacks
+            const trackIndex = contextMenuTrackIndex;
+
             switch (action) {
                 case 'play':
-                    if (contextMenuTrackIndex !== null) {
-                        loadTrack(contextMenuTrackIndex);
+                    if (trackIndex !== null) {
+                        loadTrack(trackIndex);
                     }
                     break;
                 case 'play-next':
@@ -1831,7 +1861,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     break;
                 case 'create-playlist-add':
                     showPlaylistDialog((newPlaylist) => {
-                        const track = playlist[contextMenuTrackIndex];
+                        const track = playlist[trackIndex];
                         if (track && !newPlaylist.tracks.includes(track.path)) {
                             newPlaylist.tracks.push(track.path);
                             saveCustomPlaylists();
@@ -1841,7 +1871,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 case 'remove-from-list':
                     if (filteredPlaylistSource?.type === 'playlist') {
                         const pl = customPlaylists.find(p => p.id === filteredPlaylistSource.id);
-                        const track = playlist[contextMenuTrackIndex];
+                        const track = playlist[trackIndex];
                         if (pl && track) {
                             pl.tracks = pl.tracks.filter(path => path !== track.path);
                             saveCustomPlaylists();
