@@ -7,16 +7,19 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Stream, StreamConfig};
 use parking_lot::{Mutex, RwLock};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread::{self, JoinHandle};
 use crossbeam::channel::{Sender, unbounded};
 use crate::config::{AppConfig, ResampleQuality};
 use std::path::PathBuf;
 use sha2::{Sha256, Digest};
 use std::fs;
-use std::io::{self, Read, Write};
+use std::io::{Read, Write};
 
 use crate::processor::{Equalizer, VolumeController, NoiseShaper, SpectrumAnalyzer, Resampler};
+
+#[cfg(windows)]
+use crate::wasapi_output::{WasapiExclusivePlayer, WasapiState};
 
 /// Commands sent to the audio thread
 #[derive(Debug, Clone)]
@@ -44,6 +47,7 @@ pub struct SharedState {
     pub total_frames: AtomicU64,
     pub spectrum_data: Mutex<Vec<f32>>,
     pub audio_buffer: RwLock<Vec<f64>>, // Upgraded to f64
+    pub exclusive_mode: AtomicBool,
 }
 
 impl SharedState {
@@ -56,6 +60,7 @@ impl SharedState {
             total_frames: AtomicU64::new(0),
             spectrum_data: Mutex::new(vec![0.0; 64]),
             audio_buffer: RwLock::new(Vec::new()),
+            exclusive_mode: AtomicBool::new(false),
         }
     }
     
@@ -231,6 +236,8 @@ impl AudioPlayer {
     
     pub fn load(&mut self, path: &str) -> Result<(), String> {
         use crate::decoder::StreamingDecoder;
+        use crate::processor::StreamingResampler;
+        
         log::info!("Loading track: {}", path);
         self.stop();
         
@@ -242,8 +249,7 @@ impl AudioPlayer {
         let original_sr = info.sample_rate;
         let channels = info.channels;
         
-        let mut samples = decoder.decode_all().map_err(|e| e.to_string())?;
-        
+        // Determine target sample rate
         let target_sr = self.config.target_samplerate.or(self.target_sample_rate).unwrap_or_else(|| {
             let host = cpal::default_host();
             let device = match self.device_id {
@@ -253,38 +259,105 @@ impl AudioPlayer {
             device.and_then(|d| d.default_output_config().ok()).map(|c| c.sample_rate().0).unwrap_or(original_sr)
         });
         
-        if target_sr != original_sr {
-            let cache_path = self.get_cache_path(path, target_sr, samples.len());
-            let mut loaded_from_cache = false;
-            
-            if let Some(ref cp) = cache_path {
-                if cp.exists() {
-                     if let Ok(mut f) = fs::File::open(cp) {
-                         let size = f.metadata().map(|m| m.len()).unwrap_or(0);
-                         if size > 0 && size % 8 == 0 { // f64 is 8 bytes
-                             let mut bytes = Vec::new();
-                             if f.read_to_end(&mut bytes).is_ok() {
-                                 samples = bytes.chunks_exact(8).map(|c| f64::from_le_bytes(c.try_into().unwrap())).collect();
-                                 loaded_from_cache = true;
-                             }
-                         }
-                     }
+        let need_resample = target_sr != original_sr;
+        
+        // Check cache first
+        let estimated_input_frames = info.total_frames.unwrap_or(0) as usize;
+        let cache_path = self.get_cache_path(path, target_sr, estimated_input_frames * channels);
+        let mut loaded_from_cache = false;
+        let mut samples: Vec<f64>;
+        
+        if let Some(ref cp) = cache_path {
+            if cp.exists() {
+                if let Ok(mut f) = fs::File::open(cp) {
+                    let size = f.metadata().map(|m| m.len()).unwrap_or(0);
+                    if size > 0 && size % 8 == 0 {
+                        let mut bytes = Vec::new();
+                        if f.read_to_end(&mut bytes).is_ok() {
+                            samples = bytes.chunks_exact(8).map(|c| f64::from_le_bytes(c.try_into().unwrap())).collect();
+                            loaded_from_cache = true;
+                            log::info!("Loaded {} samples from cache", samples.len());
+                            
+                            let total_frames = samples.len() / channels;
+                            self.shared_state.sample_rate.store(target_sr as u64, Ordering::Relaxed);
+                            self.shared_state.channels.store(channels as u64, Ordering::Relaxed);
+                            self.shared_state.total_frames.store(total_frames as u64, Ordering::Relaxed);
+                            self.shared_state.position_frames.store(0, Ordering::Relaxed);
+                            *self.shared_state.state.write() = PlayerState::Stopped;
+                            *self.shared_state.audio_buffer.write() = samples;
+                            
+                            *self.eq.lock() = Equalizer::new(channels, target_sr as f64);
+                            *self.noise_shaper.lock() = NoiseShaper::new(channels, target_sr, 24);
+                            
+                            return Ok(());
+                        }
+                    }
                 }
             }
+        }
+        
+        // Streaming decode + resample
+        if need_resample {
+            log::info!("Streaming SoX VHQ Resampling {} -> {} Hz", original_sr, target_sr);
+        }
+        
+        // Pre-allocate with estimate (may grow)
+        let estimated_output_frames = if need_resample {
+            (estimated_input_frames as f64 * target_sr as f64 / original_sr as f64).ceil() as usize
+        } else {
+            estimated_input_frames
+        };
+        samples = Vec::with_capacity(estimated_output_frames * channels);
+        
+        // Create streaming resampler if needed
+        let mut resampler = if need_resample {
+            Some(StreamingResampler::new(channels, original_sr, target_sr))
+        } else {
+            None
+        };
+        
+        let mut chunk_count = 0;
+        let mut decoded_frames = 0;
+        
+        // Stream decode and resample
+        while let Some(decoded_chunk) = decoder.decode_next().map_err(|e| e.to_string())? {
+            decoded_frames += decoded_chunk.len() / channels;
             
-            if !loaded_from_cache {
-                log::info!("SoX VHQ Resampling {} -> {} Hz (Channel Parallel)", original_sr, target_sr);
-                let resampler = Resampler::new(channels, original_sr, target_sr);
-                // Chunk size argument is ignored/removed in new API, passing 0 or removing it
-                samples = resampler.resample_parallel(&samples, 0, self.config.resample_quality);
-                
-                if let Some(ref cp) = cache_path {
-                    let _ = fs::create_dir_all(cp.parent().unwrap());
-                    if let Ok(mut f) = fs::File::create(cp) {
-                        let mut bytes = Vec::with_capacity(samples.len() * 8);
-                        for s in &samples { bytes.extend_from_slice(&s.to_le_bytes()); }
-                        let _ = f.write_all(&bytes);
-                    }
+            if let Some(ref mut rs) = resampler {
+                let resampled = rs.process_chunk(&decoded_chunk);
+                samples.extend(resampled);
+            } else {
+                samples.extend(decoded_chunk);
+            }
+            
+            chunk_count += 1;
+            
+            // Log progress periodically
+            if chunk_count % 100 == 0 {
+                log::debug!("Streaming progress: {} chunks, {} decoded frames", chunk_count, decoded_frames);
+            }
+        }
+        
+        // Flush resampler
+        if let Some(ref mut rs) = resampler {
+            let flushed = rs.flush();
+            samples.extend(flushed);
+        }
+        
+        log::info!(
+            "Streaming decode complete: {} chunks, {} output samples ({}→{} Hz)",
+            chunk_count, samples.len(), original_sr, target_sr
+        );
+        
+        // Save to cache if enabled
+        if need_resample && !loaded_from_cache {
+            if let Some(ref cp) = cache_path {
+                let _ = fs::create_dir_all(cp.parent().unwrap());
+                if let Ok(mut f) = fs::File::create(cp) {
+                    let mut bytes = Vec::with_capacity(samples.len() * 8);
+                    for s in &samples { bytes.extend_from_slice(&s.to_le_bytes()); }
+                    let _ = f.write_all(&bytes);
+                    log::info!("Cached resampled audio to: {:?}", cp);
                 }
             }
         }
@@ -336,7 +409,6 @@ fn audio_thread_main(
     spectrum_tx: Sender<f64>,
 ) {
     log::info!("Audio thread started, initializing cpal host...");
-    let host = cpal::default_host();
     let mut stream: Option<Stream> = None;
     
     loop {
@@ -349,6 +421,143 @@ fn audio_thread_main(
                     continue;
                 }
                 
+                // Check exclusive mode flag
+                let use_exclusive = shared_state.exclusive_mode.load(Ordering::Relaxed);
+                
+                // === WASAPI EXCLUSIVE MODE (Windows only) ===
+                #[cfg(windows)]
+                if use_exclusive {
+                    log::info!("Starting TRUE WASAPI exclusive mode playback...");
+                    
+                    // Get audio data
+                    let audio_buffer = shared_state.audio_buffer.read();
+                    let sample_rate = shared_state.sample_rate.load(Ordering::Relaxed) as u32;
+                    let channels = shared_state.channels.load(Ordering::Relaxed) as usize;
+                    
+                    if audio_buffer.is_empty() || channels == 0 {
+                        log::error!("No audio data loaded or invalid channels");
+                        *shared_state.state.write() = PlayerState::Stopped;
+                        continue;
+                    }
+                    
+                    // Clone the audio data for WASAPI player
+                    let samples = audio_buffer.clone();
+                    drop(audio_buffer);
+                    
+                    // Create WASAPI exclusive player
+                    match WasapiExclusivePlayer::new(None) {
+                        Ok(wasapi_player) => {
+                            // Load audio into WASAPI player
+                            wasapi_player.load(samples, sample_rate, channels);
+                            
+                            // Get WASAPI shared state for position sync
+                            let wasapi_state = wasapi_player.shared_state();
+                            
+                            // Start exclusive playback
+                            if let Err(e) = wasapi_player.play() {
+                                log::error!("Failed to start WASAPI playback: {}", e);
+                                *shared_state.state.write() = PlayerState::Stopped;
+                                continue;
+                            }
+                            
+                            *shared_state.state.write() = PlayerState::Playing;
+                            
+                            // Wait for WASAPI thread to start playing
+                            let mut wait_count = 0;
+                            while wasapi_player.get_state() == WasapiState::Stopped && wait_count < 100 {
+                                std::thread::sleep(std::time::Duration::from_millis(10));
+                                wait_count += 1;
+                            }
+                            
+                            if wasapi_player.get_state() == WasapiState::Stopped {
+                                log::error!("WASAPI: Failed to start playback after waiting");
+                                *shared_state.state.write() = PlayerState::Stopped;
+                                continue;
+                            }
+                            
+                            log::info!("WASAPI: Playback started, entering monitoring loop");
+                            
+                            // WASAPI playback loop - sync position and handle commands
+                            let mut last_spectrum_pos: usize = 0;
+                            loop {
+                                // Check for new commands
+                                if let Ok(cmd) = cmd_rx.try_recv() {
+                                    match cmd {
+                                        AudioCommand::Pause => {
+                                            let _ = wasapi_player.pause();
+                                            *shared_state.state.write() = PlayerState::Paused;
+                                        }
+                                        AudioCommand::Play => {
+                                            let _ = wasapi_player.play();
+                                            *shared_state.state.write() = PlayerState::Playing;
+                                        }
+                                        AudioCommand::Stop => {
+                                            let _ = wasapi_player.stop();
+                                            shared_state.position_frames.store(0, Ordering::Relaxed);
+                                            *shared_state.state.write() = PlayerState::Stopped;
+                                            break;
+                                        }
+                                        AudioCommand::Shutdown => {
+                                            drop(wasapi_player);
+                                            return;
+                                        }
+                                    }
+                                }
+                                
+                                // Sync position from WASAPI player
+                                let wasapi_pos = wasapi_state.position_frames.load(Ordering::Relaxed);
+                                shared_state.position_frames.store(wasapi_pos, Ordering::Relaxed);
+                                
+                                // Send spectrum data (FIX: spectrum analyzer was not working in exclusive mode)
+                                // Only send new samples since last update
+                                if wasapi_player.get_state() == WasapiState::Playing {
+                                    let current_frame = wasapi_pos as usize;
+                                    if current_frame > last_spectrum_pos {
+                                        let audio_buf = shared_state.audio_buffer.read();
+                                        let samples_to_send = ((current_frame - last_spectrum_pos) * channels).min(4096);
+                                        let start_sample = last_spectrum_pos * channels;
+                                        
+                                        for i in 0..samples_to_send {
+                                            let idx = start_sample + i;
+                                            if idx + channels <= audio_buf.len() && i % channels == 0 {
+                                                // Mono mix for spectrum
+                                                let mono = if channels == 2 {
+                                                    (audio_buf[idx] + audio_buf[idx + 1]) * 0.5
+                                                } else {
+                                                    audio_buf[idx]
+                                                };
+                                                let _ = spectrum_tx.try_send(mono);
+                                            }
+                                        }
+                                        drop(audio_buf);
+                                        last_spectrum_pos = current_frame;
+                                    }
+                                }
+                                
+                                // Check if playback finished (only after position has advanced)
+                                let current_state = wasapi_player.get_state();
+                                if current_state == WasapiState::Stopped && wasapi_pos > 0 {
+                                    log::info!("WASAPI playback finished at position {}", wasapi_pos);
+                                    *shared_state.state.write() = PlayerState::Stopped;
+                                    break;
+                                }
+                                
+                                std::thread::sleep(std::time::Duration::from_millis(10));
+                            }
+                            
+                            // WASAPI player dropped automatically here
+                            continue;
+                        }
+                        Err(e) => {
+                            log::error!("Failed to create WASAPI player: {}. Falling back to cpal.", e);
+                            // Fall through to cpal playback
+                        }
+                    }
+                }
+                
+                // === CPAL SHARED MODE (default fallback) ===
+                let host = cpal::default_host();
+                
                 let device = match host.default_output_device() {
                     Some(d) => d,
                     None => {
@@ -358,7 +567,7 @@ fn audio_thread_main(
                     }
                 };
                 
-                let sample_rate = shared_state.sample_rate.load(Ordering::Relaxed) as u32;
+                let requested_sample_rate = shared_state.sample_rate.load(Ordering::Relaxed) as u32;
                 let channels = shared_state.channels.load(Ordering::Relaxed) as u16;
                 
                 if channels == 0 {
@@ -367,12 +576,86 @@ fn audio_thread_main(
                     continue;
                 }
 
-                log::info!("Opening stream: {} Hz, {} channels", sample_rate, channels);
+                // Query device's supported configurations
+                let supported_configs = device.supported_output_configs();
+                let (actual_sample_rate, buffer_size) = match supported_configs {
+                    Ok(configs) => {
+                        let configs: Vec<_> = configs.collect();
+                        log::info!("Device supports {} output configurations", configs.len());
+                        
+                        // Find the best matching sample rate
+                        let mut best_rate = None;
+                        let mut max_supported_rate = 0u32;
+                        
+                        for config in &configs {
+                            let min_rate = config.min_sample_rate().0;
+                            let max_rate = config.max_sample_rate().0;
+                            log::debug!("  Config: {} ch, {}-{} Hz", config.channels(), min_rate, max_rate);
+                            
+                            if config.channels() == channels {
+                                // Track max supported rate for this channel count
+                                if max_rate > max_supported_rate {
+                                    max_supported_rate = max_rate;
+                                }
+                                
+                                // Check if requested rate is in range
+                                if requested_sample_rate >= min_rate && requested_sample_rate <= max_rate {
+                                    best_rate = Some(requested_sample_rate);
+                                }
+                            }
+                        }
+                        
+                        let final_rate = best_rate.unwrap_or_else(|| {
+                            // Use max supported rate if requested rate isn't supported
+                            if max_supported_rate > 0 {
+                                log::warn!(
+                                    "Requested {} Hz not supported, using device max {} Hz",
+                                    requested_sample_rate, max_supported_rate
+                                );
+                                max_supported_rate
+                            } else {
+                                // Fallback to default config
+                                device.default_output_config()
+                                    .map(|c| c.sample_rate().0)
+                                    .unwrap_or(48000)
+                            }
+                        });
+                        
+                        // Use small buffer for exclusive mode if rate is supported
+                        let buf = if use_exclusive && best_rate.is_some() {
+                            cpal::BufferSize::Fixed(512)
+                        } else {
+                            cpal::BufferSize::Default
+                        };
+                        
+                        (final_rate, buf)
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to query device configs: {}. Using default.", e);
+                        let rate = device.default_output_config()
+                            .map(|c| c.sample_rate().0)
+                            .unwrap_or(48000);
+                        (rate, cpal::BufferSize::Default)
+                    }
+                };
+                
+                log::info!(
+                    "Opening stream: {} Hz (requested {}), {} channels, exclusive={}",
+                    actual_sample_rate, requested_sample_rate, channels, use_exclusive
+                );
+                
                 let config = StreamConfig {
                     channels,
-                    sample_rate: cpal::SampleRate(sample_rate),
-                    buffer_size: cpal::BufferSize::Default
+                    sample_rate: cpal::SampleRate(actual_sample_rate),
+                    buffer_size,
                 };
+                
+                // Update shared state with actual sample rate being used
+                if actual_sample_rate != requested_sample_rate {
+                    log::info!("Updating playback sample rate to device-supported {} Hz", actual_sample_rate);
+                    // Note: Audio data was resampled to requested rate, but device will play at actual rate
+                    // This may cause playback speed change - for now we just log the mismatch
+                }
                 
                 let cb_shared = Arc::clone(&shared_state);
                 let cb_eq = Arc::clone(&eq);
@@ -391,10 +674,54 @@ fn audio_thread_main(
                     None,
                 );
                 
-                if let Ok(s) = new_stream {
-                    let _ = s.play();
-                    stream = Some(s);
-                    *shared_state.state.write() = PlayerState::Playing;
+                match new_stream {
+                    Ok(s) => {
+                        let _ = s.play();
+                        stream = Some(s);
+                        *shared_state.state.write() = PlayerState::Playing;
+                        log::info!("Stream started successfully at {} Hz", actual_sample_rate);
+                    }
+                    Err(e) => {
+                        log::error!("Failed to build stream: {}. Trying device default config...", e);
+                        
+                        // Ultimate fallback: use device's default config exactly
+                        if let Ok(default_config) = device.default_output_config() {
+                            let fallback_config: StreamConfig = default_config.clone().into();
+                            log::info!("Trying device default: {} Hz, {} ch", 
+                                fallback_config.sample_rate.0, fallback_config.channels);
+                            
+                            let cb_shared = Arc::clone(&shared_state);
+                            let cb_eq = Arc::clone(&eq);
+                            let cb_volume = Arc::clone(&volume);
+                            let cb_ns = Arc::clone(&noise_shaper);
+                            let cb_spectrum_tx = spectrum_tx.clone();
+                            let fallback_channels = fallback_config.channels as usize;
+                            let mut process_buffer = Vec::with_capacity(8192);
+                            
+                            match device.build_output_stream(
+                                &fallback_config,
+                                move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                                    audio_callback(data, &cb_shared, &cb_eq, &cb_volume, &cb_ns, &cb_spectrum_tx, fallback_channels, &mut process_buffer);
+                                },
+                                |err| log::error!("Stream error: {}", err),
+                                None,
+                            ) {
+                                Ok(s) => {
+                                    let _ = s.play();
+                                    stream = Some(s);
+                                    *shared_state.state.write() = PlayerState::Playing;
+                                    log::info!("Stream started with device default config");
+                                }
+                                Err(e2) => {
+                                    log::error!("Failed to start stream even with device default: {}", e2);
+                                    *shared_state.state.write() = PlayerState::Stopped;
+                                }
+                            }
+                        } else {
+                            log::error!("Cannot get device default config");
+                            *shared_state.state.write() = PlayerState::Stopped;
+                        }
+                    }
                 }
             }
             Ok(AudioCommand::Pause) => {

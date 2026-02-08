@@ -173,7 +173,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Replaced socket.io with native WebSocket for Rust server compatibility
     let ws = null;
     const connectWebSocket = () => {
-        ws = new WebSocket("ws://127.0.0.1:5555/ws");
+        ws = new WebSocket("ws://127.0.0.1:63789/ws");
 
         ws.onopen = () => {
             console.log('[Music.js] Connected to Rust Audio Engine via WebSocket.');
