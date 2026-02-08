@@ -337,8 +337,13 @@ pub mod wasapi_exclusive {
             .map_err(|e| format!("Failed to get device period: {:?}", e))?;
         
         // Calculate aligned period
+        // Fix for 96kHz+ popping: Don't use minimum latency.
+        // Use at least 10ms (100,000 units) buffer or double the min period.
+        let safe_period = std::cmp::max(100_000, 2 * min_period);
+        log::info!("WASAPI: Min period {}, requesting safe period {}", min_period, safe_period);
+
         let desired_period = audio_client
-            .calculate_aligned_period_near(3 * min_period / 2, Some(128), &desired_format)
+            .calculate_aligned_period_near(safe_period, Some(128), &desired_format)
             .map_err(|e| format!("Failed to calculate period: {:?}", e))?;
         
         log::info!("WASAPI: Using period {} (100ns units)", desired_period);
