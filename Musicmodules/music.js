@@ -878,7 +878,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const searchTerm = e.target.value.toLowerCase();
         const filteredPlaylist = playlist.filter(track =>
             (track.title || '').toLowerCase().includes(searchTerm) ||
-            (track.artist || '').toLowerCase().includes(searchTerm)
+            (track.artist || '').toLowerCase().includes(searchTerm) ||
+            (track.album || '').toLowerCase().includes(searchTerm)
         );
         renderPlaylist(filteredPlaylist);
     });
@@ -1739,7 +1740,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const filteredTracks = query
             ? playlist.filter(t =>
                 (t.title || '').toLowerCase().includes(query) ||
-                (t.artist || '').toLowerCase().includes(query)
+                (t.artist || '').toLowerCase().includes(query) ||
+                (t.album || '').toLowerCase().includes(query)
             )
             : playlist;
 
