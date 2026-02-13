@@ -106,6 +106,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let modalSearchQuery = ''; // Search filter for modal
     let lastModalClickIndex = -1; // For shift-select in modal
     let currentFilteredTracks = null; // Active playlist tracks for shuffle scope
+    let shuffleQueue = [];
+    let lastShuffleList = null;
 
     const eqBands = {
         '31': 0, '62': 0, '125': 0, '250': 0, '500': 0,
@@ -446,6 +448,12 @@ document.addEventListener('DOMContentLoaded', () => {
         // Use filtered tracks if a playlist is active, otherwise use all tracks
         const activeList = currentFilteredTracks || playlist;
 
+        // Reset shuffle queue if the active list has changed
+        if (lastShuffleList !== activeList) {
+            shuffleQueue = [];
+            lastShuffleList = activeList;
+        }
+
         if (activeList.length <= 1) {
             if (activeList.length === 1) {
                 const track = activeList[0];
@@ -473,12 +481,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 // 引擎会在播放结束时停止，我们需要在这里重新加载并播放
                 break;
             case 'shuffle':
-                let nextRandom;
-                do {
-                    const randomPos = Math.floor(Math.random() * activeList.length);
-                    nextRandom = playlist.indexOf(activeList[randomPos]);
-                } while (activeList.length > 1 && nextRandom === currentTrackIndex);
-                currentTrackIndex = nextRandom;
+                // If queue is empty, refill it with all indices from activeList
+                if (shuffleQueue.length === 0) {
+                    shuffleQueue = Array.from({ length: activeList.length }, (_, i) => i);
+                    // Fisher-Yates shuffle algorithm
+                    for (let i = shuffleQueue.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [shuffleQueue[i], shuffleQueue[j]] = [shuffleQueue[j], shuffleQueue[i]];
+                    }
+                    
+                    // Avoid playing the same song again immediately if it's the first in the new queue
+                    if (shuffleQueue.length > 1) {
+                        const firstTrack = activeList[shuffleQueue[0]];
+                        if (playlist.indexOf(firstTrack) === currentTrackIndex) {
+                            // Move the first element to the end
+                            shuffleQueue.push(shuffleQueue.shift());
+                        }
+                    }
+                }
+                
+                const nextIndexInActive = shuffleQueue.shift();
+                const selectedTrack = activeList[nextIndexInActive];
+                currentTrackIndex = playlist.indexOf(selectedTrack);
                 break;
         }
         loadTrack(currentTrackIndex);
@@ -824,6 +848,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     modeBtn.addEventListener('click', () => {
         currentPlayMode = (currentPlayMode + 1) % playModes.length;
+        // Reset shuffle queue when switching to shuffle mode to ensure a fresh sequence
+        if (playModes[currentPlayMode] === 'shuffle') {
+            shuffleQueue = [];
+        }
         updateModeButton();
         if (wnpAdapter) wnpAdapter.sendUpdate();
     });
@@ -840,6 +868,8 @@ document.addEventListener('DOMContentLoaded', () => {
     playlistEl.addEventListener('click', (e) => {
         if (e.target.tagName === 'LI') {
             const index = parseInt(e.target.dataset.index, 10);
+            // Reset shuffle queue on manual selection to start a new sequence from this song
+            shuffleQueue = [];
             loadTrack(index);
         }
     });
@@ -1147,6 +1177,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const trackIndex = playlist.findIndex(t => t.path === track.path);
             if (trackIndex !== -1) {
+                shuffleQueue = []; // Reset shuffle on external track change
                 loadTrack(trackIndex, true); // Load and play the track
             }
         });
@@ -1853,6 +1884,7 @@ document.addEventListener('DOMContentLoaded', () => {
             switch (action) {
                 case 'play':
                     if (trackIndex !== null) {
+                        shuffleQueue = []; // Reset shuffle on manual selection
                         loadTrack(trackIndex);
                     }
                     break;
