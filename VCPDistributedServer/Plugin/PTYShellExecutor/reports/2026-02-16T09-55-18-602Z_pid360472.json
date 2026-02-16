@@ -1,0 +1,25 @@
+{
+  "timestamp": "2026-02-16T09:55:18.602Z",
+  "pluginName": "PTYShellExecutor",
+  "phase": "load",
+  "error": {
+    "name": "Error",
+    "message": "Cannot find module '@xterm/headless'\nRequire stack:\n- D:\\Vchat\\VCPChat\\VCPDistributedServer\\Plugin\\PTYShellExecutor\\PTYShellExecutor.impl.js\n- D:\\Vchat\\VCPChat\\VCPDistributedServer\\Plugin\\PTYShellExecutor\\PTYShellExecutor.js\n- D:\\Vchat\\VCPChat\\VCPDistributedServer\\Plugin.js\n- D:\\Vchat\\VCPChat\\VCPDistributedServer\\VCPDistributedServer.js\n- D:\\Vchat\\VCPChat\\main.js",
+    "stack": "Error: Cannot find module '@xterm/headless'\nRequire stack:\n- D:\\Vchat\\VCPChat\\VCPDistributedServer\\Plugin\\PTYShellExecutor\\PTYShellExecutor.impl.js\n- D:\\Vchat\\VCPChat\\VCPDistributedServer\\Plugin\\PTYShellExecutor\\PTYShellExecutor.js\n- D:\\Vchat\\VCPChat\\VCPDistributedServer\\Plugin.js\n- D:\\Vchat\\VCPChat\\VCPDistributedServer\\VCPDistributedServer.js\n- D:\\Vchat\\VCPChat\\main.js\n    at Module._resolveFilename (node:internal/modules/cjs/loader:1390:15)\n    at s._resolveFilename (node:electron/js2c/browser_init:2:129714)\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1032:19)\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1037:22)\n    at Module._load (node:internal/modules/cjs/loader:1199:37)\n    at c._load (node:electron/js2c/node_init:2:17993)\n    at TracingChannel.traceSync (node:diagnostics_channel:322:14)\n    at wrapModuleLoad (node:internal/modules/cjs/loader:244:24)\n    at Module.require (node:internal/modules/cjs/loader:1470:12)\n    at require (node:internal/... [truncated, total 1023 chars]",
+    "code": "MODULE_NOT_FOUND"
+  },
+  "environment": {
+    "pid": 360472,
+    "platform": "win32",
+    "arch": "x64",
+    "nodeVersion": "22.19.0",
+    "electronVersion": "37.5.1",
+    "modules": "136",
+    "v8Version": "13.8.258.32-electron.0",
+    "cwd": "D:\\Vchat\\VCPChat"
+  },
+  "context": {
+    "hint": "主体逻辑加载失败，可能是原生依赖(node-pty)缺失或版本不匹配",
+    "requirePath": "./PTYShellExecutor.impl"
+  }
+}

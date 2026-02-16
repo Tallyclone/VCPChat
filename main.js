@@ -1,5 +1,5 @@
 // main.js - Electron 主窗口
-
+const http = require('http');
 // --- 模块加载性能诊断 ---
 const originalRequire = require;
 require = function (id) {
@@ -41,6 +41,8 @@ const forumHandlers = require('./modules/ipc/forumHandlers'); // Import forum ha
 const memoHandlers = require('./modules/ipc/memoHandlers'); // Import memo handlers
 // speechRecognizer is now lazy-loaded
 const canvasHandlers = require('./modules/ipc/canvasHandlers'); // Import canvas handlers
+const RemoteGateway = require('./modules/distributed/remoteGateway');
+const vcpClient = require('./modules/vcpClient');
 // chokidar is now lazy-loaded
 
 // --- File Watcher ---
@@ -140,6 +142,7 @@ let vcpLogWebSocket;
 let vcpLogReconnectInterval;
 let openChildWindows = [];
 let distributedServer = null; // To hold the distributed server instance
+let remoteGateway = null; // To hold the remote gateway instance
 let translatorWindow = null; // To hold the single instance of the translator window
 let ragObserverWindow = null; // To hold the single instance of the RAG observer window
 let networkNotesTreeCache = null; // In-memory cache for the network notes
@@ -148,8 +151,28 @@ const NOTES_MODULE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Notemodules');
 
 // --- Audio Engine Management ---
 // Now uses the Rust native audio engine instead of Python
-function startAudioEngine() {
+async function startAudioEngine() {
+    // --- Port Check (Check if engine is already running) ---
+    const checkEngineRunning = () => {
+        return new Promise((resolve) => {
+            const req = http.get('http://127.0.0.1:63789/state', (res) => {
+                resolve(res.statusCode === 200);
+            });
+            req.on('error', () => resolve(false));
+            req.setTimeout(500, () => {
+                req.destroy();
+                resolve(false);
+            });
+        });
+    };
+
+    if (await checkEngineRunning()) {
+        console.log('[Main] Audio Engine is already running on port 63789. Skipping start.');
+        return Promise.resolve();
+    }
+
     return new Promise((resolve, reject) => {
+
         // --- Uniqueness Check ---
         if (audioEngineProcess && !audioEngineProcess.killed) {
             console.log('[Main] Audio Engine process is already running.');
@@ -226,7 +249,6 @@ function createWindow() {
         minWidth: 900,
         minHeight: 600,
         frame: false, // 移除原生窗口框架
-        ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,    // 恢复: 开启上下文隔离
@@ -431,6 +453,55 @@ if (!gotTheLock) {
         agentConfigManager.startCleanupTimer(); // Start agent config cleanup
 
         settingsHandlers.initialize({ SETTINGS_FILE, USER_AVATAR_FILE, AGENT_DIR, settingsManager: appSettingsManager, agentConfigManager }); // Initialize settings handlers
+
+        vcpClient.initialize({
+            APP_DATA_ROOT_IN_PROJECT,
+            getMusicState: musicHandlers.getMusicState
+        });
+
+        // --- Remote Gateway Initialization ---
+        (async () => {
+            try {
+                const settings = await appSettingsManager.readSettings();
+                if (settings.remoteGatewayEnabled !== false) {
+                    remoteGateway = new RemoteGateway({
+                        host: settings.remoteGatewayHost || '0.0.0.0',
+                        port: Number(settings.remoteGatewayPort) || 17888,
+                        token: settings.remoteGatewayToken || 'vchat-remote-token',
+                        settingsManager: appSettingsManager,
+                        agentConfigManager,
+                        vcpClient,
+                        projectRoot: PROJECT_ROOT,
+                        connectVcpLog,
+                        disconnectVcpLog: () => {
+                            if (vcpLogWebSocket) {
+                                vcpLogWebSocket.close();
+                            }
+                            if (vcpLogReconnectInterval) {
+                                clearTimeout(vcpLogReconnectInterval);
+                                vcpLogReconnectInterval = null;
+                            }
+                        },
+                        getCurrentTheme: () => nativeTheme.shouldUseDarkColors ? 'dark' : 'light',
+                        getCachedModels: () => cachedModels,
+                        refreshModels: async () => {
+                            await fetchAndCacheModels();
+                            if (mainWindow && !mainWindow.isDestroyed()) {
+                                mainWindow.webContents.send('models-updated', cachedModels);
+                            }
+                            return cachedModels;
+                        },
+                        paths: { AGENT_DIR, USER_DATA_DIR, APP_DATA_ROOT_IN_PROJECT, CANVAS_CACHE_DIR },
+                        logger: console
+                    });
+                    await remoteGateway.start();
+                } else {
+                    console.log('[Main] Remote gateway disabled in settings.');
+                }
+            } catch (gatewayError) {
+                console.error('[Main] Failed to initialize remote gateway:', gatewayError);
+            }
+        })();
 
         // Function to fetch and cache models from the VCP server
         async function fetchAndCacheModels() {
@@ -1022,6 +1093,13 @@ if (!gotTheLock) {
             distributedServer = null;
         }
 
+        // 5.1 Stop remote gateway
+        if (remoteGateway) {
+            console.log('[Main] Stopping remote gateway...');
+            remoteGateway.stop();
+            remoteGateway = null;
+        }
+
         // 6. Stop the dice server
         diceHandlers.stopDiceServer();
 
@@ -1062,18 +1140,37 @@ if (!gotTheLock) {
         const WebSocket = require('ws'); // Lazy load
         if (!wsUrl || !wsKey) {
             if (mainWindow) mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'error', message: 'URL或KEY未配置。' });
+            if (remoteGateway) remoteGateway.publish('vcplog.status', { source: 'VCPLog', status: 'error', message: 'URL或KEY未配置。' });
             return;
         }
 
         const fullWsUrl = `${wsUrl}/VCPlog/VCP_Key=${wsKey}`;
 
         if (vcpLogWebSocket && (vcpLogWebSocket.readyState === WebSocket.OPEN || vcpLogWebSocket.readyState === WebSocket.CONNECTING)) {
-            console.log('VCPLog WebSocket 已连接或正在连接。');
+            const isOpen = vcpLogWebSocket.readyState === WebSocket.OPEN;
+            console.log(`VCPLog WebSocket 已${isOpen ? '连接' : '在连接中'}，复用现有连接。`);
+
+            const statusPayload = {
+                source: 'VCPLog',
+                status: isOpen ? 'open' : 'connecting',
+                message: isOpen ? '已连接（复用现有连接）' : '连接中（复用现有连接）'
+            };
+
+            if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+                mainWindow.webContents.send('vcp-log-status', statusPayload);
+            }
+            if (remoteGateway) {
+                remoteGateway.publish('vcplog.status', statusPayload);
+                if (isOpen) {
+                    remoteGateway.publish('vcplog.message', { type: 'connection_ack', message: 'VCPLog 已连接（复用现有连接）' });
+                }
+            }
             return;
         }
 
         console.log(`尝试连接 VCPLog WebSocket: ${fullWsUrl}`);
         if (mainWindow) mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'connecting', message: '连接中...' });
+        if (remoteGateway) remoteGateway.publish('vcplog.status', { source: 'VCPLog', status: 'connecting', message: '连接中...' });
 
         vcpLogWebSocket = new WebSocket(fullWsUrl);
 
@@ -1082,8 +1179,10 @@ if (!gotTheLock) {
             if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
                 console.log('[MAIN_VCP_LOG] Attempting to send vcp-log-status "open" to renderer.');
                 mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'open', message: '已连接' });
+                if (remoteGateway) remoteGateway.publish('vcplog.status', { source: 'VCPLog', status: 'open', message: '已连接' });
                 console.log('[MAIN_VCP_LOG] vcp-log-status "open" sent.');
                 mainWindow.webContents.send('vcp-log-message', { type: 'connection_ack', message: 'VCPLog 连接成功！' });
+                if (remoteGateway) remoteGateway.publish('vcplog.message', { type: 'connection_ack', message: 'VCPLog 连接成功！' });
             } else {
                 console.error('[MAIN_VCP_LOG] mainWindow or webContents not available in onopen. Cannot send status.');
             }
@@ -1098,6 +1197,7 @@ if (!gotTheLock) {
             try {
                 const data = JSON.parse(event.data.toString());
                 if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('vcp-log-message', data);
+                if (remoteGateway) remoteGateway.publish('vcplog.message', data);
             } catch (e) {
                 console.error('VCPLog 解析消息失败:', e);
                 if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('vcp-log-message', { type: 'error', data: `收到无法解析的消息: ${event.data.toString().substring(0, 100)}...` });
@@ -1107,6 +1207,7 @@ if (!gotTheLock) {
         vcpLogWebSocket.onclose = (event) => {
             console.log('VCPLog WebSocket 连接已关闭:', event.code, event.reason);
             if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'closed', message: `连接已断开 (${event.code})` });
+            if (remoteGateway) remoteGateway.publish('vcplog.status', { source: 'VCPLog', status: 'closed', message: `连接已断开 (${event.code})` });
             if (!vcpLogReconnectInterval && wsUrl && wsKey) {
                 console.log('将在5秒后尝试重连 VCPLog...');
                 vcpLogReconnectInterval = setTimeout(() => {
@@ -1120,6 +1221,7 @@ if (!gotTheLock) {
             console.error('[MAIN_VCP_LOG] WebSocket onerror event:', error.message);
             if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
                 mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'error', message: '连接错误' });
+                if (remoteGateway) remoteGateway.publish('vcplog.status', { source: 'VCPLog', status: 'error', message: '连接错误' });
             } else {
                 console.error('[MAIN_VCP_LOG] mainWindow or webContents not available in onerror.');
             }
@@ -1146,6 +1248,7 @@ if (!gotTheLock) {
             vcpLogReconnectInterval = null;
         }
         if (mainWindow) mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'closed', message: '已手动断开' });
+        if (remoteGateway) remoteGateway.publish('vcplog.status', { source: 'VCPLog', status: 'closed', message: '已手动断开' });
         console.log('VCPLog 已手动断开');
     });
 }

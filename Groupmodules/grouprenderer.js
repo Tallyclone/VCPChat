@@ -31,6 +31,7 @@ window.GroupRenderer = (() => {
     function init(dependencies) {
         console.log('[GroupRenderer] init function CALLED. Dependencies received:', Object.keys(dependencies));
         electronAPI = dependencies.electronAPI;
+
         globalSettings = dependencies.globalSettingsRef;
         currentSelectedItemRef = dependencies.currentSelectedItemRef;
         currentTopicIdRef = dependencies.currentTopicIdRef;
@@ -221,6 +222,7 @@ window.GroupRenderer = (() => {
                 uiHelper.closeModal('createGroupModal');
                 try {
                     const result = await electronAPI.createAgentGroup(groupName);
+
                     if (result.success && result.agentGroup) {
                         // uiHelper.showToastNotification(`群组 "${result.agentGroup.name}" 已创建!`); // Removed toast notification
                         await mainRendererFunctions.loadItems(); // Reload combined list

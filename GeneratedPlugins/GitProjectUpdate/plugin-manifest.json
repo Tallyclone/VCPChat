@@ -1,0 +1,22 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "GitProjectUpdate",
+  "version": "1.0.1",
+  "displayName": "Git 项目更新向导",
+  "description": "一个智能化的Git项目更新工具，能够抓取上游更新、分析差异、并生成一个交互式界面供用户选择更新策略。",
+  "author": "Tuling",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node GitProjectUpdate.js"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 60000
+  },
+  "configSchema": {},
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "AnalyzeProject",
+        "description": "分析本地Git项目与上游仓库的差异，并生成一个交互式更新界面。\n参数:\n- projectPath (字符串, 必需): 本地Git项目的绝对路径。\n- upstream (字符串, 可选, 默认'upstream'): 上游远程仓库的名称。\n- branch (字符串, 可选, 默认'main'): 要比较的上游分支名称。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」GitProjectUpdate
