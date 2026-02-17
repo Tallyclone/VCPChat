@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-02-15T14:33:09.146Z",
+  "timestamp": "2026-02-17T00:27:58.491Z",
   "pluginName": "PTYShellExecutor",
   "phase": "load",
   "error": {
@@ -9,7 +9,7 @@
     "code": "MODULE_NOT_FOUND"
   },
   "environment": {
-    "pid": 124268,
+    "pid": 288508,
     "platform": "win32",
     "arch": "x64",
     "nodeVersion": "22.19.0",
