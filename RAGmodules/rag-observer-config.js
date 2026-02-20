@@ -81,6 +81,7 @@ class RAGObserverConfig {
                     data.type === 'META_THINKING_CHAIN' ||
                     data.type === 'AGENT_PRIVATE_CHAT_PREVIEW' ||
                     data.type === 'AI_MEMO_RETRIEVAL' ||
+                    data.type === 'DailyNote' ||
                     (data.type && data.type.startsWith('AGENT_DREAM_'))) {
                     if (window.startSpectrumAnimation) {
                         window.startSpectrumAnimation(3000); // 动画持续3秒
