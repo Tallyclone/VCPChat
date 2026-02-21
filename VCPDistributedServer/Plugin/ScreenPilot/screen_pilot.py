@@ -160,17 +160,23 @@ def cmd_screen_capture(args):
 
     captured_title = None
     img = None
+    window_rect = None  # 窗口在屏幕上的位置，用于坐标换算
 
     if hwnd:
         hwnd = int(hwnd)
         import win32gui
         captured_title = win32gui.GetWindowText(hwnd) or f"HWND:{hwnd}"
+        left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+        window_rect = {"x": left, "y": top, "width": right - left, "height": bottom - top}
         img = capture_window_by_hwnd(hwnd)
     elif window_title:
         found_hwnd, found_title = find_window_by_title(window_title)
         if found_hwnd is None:
             return {"status": "error", "error": f"未找到标题包含 '{window_title}' 的窗口。请检查窗口是否已打开。"}
         captured_title = found_title
+        import win32gui
+        left, top, right, bottom = win32gui.GetWindowRect(found_hwnd)
+        window_rect = {"x": left, "y": top, "width": right - left, "height": bottom - top, "hwnd": found_hwnd}
         img = capture_window_by_hwnd(found_hwnd)
     else:
         img = capture_fullscreen()
@@ -183,6 +189,15 @@ def cmd_screen_capture(args):
         f"截图成功: {captured_title}",
         f"分辨率: {width} × {height} 像素",
     ]
+    if window_rect:
+        text_parts.append(
+            f"窗口屏幕位置: 左上角({window_rect['x']}, {window_rect['y']})  "
+            f"尺寸 {window_rect['width']}×{window_rect['height']}"
+        )
+        text_parts.append(
+            "提示: 截图中的像素坐标 + 窗口左上角坐标 = 屏幕绝对坐标，"
+            "或在 ClickAt 中使用 relativeToWindow=true + hwnd 直接传窗口相对坐标。"
+        )
 
     # 持久化保存
     saved_path = None
@@ -204,6 +219,8 @@ def cmd_screen_capture(args):
         ],
         "resolution": {"width": width, "height": height},
     }
+    if window_rect:
+        result["windowRect"] = window_rect
     if saved_path:
         result["savedPath"] = saved_path
 
@@ -229,9 +246,13 @@ def cmd_click_at(args):
     button = str(a.get("button", "left")).lower()
     clicks = int(a.get("clicks", 1))
     hwnd = a.get("hwnd")
+    # relativeToWindow: 当为 true 且提供了 hwnd 时，(x,y) 被视为窗口内相对坐标
+    relative_to_window = str(a.get("relativetowindow") or a.get("relative_to_window") or a.get("relative") or "false").lower() in ("true", "1", "yes")
 
     if button not in ("left", "right", "middle"):
         return {"status": "error", "error": f"无效的button参数: '{button}'，可选值: left, right, middle。"}
+
+    coord_mode = "屏幕绝对"
 
     # 如果提供了 hwnd，先置前窗口
     if hwnd:
@@ -244,21 +265,34 @@ def cmd_click_at(args):
                 win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
             win32gui.SetForegroundWindow(hwnd)
             time.sleep(0.3)  # 等待窗口切换完成
+
+            # 如果是窗口相对坐标模式，将 (x,y) 转换为屏幕绝对坐标
+            if relative_to_window:
+                win_left, win_top, _, _ = win32gui.GetWindowRect(hwnd)
+                orig_x, orig_y = x, y
+                x = win_left + x
+                y = win_top + y
+                coord_mode = f"窗口相对({orig_x},{orig_y}) → 屏幕绝对"
         except Exception as e:
             debug_log(f"SetForegroundWindow failed: {e}")
+            if relative_to_window:
+                return {"status": "error", "error": f"无法获取窗口位置进行坐标转换: {e}"}
+
+    elif relative_to_window:
+        return {"status": "error", "error": "使用 relativeToWindow 时必须同时提供 hwnd 参数。"}
 
     # 获取屏幕尺寸用于安全检查
     screen_w, screen_h = pyautogui.size()
     if x < 0 or x >= screen_w or y < 0 or y >= screen_h:
         return {
             "status": "error",
-            "error": f"坐标 ({x}, {y}) 超出屏幕范围 ({screen_w}×{screen_h})。"
+            "error": f"最终屏幕坐标 ({x}, {y}) 超出屏幕范围 ({screen_w}×{screen_h})。"
         }
 
     # 执行点击
     pyautogui.click(x, y, button=button, clicks=clicks)
 
-    result_text = f"已在屏幕坐标 ({x}, {y}) 执行 {button} 键点击 {clicks} 次。"
+    result_text = f"已在{coord_mode}坐标 ({x}, {y}) 执行 {button} 键点击 {clicks} 次。"
     if hwnd:
         result_text += f"\n(已先将窗口 HWND:{hwnd} 置于前台)"
 

@@ -29,7 +29,7 @@
             },
             {
                 "commandIdentifier": "ClickAt",
-                "description": "功能: 模拟鼠标点击屏幕上指定的坐标位置。可指定点击按钮类型和点击次数。如果提供了窗口HWND，会先将该窗口置于前台再执行点击。\n参数:\n- x (整数, 必需): 屏幕横坐标（像素），坐标原点为屏幕左上角。\n- y (整数, 必需): 屏幕纵坐标（像素），坐标原点为屏幕左上角。\n- button (字符串, 可选, 默认'left'): 鼠标按钮，可选值: left, right, middle。\n- clicks (整数, 可选, 默认1): 点击次数。设为2即双击。\n- hwnd (整数, 可选): 如果提供，先将此HWND对应的窗口置于前台，再执行点击。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScreenPilot「末」,\ncommand:「始」ClickAt「末」,\nx:「始」500「末」,\ny:「始」300「末」\n<<<[END_TOOL_REQUEST]>>>\n\n右键点击示例:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScreenPilot「末」,\ncommand:「始」ClickAt「末」,\nx:「始」500「末」,\ny:「始」300「末」,\nbutton:「始」right「末」\n<<<[END_TOOL_REQUEST]>>>"
+                "description": "功能: 模拟鼠标点击屏幕上指定的坐标位置。坐标默认为屏幕绝对坐标（与InspectUI返回的坐标一致）。如果想点击截图中看到的位置，可设置 relativeToWindow=true 配合 hwnd 使用窗口相对坐标。\n参数:\n- x (整数, 必需): 横坐标（像素）。默认为屏幕绝对坐标；若 relativeToWindow=true 则为窗口内相对坐标。\n- y (整数, 必需): 纵坐标（像素）。同上。\n- button (字符串, 可选, 默认'left'): 鼠标按钮，可选值: left, right, middle。\n- clicks (整数, 可选, 默认1): 点击次数。设为2即双击。\n- hwnd (整数, 可选): 如果提供，先将此HWND对应的窗口置于前台，再执行点击。\n- relativeToWindow (布尔值, 可选, 默认false): 设为true时，(x,y)被视为窗口左上角的相对坐标，插件会自动加上窗口位置偏移转换为屏幕坐标。必须同时提供hwnd。适合配合ScreenCapture截图使用。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScreenPilot「末」,\ncommand:「始」ClickAt「末」,\nx:「始」500「末」,\ny:「始」300「末」\n<<<[END_TOOL_REQUEST]>>>\n\n窗口相对坐标点击示例（配合截图使用）:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScreenPilot「末」,\ncommand:「始」ClickAt「末」,\nhwnd:「始」12345「末」,\nx:「始」150「末」,\ny:「始」80「末」,\nrelativeToWindow:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>"
             },
             {
                 "commandIdentifier": "InspectUI",
