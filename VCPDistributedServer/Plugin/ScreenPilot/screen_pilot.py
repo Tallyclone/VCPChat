@@ -14,6 +14,22 @@ import re
 import traceback
 from datetime import datetime
 
+# ============================================================
+# Windows DPI 感知声明（必须在任何 Win32 API 调用前执行）
+# 不声明的话，GetWindowRect 等 API 在高 DPI 系统上返回缩放后的
+# 逻辑坐标，导致截图尺寸不对、点击坐标偏移。
+# ============================================================
+import ctypes
+try:
+    # PROCESS_PER_MONITOR_DPI_AWARE = 2
+    ctypes.windll.shcore.SetProcessDpiAwareness(2)
+except Exception:
+    try:
+        # 降级到 SetProcessDPIAware（Vista+）
+        ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
+
 
 # ============================================================
 # 工具函数
@@ -55,6 +71,96 @@ def normalize_args(args):
     """处理参数同义词和大小写兼容"""
     lower = {k.lower(): v for k, v in args.items()}
     return lower
+
+
+# ============================================================
+# OCR 引擎（延迟加载单例）
+# ============================================================
+
+_ocr_engine = None
+
+def get_ocr_engine():
+    """延迟加载 RapidOCR 引擎（单例），避免重复初始化"""
+    global _ocr_engine
+    if _ocr_engine is None:
+        from rapidocr_onnxruntime import RapidOCR
+        _ocr_engine = RapidOCR()
+        debug_log("RapidOCR 引擎已初始化")
+    return _ocr_engine
+
+
+def run_ocr(img, window_rect=None):
+    """
+    对 PIL Image 运行 OCR，返回检测到的文本块列表。
+    每个文本块包含: text, boundingBox, clickablePoint
+    如果提供了 window_rect，clickablePoint 会使用屏幕绝对坐标。
+    """
+    import numpy as np
+    from PIL import ImageFilter, ImageEnhance
+    engine = get_ocr_engine()
+
+    # 屏幕截图预处理：放大 + 锐化，显著提升小字和中文的识别率
+    img_rgb = img.convert("RGB")
+    orig_w, orig_h = img_rgb.size
+    scale = 1.0
+
+    # 如果图像较小（常见于窗口截图），放大 2 倍
+    if orig_w < 2560 or orig_h < 1440:
+        scale = 2.0
+        img_rgb = img_rgb.resize((int(orig_w * scale), int(orig_h * scale)), resample=3)  # BICUBIC
+
+    # 锐化 + 轻微对比度增强，对抗屏幕抗锯齿
+    img_rgb = img_rgb.filter(ImageFilter.SHARPEN)
+    img_rgb = ImageEnhance.Contrast(img_rgb).enhance(1.3)
+
+    img_array = np.array(img_rgb)
+
+    result, _ = engine(img_array)
+    if not result:
+        return []
+
+    text_blocks = []
+    for item in result:
+        # item: [bbox_points, text, confidence]
+        # bbox_points: [[x1,y1],[x2,y2],[x3,y3],[x4,y4]] 四个角点
+        bbox_points = item[0]
+        text = item[1]
+        confidence = item[2]
+
+        # 计算轴对齐边界框（OCR 坐标基于放大后的图像，需缩回原图）
+        xs = [p[0] / scale for p in bbox_points]
+        ys = [p[1] / scale for p in bbox_points]
+        x_min, x_max = int(min(xs)), int(max(xs))
+        y_min, y_max = int(min(ys)), int(max(ys))
+
+        # 原图内坐标的中心点
+        center_x = (x_min + x_max) // 2
+        center_y = (y_min + y_max) // 2
+
+        block = {
+            "text": text,
+            "confidence": round(float(confidence), 3),
+            "boundingBox": {
+                "x": x_min, "y": y_min,
+                "width": x_max - x_min, "height": y_max - y_min
+            },
+            # 图像内的像素坐标（原图尺寸）
+            "imagePoint": {"x": center_x, "y": center_y},
+        }
+
+        # 计算屏幕绝对坐标的点击位置
+        if window_rect:
+            block["clickablePoint"] = {
+                "x": window_rect["x"] + center_x,
+                "y": window_rect["y"] + center_y
+            }
+        else:
+            # 全屏截图时，图像坐标 = 屏幕坐标
+            block["clickablePoint"] = {"x": center_x, "y": center_y}
+
+        text_blocks.append(block)
+
+    return text_blocks
 
 
 # ============================================================
@@ -156,6 +262,7 @@ def cmd_screen_capture(args):
     hwnd = a.get("hwnd")
     window_title = a.get("windowtitle") or a.get("window_title") or a.get("title")
     save = str(a.get("save", "false")).lower() in ("true", "1", "yes")
+    do_ocr = str(a.get("ocr", "false")).lower() in ("true", "1", "yes")
     filename = a.get("filename")
 
     captured_title = None
@@ -212,6 +319,22 @@ def cmd_screen_capture(args):
         saved_path = save_path
         text_parts.append(f"已保存到: {save_path}")
 
+    # OCR 文本检测
+    ocr_blocks = None
+    if do_ocr:
+        try:
+            ocr_blocks = run_ocr(img, window_rect)
+            text_parts.append(f"\nOCR 检测到 {len(ocr_blocks)} 个文本区域:")
+            for i, blk in enumerate(ocr_blocks, 1):
+                cp = blk["clickablePoint"]
+                text_parts.append(
+                    f"  [{i}] \"{blk['text']}\" → 点击({cp['x']},{cp['y']}) "
+                    f"置信度:{blk['confidence']}"
+                )
+        except Exception as e:
+            debug_log(f"OCR 失败: {e}")
+            text_parts.append(f"\nOCR 检测失败: {e}")
+
     result = {
         "content": [
             {"type": "text", "text": "\n".join(text_parts)},
@@ -223,6 +346,8 @@ def cmd_screen_capture(args):
         result["windowRect"] = window_rect
     if saved_path:
         result["savedPath"] = saved_path
+    if ocr_blocks is not None:
+        result["ocrResults"] = ocr_blocks
 
     return {"status": "success", "result": result}
 
@@ -485,6 +610,140 @@ def cmd_inspect_ui(args):
 
 
 # ============================================================
+# ClickText 指令
+# ============================================================
+
+def cmd_click_text(args):
+    """
+    执行 ClickText 指令:
+    截图 → OCR → 找到匹配文本 → 自动点击其中心坐标
+    """
+    import pyautogui
+    a = normalize_args(args)
+
+    target_text = a.get("text") or a.get("target") or a.get("label")
+    if not target_text:
+        return {"status": "error", "error": "必须提供 text 参数指定要点击的文本内容。"}
+
+    hwnd = a.get("hwnd")
+    window_title = a.get("windowtitle") or a.get("window_title") or a.get("title")
+    button = str(a.get("button", "left")).lower()
+    clicks = int(a.get("clicks", 1))
+    match_mode = str(a.get("matchmode") or a.get("match_mode") or a.get("match") or "contains").lower()
+    index = int(a.get("index") or a.get("nth") or 1)  # 第几个匹配（从1开始）
+
+    # 1. 截图
+    img = None
+    window_rect = None
+    captured_title = None
+
+    if hwnd:
+        hwnd = int(hwnd)
+        import win32gui
+        captured_title = win32gui.GetWindowText(hwnd) or f"HWND:{hwnd}"
+        left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+        window_rect = {"x": left, "y": top, "width": right - left, "height": bottom - top}
+        img = capture_window_by_hwnd(hwnd)
+    elif window_title:
+        found_hwnd, found_title = find_window_by_title(window_title)
+        if found_hwnd is None:
+            return {"status": "error", "error": f"未找到标题包含 '{window_title}' 的窗口。"}
+        captured_title = found_title
+        import win32gui
+        left, top, right, bottom = win32gui.GetWindowRect(found_hwnd)
+        window_rect = {"x": left, "y": top, "width": right - left, "height": bottom - top}
+        hwnd = found_hwnd
+        img = capture_window_by_hwnd(found_hwnd)
+    else:
+        img = capture_fullscreen()
+        captured_title = "全屏"
+
+    # 2. OCR
+    try:
+        ocr_blocks = run_ocr(img, window_rect)
+    except Exception as e:
+        return {"status": "error", "error": f"OCR 检测失败: {e}"}
+
+    if not ocr_blocks:
+        return {"status": "error", "error": "截图中未检测到任何文本。"}
+
+    # 3. 查找匹配文本
+    matches = []
+    target_lower = target_text.lower()
+    for blk in ocr_blocks:
+        blk_text = blk["text"]
+        blk_lower = blk_text.lower()
+        if match_mode == "exact":
+            if blk_lower == target_lower:
+                matches.append(blk)
+        elif match_mode == "startswith":
+            if blk_lower.startswith(target_lower):
+                matches.append(blk)
+        else:  # contains (默认)
+            if target_lower in blk_lower:
+                matches.append(blk)
+
+    if not matches:
+        # 返回所有检测到的文本帮助用户调试
+        all_texts = [f'"{b["text"]}"' for b in ocr_blocks[:20]]
+        return {
+            "status": "error",
+            "error": f"未找到包含 '{target_text}' 的文本。\n检测到的文本: {', '.join(all_texts)}"
+        }
+
+    # 选择第 index 个匹配
+    if index > len(matches):
+        return {
+            "status": "error",
+            "error": f"找到 {len(matches)} 个匹配 '{target_text}' 的文本，但请求的是第 {index} 个。"
+        }
+    selected = matches[index - 1]
+    click_x = selected["clickablePoint"]["x"]
+    click_y = selected["clickablePoint"]["y"]
+
+    # 4. 如果有 hwnd 先置前窗口
+    if hwnd:
+        try:
+            import win32gui
+            import win32con
+            if win32gui.IsIconic(int(hwnd)):
+                win32gui.ShowWindow(int(hwnd), win32con.SW_RESTORE)
+            win32gui.SetForegroundWindow(int(hwnd))
+            time.sleep(0.3)
+        except Exception as e:
+            debug_log(f"SetForegroundWindow failed: {e}")
+
+    # 5. 安全检查
+    screen_w, screen_h = pyautogui.size()
+    if click_x < 0 or click_x >= screen_w or click_y < 0 or click_y >= screen_h:
+        return {
+            "status": "error",
+            "error": f"文本 '{selected['text']}' 的坐标 ({click_x}, {click_y}) 超出屏幕范围。"
+        }
+
+    # 6. 执行点击
+    pyautogui.click(click_x, click_y, button=button, clicks=clicks)
+
+    result_text = (
+        f"已点击文本 \"{selected['text']}\"\n"
+        f"屏幕坐标: ({click_x}, {click_y})\n"
+        f"匹配模式: {match_mode}，第 {index}/{len(matches)} 个匹配\n"
+        f"来源: {captured_title}"
+    )
+
+    return {
+        "status": "success",
+        "result": {
+            "content": [{"type": "text", "text": result_text}],
+            "clickedText": selected["text"],
+            "clickedPoint": {"x": click_x, "y": click_y},
+            "totalMatches": len(matches),
+            "allOcrTexts": [b["text"] for b in ocr_blocks],
+        }
+    }
+
+
+# ============================================================
 # 指令分发与串行调用
 # ============================================================
 
@@ -497,6 +756,8 @@ COMMAND_MAP = {
     "inspectui": cmd_inspect_ui,
     "inspect": cmd_inspect_ui,
     "uiinspect": cmd_inspect_ui,
+    "clicktext": cmd_click_text,
+    "textclick": cmd_click_text,
 }
 
 
@@ -505,7 +766,7 @@ def dispatch_command(command, params):
     cmd_key = command.lower().replace("_", "").replace("-", "")
     handler = COMMAND_MAP.get(cmd_key)
     if handler is None:
-        return {"status": "error", "error": f"未知指令: '{command}'。可用指令: ScreenCapture, ClickAt, InspectUI"}
+        return {"status": "error", "error": f"未知指令: '{command}'。可用指令: ScreenCapture, ClickAt, ClickText, InspectUI"}
     return handler(params)
 
 

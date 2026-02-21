@@ -3,7 +3,7 @@
     "name": "ScreenPilot",
     "version": "1.0.0",
     "displayName": "屏幕视觉与操控",
-    "description": "一个强大的屏幕交互插件，允许AI对任意窗口截图（返回base64和分辨率信息）、模拟鼠标点击操作、以及通过Windows UI Automation API检索窗口内可交互元素的名称和坐标。",
+    "description": "一个强大的屏幕交互插件，允许AI对任意窗口截图（返回base64和分辨率信息）、通过OCR检测截图中的文本位置、直接点击截图中的文本、模拟鼠标点击操作、以及通过Windows UI Automation API检索窗口内可交互元素的名称和坐标。",
     "author": "VCPToolBox",
     "pluginType": "synchronous",
     "entryPoint": {
@@ -12,7 +12,7 @@
     },
     "communication": {
         "protocol": "stdio",
-        "timeout": 30000
+        "timeout": 60000
     },
     "configSchema": {
         "SCREENSHOT_DIR": {
@@ -25,7 +25,7 @@
         "invocationCommands": [
             {
                 "commandIdentifier": "ScreenCapture",
-                "description": "功能: 对指定窗口或全屏进行截图，返回截图的base64图像数据和分辨率信息（宽×高像素），可选择是否将截图持久化保存为文件。窗口截图可通过窗口标题模糊匹配或HWND句柄精确指定（HWND可从WindowSensor获取）。\n参数:\n- windowTitle (字符串, 可选): 目标窗口标题的关键词，模糊匹配。不提供此参数和hwnd时默认全屏截图。\n- hwnd (整数, 可选): 目标窗口的HWND句柄值，通过WindowSensor获取。优先级高于windowTitle。\n- save (布尔值, 可选, 默认false): 是否将截图保存为文件持久化存储。\n- filename (字符串, 可选): 保存的文件名（不含路径），如'my_screenshot.png'。不提供则自动以时间戳命名。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScreenPilot「末」,\ncommand:「始」ScreenCapture「末」,\nwindowTitle:「始」记事本「末」,\nsave:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>\n\n全屏截图示例:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScreenPilot「末」,\ncommand:「始」ScreenCapture「末」\n<<<[END_TOOL_REQUEST]>>>\n\n支持串行批量调用，格式为 command1, windowTitle1, command2, windowTitle2 等。"
+                "description": "功能: 对指定窗口或全屏进行截图，返回截图的base64图像数据和分辨率信息（宽×高像素）。可启用OCR检测截图中所有文本的位置和可点击坐标。窗口截图可通过窗口标题模糊匹配或HWND句柄精确指定。\n参数:\n- windowTitle (字符串, 可选): 目标窗口标题的关键词，模糊匹配。不提供此参数和hwnd时默认全屏截图。\n- hwnd (整数, 可选): 目标窗口的HWND句柄值，通过WindowSensor获取。优先级高于windowTitle。\n- ocr (布尔值, 可选, 默认false): 设为true时，截图后自动运行OCR检测所有文本区域，返回每个文本的内容、位置和可点击坐标。非常适合需要了解屏幕内容细节的场景。\n- save (布尔值, 可选, 默认false): 是否将截图保存为文件持久化存储。\n- filename (字符串, 可选): 保存的文件名（不含路径），不提供则自动以时间戳命名。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScreenPilot「末」,\ncommand:「始」ScreenCapture「末」,\nwindowTitle:「始」记事本「末」,\nocr:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>\n\n全屏截图示例:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScreenPilot「末」,\ncommand:「始」ScreenCapture「末」\n<<<[END_TOOL_REQUEST]>>>\n\n支持串行批量调用，格式为 command1, windowTitle1, command2, windowTitle2 等。"
             },
             {
                 "commandIdentifier": "ClickAt",
@@ -34,6 +34,10 @@
             {
                 "commandIdentifier": "InspectUI",
                 "description": "功能: 通过Windows UI Automation API获取指定窗口内所有可交互UI元素（按钮、编辑框、菜单项等）的名称、类型和屏幕坐标。返回的坐标可直接用于ClickAt指令进行自动化操作。注意：此功能在标准Windows应用（WinForms, WPF, UWP, Win32）上效果最佳；对Electron应用内部网页内容、游戏、自绘UI可能无法获取。\n参数:\n- windowTitle (字符串, 可选): 目标窗口标题关键词。\n- hwnd (整数, 可选): 目标窗口HWND句柄，优先级高于windowTitle。\n- controlType (字符串, 可选): 筛选控件类型，如 Button, Edit, MenuItem, CheckBox, RadioButton, ComboBox, Hyperlink, ListItem, TreeItem, TabItem 等。不提供则返回所有可交互元素。\n- maxDepth (整数, 可选, 默认5): UI元素树最大遍历深度，增大可获取更深层元素但会更慢。\n- maxItems (整数, 可选, 默认50): 返回的最大元素数量。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScreenPilot「末」,\ncommand:「始」InspectUI「末」,\nwindowTitle:「始」记事本「末」,\ncontrolType:「始」Button「末」\n<<<[END_TOOL_REQUEST]>>>"
+            },
+            {
+                "commandIdentifier": "ClickText",
+                "description": "功能: 通过OCR文本识别实现精确点击——自动截图、检测所有文本、找到匹配的文本并点击其中心坐标。这是最推荐的点击方式，比手动估算像素坐标更精确可靠。\n参数:\n- text (字符串, 必需): 要点击的文本内容，如 '确定'、'Save'、'开始菜单' 等。\n- windowTitle (字符串, 可选): 目标窗口标题。不提供则全屏检测。\n- hwnd (整数, 可选): 目标窗口HWND。\n- matchMode (字符串, 可选, 默认'contains'): 文本匹配模式，可选值: contains(包含), exact(完全匹配), startswith(前缀匹配)。\n- index (整数, 可选, 默认1): 当有多个匹配时，点击第几个（从1开始）。\n- button (字符串, 可选, 默认'left'): 鼠标按钮。\n- clicks (整数, 可选, 默认1): 点击次数。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScreenPilot「末」,\ncommand:「始」ClickText「末」,\ntext:「始」确定「末」\n<<<[END_TOOL_REQUEST]>>>\n\n点击指定窗口内的文本:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScreenPilot「末」,\ncommand:「始」ClickText「末」,\ntext:「始」Save「末」,\nwindowTitle:「始」记事本「末」,\nmatchMode:「始」contains「末」\n<<<[END_TOOL_REQUEST]>>>"
             }
         ]
     }

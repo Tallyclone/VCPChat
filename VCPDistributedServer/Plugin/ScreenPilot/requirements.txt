@@ -2,3 +2,4 @@ pyautogui
 Pillow
 pywin32
 uiautomation
+rapidocr-onnxruntime
