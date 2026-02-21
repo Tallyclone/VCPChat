@@ -1,0 +1,40 @@
+{
+    "manifestVersion": "1.0.0",
+    "name": "ScreenPilot",
+    "version": "1.0.0",
+    "displayName": "屏幕视觉与操控",
+    "description": "一个强大的屏幕交互插件，允许AI对任意窗口截图（返回base64和分辨率信息）、模拟鼠标点击操作、以及通过Windows UI Automation API检索窗口内可交互元素的名称和坐标。",
+    "author": "VCPToolBox",
+    "pluginType": "synchronous",
+    "entryPoint": {
+        "type": "python",
+        "command": "python screen_pilot.py"
+    },
+    "communication": {
+        "protocol": "stdio",
+        "timeout": 30000
+    },
+    "configSchema": {
+        "SCREENSHOT_DIR": {
+            "type": "string",
+            "description": "截图持久化保存目录的绝对路径。留空则默认保存到插件目录下的 screenshots/ 子文件夹。",
+            "default": ""
+        }
+    },
+    "capabilities": {
+        "invocationCommands": [
+            {
+                "commandIdentifier": "ScreenCapture",
+                "description": "功能: 对指定窗口或全屏进行截图，返回截图的base64图像数据和分辨率信息（宽×高像素），可选择是否将截图持久化保存为文件。窗口截图可通过窗口标题模糊匹配或HWND句柄精确指定（HWND可从WindowSensor获取）。\n参数:\n- windowTitle (字符串, 可选): 目标窗口标题的关键词，模糊匹配。不提供此参数和hwnd时默认全屏截图。\n- hwnd (整数, 可选): 目标窗口的HWND句柄值，通过WindowSensor获取。优先级高于windowTitle。\n- save (布尔值, 可选, 默认false): 是否将截图保存为文件持久化存储。\n- filename (字符串, 可选): 保存的文件名（不含路径），如'my_screenshot.png'。不提供则自动以时间戳命名。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScreenPilot「末」,\ncommand:「始」ScreenCapture「末」,\nwindowTitle:「始」记事本「末」,\nsave:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>\n\n全屏截图示例:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScreenPilot「末」,\ncommand:「始」ScreenCapture「末」\n<<<[END_TOOL_REQUEST]>>>\n\n支持串行批量调用，格式为 command1, windowTitle1, command2, windowTitle2 等。"
+            },
+            {
+                "commandIdentifier": "ClickAt",
+                "description": "功能: 模拟鼠标点击屏幕上指定的坐标位置。可指定点击按钮类型和点击次数。如果提供了窗口HWND，会先将该窗口置于前台再执行点击。\n参数:\n- x (整数, 必需): 屏幕横坐标（像素），坐标原点为屏幕左上角。\n- y (整数, 必需): 屏幕纵坐标（像素），坐标原点为屏幕左上角。\n- button (字符串, 可选, 默认'left'): 鼠标按钮，可选值: left, right, middle。\n- clicks (整数, 可选, 默认1): 点击次数。设为2即双击。\n- hwnd (整数, 可选): 如果提供，先将此HWND对应的窗口置于前台，再执行点击。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScreenPilot「末」,\ncommand:「始」ClickAt「末」,\nx:「始」500「末」,\ny:「始」300「末」\n<<<[END_TOOL_REQUEST]>>>\n\n右键点击示例:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScreenPilot「末」,\ncommand:「始」ClickAt「末」,\nx:「始」500「末」,\ny:「始」300「末」,\nbutton:「始」right「末」\n<<<[END_TOOL_REQUEST]>>>"
+            },
+            {
+                "commandIdentifier": "InspectUI",
+                "description": "功能: 通过Windows UI Automation API获取指定窗口内所有可交互UI元素（按钮、编辑框、菜单项等）的名称、类型和屏幕坐标。返回的坐标可直接用于ClickAt指令进行自动化操作。注意：此功能在标准Windows应用（WinForms, WPF, UWP, Win32）上效果最佳；对Electron应用内部网页内容、游戏、自绘UI可能无法获取。\n参数:\n- windowTitle (字符串, 可选): 目标窗口标题关键词。\n- hwnd (整数, 可选): 目标窗口HWND句柄，优先级高于windowTitle。\n- controlType (字符串, 可选): 筛选控件类型，如 Button, Edit, MenuItem, CheckBox, RadioButton, ComboBox, Hyperlink, ListItem, TreeItem, TabItem 等。不提供则返回所有可交互元素。\n- maxDepth (整数, 可选, 默认5): UI元素树最大遍历深度，增大可获取更深层元素但会更慢。\n- maxItems (整数, 可选, 默认50): 返回的最大元素数量。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScreenPilot「末」,\ncommand:「始」InspectUI「末」,\nwindowTitle:「始」记事本「末」,\ncontrolType:「始」Button「末」\n<<<[END_TOOL_REQUEST]>>>"
+            }
+        ]
+    }
+}
