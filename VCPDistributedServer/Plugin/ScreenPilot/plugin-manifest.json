@@ -37,7 +37,7 @@
             },
             {
                 "commandIdentifier": "ClickText",
-                "description": "功能: 通过OCR文本识别实现精确点击——自动截图、检测所有文本、找到匹配的文本并点击其中心坐标。这是最推荐的点击方式，比手动估算像素坐标更精确可靠。\n参数:\n- text (字符串, 必需): 要点击的文本内容，如 '确定'、'Save'、'开始菜单' 等。\n- windowTitle (字符串, 可选): 目标窗口标题。不提供则全屏检测。\n- hwnd (整数, 可选): 目标窗口HWND。\n- matchMode (字符串, 可选, 默认'contains'): 文本匹配模式，可选值: contains(包含), exact(完全匹配), startswith(前缀匹配)。\n- index (整数, 可选, 默认1): 当有多个匹配时，点击第几个（从1开始）。\n- button (字符串, 可选, 默认'left'): 鼠标按钮。\n- clicks (整数, 可选, 默认1): 点击次数。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScreenPilot「末」,\ncommand:「始」ClickText「末」,\ntext:「始」确定「末」\n<<<[END_TOOL_REQUEST]>>>\n\n点击指定窗口内的文本:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScreenPilot「末」,\ncommand:「始」ClickText「末」,\ntext:「始」Save「末」,\nwindowTitle:「始」记事本「末」,\nmatchMode:「始」contains「末」\n<<<[END_TOOL_REQUEST]>>>"
+                "description": "功能: 通过OCR文本识别实现精确点击——自动截图、检测所有文本、找到匹配的文本并点击其中心坐标。这是最推荐的点击方式，比手动估算像素坐标更精确可靠。\n参数:\n- text (字符串, 必需): 要点击的文本内容，如 '确定'、'Save'、'开始菜单' 等。\n- windowTitle (字符串, 可选): 目标窗口标题。不提供则全屏检测。\n- hwnd (整数, 可选): 目标窗口HWND。\n- matchMode (字符串, 可选, 默认'fuzzy'): 文本匹配模式。fuzzy(默认,去除空格标点后包含匹配,对OCR噪声最鲁棒), contains(原始包含匹配), exact(完全匹配), startswith(前缀匹配)。\n- index (整数, 可选, 默认1): 当有多个匹配时，点击第几个（从1开始）。\n- button (字符串, 可选, 默认'left'): 鼠标按钮。\n- clicks (整数, 可选, 默认1): 点击次数。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScreenPilot「末」,\ncommand:「始」ClickText「末」,\ntext:「始」确定「末」\n<<<[END_TOOL_REQUEST]>>>\n\n点击指定窗口内的文本:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScreenPilot「末」,\ncommand:「始」ClickText「末」,\ntext:「始」Save「末」,\nwindowTitle:「始」记事本「末」\n<<<[END_TOOL_REQUEST]>>>"
             }
         ]
     }

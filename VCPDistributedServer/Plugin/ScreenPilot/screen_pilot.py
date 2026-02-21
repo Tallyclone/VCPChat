@@ -629,7 +629,7 @@ def cmd_click_text(args):
     window_title = a.get("windowtitle") or a.get("window_title") or a.get("title")
     button = str(a.get("button", "left")).lower()
     clicks = int(a.get("clicks", 1))
-    match_mode = str(a.get("matchmode") or a.get("match_mode") or a.get("match") or "contains").lower()
+    match_mode = str(a.get("matchmode") or a.get("match_mode") or a.get("match") or "fuzzy").lower()
     index = int(a.get("index") or a.get("nth") or 1)  # 第几个匹配（从1开始）
 
     # 1. 截图
@@ -668,19 +668,28 @@ def cmd_click_text(args):
         return {"status": "error", "error": "截图中未检测到任何文本。"}
 
     # 3. 查找匹配文本
+    def strip_noise(s):
+        """去除空格、标点和特殊符号，只留下字母数字和 CJK 文字"""
+        return re.sub(r'[\s\u3000\p{P}\p{S}]' if False else r'[\s\u3000!-/:-@\[-`{-~\u2000-\u206f\u3000-\u303f\uff00-\uff0f\uff1a-\uff20\uff3b-\uff40\uff5b-\uff65\u2010-\u2027\u2030-\u205e\u00a0-\u00bf]', '', s)
+
     matches = []
     target_lower = target_text.lower()
+    target_stripped = strip_noise(target_lower)
     for blk in ocr_blocks:
         blk_text = blk["text"]
         blk_lower = blk_text.lower()
+        blk_stripped = strip_noise(blk_lower)
         if match_mode == "exact":
             if blk_lower == target_lower:
                 matches.append(blk)
         elif match_mode == "startswith":
             if blk_lower.startswith(target_lower):
                 matches.append(blk)
-        else:  # contains (默认)
+        elif match_mode == "contains":
             if target_lower in blk_lower:
+                matches.append(blk)
+        else:  # fuzzy (默认) — 去掉空格和标点后做 contains 匹配
+            if target_stripped and target_stripped in blk_stripped:
                 matches.append(blk)
 
     if not matches:
