@@ -1485,7 +1485,12 @@ def process_request(request):
     if serial_keys:
         # 串行批量模式
         results = []
-        for cmd_key in serial_keys:
+        for i, cmd_key in enumerate(serial_keys):
+            # 串行指令间插入 1 秒延迟，等待界面载入/刷新
+            if i > 0:
+                debug_log(f"串行指令间延迟 1 秒，等待界面刷新...")
+                time.sleep(1)
+
             idx = re.search(r'\d+', cmd_key).group()
             command = request[cmd_key]
 
