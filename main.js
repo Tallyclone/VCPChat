@@ -604,6 +604,17 @@ if (!gotTheLock) {
             return cachedModels;
         });
 
+        // IPC handler to get hot models (top N most used models)
+        ipcMain.handle('get-hot-models', async () => {
+            try {
+                const modelUsageTracker = require('./modules/modelUsageTracker');
+                return await modelUsageTracker.getHotModels(10);
+            } catch (error) {
+                console.error('[Main] Failed to get hot models:', error);
+                return [];
+            }
+        });
+
         // IPC handler to trigger a refresh of the model list
         ipcMain.on('refresh-models', async () => {
             console.log('[Main] Received refresh-models request. Re-fetching models...');

@@ -72,6 +72,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     deleteAgent: (agentId) => ipcRenderer.invoke('delete-agent', agentId),
     getCachedModels: () => ipcRenderer.invoke('get-cached-models'),
     refreshModels: () => ipcRenderer.send('refresh-models'),
+    getHotModels: () => ipcRenderer.invoke('get-hot-models'),
     onModelsUpdated: (callback) => ipcRenderer.on('models-updated', (_event, models) => callback(models)),
     getAllItems: () => ipcRenderer.invoke('get-all-items'),
     importRegexRules: (agentId) => ipcRenderer.invoke('import-regex-rules', agentId),

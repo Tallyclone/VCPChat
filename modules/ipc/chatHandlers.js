@@ -743,6 +743,16 @@ function initialize(mainWindow, context) {
                 requestId: messageId
             };
 
+            // 🔥 记录模型使用频率
+            try {
+                if (modelConfig && modelConfig.model) {
+                    const modelUsageTracker = require('../modelUsageTracker');
+                    await modelUsageTracker.recordModelUsage(modelConfig.model);
+                }
+            } catch (e) {
+                console.error('[ModelUsage] Failed to record model usage:', e);
+            }
+
             // 验证JSON可序列化性
             let serializedBody;
             try {
