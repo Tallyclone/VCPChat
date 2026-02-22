@@ -158,7 +158,8 @@ function startAudioEngine() {
         }
 
         // Use the Rust audio server binary (moved to audio_engine directory)
-        const rustBinaryPath = path.join(__dirname, 'audio_engine', 'audio_server.exe');
+        const binaryName = process.platform === 'win32' ? 'audio_server.exe' : 'audio_server';
+        const rustBinaryPath = path.join(__dirname, 'audio_engine', binaryName);
         console.log(`[Main] Starting Rust Audio Engine from: ${rustBinaryPath}`);
 
         // Check if the binary exists
