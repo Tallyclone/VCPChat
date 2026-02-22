@@ -73,6 +73,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getCachedModels: () => ipcRenderer.invoke('get-cached-models'),
     refreshModels: () => ipcRenderer.send('refresh-models'),
     getHotModels: () => ipcRenderer.invoke('get-hot-models'),
+    getFavoriteModels: () => ipcRenderer.invoke('get-favorite-models'),
+    toggleFavoriteModel: (modelId) => ipcRenderer.invoke('toggle-favorite-model', modelId),
     onModelsUpdated: (callback) => ipcRenderer.on('models-updated', (_event, models) => callback(models)),
     getAllItems: () => ipcRenderer.invoke('get-all-items'),
     importRegexRules: (agentId) => ipcRenderer.invoke('import-regex-rules', agentId),

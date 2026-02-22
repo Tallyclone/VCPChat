@@ -615,6 +615,28 @@ if (!gotTheLock) {
             }
         });
 
+        // IPC handler to get favorite models
+        ipcMain.handle('get-favorite-models', async () => {
+            try {
+                const modelUsageTracker = require('./modules/modelUsageTracker');
+                return await modelUsageTracker.getFavoriteModels();
+            } catch (error) {
+                console.error('[Main] Failed to get favorite models:', error);
+                return [];
+            }
+        });
+
+        // IPC handler to toggle a model's favorite status
+        ipcMain.handle('toggle-favorite-model', async (event, modelId) => {
+            try {
+                const modelUsageTracker = require('./modules/modelUsageTracker');
+                return await modelUsageTracker.toggleFavoriteModel(modelId);
+            } catch (error) {
+                console.error('[Main] Failed to toggle favorite model:', error);
+                return { favorited: false };
+            }
+        });
+
         // IPC handler to trigger a refresh of the model list
         ipcMain.on('refresh-models', async () => {
             console.log('[Main] Received refresh-models request. Re-fetching models...');

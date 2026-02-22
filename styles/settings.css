@@ -1109,6 +1109,9 @@ textarea::placeholder {
     cursor: pointer;
     border-bottom: 1px solid var(--border-color);
     transition: background-color 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
 .model-list li:last-child {
@@ -1133,6 +1136,8 @@ textarea::placeholder {
     background-color: transparent;
     border-bottom: 1px solid var(--border-color);
     pointer-events: none;
+    display: block;
+    /* Override flex for title */
 }
 
 .model-list li.model-section-title:hover {
@@ -1142,9 +1147,6 @@ textarea::placeholder {
 
 .model-list li.hot-model {
     border-left: 3px solid #ff6b35;
-    display: flex;
-    align-items: center;
-    gap: 6px;
 }
 
 .hot-model-badge {
@@ -1172,6 +1174,37 @@ textarea::placeholder {
         opacity: 0.7;
         transform: scale(1.15);
     }
+}
+
+/* --- Favorite Star Styles --- */
+.model-favorite-star {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    margin-left: auto;
+    /* Push to the right edge */
+    color: var(--secondary-text);
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    opacity: 0.6;
+}
+
+.model-favorite-star:hover {
+    color: #ffd700;
+    background-color: rgba(255, 215, 0, 0.1);
+    opacity: 1;
+}
+
+.model-favorite-star.favorited {
+    color: #ffd700;
+    opacity: 1;
+}
+
+.model-favorite-star.favorited:hover {
+    color: #ffc107;
+    background-color: rgba(255, 193, 7, 0.1);
 }
 
 /* --- Form Dividers & Sections --- */

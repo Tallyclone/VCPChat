@@ -89,8 +89,76 @@ async function getModelUsageStats() {
     return await loadStats();
 }
 
+// ========================================
+// ⭐ Favorite Models（收藏模型）
+// ========================================
+const FAVORITES_FILE = path.join(APP_DATA_ROOT, 'model_favorites.json');
+let favoritesCache = null; // 内存缓存: ["model-id", ...]
+
+/**
+ * 加载收藏数据
+ */
+async function loadFavorites() {
+    if (favoritesCache !== null) return favoritesCache;
+    try {
+        if (await fs.pathExists(FAVORITES_FILE)) {
+            favoritesCache = await fs.readJson(FAVORITES_FILE);
+            if (!Array.isArray(favoritesCache)) favoritesCache = [];
+        } else {
+            favoritesCache = [];
+        }
+    } catch (error) {
+        console.error('[ModelUsageTracker] Failed to load favorites, starting fresh:', error);
+        favoritesCache = [];
+    }
+    return favoritesCache;
+}
+
+/**
+ * 保存收藏数据到磁盘（即时写入，因为操作频率低）
+ */
+async function saveFavorites() {
+    try {
+        await fs.ensureDir(APP_DATA_ROOT);
+        await fs.writeJson(FAVORITES_FILE, favoritesCache || [], { spaces: 2 });
+        console.log('[ModelUsageTracker] Favorites saved to disk.');
+    } catch (error) {
+        console.error('[ModelUsageTracker] Failed to save favorites:', error);
+    }
+}
+
+/**
+ * 切换模型收藏状态
+ * @param {string} modelId - 模型 ID
+ * @returns {Promise<{favorited: boolean}>} 新的收藏状态
+ */
+async function toggleFavoriteModel(modelId) {
+    if (!modelId || typeof modelId !== 'string') return { favorited: false };
+    const favorites = await loadFavorites();
+    const index = favorites.indexOf(modelId);
+    if (index === -1) {
+        favorites.push(modelId);
+        console.log(`[ModelUsageTracker] Favorited model: "${modelId}"`);
+    } else {
+        favorites.splice(index, 1);
+        console.log(`[ModelUsageTracker] Unfavorited model: "${modelId}"`);
+    }
+    await saveFavorites();
+    return { favorited: index === -1 };
+}
+
+/**
+ * 获取收藏模型列表
+ * @returns {Promise<string[]>} 收藏的模型 ID 数组
+ */
+async function getFavoriteModels() {
+    return await loadFavorites();
+}
+
 module.exports = {
     recordModelUsage,
     getHotModels,
-    getModelUsageStats
+    getModelUsageStats,
+    toggleFavoriteModel,
+    getFavoriteModels
 };

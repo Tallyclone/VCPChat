@@ -935,10 +935,11 @@ const settingsManager = (() => {
  */
     async function handleOpenModelSelect(targetInputElement) {
         try {
-            // 并行获取模型列表和热门模型
-            let [models, hotModelIds] = await Promise.all([
+            // 并行获取模型列表、热门模型和收藏模型
+            let [models, hotModelIds, favoriteModelIds] = await Promise.all([
                 electronAPI.getCachedModels(),
-                electronAPI.getHotModels ? electronAPI.getHotModels() : Promise.resolve([])
+                electronAPI.getHotModels ? electronAPI.getHotModels() : Promise.resolve([]),
+                electronAPI.getFavoriteModels ? electronAPI.getFavoriteModels() : Promise.resolve([])
             ]);
 
             // 如果缓存为空，尝试触发一次刷新并等待
@@ -961,7 +962,7 @@ const settingsManager = (() => {
             uiHelper.openModal('modelSelectModal');
             // 确保在模态框打开后（DOM 元素已从模板实例化）再填充列表
             setTimeout(() => {
-                populateModelList(models, currentModelSelectCallback, hotModelIds || []);
+                populateModelList(models, currentModelSelectCallback, hotModelIds || [], favoriteModelIds || []);
             }, 0);
         } catch (error) {
             console.error('Failed to get cached models:', error);
@@ -973,8 +974,9 @@ const settingsManager = (() => {
  * @param {Array} models - An array of model objects.
  * @param {Function} onModelSelect - Callback when a model is selected.
  * @param {Array<string>} hotModelIds - Array of hot model IDs (top N most used).
+ * @param {Array<string>} favoriteModelIds - Array of favorited model IDs.
  */
-    function populateModelList(models, onModelSelect, hotModelIds = []) {
+    function populateModelList(models, onModelSelect, hotModelIds = [], favoriteModelIds = []) {
         // 重新获取元素引用，因为它们可能是动态从模板生成的
         modelList = document.getElementById('modelList');
         if (!modelList) {
@@ -988,12 +990,14 @@ const settingsManager = (() => {
             return;
         }
 
-        const hotSet = new Set(hotModelIds);
+        const favSet = new Set(favoriteModelIds);
 
         // 创建模型列表项的辅助函数
-        function createModelLi(model, isHot) {
+        function createModelLi(model, isHot, isFavoriteSection) {
             const li = document.createElement('li');
             li.dataset.modelId = model.id;
+
+            // 热门标记
             if (isHot) {
                 li.classList.add('hot-model');
                 const badge = document.createElement('span');
@@ -1001,10 +1005,37 @@ const settingsManager = (() => {
                 badge.textContent = '🔥';
                 li.appendChild(badge);
             }
+
             const nameSpan = document.createElement('span');
             nameSpan.className = 'model-name-text';
             nameSpan.textContent = model.id;
             li.appendChild(nameSpan);
+
+            // 收藏星星
+            const starSpan = document.createElement('span');
+            starSpan.className = 'model-favorite-star';
+            const isFavorited = favSet.has(model.id);
+            if (isFavorited) {
+                starSpan.classList.add('favorited');
+                starSpan.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>';
+            } else {
+                starSpan.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>';
+            }
+            starSpan.title = isFavorited ? "取消收藏" : "收藏模型";
+
+            // 星星点击事件：切换收藏状态
+            starSpan.addEventListener('click', async (e) => {
+                e.stopPropagation(); // 阻止触发模型选择
+                if (electronAPI.toggleFavoriteModel) {
+                    const result = await electronAPI.toggleFavoriteModel(model.id);
+                    if (result && result.favorited !== undefined) {
+                        // 重新拉取一次整个列表的逻辑，保持UI一致性
+                        handleOpenModelSelect(document.getElementById('agentModel') || null); // Note: targetInputElement context is somewhat lost here, ideally we should just refresh the view
+                    }
+                }
+            });
+            li.appendChild(starSpan);
+
             li.addEventListener('click', () => {
                 if (typeof onModelSelect === 'function') {
                     onModelSelect(model.id);
@@ -1027,20 +1058,40 @@ const settingsManager = (() => {
                 modelList.appendChild(hotTitle);
 
                 hotModels.forEach(model => {
-                    modelList.appendChild(createModelLi(model, true));
+                    modelList.appendChild(createModelLi(model, true, false));
                 });
-
-                const allTitle = document.createElement('li');
-                allTitle.className = 'model-section-title';
-                allTitle.textContent = '📋 全部模型';
-                modelList.appendChild(allTitle);
             }
         }
 
-        // 全部模型
-        models.forEach(model => {
-            modelList.appendChild(createModelLi(model, false));
-        });
+        // ⭐ 收藏模型分区
+        if (favoriteModelIds.length > 0) {
+            const favoriteModels = favoriteModelIds
+                .map(id => models.find(m => m.id === id))
+                .filter(Boolean);
+
+            if (favoriteModels.length > 0) {
+                const favTitle = document.createElement('li');
+                favTitle.className = 'model-section-title';
+                favTitle.textContent = '⭐ 收藏模型';
+                modelList.appendChild(favTitle);
+
+                favoriteModels.forEach(model => {
+                    modelList.appendChild(createModelLi(model, false, true));
+                });
+            }
+        }
+
+        // 📋 全部模型分区
+        if (models.length > 0) {
+            const allTitle = document.createElement('li');
+            allTitle.className = 'model-section-title';
+            allTitle.textContent = '📋 全部模型';
+            modelList.appendChild(allTitle);
+
+            models.forEach(model => {
+                modelList.appendChild(createModelLi(model, false, false));
+            });
+        }
     }
 
     /**
