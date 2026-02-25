@@ -70,6 +70,10 @@
             {
                 "commandIdentifier": "TypeText",
                 "description": "功能: 向目标窗口输入文本。支持双轨制——有窗口句柄/标题时使用后台模式（PostMessage WM_CHAR逐字发送，不劫持键盘焦点）；无窗口信息时使用前台模式（剪贴板Ctrl+V粘贴，支持全Unicode/中文）。\n参数:\n- text (字符串, 必需): 要输入的文本内容。\n- hwnd (整数, 可选): 目标窗口HWND。提供后启用后台模式。\n- windowTitle (字符串, 可选): 目标窗口标题关键词（模糊匹配），可代替hwnd。\n- enter (布尔值, 可选, 默认false): 设为true时，输入文本后自动按下回车键。适合搜索框、命令行等场景。\n调用格式:\n后台输入（不劫持键盘）:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScreenPilot「末」,\ncommand:「始」TypeText「末」,\ntext:「始」Hello World「末」,\nwindowTitle:「始」记事本「末」,\nenter:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>\n\n前台输入（剪贴板粘贴）:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScreenPilot「末」,\ncommand:「始」TypeText「末」,\ntext:「始」你好世界「末」\n<<<[END_TOOL_REQUEST]>>>"
+            },
+            {
+                "commandIdentifier": "QueryWindows",
+                "description": "功能: 主动查询当前电脑的最新窗口状态、进程名、HWND及标题。由于系统被动扫描有间隔，如果要进行精确操作前担心窗口状态已变，可先调用此指令获取最新实时窗口列表。\n参数: 无\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScreenPilot「末」,\ncommand:「始」QueryWindows「末」\n<<<[END_TOOL_REQUEST]>>>"
             }
         ]
     }

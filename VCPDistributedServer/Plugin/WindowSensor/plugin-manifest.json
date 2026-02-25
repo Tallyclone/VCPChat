@@ -20,7 +20,26 @@
     },
     "refreshIntervalCron": "*/3 * * * *",
     "executeOnStartup": true,
+    "configSchema": {
+        "IgnoreApps": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            },
+            "description": "需要被 WindowSensor 忽略的进程名称列表（支持部分匹配，忽略大小写）。例如: ['Rainmeter', 'RazerAppEngine']",
+            "default": [
+                "Rainmeter",
+                "RazerAppEngine",
+                "TextInputHost"
+            ]
+        }
+    },
     "defaultConfig": {
-        "NodeName": "主节点"
+        "NodeName": "主节点",
+        "IgnoreApps": [
+            "Rainmeter",
+            "RazerAppEngine",
+            "Taskmgr"
+        ]
     }
 }

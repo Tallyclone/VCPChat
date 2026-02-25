@@ -1445,7 +1445,70 @@ def cmd_scroll_at(args):
 # 指令分发与串行调用
 # ============================================================
 
+# ============================================================
+# QueryWindows 指令（调用 WindowSensor 更新实时窗口状态）
+# ============================================================
+
+def cmd_query_windows(args):
+    """
+    执行 QueryWindows 指令:
+    主动调用 WindowSensor 的 sensor.ps1 获取当前最新的窗口信息
+    """
+    import subprocess
+    import os
+    
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    sensor_path = os.path.join(current_dir, "..", "WindowSensor", "sensor.ps1")
+    
+    if not os.path.exists(sensor_path):
+        return {"status": "error", "error": f"找不到 sensor.ps1 脚本: {sensor_path}"}
+        
+    try:
+        result = subprocess.run(
+            ["powershell", "-ExecutionPolicy", "Bypass", "-NoProfile", "-File", sensor_path],
+            capture_output=True,
+            text=False,
+            timeout=10
+        )
+        
+        if result.returncode != 0:
+            err_msg = result.stderr.decode("utf-8", errors="replace")
+            return {"status": "error", "error": f"执行 sensor.ps1 失败 (退出码 {result.returncode}): {err_msg}"}
+            
+        output = result.stdout.decode("utf-8", errors="replace").strip()
+        
+        if not output:
+             return {"status": "error", "error": "执行 sensor.ps1 成功，但未返回任何输出。"}
+             
+        try:
+            parsed_data = json.loads(output)
+        except json.JSONDecodeError as e:
+            return {"status": "error", "error": f"解析 sensor.ps1 输出失败: {e}\n输出内容: {output[:200]}"}
+            
+        detailed_text = "成功获取窗口状态"
+        if "fold_blocks" in parsed_data:
+            for block in parsed_data["fold_blocks"]:
+                if block.get("threshold") == 0.7:
+                    detailed_text = block.get("content", detailed_text)
+                    break
+                    
+        return {
+            "status": "success",
+            "result": {
+                "content": [{"type": "text", "text": detailed_text}],
+                "sensorData": parsed_data
+            }
+        }
+    except subprocess.TimeoutExpired:
+        return {"status": "error", "error": "执行 sensor.ps1 超时。"}
+    except Exception as e:
+        return {"status": "error", "error": f"调用 sensor.ps1 异常: {e}"}
+
+
 COMMAND_MAP = {
+    "querywindows": cmd_query_windows,
+    "query": cmd_query_windows,
+    "getwindows": cmd_query_windows,
     "screencapture": cmd_screen_capture,
     "capture": cmd_screen_capture,
     "screenshot": cmd_screen_capture,
@@ -1471,7 +1534,7 @@ def dispatch_command(command, params):
     cmd_key = command.lower().replace("_", "").replace("-", "")
     handler = COMMAND_MAP.get(cmd_key)
     if handler is None:
-        return {"status": "error", "error": f"未知指令: '{command}'。可用指令: ScreenCapture, ClickAt, ClickText, ClickVisual, InspectUI, ScrollAt, TypeText"}
+        return {"status": "error", "error": f"未知指令: '{command}'。可用指令: ScreenCapture, ClickAt, ClickText, ClickVisual, InspectUI, ScrollAt, TypeText, QueryWindows"}
     return handler(params)
 
 
@@ -1538,7 +1601,7 @@ def process_request(request):
     # 单指令模式
     command = request.get("command")
     if not command:
-        return {"status": "error", "error": "缺少 command 参数。可用指令: ScreenCapture, ClickAt, InspectUI"}
+        return {"status": "error", "error": "缺少 command 参数。可用指令: ScreenCapture, ClickAt, InspectUI, QueryWindows, etc."}
 
     # 移除 command 键，剩余的都作为参数
     params = {k: v for k, v in request.items() if k != "command"}

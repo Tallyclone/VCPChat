@@ -11,6 +11,16 @@ if (Test-Path $configPath) {
         if ($config.NodeName) {
             $nodeName = $config.NodeName
         }
+        if ($config.IgnoreApps) {
+            # Normalize IgnoreApps to an array if it's a single string or already an array
+            $ignoreList = $config.IgnoreApps
+            if ($ignoreList -isnot [array]) {
+                # Supports comma-separated string back-compat
+                $ignoreApps = $ignoreList -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }
+            } else {
+                $ignoreApps = $ignoreList
+            }
+        }
     } catch {}
 }
 
@@ -23,6 +33,12 @@ $processes = Get-Process | Where-Object {
 # 2. 预定义的关注应用列表（可以根据进程名优先分类）
 $priorityApps = @("chrome", "firefox", "msedge", "Code", "devenv", "qq", "wechat", "vcpchat", "electron")
 
+# 如果没有配置 IgnoreApps，给一个默认的忽略列表
+if ($null -eq $ignoreApps) {
+    $ignoreApps = @("Rainmeter", "RazerAppEngine", "Taskmgr")
+}
+
+
 $highPriority = @()
 $otherApps = @()
 
@@ -32,6 +48,17 @@ foreach ($p in $processes) {
     
     # 过滤掉一些系统级的无用窗口 (例如 "Program Manager", "Settings" 等)
     if ($title -match "^(?:Program Manager|Settings)$") { continue }
+
+    # 过滤掉 IgnoreApps 里的进程 (忽略大小写)
+    $shouldIgnore = $false
+    foreach ($ignore in $ignoreApps) {
+        if ($procName -imatch $ignore) {
+            $shouldIgnore = $true
+            break
+        }
+    }
+    if ($shouldIgnore) { continue }
+
 
     $pidNum = $p.Id
     $hwnd = $p.MainWindowHandle
