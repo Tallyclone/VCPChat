@@ -260,6 +260,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Assistant specific
     toggleSelectionListener: (enable) => ipcRenderer.send('toggle-selection-listener', enable),
+    getSelectionListenerStatus: () => ipcRenderer.invoke('get-selection-listener-status'),
     assistantAction: (action) => ipcRenderer.send('assistant-action', action),
     closeAssistantBar: () => ipcRenderer.send('close-assistant-bar'),
     onAssistantBarData: (callback) => ipcRenderer.on('assistant-bar-data', (_event, data) => callback(data)),
