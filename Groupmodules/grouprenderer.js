@@ -21,6 +21,7 @@ window.GroupRenderer = (() => {
     let groupMembersListDiv, addRemoveMembersBtn;
     let groupChatModeSelect;
     let memberTagsContainer, memberTagsInputsDiv;
+    let tagMatchModeSelect;
     let groupPromptTextarea, invitePromptTextarea;
     let deleteGroupBtn;
     let createNewGroupBtn; // This button is in main.html, renderer.js might attach its listener
@@ -140,6 +141,14 @@ window.GroupRenderer = (() => {
                <hr class="form-divider">
 
                 <div id="memberTagsContainer" class="form-group" style="display: none;">
+                    <div class="form-group" style="margin-bottom: 10px;">
+                        <label for="tagMatchMode">发言触发模式:</label>
+                        <select id="tagMatchMode">
+                            <option value="strict">精确模式（Tag命中即发言）</option>
+                            <option value="natural">自然模式（智能区分触发来源）</option>
+                        </select>
+                        <small style="display:block; margin-top:4px; color: var(--text-secondary, #888);">自然模式：区分 Tag 来自他人还是自身，避免 Agent 因自身历史发言而反复重复。</small>
+                    </div>
                     <label>成员 Tags (用于自然随机模式):</label>
                     <div id="memberTagsInputs"></div>
                 </div>
@@ -184,6 +193,7 @@ window.GroupRenderer = (() => {
 
         memberTagsContainer = document.getElementById('memberTagsContainer');
         memberTagsInputsDiv = document.getElementById('memberTagsInputs');
+        tagMatchModeSelect = document.getElementById('tagMatchMode');
         groupPromptTextarea = document.getElementById('groupPrompt');
         invitePromptTextarea = document.getElementById('invitePrompt');
         deleteGroupBtn = document.getElementById('deleteGroupBtn'); // This is the button inside the group settings form
@@ -401,6 +411,9 @@ window.GroupRenderer = (() => {
         groupAvatarInput.value = ''; // Clear file input
 
         groupChatModeSelect.value = groupConfig.mode || 'sequential';
+        if (tagMatchModeSelect) {
+            tagMatchModeSelect.value = groupConfig.tagMatchMode || 'strict';
+        }
         groupPromptTextarea.value = groupConfig.groupPrompt || '';
         invitePromptTextarea.value = groupConfig.invitePrompt || '现在轮到你{{VCPChatAgentName}}发言了。';
 
@@ -582,6 +595,7 @@ window.GroupRenderer = (() => {
             name: groupNameInput.value.trim(),
             members: selectedMemberIds,
             mode: groupChatModeSelect.value,
+            tagMatchMode: tagMatchModeSelect ? tagMatchModeSelect.value : 'strict',
            // 新增：读取统一模型设置
            useUnifiedModel: groupUseUnifiedModel.checked,
            unifiedModel: groupUnifiedModelInput.value.trim(),
