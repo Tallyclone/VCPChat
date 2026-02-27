@@ -20,3 +20,12 @@ node_modules/
 
 # Reports and logs
 **/reports/
+
+# 临时忽略的文件（本地修改，不提交）
+.npmrc
+modules/ipc/chatHandlers.js
+modules/itemListManager.js
+modules/settingsManager.js
+package-lock.json
+package.json
+styles/themes.css
