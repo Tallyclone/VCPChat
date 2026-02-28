@@ -791,6 +791,9 @@ const settingsManager = (() => {
         populateAssistantAgentSelect: populateAssistantAgentSelect,
         // Expose for external use if needed, e.g., in the save function
         completeVcpUrl: completeVcpUrl,
+        openModelSelectForInput: async (targetInputElement) => {
+            await handleOpenModelSelect(targetInputElement);
+        },
         triggerAgentSave: async (overrideAgentId) => {
             // 触发Agent设置保存（不含头像）
             // 支持传入锁定的agentId，防止异步操作期间DOM状态变化导致写入错误Agent

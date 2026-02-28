@@ -382,7 +382,12 @@ import { setupEventListeners } from './modules/event-listeners.js';
                 break;
 
             case 'end':
-                window.messageRenderer.finalizeStreamedMessage(messageId, finish_reason || 'completed', context);
+                window.messageRenderer.finalizeStreamedMessage(
+                    messageId,
+                    finish_reason || 'completed',
+                    context,
+                    { fullResponse, error }
+                );
                 if (context && !context.isGroupMessage) {
                     // This can run in the background
                     await window.chatManager.attemptTopicSummarizationIfNeeded();
@@ -465,7 +470,12 @@ import { setupEventListeners } from './modules/event-listeners.js';
 
             case 'error':
                 console.error('VCP Stream Error on ID', messageId, ':', error, 'Context:', context);
-                window.messageRenderer.finalizeStreamedMessage(messageId, 'error', context);
+                window.messageRenderer.finalizeStreamedMessage(
+                    messageId,
+                    'error',
+                    context,
+                    { fullResponse, error }
+                );
                 
                 // --- Flowlock: 处理错误情况，重置状态并可能触发下一次续写 ---
                 if (window.flowlockManager) {

@@ -128,6 +128,30 @@ async function getVcpGlobalSettings() {
     };
 }
 
+/**
+ * Resolve the model that should be used for this agent in group chat.
+ * When unified model is enabled, it has priority over per-agent model.
+ * @param {object} groupConfig
+ * @param {object} agentConfig
+ * @returns {{usingUnifiedModel: boolean, unifiedModel: string, agentModel: string, effectiveModel: string}}
+ */
+function resolveEffectiveModel(groupConfig, agentConfig) {
+    const usingUnifiedModel = groupConfig && groupConfig.useUnifiedModel === true;
+    const unifiedModel = (groupConfig && typeof groupConfig.unifiedModel === 'string')
+        ? groupConfig.unifiedModel.trim()
+        : '';
+    const agentModel = (agentConfig && typeof agentConfig.model === 'string')
+        ? agentConfig.model.trim()
+        : '';
+
+    return {
+        usingUnifiedModel,
+        unifiedModel,
+        agentModel,
+        effectiveModel: usingUnifiedModel ? unifiedModel : agentModel
+    };
+}
+
 
 
 /**
@@ -273,6 +297,19 @@ async function saveAgentGroupConfig(groupId, configData) {
         const { avatarUrl, ...dataToSave } = configData; 
 
         const newConfigData = { ...existingConfig, ...dataToSave, id: groupId };
+
+        // Backend guard: unified model mode must have a non-empty model id.
+        if (newConfigData.useUnifiedModel === true) {
+            const normalizedUnifiedModel = typeof newConfigData.unifiedModel === 'string'
+                ? newConfigData.unifiedModel.trim()
+                : '';
+            if (!normalizedUnifiedModel) {
+                return { success: false, error: '启用群组统一模型时，群组统一模型不能为空。' };
+            }
+            newConfigData.unifiedModel = normalizedUnifiedModel;
+        } else if (typeof newConfigData.unifiedModel === 'string') {
+            newConfigData.unifiedModel = newConfigData.unifiedModel.trim();
+        }
         
         await fs.writeJson(configPath, newConfigData, { spaces: 2 });
         console.log(`[GroupChat] AgentGroup ${groupId} 配置已保存。`);
@@ -590,8 +627,23 @@ ${att._fileManagerData.extractedText}
         }
         // --- End of Injection ---
 
-        if (!globalVcpSettings.vcpUrl || !agentConfig.model) {
-            const errorMsg = `Agent ${agentName} (${agentId}) 无法响应：VCP URL 或模型未配置。`;
+        const modelResolution = resolveEffectiveModel(groupConfig, agentConfig);
+        if (!globalVcpSettings.vcpUrl) {
+            const errorMsg = `Agent ${agentName} (${agentId}) 无法响应：VCP URL 未配置。`;
+            console.error(`[GroupChat] ${errorMsg}`);
+            const errorResponse = { role: 'assistant', name: agentName, agentId: agentId, content: `[系统消息] ${errorMsg}`, timestamp: Date.now(), id: messageIdForAgentResponse };
+            groupHistory.push(errorResponse);
+            if (typeof sendStreamChunkToRenderer === 'function') {
+                sendStreamChunkToRenderer({ type: 'error', error: errorMsg, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true } });
+            }
+            continue; // 继续处理下一个需要发言的Agent
+        }
+
+        if (!modelResolution.effectiveModel) {
+            const modelHint = modelResolution.usingUnifiedModel
+                ? '已启用群组统一模型，但群组统一模型为空。'
+                : '当前成员未配置模型。';
+            const errorMsg = `Agent ${agentName} (${agentId}) 无法响应：${modelHint}`;
             console.error(`[GroupChat] ${errorMsg}`);
             const errorResponse = { role: 'assistant', name: agentName, agentId: agentId, content: `[系统消息] ${errorMsg}`, timestamp: Date.now(), id: messageIdForAgentResponse };
             groupHistory.push(errorResponse);
@@ -626,7 +678,7 @@ ${att._fileManagerData.extractedText}
             }
 
             const modelConfigForAgent = {
-               model: groupConfig.useUnifiedModel ? groupConfig.unifiedModel : agentConfig.model,
+               model: modelResolution.effectiveModel,
                 temperature: parseFloat(agentConfig.temperature),
                 max_tokens: agentConfig.maxOutputTokens ? parseInt(agentConfig.maxOutputTokens) : undefined,
                 stream: agentConfig.streamOutput === true || String(agentConfig.streamOutput) === 'true'
@@ -1076,8 +1128,24 @@ ${att._fileManagerData.extractedText}
     }
     // --- End of Injection ---
 
-    if (!globalVcpSettings.vcpUrl || !agentConfig.model) {
-        const errorMsg = `Agent ${agentName} (${invitedAgentId}) 无法响应（邀请）：VCP URL 或模型未配置。`;
+    const modelResolution = resolveEffectiveModel(groupConfig, agentConfig);
+    if (!globalVcpSettings.vcpUrl) {
+        const errorMsg = `Agent ${agentName} (${invitedAgentId}) 无法响应（邀请）：VCP URL 未配置。`;
+        console.error(`[GroupChat Invite] ${errorMsg}`);
+        const errorResponse = { role: 'assistant', name: agentName, agentId: invitedAgentId, content: `[系统消息] ${errorMsg}`, timestamp: Date.now(), id: messageIdForAgentResponse };
+        groupHistory.push(errorResponse);
+        await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
+        if (typeof sendStreamChunkToRenderer === 'function') {
+            sendStreamChunkToRenderer({ type: 'error', error: errorMsg, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true } });
+        }
+        return;
+    }
+
+    if (!modelResolution.effectiveModel) {
+        const modelHint = modelResolution.usingUnifiedModel
+            ? '已启用群组统一模型，但群组统一模型为空。'
+            : '当前成员未配置模型。';
+        const errorMsg = `Agent ${agentName} (${invitedAgentId}) 无法响应（邀请）：${modelHint}`;
         console.error(`[GroupChat Invite] ${errorMsg}`);
         const errorResponse = { role: 'assistant', name: agentName, agentId: invitedAgentId, content: `[系统消息] ${errorMsg}`, timestamp: Date.now(), id: messageIdForAgentResponse };
         groupHistory.push(errorResponse);
@@ -1108,7 +1176,7 @@ ${att._fileManagerData.extractedText}
         }
 
         const modelConfigForAgent = {
-           model: groupConfig.useUnifiedModel ? groupConfig.unifiedModel : agentConfig.model,
+           model: modelResolution.effectiveModel,
             temperature: parseFloat(agentConfig.temperature),
             max_tokens: agentConfig.maxOutputTokens ? parseInt(agentConfig.maxOutputTokens) : undefined,
             stream: agentConfig.streamOutput === true || String(agentConfig.streamOutput) === 'true'
