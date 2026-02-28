@@ -1592,10 +1592,10 @@ function appendStreamChunk(messageId, chunkData, context) {
     streamManager.appendStreamChunk(messageId, chunkData, context);
 }
 
-async function finalizeStreamedMessage(messageId, finishReason, context) {
+async function finalizeStreamedMessage(messageId, finishReason, context, finalPayload = null) {
     // 责任完全在 streamManager 内部，它应该使用自己拼接好的文本。
     // 我们现在只传递必要的元数据。
-    await streamManager.finalizeStreamedMessage(messageId, finishReason, context);
+    await streamManager.finalizeStreamedMessage(messageId, finishReason, context, finalPayload);
 
     // --- 核心修复：流式结束后，对完整内容重新应用前端正则 ---
     // 这是为了解决流式传输导致正则表达式（如元思考链）被分割而无法匹配的问题
