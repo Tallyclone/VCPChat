@@ -581,6 +581,33 @@
                         </label>
                     </div>
 
+                    <hr style="border: none; border-top: 1px solid var(--border-color); margin: 20px 0;">
+
+                    <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <label for="remoteGatewayEnabled">启用远程网关（手机/电脑端接入）</label>
+                        <label class="switch">
+                            <input type="checkbox" id="remoteGatewayEnabled" name="remoteGatewayEnabled">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+
+                    <div>
+                        <label for="remoteGatewayHost">远程网关监听地址:</label>
+                        <input type="text" id="remoteGatewayHost" name="remoteGatewayHost" placeholder="默认 0.0.0.0">
+                    </div>
+                    <div>
+                        <label for="remoteGatewayPort">远程网关端口:</label>
+                        <input type="number" id="remoteGatewayPort" name="remoteGatewayPort" min="1" max="65535" placeholder="默认 17888">
+                    </div>
+                    <div>
+                        <label for="remoteGatewayToken">远程网关鉴权 Token:</label>
+                        <input type="password" id="remoteGatewayToken" name="remoteGatewayToken" placeholder="建议设置复杂Token">
+                    </div>
+                    <div>
+                        <label for="remoteAllowedRoots">远程文件白名单根目录（分号分隔）:</label>
+                        <input type="text" id="remoteAllowedRoots" name="remoteAllowedRoots" placeholder="例如 D:\\Vchat\\VCPChat\\AppData;D:\\SomeFolder">
+                    </div>
+
                     <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 20px;">
                         <label for="enableVcpToolInjection">开启VCP工具信息注入上下文</label>
                         <label class="switch">

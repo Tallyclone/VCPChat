@@ -1497,6 +1497,11 @@ async function syncGlobalSettingsToUI() {
     }
 
     safeCheck('enableDistributedServer', globalSettings.enableDistributedServer === true);
+    safeCheck('remoteGatewayEnabled', globalSettings.remoteGatewayEnabled !== false);
+    safeSet('remoteGatewayHost', globalSettings.remoteGatewayHost || '0.0.0.0');
+    safeSet('remoteGatewayPort', globalSettings.remoteGatewayPort ?? 17888);
+    safeSet('remoteGatewayToken', globalSettings.remoteGatewayToken || 'vchat-remote-token');
+    safeSet('remoteAllowedRoots', Array.isArray(globalSettings.remoteAllowedRoots) ? globalSettings.remoteAllowedRoots.join(';') : '');
     safeCheck('agentMusicControl', globalSettings.agentMusicControl === true);
     safeCheck('enableVcpToolInjection', globalSettings.enableVcpToolInjection === true);
     safeCheck('enableThoughtChainInjection', globalSettings.enableThoughtChainInjection === true);

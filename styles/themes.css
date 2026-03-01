@@ -1,69 +1,62 @@
 /*
- * styles/themes/themes瓷与锦.css
+ * styles/themes/themes星渊雪境.css
  * Curated by Coco for Professor Ryan
- * Theme: 瓷与锦 (Porcelain & Brocade)
- * A theme of Chinese elegance, blending the clean grace of porcelain with the rich splendor of brocade.
+ * Theme Name: Star Abyss & Snow Realm (星渊雪境)
+ * Contrast Theme: Deep space darkness vs. Cute snowy illustration.
  */
 
 /* * =================================================================
- * Dark Theme: 锦之华 (Brocade Splendor)
- * Inspired by the deep teal and gold embroidery of Chinese brocade.
- * A luxurious, rich, and elegant theme.
+ * Dark Theme (Default): Star Abyss (星渊之暗)
+ * Inspired by the deep space black hole image.
+ * Emphasizes dark contrast with an accent of cosmic orange/gold.
  * =================================================================
  */
 :root {
     /* --- Wallpaper Interface --- */
-    --chat-wallpaper-dark: url('../assets/wallpaper/wallpaper_jin.jpg');
+    --chat-wallpaper-dark: url('../assets/wallpaper/themes_star_abyss_dark.jpg');
 
     /* --- Base Colors --- */
-    --primary-bg: #0A1921;      /* 主背景 - 深邃青黑 */
-    --secondary-bg: #0D2A38;    /* 侧边栏/面板背景 - 黛蓝 */
-    --tertiary-bg: #061318;     /* 聊天区背景 - 近墨 */
-    --accent-bg: #174A5E;       /* 悬停/选中背景 - 孔雀蓝 */
-    --border-color: #174A5E;    /* 边框颜色 */
-    --input-bg: #081F29;        /* 输入框背景 */
-
-    --panel-bg-dark: rgba(13, 42, 56, 0.8); /* 基于--secondary-bg，增加80%不透明度 */
+    --primary-bg: #101014;      /* 主背景 - 极深黑 */
+    --secondary-bg: #1a1a1e;    /* 侧边栏/面板背景 */
+    --tertiary-bg: #0d0d10;     /* 聊天区背景 */
+    --accent-bg: #28282c;       /* 悬停/选中背景 */
+    --border-color: #3a3a3e;    /* 边框颜色 */
+    --input-bg: #1e1e22;        /* 输入框背景 */
+    --panel-bg-dark: rgba(26, 26, 30, 0.75); /* 面板磨砂玻璃 */
 
     /* --- Text Colors --- */
-    --primary-text: #E0E6E9;    /* 主要文字 - 月白 */
-    --secondary-text: #d8e6ec;  /* 次要/标题文字 - 银灰 */
-    --highlight-text: #E8B95A;  /* 高亮文字 - 流金 */
-    --text-on-accent: #1A1A1A;  /* 在强调色背景上的文字 - 墨色 */
-    --placeholder-text: #6a7e89; /* 输入框占位文字 */
-    --quoted-text: #FFB74D;     /* 引用文本颜色 - 柔和橙 */
-    --user-text: #E0E6E9;       /* 用户气泡文字 - 月白 */
-    --agent-text: #E0E6E9;      /* Agent气泡文字 - 月白 */
+    --primary-text: #e0e0e0;    /* 主要文字 - 浅灰 */
+    --secondary-text: #a4a4a4;  /* 次要/标题文字 - 中灰 */
+    --highlight-text: #FFB74D;  /* 高亮文字 - 柔和橙色 (强调色) */
+    --text-on-accent: #ffffff;
+    --placeholder-text: #6a6a6e;
+    --quoted-text: #5D9CEC;     /* 引用文本颜色 - 柔和蓝 */
+    --user-text: #ffffff;       /* 用户气泡文字 */
+    --agent-text: #e0e0e0;      /* Agent气泡文字 */
 
     /* --- Bubble Colors (Frosted Glass Ready) --- */
-    --user-bubble-bg: rgba(232, 185, 90, 0.15); /* 用户气泡 - 流金 - 半透明 */
-    --assistant-bubble-bg: rgba(13, 42, 56, 0.3); /* AI气泡 - 黛蓝 - 半透明 */
+    --user-bubble-bg: rgba(255, 183, 77, 0.15); /* 用户气泡 - 柔和橙色 (高对比度) - 半透明 */
+    --assistant-bubble-bg: rgba(255, 255, 255, 0.08); /* AI气泡 - 极浅白 - 半透明 */
 
     /* --- UI Element Colors --- */
-    --button-bg: #DAA520;           /* 按钮背景 - 赤金 */
-    --button-hover-bg: #C89B4A;      /* 按钮悬停 - 琥珀 */
-    --danger-color: #e57373;        /* 危险操作 - 柔和红 */
-    --danger-hover-bg: #ef5350;
-    --success-color: #66bb6a;       /* 成功操作 - 柔和绿 */
-    --notification-bg: #0D2A38;
-    --notification-header-bg: #174A5E;
-    --notification-border: #E8B95A;
-    --tool-bubble-bg: rgba(23, 74, 94, 0.2); /* VCP工具调用气泡背景 */
-    --tool-bubble-border: #E8B95A; /* VCP工具调用气泡边框 - 流金 */
+    --button-bg: #FFB74D;           /* 按钮背景 */
+    --button-hover-bg: #ffaa33;      /* 按钮悬停 */
+    --danger-color: #e57373;
+    --success-color: #66bb6a;
+    --tool-bubble-bg: rgba(58, 58, 62, 0.15);
+    --tool-bubble-border: #FFB74D; 
 
+    /* --- Shimmer Effect --- */
+    --shimmer-color-transparent: rgba(255, 183, 77, 0.2);
+    --shimmer-color-highlight: rgba(255, 183, 77, 0.6);
+
+    --panel-text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    
     /* --- Scrollbar --- */
-    --scrollbar-track: rgba(13, 42, 56, 0.5);
-    --scrollbar-thumb: rgba(232, 185, 90, 0.6);
-    --scrollbar-thumb-hover: rgba(232, 185, 90, 0.8);
+    --scrollbar-track: rgba(255, 255, 255, 0.15);
+    --scrollbar-thumb: rgba(255, 183, 77, 0.6);
+    --scrollbar-thumb-hover: rgba(255, 183, 77, 0.8);
 
-    /* --- Shimmer Effect for Loading --- */
-    --shimmer-color-transparent: rgba(224, 230, 233, 0.4);
-    --shimmer-color-highlight: rgba(224, 230, 233, 0.8);
-
-    /* --- Text Shadow for Frosted Panels --- */
-    --panel-text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-
-    /* --- Unified Panel Background --- */
     --panel-bg: var(--panel-bg-dark);
 }
 
@@ -75,9 +68,9 @@ body {
 }
 
 /* * =================================================================
- * Light Theme: 瓷之雅 (Porcelain Grace)
- * Inspired by the blue and white patterns of Chinese porcelain.
- * A clean, sharp, and graceful theme.
+ * Light Theme: Snow Realm (雪境之光)
+ * Inspired by the clean, light snowy mountain illustration.
+ * Emphasizes high contrast, clean white, and a cool blue accent.
  * =================================================================
  */
 body.light-theme {
@@ -87,98 +80,57 @@ body.light-theme {
     background-position: center;
     background-attachment: fixed;
     /* --- Wallpaper Interface --- */
-    --chat-wallpaper-light: url('../assets/wallpaper/wallpaper_ci.jpg');
+    --chat-wallpaper-light: url('../assets/wallpaper/themes_snow_realm_light.jpg');
 
     /* --- Base Colors --- */
-    --primary-bg: #F7F8FA;      /* 主背景 - 胚白 */
-    --secondary-bg: #FFFFFF;    /* 侧边栏 - 釉白 */
-    --tertiary-bg: #EFF2F5;     /* 聊天区 - 影青 */
-    --accent-bg: #E6EBF0;       /* 悬停/选中背景 */
-    --border-color: #E0E6EB;    /* 边框 */
-    --input-bg: #FFFFFF;        /* 输入框 */
-
-    --panel-bg-light: rgba(255, 255, 255, 0.85); /* 基于--secondary-bg，增加85%不透明度 */
+    --primary-bg: #f4f6f8;      /* 主背景 - 浅灰蓝 */
+    --secondary-bg: #ffffff;    /* 侧边栏 - 白色 */
+    --tertiary-bg: #e9edf0;     /* 聊天区 - 浅灰 */
+    --accent-bg: #e0e6eb;       /* 悬停/选中背景 */
+    --border-color: #e0e6eb;
+    --input-bg: #ffffff;        
+    --panel-bg-light: rgba(255, 255, 255, 0.9); /* 浅色模式面板高不透明度 */
 
     /* --- Text Colors --- */
-    --primary-text: #34495E;    /* 主要文字 - 青花 */
-    --secondary-text: #6C7A89;  /* 次要/标题文字 - 烟灰 */
-    --highlight-text: #4A90E2;  /* 高亮文字 - 天青 */
-    --text-on-accent: #FFFFFF;  /* 强调背景文字 */
-    --placeholder-text: #a0aab3; /* 占位文字 */
-    --quoted-text: #007BFF;     /* 引用文字 - 霁蓝 */
-    --user-text: #34495E;       /* 用户气泡文字 - 青花 */
-    --agent-text: #34495E;      /* Agent气泡文字 - 青花 */
+    --primary-text: #2c3e50;    /* 主要文字 - 深灰蓝 */
+    --secondary-text: #5a6f80;  /* 次要/标题文字 - 中灰蓝 */
+    --highlight-text: #5D9CEC;  /* 高亮文字 - 清爽蓝 (强调色) */
+    --text-on-accent: #ffffff;
+    --placeholder-text: #a0aab3;
+    --quoted-text: #007bff;
+    --user-text: #2c3e50;       /* 用户气泡文字 */
+    --agent-text: #2c3e50;      /* Agent气泡文字 */
 
     /* --- Bubble Colors --- */
-    --user-bubble-bg: rgba(74, 144, 226, 0.15);     /* 用户气泡 - 天青 - 半透明 */
-    --assistant-bubble-bg: rgba(230, 235, 240, 0.5); /* AI气泡 - 略深半透明灰 */
+    /* 用户气泡：浅蓝透明度低 */
+    --user-bubble-bg: rgba(93, 156, 236, 0.1);     
+    /* AI气泡：高不透明度白色，以确保在插画背景上的可读性 */
+    --assistant-bubble-bg: rgba(255, 255, 255, 0.8); 
 
     /* --- UI Element Colors --- */
-    --button-bg: #4A90E2;           /* 按钮 - 天青 */
-    --button-hover-bg: #357ABD;     /* 按钮悬停 - 宝石蓝 */
-    --danger-color: #e74c3c;        /* 危险色 - 红色 */
-    --danger-hover-bg: #c0392b;
-    --success-color: #4caf50;       /* 成功色 - 绿色 */
-    --notification-bg: #EFF2F5;
-    --notification-header-bg: #f0f0f0;
-    --notification-border: #4A90E2;
-    --tool-bubble-bg: rgba(224, 230, 235, 0.2); /* VCP工具调用气泡背景 */
-    --tool-bubble-border: #4A90E2; /* VCP工具调用气泡边框 - 天青 */
-
-    /* --- Scrollbar --- */
-    --scrollbar-track: rgba(200, 200, 200, 0.7);
-    --scrollbar-thumb: rgba(74, 144, 226, 0.7);
-    --scrollbar-thumb-hover: rgba(74, 144, 226, 0.9);
+    --button-bg: #5D9CEC;           /* 按钮 - 清爽蓝 */
+    --button-hover-bg: #4a89dc;     /* 按钮悬停 */
+    --danger-color: #e74c3c;
+    --success-color: #4caf50;
+    --tool-bubble-bg: rgba(224, 230, 235, 0.5); /* 中等透明度浅灰 */
+    --tool-bubble-border: #5D9CEC; 
 
     /* --- Shimmer Effect --- */
-    --shimmer-color-transparent: rgba(52, 73, 94, 0.04);
-    --shimmer-color-highlight: rgba(52, 73, 94, 0.08);
+    --shimmer-color-transparent: rgba(44, 62, 80, 0.08);
+    --shimmer-color-highlight: rgba(44, 62, 80, 0.15);
+    
+    /* --- Scrollbar --- */
+    --scrollbar-track: rgba(0, 0, 0, 0.1);
+    --scrollbar-thumb: rgba(93, 156, 236, 0.6);
+    --scrollbar-thumb-hover: rgba(93, 156, 236, 0.8);
 
-    /* --- Unified Panel Background --- */
     --panel-bg: var(--panel-bg-light);
 }
 
-/* * =================================================================
- * Enhanced Frosted Glass Effect
- * 增强磨砂玻璃效果 - 小灵特制
- * =================================================================
- */
-
-/* 为聊天气泡添加更强的磨砂玻璃效果 */
+/* 强制应用磨砂玻璃效果，因为主题文件示例里没有这部分，可可自己加上！ */
 .message-bubble {
-    backdrop-filter: blur(12px) saturate(120%);
-    -webkit-backdrop-filter: blur(12px) saturate(120%);
+    backdrop-filter: blur(8px) saturate(120%);
+    -webkit-backdrop-filter: blur(8px) saturate(120%);
     border: 1px solid rgba(255, 255, 255, 0.18);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* 悬停时的微妙发光效果 */
-.message-bubble:hover {
-    backdrop-filter: blur(16px) saturate(130%);
-    -webkit-backdrop-filter: blur(16px) saturate(130%);
-    transform: translateY(-1px);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
-}
-
-/* 为工具调用气泡添加特殊效果 */
-.tool-bubble {
-    backdrop-filter: blur(10px) saturate(110%);
-    -webkit-backdrop-filter: blur(10px) saturate(110%);
-    border: 1px solid var(--tool-bubble-border);
-    background: var(--tool-bubble-bg);
-}
-
-/* 深色主题下的特殊光效 */
-:root .message-bubble {
-    box-shadow: 
-        0 8px 32px rgba(0, 0, 0, 0.3),
-        inset 0 1px 0 rgba(255, 255, 255, 0.1);
-}
-
-/* 浅色主题下的柔和阴影 */
-body.light-theme .message-bubble {
-    box-shadow: 
-        0 4px 20px rgba(45, 41, 34, 0.08),
-        inset 0 1px 0 rgba(255, 255, 255, 0.7);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
 }

@@ -16,6 +16,12 @@ export async function handleSaveGlobalSettings(e, deps) {
     const pathInputs = networkNotesPathsContainer.querySelectorAll('input[name="networkNotesPath"]');
     const networkNotesPaths = Array.from(pathInputs).map(input => input.value.trim()).filter(path => path);
 
+    const remoteAllowedRootsText = document.getElementById('remoteAllowedRoots')?.value || '';
+    const remoteAllowedRoots = remoteAllowedRootsText
+        .split(';')
+        .map(s => s.trim())
+        .filter(Boolean);
+
     const newSettings = {
         userName: document.getElementById('userName').value.trim() || '用户',
         userAvatarBorderColor: document.getElementById('userAvatarBorderColor')?.value || '#3d5a80',
@@ -42,6 +48,11 @@ export async function handleSaveGlobalSettings(e, deps) {
         smoothStreamIntervalMs: parseInt(document.getElementById('smoothStreamIntervalMs').value, 10) || 100,
         assistantAgent: document.getElementById('assistantAgent').value,
         enableDistributedServer: document.getElementById('enableDistributedServer').checked,
+        remoteGatewayEnabled: document.getElementById('remoteGatewayEnabled')?.checked ?? true,
+        remoteGatewayHost: (document.getElementById('remoteGatewayHost')?.value || '').trim() || '0.0.0.0',
+        remoteGatewayPort: parseInt(document.getElementById('remoteGatewayPort')?.value, 10) || 17888,
+        remoteGatewayToken: (document.getElementById('remoteGatewayToken')?.value || '').trim() || 'vchat-remote-token',
+        remoteAllowedRoots,
         agentMusicControl: document.getElementById('agentMusicControl').checked,
         enableVcpToolInjection: document.getElementById('enableVcpToolInjection').checked,
         enableThoughtChainInjection: document.getElementById('enableThoughtChainInjection').checked,
