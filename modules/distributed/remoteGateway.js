@@ -23,6 +23,8 @@ class RemoteGateway {
         this.projectRoot = config.projectRoot;
         this.connectVcpLogCallback = config.connectVcpLog;
         this.disconnectVcpLogCallback = config.disconnectVcpLog;
+        this.connectVcpInfoCallback = config.connectVcpInfo;
+        this.disconnectVcpInfoCallback = config.disconnectVcpInfo;
         this.getCurrentThemeCallback = config.getCurrentTheme;
         this.getCachedModelsCallback = config.getCachedModels;
         this.refreshModelsCallback = config.refreshModels;
@@ -330,6 +332,10 @@ class RemoteGateway {
                 return this.connectVCPLog(params.url, params.key, socket);
             case 'disconnectVCPLog':
                 return this.disconnectVCPLog(socket);
+            case 'connectVCPInfo':
+                return this.connectVCPInfo(params.url, params.key, socket);
+            case 'disconnectVCPInfo':
+                return this.disconnectVCPInfo(socket);
             case 'getCachedModels':
                 return this.getCachedModels();
             case 'refreshModels':
@@ -1113,6 +1119,25 @@ class RemoteGateway {
         }
         this.disconnectVcpLogCallback();
         this.audit('vcplog.disconnect', socket, {}).catch(() => {});
+        return { success: true };
+    }
+
+    connectVCPInfo(url, key, socket) {
+        if (!url || !key) throw new Error('url and key are required');
+        if (typeof this.connectVcpInfoCallback !== 'function') {
+            throw new Error('connectVcpInfo callback is not configured');
+        }
+        this.connectVcpInfoCallback(url, key);
+        this.audit('vcpinfo.connect', socket, { url }).catch(() => {});
+        return { success: true };
+    }
+
+    disconnectVCPInfo(socket) {
+        if (typeof this.disconnectVcpInfoCallback !== 'function') {
+            throw new Error('disconnectVcpInfo callback is not configured');
+        }
+        this.disconnectVcpInfoCallback();
+        this.audit('vcpinfo.disconnect', socket, {}).catch(() => {});
         return { success: true };
     }
 

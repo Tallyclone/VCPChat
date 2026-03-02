@@ -140,6 +140,8 @@ let mainWindow;
 let tray = null;
 let vcpLogWebSocket;
 let vcpLogReconnectInterval;
+let vcpInfoWebSocket;
+let vcpInfoReconnectInterval;
 let openChildWindows = [];
 let distributedServer = null; // To hold the distributed server instance
 let remoteGateway = null; // To hold the remote gateway instance
@@ -462,6 +464,16 @@ if (!gotTheLock) {
                             if (vcpLogReconnectInterval) {
                                 clearTimeout(vcpLogReconnectInterval);
                                 vcpLogReconnectInterval = null;
+                            }
+                        },
+                        connectVcpInfo,
+                        disconnectVcpInfo: () => {
+                            if (vcpInfoWebSocket) {
+                                vcpInfoWebSocket.close();
+                            }
+                            if (vcpInfoReconnectInterval) {
+                                clearTimeout(vcpInfoReconnectInterval);
+                                vcpInfoReconnectInterval = null;
                             }
                         },
                         getCurrentTheme: () => nativeTheme.shouldUseDarkColors ? 'dark' : 'light',
@@ -1100,6 +1112,12 @@ if (!gotTheLock) {
         if (vcpLogReconnectInterval) {
             clearTimeout(vcpLogReconnectInterval);
         }
+        if (vcpInfoWebSocket) {
+            vcpInfoWebSocket.close();
+        }
+        if (vcpInfoReconnectInterval) {
+            clearTimeout(vcpInfoReconnectInterval);
+        }
 
         // 5. Stop the distributed server
         if (distributedServer) {
@@ -1243,6 +1261,82 @@ if (!gotTheLock) {
         };
     }
 
+    // VCPInfo WebSocket Connection (for observer stream)
+    function connectVcpInfo(wsUrl, wsKey) {
+        const WebSocket = require('ws'); // Lazy load
+        if (!wsUrl || !wsKey) {
+            if (remoteGateway) remoteGateway.publish('vcpinfo.status', { source: 'VCPInfo', status: 'error', message: 'URL或KEY未配置。' });
+            return;
+        }
+
+        const fullWsUrl = `${wsUrl}/vcpinfo/VCP_Key=${wsKey}`;
+
+        if (vcpInfoWebSocket && (vcpInfoWebSocket.readyState === WebSocket.OPEN || vcpInfoWebSocket.readyState === WebSocket.CONNECTING)) {
+            const isOpen = vcpInfoWebSocket.readyState === WebSocket.OPEN;
+            if (remoteGateway) {
+                remoteGateway.publish('vcpinfo.status', {
+                    source: 'VCPInfo',
+                    status: isOpen ? 'open' : 'connecting',
+                    message: isOpen ? '已连接（复用现有连接）' : '连接中（复用现有连接）'
+                });
+            }
+            return;
+        }
+
+        if (remoteGateway) remoteGateway.publish('vcpinfo.status', { source: 'VCPInfo', status: 'connecting', message: '连接中...' });
+
+        vcpInfoWebSocket = new WebSocket(fullWsUrl);
+
+        vcpInfoWebSocket.onopen = () => {
+            if (remoteGateway) {
+                remoteGateway.publish('vcpinfo.status', { source: 'VCPInfo', status: 'open', message: '已连接' });
+                remoteGateway.publish('vcpinfo.message', { type: 'connection_ack', message: 'VCPInfo 连接成功！' });
+            }
+
+            if (vcpInfoReconnectInterval) {
+                clearTimeout(vcpInfoReconnectInterval);
+                vcpInfoReconnectInterval = null;
+            }
+        };
+
+        vcpInfoWebSocket.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data.toString());
+                if (remoteGateway) remoteGateway.publish('vcpinfo.message', data);
+            } catch (e) {
+                if (remoteGateway) {
+                    remoteGateway.publish('vcpinfo.message', { type: 'error', data: `收到无法解析的消息: ${event.data.toString().substring(0, 100)}...` });
+                }
+            }
+        };
+
+        vcpInfoWebSocket.onclose = (event) => {
+            if (remoteGateway) remoteGateway.publish('vcpinfo.status', { source: 'VCPInfo', status: 'closed', message: `连接已断开 (${event.code})` });
+            if (!vcpInfoReconnectInterval && wsUrl && wsKey) {
+                vcpInfoReconnectInterval = setTimeout(() => {
+                    vcpInfoReconnectInterval = null;
+                    connectVcpInfo(wsUrl, wsKey);
+                }, 5000);
+            }
+        };
+
+        vcpInfoWebSocket.onerror = (error) => {
+            console.error('[MAIN_VCP_INFO] WebSocket onerror event:', error?.message || error);
+            if (remoteGateway) remoteGateway.publish('vcpinfo.status', { source: 'VCPInfo', status: 'error', message: '连接错误' });
+        };
+    }
+
+    function disconnectVcpInfo() {
+        if (vcpInfoWebSocket) {
+            vcpInfoWebSocket.close();
+        }
+        if (vcpInfoReconnectInterval) {
+            clearTimeout(vcpInfoReconnectInterval);
+            vcpInfoReconnectInterval = null;
+        }
+        if (remoteGateway) remoteGateway.publish('vcpinfo.status', { source: 'VCPInfo', status: 'closed', message: '已手动断开' });
+    }
+
     ipcMain.on('connect-vcplog', (event, { url, key }) => {
         if (vcpLogWebSocket) {
             vcpLogWebSocket.close();
@@ -1265,6 +1359,21 @@ if (!gotTheLock) {
         if (mainWindow) mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'closed', message: '已手动断开' });
         if (remoteGateway) remoteGateway.publish('vcplog.status', { source: 'VCPLog', status: 'closed', message: '已手动断开' });
         console.log('VCPLog 已手动断开');
+    });
+
+    ipcMain.on('connect-vcpinfo', (event, { url, key }) => {
+        if (vcpInfoWebSocket) {
+            vcpInfoWebSocket.close();
+        }
+        if (vcpInfoReconnectInterval) {
+            clearTimeout(vcpInfoReconnectInterval);
+            vcpInfoReconnectInterval = null;
+        }
+        connectVcpInfo(url, key);
+    });
+
+    ipcMain.on('disconnect-vcpinfo', () => {
+        disconnectVcpInfo();
     });
 }
 // --- Voice Chat IPC Handler ---
