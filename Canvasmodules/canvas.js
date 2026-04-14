@@ -1,3 +1,5 @@
+const api = window.utilityAPI || window.electronAPI;
+
 document.addEventListener('DOMContentLoaded', () => {
     const editorTextarea = document.getElementById('editor');
     const historyList = document.getElementById('historyList');
@@ -28,6 +30,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const acceptChangesBtn = document.getElementById('accept-changes-btn');
     const rejectChangesBtn = document.getElementById('reject-changes-btn');
     const canvasSearchInput = document.getElementById('canvasSearchInput');
+    const editorSearchBar = document.getElementById('editor-search-bar');
+    const editorSearchInput = document.getElementById('editorSearchInput');
+    const searchCount = document.getElementById('search-count');
+    const searchPrevBtn = document.getElementById('search-prev-btn');
+    const searchNextBtn = document.getElementById('search-next-btn');
+    const searchCloseBtn = document.getElementById('search-close-btn');
 
     let editor;
     let externalFileContent = null; // To store content from AI
@@ -35,6 +43,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const editorContextMenu = document.getElementById('editor-context-menu');
     let filesHistory = {}; // Object to store history arrays, keyed by file path
     let allCanvasFiles = []; // Store all files for filtering
+    let searchMatches = [];
+    let currentMatchIndex = -1;
 
     // --- CodeMirror 5 Initialization ---
     function initializeEditor(initialData) {
@@ -73,8 +83,8 @@ document.addEventListener('DOMContentLoaded', () => {
             debounceTimer = setTimeout(() => {
                 const content = editor.getValue();
                 const path = filePathSpan.textContent;
-                if (path !== '未保存' && window.electronAPI) {
-                    window.electronAPI.saveCanvasFile({ path, content });
+                if (path !== '未保存' && api) {
+                    api.saveCanvasFile({ path, content });
                     addContentHistory(path, content);
                 }
             }, 2000);
@@ -97,6 +107,18 @@ document.addEventListener('DOMContentLoaded', () => {
             editorContextMenu.style.top = `${e.clientY}px`;
             editorContextMenu.style.left = `${e.clientX}px`;
             editorContextMenu.style.display = 'block';
+        });
+
+        // Search Shortcuts
+        editor.addKeyMap({
+            "Ctrl-F": (cm) => {
+                toggleSearchBar(true);
+            },
+            "Esc": (cm) => {
+                if (editorSearchBar.style.display !== 'none') {
+                    toggleSearchBar(false);
+                }
+            }
         });
 
         if (initialData.current) {
@@ -134,18 +156,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- IPC Event Listeners ---
-    if (window.electronAPI) {
-        window.electronAPI.onCanvasLoadData(async (data) => {
+    if (api) {
+        api.onCanvasLoadData(async (data) => {
             initializeEditor(data);
             // After editor is initialized, get and apply the current theme
             try {
-                const theme = await window.electronAPI.getCurrentTheme();
+                const theme = await api.getCurrentTheme();
                 applyTheme(theme);
 
                 // Attach the theme update listener only after the editor is initialized
                 // to prevent race conditions where the theme updates before the editor exists.
                 if (!window.isThemeListenerAttached) {
-                    window.electronAPI.onThemeUpdated(applyTheme);
+                    api.onThemeUpdated(applyTheme);
                     window.isThemeListenerAttached = true;
                 }
 
@@ -155,7 +177,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        window.electronAPI.onCanvasFileChanged((file) => {
+        api.onCanvasFileChanged((file) => {
             const path = file.path;
             // Initialize history for this file path if it doesn't exist
             if (!filesHistory[path]) {
@@ -178,13 +200,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // Listen for direct load commands from the main process
-        window.electronAPI.onLoadCanvasFileByPath((filePath) => {
-            if (window.electronAPI) {
-                window.electronAPI.loadCanvasFile(filePath);
+        api.onLoadCanvasFileByPath((filePath) => {
+            if (api) {
+                api.loadCanvasFile(filePath);
             }
         });
  
-        window.electronAPI.onExternalFileChanged((file) => {
+        api.onExternalFileChanged((file) => {
             if (editor && editor.getValue() !== file.content) {
                 console.log('External change detected, showing notification bar.');
                 externalFileContent = file.content; // Store the new content
@@ -193,7 +215,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
  
         // Inform main process that the window is ready to receive data
-        window.electronAPI.canvasReady();
+        api?.canvasReady?.();
+        if (api?.windowReady) {
+            api.windowReady('canvas');
+        }
     }
 
     // --- Diff View Logic ---
@@ -248,11 +273,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function rejectChanges() {
-        if (editor && window.electronAPI) {
+        if (editor && api) {
             const userContent = editor.getValue();
             const path = filePathSpan.textContent;
             // Force save the user's current content back to the file system
-            window.electronAPI.saveCanvasFile({ path, content: userContent });
+            api.saveCanvasFile({ path, content: userContent });
         }
         closeDiffViewAndBar();
     }
@@ -262,8 +287,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- UI Event Listeners ---
     newCanvasBtn.addEventListener('click', () => {
-        if (window.electronAPI) {
-            window.electronAPI.createNewCanvas();
+        if (api) {
+            api.createNewCanvas();
         }
     });
 
@@ -275,11 +300,119 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // --- Search Logic ---
+    function toggleSearchBar(show) {
+        if (show) {
+            editorSearchBar.style.display = 'flex';
+            editorSearchInput.focus();
+            if (editorSearchInput.value) {
+                doSearch(editorSearchInput.value);
+            }
+        } else {
+            editorSearchBar.style.display = 'none';
+            clearSearch();
+            editor.focus();
+        }
+    }
+
+    function clearSearch() {
+        searchMatches = [];
+        currentMatchIndex = -1;
+        searchCount.textContent = '0/0';
+        editor.operation(() => {
+            // Remove previous highlights
+            editor.getAllMarks().forEach(mark => {
+                if (mark.className === 'cm-search-match' || mark.className === 'cm-search-match-selected') {
+                    mark.clear();
+                }
+            });
+        });
+    }
+
+    function doSearch(query) {
+        clearSearch();
+        if (!query) return;
+
+        const cursor = editor.getSearchCursor(query, null, { caseFold: true });
+        while (cursor.findNext()) {
+            const mark = editor.markText(cursor.from(), cursor.to(), { className: 'cm-search-match' });
+            searchMatches.push({ from: cursor.from(), to: cursor.to(), mark: mark });
+        }
+
+        if (searchMatches.length > 0) {
+            currentMatchIndex = 0;
+            updateSearchUI();
+            jumpToMatch(currentMatchIndex);
+        } else {
+            searchCount.textContent = '0/0';
+        }
+    }
+
+    function updateSearchUI() {
+        searchCount.textContent = `${currentMatchIndex + 1}/${searchMatches.length}`;
+    }
+
+    function jumpToMatch(index) {
+        if (index < 0 || index >= searchMatches.length) return;
+
+        const match = searchMatches[index];
+        
+        // Highlight active match
+        editor.operation(() => {
+            searchMatches.forEach((m, i) => {
+                if (m.selectedMark) {
+                    m.selectedMark.clear();
+                    m.selectedMark = null;
+                }
+                if (i === index) {
+                    m.selectedMark = editor.markText(m.from(), m.to(), { className: 'cm-search-match-selected' });
+                }
+            });
+        });
+
+        editor.scrollIntoView({ from: match.from, to: match.to }, 100);
+        editor.setSelection(match.from, match.to);
+    }
+
+    editorSearchInput.addEventListener('input', () => {
+        doSearch(editorSearchInput.value);
+    });
+
+    editorSearchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            if (e.shiftKey) {
+                findPrev();
+            } else {
+                findNext();
+            }
+        } else if (e.key === 'Escape') {
+            toggleSearchBar(false);
+        }
+    });
+
+    searchNextBtn.addEventListener('click', findNext);
+    searchPrevBtn.addEventListener('click', findPrev);
+    searchCloseBtn.addEventListener('click', () => toggleSearchBar(false));
+
+    function findNext() {
+        if (searchMatches.length === 0) return;
+        currentMatchIndex = (currentMatchIndex + 1) % searchMatches.length;
+        updateSearchUI();
+        jumpToMatch(currentMatchIndex);
+    }
+
+    function findPrev() {
+        if (searchMatches.length === 0) return;
+        currentMatchIndex = (currentMatchIndex - 1 + searchMatches.length) % searchMatches.length;
+        updateSearchUI();
+        jumpToMatch(currentMatchIndex);
+    }
+
     historyList.addEventListener('click', (e) => {
         if (e.target && e.target.matches('li[data-path]')) {
             const filePath = e.target.dataset.path;
-            if (window.electronAPI) {
-                window.electronAPI.loadCanvasFile(filePath);
+            if (api) {
+                api.loadCanvasFile(filePath);
             }
         }
     });
@@ -343,20 +476,20 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     copyBtn.addEventListener('click', () => {
-        if (activeListItem && window.electronAPI) {
+        if (activeListItem && api) {
             const filePath = activeListItem.dataset.path;
-            window.electronAPI.copyCanvasFile(filePath);
+            api.copyCanvasFile(filePath);
         }
         contextMenu.style.display = 'none';
     });
 
     deleteBtn.addEventListener('click', async () => {
-        if (activeListItem && window.electronAPI) {
+        if (activeListItem && api) {
             const filePath = activeListItem.dataset.path;
             const fileName = await window.electronPath.basename(filePath);
             // Add a confirmation dialog before deleting
             if (confirm(`确定要删除文件 "${fileName}"? 这个操作无法撤销。`)) {
-                window.electronAPI.deleteCanvasFile(filePath);
+                api.deleteCanvasFile(filePath);
             }
         }
         contextMenu.style.display = 'none';
@@ -379,9 +512,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const oldPath = li.dataset.path;
 
             if (newTitle && newTitle !== originalTitle) {
-                if (window.electronAPI) {
+                if (api) {
                     try {
-                        const newPath = await window.electronAPI.renameCanvasFile({ oldPath, newTitle });
+                        const newPath = await api.renameCanvasFile({ oldPath, newTitle });
                         li.textContent = newTitle;
                         li.dataset.path = newPath;
                         // If the renamed file is the active one, update the file path display
@@ -412,13 +545,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (minimizeBtn && maximizeBtn && closeBtn) {
         minimizeBtn.addEventListener('click', () => {
-            if (window.electronAPI) window.electronAPI.minimizeWindow();
+            if (api) api.minimizeWindow();
         });
         maximizeBtn.addEventListener('click', () => {
-            if (window.electronAPI) window.electronAPI.maximizeWindow();
+            if (api) api.maximizeWindow();
         });
         closeBtn.addEventListener('click', () => {
-            if (window.electronAPI) window.electronAPI.closeWindow();
+            if (api) api.closeWindow();
         });
     }
 
@@ -484,9 +617,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     runPyBtn.addEventListener('click', () => {
-       if (editor && window.electronAPI) {
+       if (editor && api) {
            const code = editor.getValue();
-           window.electronAPI.executePythonCode(code).then(({ stdout, stderr }) => {
+           api.executePythonCode(code).then(({ stdout, stderr }) => {
                // For now, just log the output. A dedicated output panel would be better.
                console.log('Python stdout:', stdout);
                console.error('Python stderr:', stderr);
@@ -499,17 +632,17 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     renderMdBtn.addEventListener('click', () => {
-       if (editor && window.electronAPI) {
+       if (editor && api) {
            const content = editor.getValue();
-           window.electronAPI.openTextInNewWindow(content, 'Markdown Preview', 'dark');
+           api.openTextInNewWindow(content, 'Markdown Preview', 'dark');
        }
     });
 
     renderHtmlBtn.addEventListener('click', () => {
-       if (editor && window.electronAPI) {
+       if (editor && api) {
            const content = editor.getValue();
            // We can reuse the text viewer for HTML rendering as it supports iframes
-           window.electronAPI.openTextInNewWindow(content, 'HTML Preview', 'dark');
+           api.openTextInNewWindow(content, 'HTML Preview', 'dark');
        }
     });
 
@@ -604,8 +737,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Search in content (if we have it or can get it)
             try {
-                const fileData = await window.electronAPI.getTextContent(file.path);
-                if (fileData && fileData.toLowerCase().includes(searchTerm)) {
+                const fileData = await api.getTextContent(file.path);
+                const fileText = typeof fileData === 'string'
+                    ? fileData
+                    : (typeof fileData?.text === 'string' ? fileData.text : '');
+                if (fileText.toLowerCase().includes(searchTerm)) {
                     filteredFiles.push(file);
                 }
             } catch (err) {

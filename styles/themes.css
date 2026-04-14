@@ -27,8 +27,7 @@
     --accent-bg: #3a324b;       /* 悬停/选中背景 - 柔和的霓虹紫 */
     --border-color: #3a324b;    /* 边框颜色 */
     --input-bg: #1a1b22;        /* 输入框背景 */
-
---panel-bg-dark: rgba(26, 27, 34, 0.75); /* 基于--secondary-bg，增加75%不透明度 */
+    --panel-bg-dark: rgba(26, 27, 34, 0.75); /* 基于--secondary-bg，增加75%不透明度 */
 
     /* --- Text Colors --- */
     --primary-text: #e8e9ed;    /* 主要文字 - 柔和的银灰色 */
@@ -46,7 +45,7 @@
 
     /* --- UI Element Colors --- */
     --button-bg: #ff4785;           /* 按钮背景 - 赛博粉 */
-    --button-hover-bg: #ff6b9c;      /* 按钮悬停 */
+    --button-hover-bg: #ff6b9c;     /* 按钮悬停 */
     --danger-color: #e74c3c;        /* 危险操作 - 经典红 */
     --danger-hover-bg: #c0392b;
     --success-color: #00cec9;       /* 成功操作 - 薄荷青 */
@@ -86,7 +85,6 @@ body {
  * =================================================================
  */
 body.light-theme {
-    /* Wallpaper and background properties */
     background-image: var(--chat-wallpaper-light);
     background-size: cover;
     background-position: center;
@@ -102,8 +100,7 @@ body.light-theme {
     --accent-bg: #e8ddd4;       /* 悬停背景 - 温润土色 */
     --border-color: #d4c4b0;    /* 边框 - 秋叶金棕 */
     --input-bg: #ffffff;        /* 输入框 */
-
---panel-bg-light: rgba(255, 249, 240, 0.8); /* 基于--secondary-bg，增加80%不透明度 */
+    --panel-bg-light: rgba(255, 249, 240, 0.8); /* 基于--secondary-bg，增加80%不透明度 */
 
     /* --- Text Colors --- */
     --primary-text: #2d2922;    /* 主要文字 - 深咖啡色 */
@@ -139,8 +136,10 @@ body.light-theme {
     /* --- 流式输出动画光晕 Shimmer Effect --- */
     --shimmer-color-transparent: rgba(254, 250, 244, 0.892);
     --shimmer-color-highlight: rgba(255, 174, 35, 0.973);
-    
+
+    /* --- Text Shadow --- */
+    --panel-text-shadow: none;
+
     /* --- Unified Panel Background --- */
     --panel-bg: var(--panel-bg-light);
 }
-

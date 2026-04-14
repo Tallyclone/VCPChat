@@ -13,7 +13,6 @@ require = function (id) {
 };
 
 const { app, BrowserWindow, ipcMain, nativeTheme, globalShortcut, screen, clipboard, shell, dialog, protocol, Tray, Menu } = require('electron'); // Added screen, clipboard, and shell
-// selection-hook is now managed in assistantHandlers
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs-extra'); // Using fs-extra for convenience
@@ -39,10 +38,12 @@ const themeHandlers = require('./modules/ipc/themeHandlers'); // Import theme ha
 const emoticonHandlers = require('./modules/ipc/emoticonHandlers'); // Import emoticon handlers
 const forumHandlers = require('./modules/ipc/forumHandlers'); // Import forum handlers
 const memoHandlers = require('./modules/ipc/memoHandlers'); // Import memo handlers
+const ragHandlers = require('./modules/ipc/ragHandlers'); // Import RAG handlers
 // speechRecognizer is now lazy-loaded
 const canvasHandlers = require('./modules/ipc/canvasHandlers'); // Import canvas handlers
-const RemoteGateway = require('./modules/distributed/remoteGateway');
-const vcpClient = require('./modules/vcpClient');
+const desktopHandlers = require('./modules/ipc/desktopHandlers'); // Import VCPdesktop handlers
+const desktopRemoteHandlers = require('./modules/ipc/desktopRemoteHandlers'); // Import desktop remote control handlers
+const { PRELOAD_ROLES, resolveProjectPreload } = require('./modules/services/preloadPaths');
 // chokidar is now lazy-loaded
 
 // --- File Watcher ---
@@ -140,16 +141,19 @@ let mainWindow;
 let tray = null;
 let vcpLogWebSocket;
 let vcpLogReconnectInterval;
-let vcpInfoWebSocket;
-let vcpInfoReconnectInterval;
 let openChildWindows = [];
 let distributedServer = null; // To hold the distributed server instance
-let remoteGateway = null; // To hold the remote gateway instance
 let translatorWindow = null; // To hold the single instance of the translator window
-let ragObserverWindow = null; // To hold the single instance of the RAG observer window
+let appSettingsManager = null;
 let networkNotesTreeCache = null; // In-memory cache for the network notes
 let cachedModels = []; // Cache for models fetched from VCP server
 const NOTES_MODULE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Notemodules');
+const isRagObserverOnlyMode = process.argv.includes('--rag-observer-only');
+const isAutoOpenDesktop = process.argv.includes('--desktop-only');
+let audioEngineStopPromise = null;
+let isAudioEngineStopping = false;
+let appQuitCleanupPromise = null;
+let isFinalizingQuit = false;
 
 // --- Audio Engine Management ---
 // Now uses the Rust native audio engine instead of Python
@@ -175,6 +179,9 @@ function startAudioEngine() {
             return;
         }
 
+        audioEngineStopPromise = null;
+        isAudioEngineStopping = false;
+
         const args = ['--port', '63789'];
         audioEngineProcess = spawn(rustBinaryPath, args);
 
@@ -197,13 +204,17 @@ function startAudioEngine() {
         audioEngineProcess.stderr.on('data', (data) => {
             const logLine = data.toString().trim();
             if (logLine && !logLine.includes('GET /state HTTP/1.1')) {
-                console.error(`[AudioEngine STDERR]: ${logLine}`);
+                const logMethod = isAudioEngineStopping ? console.warn : console.error;
+                logMethod(`[AudioEngine STDERR]: ${logLine}`);
             }
         });
 
         audioEngineProcess.on('close', (code) => {
             console.log(`[Main] Audio Engine process exited with code ${code}`);
+            clearTimeout(readyTimeout);
             audioEngineProcess = null;
+            audioEngineStopPromise = null;
+            isAudioEngineStopping = false;
         });
 
         audioEngineProcess.on('error', (err) => {
@@ -214,27 +225,95 @@ function startAudioEngine() {
     });
 }
 
-function stopAudioEngine() {
-    if (audioEngineProcess && !audioEngineProcess.killed) {
-        console.log('[Main] Stopping Rust Audio Engine...');
-        // Send a termination signal. The 'close' event handler on the process
-        // will handle setting audioEngineProcess to null. This prevents a race condition.
-        audioEngineProcess.kill();
+async function stopAudioEngine() {
+    if (!audioEngineProcess || audioEngineProcess.killed) {
+        return;
     }
+
+    if (audioEngineStopPromise) {
+        return audioEngineStopPromise;
+    }
+
+    console.log('[Main] Stopping Rust Audio Engine...');
+    isAudioEngineStopping = true;
+    const processRef = audioEngineProcess;
+    const exitPromise = new Promise((resolve) => {
+        processRef.once('close', () => resolve());
+    });
+
+    audioEngineStopPromise = (async () => {
+        try {
+            const controller = new AbortController();
+            const shutdownTimer = setTimeout(() => controller.abort(), 2000);
+            try {
+                await fetch('http://127.0.0.1:63789/shutdown', {
+                    method: 'POST',
+                    signal: controller.signal
+                });
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    console.warn(`[Main] Audio Engine shutdown request failed: ${error.message}`);
+                }
+            } finally {
+                clearTimeout(shutdownTimer);
+            }
+
+            await Promise.race([
+                exitPromise,
+                new Promise((resolve) => setTimeout(resolve, 2500))
+            ]);
+
+            if (audioEngineProcess === processRef && !processRef.killed) {
+                console.warn('[Main] Audio Engine did not exit after graceful shutdown request. Force killing process.');
+                processRef.kill();
+                await Promise.race([
+                    exitPromise,
+                    new Promise((resolve) => setTimeout(resolve, 2000))
+                ]);
+            }
+        } finally {
+            if (audioEngineProcess !== processRef || processRef.killed) {
+                audioEngineStopPromise = null;
+            }
+        }
+    })();
+
+    return audioEngineStopPromise;
+}
+
+async function performQuitCleanup() {
+    if (appQuitCleanupPromise) {
+        return appQuitCleanupPromise;
+    }
+
+    appQuitCleanupPromise = (async () => {
+        if (distributedServer) {
+            console.log('[Main] Stopping distributed server...');
+            try {
+                await distributedServer.stop();
+            } finally {
+                distributedServer = null;
+            }
+        }
+
+        await stopAudioEngine();
+    })();
+
+    return appQuitCleanupPromise;
 }
 
 
 // --- Main Window Creation ---
 function createWindow() {
     mainWindow = new BrowserWindow({
-        width: 1200,
+        width: 1300,
         height: 800,
         minWidth: 900,
         minHeight: 600,
         frame: false, // 移除原生窗口框架
         ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
         webPreferences: {
-            preload: path.join(__dirname, 'preload.js'),
+            preload: resolveProjectPreload(__dirname, PRELOAD_ROLES.CHAT),
             contextIsolation: true,    // 恢复: 开启上下文隔离
             nodeIntegration: false,  // 恢复: 关闭Node.js集成在渲染进程
             spellcheck: true, // Enable spellcheck for input fields
@@ -254,23 +333,39 @@ function createWindow() {
         }
     });
 
-    // 当主窗口关闭时，退出整个应用程序
-    // 这将触发 'will-quit' 事件，用于执行所有清理操作
+    // 当主窗口关闭时的处理逻辑：
+    // 1. macOS 上始终隐藏而非关闭
+    // 2. 当桌面窗口存在时，隐藏到托盘而非退出（偷天换日！）
+    // 3. 其他情况正常退出
     mainWindow.on('close', (event) => {
-        // On macOS, closing the window should hide it and keep the app alive.
-        // The 'activate' event will handle re-opening it.
-        if (process.platform === 'darwin' && !app.isQuitting) {
+        if (app.isQuitting) {
+            // 应用正在退出，允许关闭
+            return;
+        }
+
+        // macOS 始终隐藏
+        if (process.platform === 'darwin') {
             event.preventDefault();
             mainWindow.hide();
+            return;
         }
+
+        // Windows/Linux：如果桌面窗口存在，隐藏到托盘
+        const dw = desktopHandlers.getDesktopWindow();
+        if (dw && !dw.isDestroyed()) {
+            event.preventDefault();
+            mainWindow.hide();
+            console.log('[Main] Desktop window active — main window hidden to tray instead of closing.');
+        }
+        // 否则允许正常关闭（触发 closed 事件）
     });
 
     // This will be triggered when the app is quitting, after the window is closed.
     mainWindow.on('closed', () => {
-        // When the main window is closed, we quit the app on non-macOS platforms.
-        // This ensures that any child windows are also closed and the process terminates.
+        // When the main window is closed, we should only quit on non-macOS
+        // when there are no remaining windows (e.g. RAG Observer may still be open).
         mainWindow = null;
-        if (process.platform !== 'darwin') {
+        if (process.platform !== 'darwin' && BrowserWindow.getAllWindows().length === 0) {
             app.quit();
         }
     });
@@ -288,6 +383,14 @@ function createWindow() {
         }, 3000); // 3-second delay
 
         mainWindow.show();
+    });
+
+    mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+        console.error('[Main] Main window did-fail-load', errorCode, errorDescription, validatedURL);
+    });
+
+    mainWindow.webContents.on('render-process-gone', (event, details) => {
+        console.error('[Main] Main window render-process-gone', details);
     });
 
     // mainWindow.setMenu(null); // 移除应用程序菜单栏 - 注释掉以启用macOS的标准菜单
@@ -326,16 +429,66 @@ function createTray() {
 
     tray = new Tray(icon);
 
+    const toggleMainWindowVisibility = () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            if (mainWindow.isVisible()) {
+                mainWindow.hide();
+            } else {
+                if (mainWindow.isMinimized()) mainWindow.restore();
+                mainWindow.show();
+                mainWindow.focus();
+            }
+            return true;
+        }
+        return false;
+    };
+
+    const toggleRagObserverVisibility = async () => {
+        const ragObserverWindow = ragHandlers.getRagObserverWindow();
+        const ragOverlayWindow = ragHandlers.getRagOverlayWindow();
+        if (ragObserverWindow && !ragObserverWindow.isDestroyed()) {
+            if (ragObserverWindow.isVisible()) {
+                ragObserverWindow.hide();
+                if (ragOverlayWindow && !ragOverlayWindow.isDestroyed()) {
+                    ragOverlayWindow.hide();
+                }
+            } else {
+                if (ragObserverWindow.isMinimized()) ragObserverWindow.restore();
+                ragObserverWindow.show();
+                ragObserverWindow.focus();
+            }
+            return true;
+        }
+
+        await ragHandlers.openRagObserverWindow();
+        return true;
+    };
+
+    const handleTrayPrimaryAction = async () => {
+        if (toggleMainWindowVisibility()) return;
+        await toggleRagObserverVisibility();
+    };
+
     const contextMenu = Menu.buildFromTemplate([
         {
-            label: '显示/隐藏',
+            label: '显示/隐藏主窗口',
             click: () => {
-                // 修复 TypeError: Cannot read properties of null (reading 'isVisible')
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
-                }
+                toggleMainWindowVisibility();
             }
         },
+        {
+            label: '显示/隐藏信息流监听器',
+            click: () => {
+                void toggleRagObserverVisibility();
+            }
+        },
+        {
+            label: '打开 VCP 桌面',
+            click: () => {
+                desktopHandlers.openDesktopWindow();
+            }
+        },
+        { type: 'separator' },
         {
             label: '退出',
             click: () => {
@@ -350,9 +503,7 @@ function createTray() {
     if (process.platform === 'darwin') {
         // macOS: 左键点击 (tray.on('click')) 负责显示/隐藏窗口
         tray.on('click', () => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
-            }
+            void handleTrayPrimaryAction();
         });
 
         // macOS: 右键点击 (tray.on('right-click')) 负责显示菜单
@@ -365,12 +516,11 @@ function createTray() {
         // Windows/Linux: 默认行为。
         tray.setContextMenu(contextMenu);
         tray.on('click', () => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
-            }
+            void handleTrayPrimaryAction();
         });
     }
 }
+
 
 // --- App Lifecycle ---
 const gotTheLock = app.requestSingleInstanceLock();
@@ -378,11 +528,39 @@ const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
     app.quit();
 } else {
-    app.on('second-instance', (event, commandLine, workingDirectory) => {
-        // 有人试图运行第二个实例，我们应该聚焦于我们的窗口
+    app.on('second-instance', async (event, commandLine, workingDirectory) => {
+        const wantsRagOnly = commandLine.includes('--rag-observer-only');
+        const wantsDesktop = commandLine.includes('--desktop-only');
+
+        // 如果第二实例请求的是 RAG 独立模式，则直接打开/聚焦 RAG 窗口
+        if (wantsRagOnly) {
+            await ragHandlers.openRagObserverWindow();
+            return;
+        }
+
+        // 如果第二实例带 --desktop-only 参数，打开/聚焦桌面窗口
+        if (wantsDesktop) {
+            await desktopHandlers.openDesktopWindow();
+            // 同时确保主窗口也显示出来
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                if (!mainWindow.isVisible()) mainWindow.show();
+                mainWindow.focus();
+            }
+            return;
+        }
+
+        // 默认聚焦主窗口
         if (mainWindow && !mainWindow.isDestroyed()) {
             if (mainWindow.isMinimized()) mainWindow.restore();
             mainWindow.focus();
+            return;
+        }
+
+        const ragObserverWindow = ragHandlers.getRagObserverWindow();
+        if (ragObserverWindow && !ragObserverWindow.isDestroyed()) {
+            if (ragObserverWindow.isMinimized()) ragObserverWindow.restore();
+            if (!ragObserverWindow.isVisible()) ragObserverWindow.show();
+            ragObserverWindow.focus();
         }
     });
 
@@ -429,7 +607,7 @@ if (!gotTheLock) {
 
         const AppSettingsManager = require('./modules/utils/appSettingsManager');
         const AgentConfigManager = require('./modules/utils/agentConfigManager');
-        const appSettingsManager = new AppSettingsManager(SETTINGS_FILE);
+        appSettingsManager = new AppSettingsManager(SETTINGS_FILE);
         const agentConfigManager = new AgentConfigManager(AGENT_DIR);
 
         appSettingsManager.startCleanupTimer();
@@ -437,65 +615,24 @@ if (!gotTheLock) {
         agentConfigManager.startCleanupTimer(); // Start agent config cleanup
 
         settingsHandlers.initialize({ SETTINGS_FILE, USER_AVATAR_FILE, AGENT_DIR, settingsManager: appSettingsManager, agentConfigManager }); // Initialize settings handlers
+        ragHandlers.initialize({ mainWindow, openChildWindows, settingsManager: appSettingsManager, SETTINGS_FILE });
 
-        vcpClient.initialize({
-            APP_DATA_ROOT_IN_PROJECT,
-            getMusicState: musicHandlers.getMusicState
-        });
+        // RAG 独立模式：不创建主窗口，仅初始化 RAG 所需 IPC 并直接打开 RAG 窗口
+        if (isRagObserverOnlyMode) {
+            console.log('[Main] Starting in RAG observer only mode.');
+            windowHandlers.initialize(mainWindow, openChildWindows);
+            themeHandlers.initialize({ mainWindow, openChildWindows, projectRoot: PROJECT_ROOT, APP_DATA_ROOT_IN_PROJECT, settingsManager: appSettingsManager });
+            ipcMain.handle('get-platform', () => process.platform);
 
-        // --- Remote Gateway Initialization ---
-        (async () => {
-            try {
-                const settings = await appSettingsManager.readSettings();
-                if (settings.remoteGatewayEnabled !== false) {
-                    remoteGateway = new RemoteGateway({
-                        host: settings.remoteGatewayHost || '0.0.0.0',
-                        port: Number(settings.remoteGatewayPort) || 17888,
-                        token: settings.remoteGatewayToken || 'vchat-remote-token',
-                        settingsManager: appSettingsManager,
-                        agentConfigManager,
-                        vcpClient,
-                        projectRoot: PROJECT_ROOT,
-                        connectVcpLog,
-                        disconnectVcpLog: () => {
-                            if (vcpLogWebSocket) {
-                                vcpLogWebSocket.close();
-                            }
-                            if (vcpLogReconnectInterval) {
-                                clearTimeout(vcpLogReconnectInterval);
-                                vcpLogReconnectInterval = null;
-                            }
-                        },
-                        connectVcpInfo,
-                        disconnectVcpInfo: () => {
-                            if (vcpInfoWebSocket) {
-                                vcpInfoWebSocket.close();
-                            }
-                            if (vcpInfoReconnectInterval) {
-                                clearTimeout(vcpInfoReconnectInterval);
-                                vcpInfoReconnectInterval = null;
-                            }
-                        },
-                        getCurrentTheme: () => nativeTheme.shouldUseDarkColors ? 'dark' : 'light',
-                        getCachedModels: () => cachedModels,
-                        refreshModels: async () => {
-                            await fetchAndCacheModels();
-                            if (mainWindow && !mainWindow.isDestroyed()) {
-                                mainWindow.webContents.send('models-updated', cachedModels);
-                            }
-                            return cachedModels;
-                        },
-                        paths: { AGENT_DIR, USER_DATA_DIR, APP_DATA_ROOT_IN_PROJECT, CANVAS_CACHE_DIR },
-                        logger: console
-                    });
-                    await remoteGateway.start();
-                } else {
-                    console.log('[Main] Remote gateway disabled in settings.');
-                }
-            } catch (gatewayError) {
-                console.error('[Main] Failed to initialize remote gateway:', gatewayError);
-            }
-        })();
+            // 关键：独立模式也必须创建系统托盘，否则"最小化到托盘"后无法召回窗口。
+            createTray();
+
+            await ragHandlers.openRagObserverWindow();
+            return;
+        }
+
+        // 注意：原 desktop-only 模式已移除。--desktop-only 参数现在仅作为
+        // "启动后自动打开桌面窗口"的标志，所有 IPC 始终完整初始化。
 
         // Function to fetch and cache models from the VCP server
         async function fetchAndCacheModels() {
@@ -702,13 +839,25 @@ if (!gotTheLock) {
         });
 
         // IPC handler to trigger a refresh of the model list
-        ipcMain.on('refresh-models', async () => {
+        ipcMain.handle('refresh-models', async (event) => {
             console.log('[Main] Received refresh-models request. Re-fetching models...');
             await fetchAndCacheModels();
-            // Optionally, notify the renderer that models have been updated
-            if (mainWindow && !mainWindow.isDestroyed()) {
+
+            const result = {
+                success: Array.isArray(cachedModels) && cachedModels.length > 0,
+                models: cachedModels,
+                count: Array.isArray(cachedModels) ? cachedModels.length : 0
+            };
+
+            if (event?.sender && !event.sender.isDestroyed()) {
+                event.sender.send('models-updated', cachedModels);
+            }
+
+            if (mainWindow && !mainWindow.isDestroyed() && event?.sender !== mainWindow.webContents) {
                 mainWindow.webContents.send('models-updated', cachedModels);
             }
+
+            return result;
         });
 
 
@@ -754,7 +903,7 @@ if (!gotTheLock) {
                 ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
                 modal: false,
                 webPreferences: {
-                    preload: path.join(__dirname, 'preload.js'),
+                    preload: resolveProjectPreload(__dirname, PRELOAD_ROLES.UTILITY),
                     contextIsolation: true,
                     nodeIntegration: false,
                     devTools: true
@@ -828,75 +977,26 @@ if (!gotTheLock) {
             });
         });
 
-        // 新增：处理打开RAG Observer窗口的请求
-        ipcMain.handle('open-rag-observer-window', async () => {
-            // 检查窗口是否已存在，如果存在则聚焦
-            if (ragObserverWindow && !ragObserverWindow.isDestroyed()) {
-                if (!ragObserverWindow.isVisible()) {
-                    ragObserverWindow.show();
-                }
-                ragObserverWindow.focus();
-                return;
-            }
-
-            ragObserverWindow = new BrowserWindow({
-                width: 500,
-                height: 900,
-                minWidth: 300,
-                minHeight: 600,
-                title: 'VCP - 信息流监听器',
-                frame: false, // 移除原生窗口框架
-                ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
-                webPreferences: {
-                    preload: path.join(__dirname, 'preload.js'),
-                    contextIsolation: true,
-                    nodeIntegration: false,
-                },
-                icon: path.join(__dirname, 'assets', 'icon.png'),
-                show: false
-            });
-
-            let settings = {};
-            try {
-                const AppSettingsManager = require('./modules/utils/appSettingsManager');
-                const sm = new AppSettingsManager(SETTINGS_FILE);
-                settings = await sm.readSettings();
-            } catch (readError) {
-                console.error('Failed to read settings file for RAG observer window:', readError);
-            }
-
-            const vcpLogUrl = settings.vcpLogUrl || '';
-            const vcpLogKey = settings.vcpLogKey || '';
-            const currentThemeMode = settings.currentThemeMode || 'dark';
-
-            // 通过URL查询参数传递配置
-            const observerUrl = `file://${path.join(__dirname, 'RAGmodules', 'RAG_Observer.html')}?vcpLogUrl=${encodeURIComponent(vcpLogUrl)}&vcpLogKey=${encodeURIComponent(vcpLogKey)}&currentThemeMode=${encodeURIComponent(currentThemeMode)}`;
-
-            ragObserverWindow.loadURL(observerUrl);
-            ragObserverWindow.setMenu(null);
-
-            ragObserverWindow.once('ready-to-show', () => {
-                ragObserverWindow.show();
-            });
-
-            openChildWindows.push(ragObserverWindow);
-
-            ragObserverWindow.on('close', (event) => {
-                if (process.platform === 'darwin' && !app.isQuitting) {
-                    event.preventDefault();
-                    ragObserverWindow.hide();
-                }
-            });
-
-            ragObserverWindow.on('closed', () => {
-                openChildWindows = openChildWindows.filter(win => win !== ragObserverWindow);
-                ragObserverWindow = null;
-            });
-        });
+        // open-rag-observer-window handler is registered once above and reuses openRagObserverWindow()
 
         windowHandlers.initialize(mainWindow, openChildWindows);
         forumHandlers.initialize({ USER_DATA_DIR }); // Initialize forum handlers
         memoHandlers.initialize({ USER_DATA_DIR }); // Initialize memo handlers
+        
+        // ⚠️ agentHandlers 必须在 assistantHandlers 之前初始化
+        // 因为 assistantHandlers 依赖 getAgentConfigById 函数，该函数需要 AGENT_DIR_CACHE 已被初始化
+        agentHandlers.initialize({
+            AGENT_DIR,
+            USER_DATA_DIR,
+            SETTINGS_FILE,
+            USER_AVATAR_FILE,
+            getSelectionListenerStatus: assistantHandlers.getSelectionListenerStatus,
+            stopSelectionListener: assistantHandlers.stopSelectionListener,
+            startSelectionListener: assistantHandlers.startSelectionListener,
+            settingsManager: appSettingsManager,
+            agentConfigManager
+        });
+        
         await assistantHandlers.initialize({ SETTINGS_FILE });
         fileDialogHandlers.initialize(mainWindow, {
             getSelectionListenerStatus: assistantHandlers.getSelectionListenerStatus,
@@ -911,17 +1011,6 @@ if (!gotTheLock) {
             stopSelectionListener: assistantHandlers.stopSelectionListener,
             startSelectionListener: assistantHandlers.startSelectionListener,
             fileWatcher // Inject fileWatcher here as well
-        });
-        agentHandlers.initialize({
-            AGENT_DIR,
-            USER_DATA_DIR,
-            SETTINGS_FILE,
-            USER_AVATAR_FILE,
-            getSelectionListenerStatus: assistantHandlers.getSelectionListenerStatus,
-            stopSelectionListener: assistantHandlers.stopSelectionListener,
-            startSelectionListener: assistantHandlers.startSelectionListener,
-            settingsManager: appSettingsManager,
-            agentConfigManager
         });
         regexHandlers.initialize({ AGENT_DIR });
         chatHandlers.initialize(mainWindow, {
@@ -958,13 +1047,15 @@ if (!gotTheLock) {
             }
             return { success: false, error: 'File watcher not initialized.' };
         });
-        sovitsHandlers.initialize(mainWindow); // Initialize SovitsTTS handlers
+        sovitsHandlers.initialize(mainWindow, appSettingsManager); // Initialize SovitsTTS handlers
         musicHandlers.initialize({ mainWindow, openChildWindows, APP_DATA_ROOT_IN_PROJECT, startAudioEngine, stopAudioEngine });
         diceHandlers.initialize({ projectRoot: PROJECT_ROOT });
         themeHandlers.initialize({ mainWindow, openChildWindows, projectRoot: PROJECT_ROOT, APP_DATA_ROOT_IN_PROJECT, settingsManager: appSettingsManager });
         emoticonHandlers.initialize({ SETTINGS_FILE, APP_DATA_ROOT_IN_PROJECT });
         emoticonHandlers.setupEmoticonHandlers();
         canvasHandlers.initialize({ mainWindow, openChildWindows, CANVAS_CACHE_DIR });
+        desktopHandlers.initialize({ mainWindow, openChildWindows, settingsManager: appSettingsManager });
+        desktopRemoteHandlers.initialize({ mainWindow });
         promptHandlers.initialize({ AGENT_DIR, APP_DATA_ROOT_IN_PROJECT });
 
         ipcMain.on('minimize-to-tray', () => {
@@ -988,15 +1079,17 @@ if (!gotTheLock) {
                         rendererProcess: mainWindow.webContents, // Pass the renderer process object
                         handleMusicControl: musicHandlers.handleMusicControl, // Inject the music control handler
                         handleDiceControl: diceHandlers.handleDiceControl, // Inject the dice control handler
-                        handleCanvasControl: handleCanvasControl, // Inject the canvas control handler
-                        handleFlowlockControl: handleFlowlockControl // Inject the flowlock control handler
+                        handleCanvasControl: desktopRemoteHandlers.handleCanvasControl, // Inject the canvas control handler
+                        handleFlowlockControl: desktopRemoteHandlers.handleFlowlockControl, // Inject the flowlock control handler
+                        handleDesktopRemoteControl: desktopRemoteHandlers.handleDesktopRemoteControl // Inject the desktop remote control handler
                     };
                     distributedServer = new DistributedServer(config);
-                    distributedServer.initialize();
+                    await distributedServer.initialize();
                 } else {
                     console.log('[Main] Distributed server is disabled in settings.');
                 }
             } catch (error) {
+                distributedServer = null;
                 console.error('[Main] Failed to read settings or initialize distributed server:', error);
             }
         })();
@@ -1038,6 +1131,17 @@ if (!gotTheLock) {
         ipcMain.handle('get-platform', () => {
             return process.platform;
         });
+
+        // --- 自动打开桌面窗口 ---
+        // 当使用 --desktop-only 参数启动时，在所有 IPC 初始化完成后自动打开桌面窗口
+        if (isAutoOpenDesktop) {
+            console.log('[Main] --desktop-only flag detected. Auto-opening desktop window after full initialization.');
+            // 延迟打开，确保主窗口已完全就绪
+            setTimeout(async () => {
+                await desktopHandlers.openDesktopWindow();
+                console.log('[Main] Desktop window auto-opened.');
+            }, 1000);
+        }
     });
 
     // --- Python Execution IPC Handler ---
@@ -1085,6 +1189,27 @@ if (!gotTheLock) {
         }
     });
 
+    app.on('before-quit', async (event) => {
+        if (isFinalizingQuit) {
+            return;
+        }
+
+        // 优化：立即隐藏所有窗口提供即时反馈，因为主进程清理（如音频引擎、分布式服务器）可能耗时数秒
+        BrowserWindow.getAllWindows().forEach(w => {
+            if (!w.isDestroyed()) w.hide();
+        });
+
+        event.preventDefault();
+        isFinalizingQuit = true;
+        try {
+            await performQuitCleanup();
+        } catch (error) {
+            console.warn('[Main] Cleanup before quit encountered an issue:', error);
+        } finally {
+            app.quit();
+        }
+    });
+
     app.on('will-quit', () => {
         // 0. Clean up the ready signal file for the native splash screen
         const readyFile = path.join(__dirname, '.vcp_ready');
@@ -1112,32 +1237,13 @@ if (!gotTheLock) {
         if (vcpLogReconnectInterval) {
             clearTimeout(vcpLogReconnectInterval);
         }
-        if (vcpInfoWebSocket) {
-            vcpInfoWebSocket.close();
-        }
-        if (vcpInfoReconnectInterval) {
-            clearTimeout(vcpInfoReconnectInterval);
-        }
 
-        // 5. Stop the distributed server
-        if (distributedServer) {
-            console.log('[Main] Stopping distributed server...');
-            distributedServer.stop();
-            distributedServer = null;
-        }
-
-        // 5.1 Stop remote gateway
-        if (remoteGateway) {
-            console.log('[Main] Stopping remote gateway...');
-            remoteGateway.stop();
-            remoteGateway = null;
-        }
+        // 5. Distributed server cleanup is handled in before-quit.
 
         // 6. Stop the dice server
         diceHandlers.stopDiceServer();
 
-        // 7. Stop the Python Audio Engine
-        stopAudioEngine();
+        // 7. Audio engine cleanup is handled in before-quit.
 
         // 8. 强制销毁所有窗口
         console.log('[Main] Destroying all open windows...');
@@ -1173,37 +1279,18 @@ if (!gotTheLock) {
         const WebSocket = require('ws'); // Lazy load
         if (!wsUrl || !wsKey) {
             if (mainWindow) mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'error', message: 'URL或KEY未配置。' });
-            if (remoteGateway) remoteGateway.publish('vcplog.status', { source: 'VCPLog', status: 'error', message: 'URL或KEY未配置。' });
             return;
         }
 
         const fullWsUrl = `${wsUrl}/VCPlog/VCP_Key=${wsKey}`;
 
         if (vcpLogWebSocket && (vcpLogWebSocket.readyState === WebSocket.OPEN || vcpLogWebSocket.readyState === WebSocket.CONNECTING)) {
-            const isOpen = vcpLogWebSocket.readyState === WebSocket.OPEN;
-            console.log(`VCPLog WebSocket 已${isOpen ? '连接' : '在连接中'}，复用现有连接。`);
-
-            const statusPayload = {
-                source: 'VCPLog',
-                status: isOpen ? 'open' : 'connecting',
-                message: isOpen ? '已连接（复用现有连接）' : '连接中（复用现有连接）'
-            };
-
-            if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
-                mainWindow.webContents.send('vcp-log-status', statusPayload);
-            }
-            if (remoteGateway) {
-                remoteGateway.publish('vcplog.status', statusPayload);
-                if (isOpen) {
-                    remoteGateway.publish('vcplog.message', { type: 'connection_ack', message: 'VCPLog 已连接（复用现有连接）' });
-                }
-            }
+            console.log('VCPLog WebSocket 已连接或正在连接。');
             return;
         }
 
         console.log(`尝试连接 VCPLog WebSocket: ${fullWsUrl}`);
         if (mainWindow) mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'connecting', message: '连接中...' });
-        if (remoteGateway) remoteGateway.publish('vcplog.status', { source: 'VCPLog', status: 'connecting', message: '连接中...' });
 
         vcpLogWebSocket = new WebSocket(fullWsUrl);
 
@@ -1212,10 +1299,8 @@ if (!gotTheLock) {
             if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
                 console.log('[MAIN_VCP_LOG] Attempting to send vcp-log-status "open" to renderer.');
                 mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'open', message: '已连接' });
-                if (remoteGateway) remoteGateway.publish('vcplog.status', { source: 'VCPLog', status: 'open', message: '已连接' });
                 console.log('[MAIN_VCP_LOG] vcp-log-status "open" sent.');
                 mainWindow.webContents.send('vcp-log-message', { type: 'connection_ack', message: 'VCPLog 连接成功！' });
-                if (remoteGateway) remoteGateway.publish('vcplog.message', { type: 'connection_ack', message: 'VCPLog 连接成功！' });
             } else {
                 console.error('[MAIN_VCP_LOG] mainWindow or webContents not available in onopen. Cannot send status.');
             }
@@ -1230,7 +1315,6 @@ if (!gotTheLock) {
             try {
                 const data = JSON.parse(event.data.toString());
                 if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('vcp-log-message', data);
-                if (remoteGateway) remoteGateway.publish('vcplog.message', data);
             } catch (e) {
                 console.error('VCPLog 解析消息失败:', e);
                 if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('vcp-log-message', { type: 'error', data: `收到无法解析的消息: ${event.data.toString().substring(0, 100)}...` });
@@ -1240,7 +1324,6 @@ if (!gotTheLock) {
         vcpLogWebSocket.onclose = (event) => {
             console.log('VCPLog WebSocket 连接已关闭:', event.code, event.reason);
             if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'closed', message: `连接已断开 (${event.code})` });
-            if (remoteGateway) remoteGateway.publish('vcplog.status', { source: 'VCPLog', status: 'closed', message: `连接已断开 (${event.code})` });
             if (!vcpLogReconnectInterval && wsUrl && wsKey) {
                 console.log('将在5秒后尝试重连 VCPLog...');
                 vcpLogReconnectInterval = setTimeout(() => {
@@ -1254,87 +1337,10 @@ if (!gotTheLock) {
             console.error('[MAIN_VCP_LOG] WebSocket onerror event:', error.message);
             if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
                 mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'error', message: '连接错误' });
-                if (remoteGateway) remoteGateway.publish('vcplog.status', { source: 'VCPLog', status: 'error', message: '连接错误' });
             } else {
                 console.error('[MAIN_VCP_LOG] mainWindow or webContents not available in onerror.');
             }
         };
-    }
-
-    // VCPInfo WebSocket Connection (for observer stream)
-    function connectVcpInfo(wsUrl, wsKey) {
-        const WebSocket = require('ws'); // Lazy load
-        if (!wsUrl || !wsKey) {
-            if (remoteGateway) remoteGateway.publish('vcpinfo.status', { source: 'VCPInfo', status: 'error', message: 'URL或KEY未配置。' });
-            return;
-        }
-
-        const fullWsUrl = `${wsUrl}/vcpinfo/VCP_Key=${wsKey}`;
-
-        if (vcpInfoWebSocket && (vcpInfoWebSocket.readyState === WebSocket.OPEN || vcpInfoWebSocket.readyState === WebSocket.CONNECTING)) {
-            const isOpen = vcpInfoWebSocket.readyState === WebSocket.OPEN;
-            if (remoteGateway) {
-                remoteGateway.publish('vcpinfo.status', {
-                    source: 'VCPInfo',
-                    status: isOpen ? 'open' : 'connecting',
-                    message: isOpen ? '已连接（复用现有连接）' : '连接中（复用现有连接）'
-                });
-            }
-            return;
-        }
-
-        if (remoteGateway) remoteGateway.publish('vcpinfo.status', { source: 'VCPInfo', status: 'connecting', message: '连接中...' });
-
-        vcpInfoWebSocket = new WebSocket(fullWsUrl);
-
-        vcpInfoWebSocket.onopen = () => {
-            if (remoteGateway) {
-                remoteGateway.publish('vcpinfo.status', { source: 'VCPInfo', status: 'open', message: '已连接' });
-                remoteGateway.publish('vcpinfo.message', { type: 'connection_ack', message: 'VCPInfo 连接成功！' });
-            }
-
-            if (vcpInfoReconnectInterval) {
-                clearTimeout(vcpInfoReconnectInterval);
-                vcpInfoReconnectInterval = null;
-            }
-        };
-
-        vcpInfoWebSocket.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data.toString());
-                if (remoteGateway) remoteGateway.publish('vcpinfo.message', data);
-            } catch (e) {
-                if (remoteGateway) {
-                    remoteGateway.publish('vcpinfo.message', { type: 'error', data: `收到无法解析的消息: ${event.data.toString().substring(0, 100)}...` });
-                }
-            }
-        };
-
-        vcpInfoWebSocket.onclose = (event) => {
-            if (remoteGateway) remoteGateway.publish('vcpinfo.status', { source: 'VCPInfo', status: 'closed', message: `连接已断开 (${event.code})` });
-            if (!vcpInfoReconnectInterval && wsUrl && wsKey) {
-                vcpInfoReconnectInterval = setTimeout(() => {
-                    vcpInfoReconnectInterval = null;
-                    connectVcpInfo(wsUrl, wsKey);
-                }, 5000);
-            }
-        };
-
-        vcpInfoWebSocket.onerror = (error) => {
-            console.error('[MAIN_VCP_INFO] WebSocket onerror event:', error?.message || error);
-            if (remoteGateway) remoteGateway.publish('vcpinfo.status', { source: 'VCPInfo', status: 'error', message: '连接错误' });
-        };
-    }
-
-    function disconnectVcpInfo() {
-        if (vcpInfoWebSocket) {
-            vcpInfoWebSocket.close();
-        }
-        if (vcpInfoReconnectInterval) {
-            clearTimeout(vcpInfoReconnectInterval);
-            vcpInfoReconnectInterval = null;
-        }
-        if (remoteGateway) remoteGateway.publish('vcpinfo.status', { source: 'VCPInfo', status: 'closed', message: '已手动断开' });
     }
 
     ipcMain.on('connect-vcplog', (event, { url, key }) => {
@@ -1357,24 +1363,18 @@ if (!gotTheLock) {
             vcpLogReconnectInterval = null;
         }
         if (mainWindow) mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'closed', message: '已手动断开' });
-        if (remoteGateway) remoteGateway.publish('vcplog.status', { source: 'VCPLog', status: 'closed', message: '已手动断开' });
         console.log('VCPLog 已手动断开');
     });
 
-    ipcMain.on('connect-vcpinfo', (event, { url, key }) => {
-        if (vcpInfoWebSocket) {
-            vcpInfoWebSocket.close();
+    ipcMain.on('send-vcplog-message', (event, data) => {
+        if (vcpLogWebSocket && vcpLogWebSocket.readyState === 1) { // 1 is WebSocket.OPEN
+            console.log('VCPLog 发送消息:', data);
+            vcpLogWebSocket.send(JSON.stringify(data));
+        } else {
+            console.warn('VCPLog WebSocket 未连接或未就绪，无法发送消息:', data);
         }
-        if (vcpInfoReconnectInterval) {
-            clearTimeout(vcpInfoReconnectInterval);
-            vcpInfoReconnectInterval = null;
-        }
-        connectVcpInfo(url, key);
     });
 
-    ipcMain.on('disconnect-vcpinfo', () => {
-        disconnectVcpInfo();
-    });
 }
 // --- Voice Chat IPC Handler ---
 ipcMain.on('open-voice-chat-window', (event, { agentId }) => {
@@ -1387,7 +1387,7 @@ ipcMain.on('open-voice-chat-window', (event, { agentId }) => {
         ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
         title: '语音聊天',
         webPreferences: {
-            preload: path.join(__dirname, 'preload.js'),
+            preload: resolveProjectPreload(__dirname, PRELOAD_ROLES.CHAT),
             contextIsolation: true,
             nodeIntegration: false,
         },
@@ -1396,12 +1396,15 @@ ipcMain.on('open-voice-chat-window', (event, { agentId }) => {
         show: false,
     });
 
+    const theme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+    voiceChatWindow.webContents.once('did-finish-load', () => {
+        voiceChatWindow.webContents.send('voice-chat-data', { agentId, theme });
+    });
+    
     voiceChatWindow.loadFile(path.join(__dirname, 'Voicechatmodules/voicechat.html'));
 
     voiceChatWindow.once('ready-to-show', () => {
-        const theme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
         voiceChatWindow.show();
-        voiceChatWindow.webContents.send('voice-chat-data', { agentId, theme });
     });
 
     openChildWindows.push(voiceChatWindow);
@@ -1415,16 +1418,27 @@ ipcMain.on('open-voice-chat-window', (event, { agentId }) => {
 });
 
 // --- Speech Recognition IPC Handlers ---
-ipcMain.on('start-speech-recognition', (event) => {
+ipcMain.on('start-speech-recognition', async (event) => {
     const voiceChatWindow = openChildWindows.find(win => win.webContents === event.sender);
     if (!voiceChatWindow) return;
+
+    let speechConfig = {};
+    try {
+        const settings = await appSettingsManager.readSettings();
+        speechConfig = {
+            browserPath: settings?.speechRecognizerBrowserPath || '',
+            recognizerPagePath: settings?.speechRecognizerPagePath || 'Voicechatmodules/recognizer.html'
+        };
+    } catch (error) {
+        console.warn('[Main] Failed to read speech recognition settings, using defaults:', error.message);
+    }
 
     const speechRecognizer = require('./modules/speechRecognizer');
     speechRecognizer.start((text) => {
         if (voiceChatWindow && !voiceChatWindow.isDestroyed()) {
             voiceChatWindow.webContents.send('speech-recognition-result', text);
         }
-    });
+    }, speechConfig);
 });
 
 ipcMain.on('stop-speech-recognition', () => {
@@ -1466,24 +1480,6 @@ ipcMain.handle('export-topic-as-markdown', async (event, exportData) => {
     }
 });
 
-// --- Canvas Control Handler (for Distributed Server) ---
-async function handleCanvasControl(filePath) {
-    try {
-        if (!filePath) {
-            throw new Error('No filePath provided for canvas control.');
-        }
-
-        // The updated createCanvasWindow now handles both opening the window
-        // and loading the specific file, or focusing and loading if already open.
-        await canvasHandlers.createCanvasWindow(filePath);
-
-        return { status: 'success', message: 'Canvas window command processed.' };
-    } catch (error) {
-        console.error('[Main] handleCanvasControl error:', error);
-        return { status: 'error', message: error.message };
-    }
-}
-
 // --- Group Chat Interrupt Handler ---
 ipcMain.handle('interrupt-group-request', (event, messageId) => {
     console.log(`[Main] Received interrupt-group-request for messageId: ${messageId}`);
@@ -1495,111 +1491,6 @@ ipcMain.handle('interrupt-group-request', (event, messageId) => {
     }
 });
 
-// --- Flowlock Control Handler (for Distributed Server) ---
-async function handleFlowlockControl(commandPayload) {
-    try {
-        const { command, agentId, topicId, prompt, promptSource, target, oldText, newText } = commandPayload;
-
-        console.log(`[Main] handleFlowlockControl received command: ${command}`, commandPayload);
-
-        if (!mainWindow || mainWindow.isDestroyed()) {
-            throw new Error('Main window is not available.');
-        }
-
-        // For 'get' and 'status' commands, we need to wait for a response from renderer
-        if (command === 'get' || command === 'status') {
-            return new Promise((resolve, reject) => {
-                const timeout = setTimeout(() => {
-                    reject(new Error(`${command === 'get' ? '获取输入框内容' : '获取心流锁状态'}超时`));
-                }, 5000); // 5 second timeout
-
-                // Set up one-time listener for the response
-                const responseHandler = (event, responseData) => {
-                    clearTimeout(timeout);
-                    ipcMain.removeListener('flowlock-response', responseHandler);
-
-                    if (responseData.success) {
-                        if (command === 'get') {
-                            resolve({
-                                status: 'success',
-                                message: `输入框当前内容为: "${responseData.content}"`,
-                                content: responseData.content
-                            });
-                        } else if (command === 'status') {
-                            const statusInfo = responseData.status;
-                            const statusText = statusInfo.isActive
-                                ? `心流锁已启用 (Agent: ${statusInfo.agentId}, Topic: ${statusInfo.topicId}, 处理中: ${statusInfo.isProcessing ? '是' : '否'})`
-                                : '心流锁未启用';
-                            resolve({
-                                status: 'success',
-                                message: statusText,
-                                flowlockStatus: statusInfo
-                            });
-                        }
-                    } else {
-                        reject(new Error(responseData.error || `${command === 'get' ? '获取输入框内容' : '获取心流锁状态'}失败`));
-                    }
-                };
-
-                ipcMain.on('flowlock-response', responseHandler);
-
-                // Send command to renderer
-                mainWindow.webContents.send('flowlock-command', {
-                    command,
-                    agentId,
-                    topicId,
-                    prompt,
-                    promptSource,
-                    target,
-                    oldText,
-                    newText
-                });
-            });
-        }
-
-        // For other commands, send and return immediately
-        mainWindow.webContents.send('flowlock-command', {
-            command,
-            agentId,
-            topicId,
-            prompt,
-            promptSource,
-            target,
-            oldText,
-            newText
-        });
-
-        // Build natural language response for AI
-        let naturalResponse = '';
-        switch (command) {
-            case 'start':
-                naturalResponse = `已为 Agent "${agentId}" 的话题 "${topicId}" 启动心流锁。`;
-                break;
-            case 'stop':
-                naturalResponse = `已停止心流锁。`;
-                break;
-            case 'promptee':
-                naturalResponse = `已设置下次续写提示词为: "${prompt}"`;
-                break;
-            case 'prompter':
-                naturalResponse = `已从来源 "${promptSource}" 获取提示词。`;
-                break;
-            case 'clear':
-                naturalResponse = `已清空输入框中的所有提示词。`;
-                break;
-            case 'remove':
-                naturalResponse = `已从输入框中移除: "${target}"`;
-                break;
-            case 'edit':
-                naturalResponse = `已将 "${oldText}" 编辑为 "${newText}"`;
-                break;
-            default:
-                naturalResponse = `心流锁命令 "${command}" 已执行。`;
-        }
-
-        return { status: 'success', message: naturalResponse };
-    } catch (error) {
-        console.error('[Main] handleFlowlockControl error:', error);
-        return { status: 'error', message: error.message };
-    }
-}
+// --- Desktop Remote Control, Canvas Control, and Flowlock Control handlers ---
+// These have been modularized into modules/ipc/desktopRemoteHandlers.js
+// They are injected into the DistributedServer via desktopRemoteHandlers.handleDesktopRemoteControl, etc.

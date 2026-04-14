@@ -21,12 +21,25 @@ window.GroupRenderer = (() => {
     let groupMembersListDiv, addRemoveMembersBtn;
     let groupChatModeSelect;
     let memberTagsContainer, memberTagsInputsDiv;
+    let tagMatchModeSelect;
     let groupPromptTextarea, invitePromptTextarea;
+    let groupUseUnifiedModel, groupUnifiedModelContainer, groupUnifiedModelInput, openGroupModelSelectBtn;
     let deleteGroupBtn;
     let createNewGroupBtn; // This button is in main.html, renderer.js might attach its listener
 
     // State for group settings
     let availableAgentsForGroup = []; // To populate member selection
+    const groupSectionControllers = new Map();
+
+    function setCurrentItemActionButtonText(button, text) {
+        if (!button) return;
+        const label = button.querySelector('.button-label');
+        if (label) {
+            label.textContent = text;
+            return;
+        }
+        button.textContent = text;
+    }
 
     function init(dependencies) {
         console.log('[GroupRenderer] init function CALLED. Dependencies received:', Object.keys(dependencies));
@@ -51,7 +64,7 @@ window.GroupRenderer = (() => {
             selectAgentPromptForSettingsElementFromRenderer = mainRendererElements.selectItemPromptForSettings;
             agentSettingsContainerFromRenderer = mainRendererElements.agentSettingsContainer;
             selectedItemNameForSettingsElementFromRenderer = mainRendererElements.selectedItemNameForSettingsSpan;
-            
+
             console.log('[GroupRenderer INIT] mainRendererElements.selectItemPromptForSettings IS:', selectAgentPromptForSettingsElementFromRenderer);
             console.log('[GroupRenderer INIT] mainRendererElements.agentSettingsContainer IS:', agentSettingsContainerFromRenderer);
             console.log('[GroupRenderer INIT] mainRendererElements.selectedItemNameForSettingsSpan IS:', selectedItemNameForSettingsElementFromRenderer);
@@ -64,7 +77,7 @@ window.GroupRenderer = (() => {
         } else {
             console.error('[GroupRenderer INIT] dependencies.mainRendererElements (and thus mainRendererElements) is undefined or null!');
         }
-        
+
         // Get references to group settings form elements (assuming they are added to DOM by renderer.js or main.html)
         // These elements are defined in the innerHTML for groupSettingsContainer in renderer.js
         // We need to ensure they are accessible after renderer.js appends groupSettingsContainer
@@ -75,7 +88,7 @@ window.GroupRenderer = (() => {
         console.log('[GroupRenderer INIT] inviteAgentButtonsContainerRef received:', inviteAgentButtonsContainerRef ? 'Exists' : 'MISSING');
         setupGroupSpecificEventListeners();
     }
-    
+
     function ensureGroupSettingsDOM() {
         let settingsTab = document.getElementById('tabContentSettings');
         if (!settingsTab) {
@@ -92,72 +105,8 @@ window.GroupRenderer = (() => {
             console.log("[GroupRenderer] groupSettingsContainer created.");
         }
 
-        // Always set the innerHTML to ensure all form elements are present
-        groupSettingsContainer.innerHTML = `
-            <form id="groupSettingsForm">
-                <input type="hidden" id="editingGroupId">
-                <div class="form-group">
-                    <label for="groupNameInput">群组名称:</label>
-                    <input type="text" id="groupNameInput" required>
-                </div>
-                <div class="form-group">
-                    <label for="groupAvatarInput">群组头像:</label>
-                    <input type="file" id="groupAvatarInput" accept="image/*">
-                    <img id="groupAvatarPreview" src="#" alt="群组头像预览" style="display: none; max-width: 100px; max-height: 100px; border-radius: 50%;">
-                </div>
-                <div class="form-group">
-                    <label>群组成员:</label>
-                    <div id="groupMembersList" class="group-members-list-container"></div>
-                </div>
-                <div class="form-group">
-                    <label for="groupChatMode">群聊模式:</label>
-                    <select id="groupChatMode">
-                        <option value="sequential">顺序发言</option>
-                        <option value="naturerandom">自然随机</option>
-                        <option value="invite_only">邀请发言</option>
-                    </select>
-                </div>
-
-               <hr class="form-divider">
-               <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                   <label for="groupUseUnifiedModel">启用群组统一模型</label>
-                   <label class="switch">
-                       <input type="checkbox" id="groupUseUnifiedModel">
-                       <span class="slider round"></span>
-                   </label>
-               </div>
-               <div id="groupUnifiedModelContainer" class="form-group" style="display: none;">
-                   <label for="groupUnifiedModelInput">群组统一模型:</label>
-                   <div class="model-input-container">
-                       <input type="text" id="groupUnifiedModelInput" placeholder="例如 gemini-pro">
-                       <button type="button" id="openGroupModelSelectBtn" class="small-button" title="选择模型">
-                           <svg data-slot="icon" fill="none" stroke-width="1.5" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="16" height="16">
-                               <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 15L12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9"></path>
-                           </svg>
-                       </button>
-                   </div>
-               </div>
-               <hr class="form-divider">
-
-                <div id="memberTagsContainer" class="form-group" style="display: none;">
-                    <label>成员 Tags (用于自然随机模式):</label>
-                    <div id="memberTagsInputs"></div>
-                </div>
-                <div class="form-group">
-                    <label for="groupPrompt">群设定 (GroupPrompt):</label>
-                    <textarea id="groupPrompt" rows="3" placeholder="例如：现在这里是用户家的聊天室..."></textarea>
-                </div>
-                <div class="form-group">
-                    <label for="invitePrompt">发言设定 (InvitePrompt):</label>
-                    <textarea id="invitePrompt" rows="3" placeholder="例如：现在轮到你 {{VCPChatAgentName}} 发言了。"></textarea>
-                    <small>使用 {{VCPChatAgentName}} 作为被邀请发言的Agent名称占位符。</small>
-                </div>
-                <div class="form-actions">
-                    <button type="submit">保存群组设置</button>
-                    <button type="button" id="deleteGroupBtn">删除此群组</button>
-                </div>
-            </form>
-        `;
+        // 使用模块化的 HTML 模板
+        groupSettingsContainer.innerHTML = window.GroupSettingsMarkup.renderGroupSettingsMarkup();
         console.log("[GroupRenderer] groupSettingsContainer innerHTML set.");
         // Now that DOM is ensured and populated, get element references
         return getGroupSettingsElements(); // Return true if elements are successfully retrieved
@@ -176,18 +125,205 @@ window.GroupRenderer = (() => {
         groupAvatarPreview = document.getElementById('groupAvatarPreview');
         groupMembersListDiv = document.getElementById('groupMembersList');
         groupChatModeSelect = document.getElementById('groupChatMode');
-       // 新增：获取统一模型UI元素的引用
-       groupUseUnifiedModel = document.getElementById('groupUseUnifiedModel');
-       groupUnifiedModelContainer = document.getElementById('groupUnifiedModelContainer');
-       groupUnifiedModelInput = document.getElementById('groupUnifiedModelInput');
-       openGroupModelSelectBtn = document.getElementById('openGroupModelSelectBtn');
+        // 新增：获取统一模型UI元素的引用
+        groupUseUnifiedModel = document.getElementById('groupUseUnifiedModel');
+        groupUnifiedModelContainer = document.getElementById('groupUnifiedModelContainer');
+        groupUnifiedModelInput = document.getElementById('groupUnifiedModelInput');
+        openGroupModelSelectBtn = document.getElementById('openGroupModelSelectBtn');
 
         memberTagsContainer = document.getElementById('memberTagsContainer');
         memberTagsInputsDiv = document.getElementById('memberTagsInputs');
+        tagMatchModeSelect = document.getElementById('tagMatchMode');
         groupPromptTextarea = document.getElementById('groupPrompt');
         invitePromptTextarea = document.getElementById('invitePrompt');
         deleteGroupBtn = document.getElementById('deleteGroupBtn'); // This is the button inside the group settings form
         return true;
+    }
+
+    // renderGroupSettingsMarkup 已模块化至 Groupmodules/groupSettingsMarkup.js
+
+    function getGroupSectionContainer(key) {
+        return groupSettingsForm?.querySelector(`.group-settings-section[data-section-key="${key}"]`) || null;
+    }
+
+    function createGroupSectionController(key, buildSummary) {
+        const container = getGroupSectionContainer(key);
+        if (!container) return null;
+
+        const header = container.querySelector('.group-settings-section-header');
+        const summary = container.querySelector('.group-settings-section-summary');
+        const toggleBtn = container.querySelector('.group-settings-toggle-btn');
+        if (!header || !summary || !toggleBtn) return null;
+
+        const controller = {
+            key,
+            container,
+            header,
+            summary,
+            toggleBtn,
+            buildSummary,
+            setCollapsed(collapsed) {
+                this.container.classList.toggle('collapsed', !!collapsed);
+            }
+        };
+
+        if (!header.dataset.collapsibleBound) {
+            header.addEventListener('click', (event) => {
+                event.preventDefault();
+                controller.setCollapsed(!controller.container.classList.contains('collapsed'));
+            });
+            header.dataset.collapsibleBound = 'true';
+        }
+
+        groupSectionControllers.set(key, controller);
+        return controller;
+    }
+
+    function buildGroupPromptPreviewText(primaryText, secondaryText = '') {
+        const normalizedPrimary = (primaryText || '').replace(/\s+/g, ' ').trim();
+        const normalizedSecondary = (secondaryText || '').replace(/\s+/g, ' ').trim();
+
+        if (!normalizedPrimary && !normalizedSecondary) {
+            return '暂无提示词内容';
+        }
+
+        const previewSource = normalizedPrimary || normalizedSecondary;
+        const preview = previewSource.length > 96
+            ? `${previewSource.slice(0, 96)}...`
+            : previewSource;
+
+        if (!normalizedPrimary || !normalizedSecondary) {
+            return preview;
+        }
+
+        return `${preview}\nInvitePrompt 已配置`;
+    }
+
+    function buildGroupIdentitySummary() {
+        const name = groupNameInput?.value?.trim() || '未命名群组';
+        const avatarSrc = groupAvatarPreview?.getAttribute('src') || 'assets/default_group_avatar.png';
+        const memberCount = groupMembersListDiv
+            ? groupMembersListDiv.querySelectorAll('input[type="checkbox"]:checked').length
+            : 0;
+
+        return {
+            kind: 'identity',
+            text: name,
+            avatarSrc,
+            meta: memberCount > 0 ? `${memberCount} 名成员` : '暂无成员'
+        };
+    }
+
+    function buildGroupModeSummary() {
+        const modeLabels = {
+            sequential: '顺序发言',
+            naturerandom: '自然随机',
+            invite_only: '邀请发言'
+        };
+        const tagModeLabels = {
+            strict: '严格模式',
+            natural: '自然模式'
+        };
+
+        const lines = [`模式: ${modeLabels[groupChatModeSelect?.value] || '未设置'}`];
+        if (groupChatModeSelect?.value === 'naturerandom') {
+            lines.push(`Tag: ${tagModeLabels[tagMatchModeSelect?.value] || '严格模式'}`);
+        }
+        return lines.join('\n');
+    }
+
+    function buildGroupModelSummary() {
+        if (!groupUseUnifiedModel?.checked) {
+            return '跟随成员模型';
+        }
+        return groupUnifiedModelInput?.value?.trim() || '已启用统一模型，尚未选择';
+    }
+
+    function buildGroupPromptSummary() {
+        return buildGroupPromptPreviewText(groupPromptTextarea?.value, invitePromptTextarea?.value);
+    }
+
+    function updateGroupSectionSummary(key) {
+        const controller = groupSectionControllers.get(key);
+        if (!controller) return;
+
+        const summaryValue = controller.buildSummary();
+        if (summaryValue && typeof summaryValue === 'object' && summaryValue.kind === 'identity') {
+            controller.summary.classList.add('summary-with-avatar');
+            controller.summary.innerHTML = '';
+
+            const avatar = document.createElement('img');
+            avatar.className = 'group-settings-summary-avatar';
+            avatar.src = summaryValue.avatarSrc || 'assets/default_group_avatar.png';
+            avatar.alt = '';
+
+            const copy = document.createElement('div');
+            copy.className = 'group-settings-summary-copy';
+
+            const title = document.createElement('span');
+            title.className = 'group-settings-summary-label';
+            title.textContent = summaryValue.text || '未命名群组';
+
+            const meta = document.createElement('span');
+            meta.className = 'group-settings-summary-meta';
+            meta.textContent = summaryValue.meta || '';
+
+            copy.appendChild(title);
+            copy.appendChild(meta);
+            controller.summary.appendChild(avatar);
+            controller.summary.appendChild(copy);
+            return;
+        }
+
+        controller.summary.classList.remove('summary-with-avatar');
+        controller.summary.textContent = typeof summaryValue === 'string' ? summaryValue : '';
+    }
+
+    function updateAllGroupSectionSummaries() {
+        groupSectionControllers.forEach((_, key) => updateGroupSectionSummary(key));
+    }
+
+    function setupGroupSettingsSections() {
+        groupSectionControllers.clear();
+        createGroupSectionController('identity', buildGroupIdentitySummary);
+        createGroupSectionController('mode', buildGroupModeSummary);
+        createGroupSectionController('model', buildGroupModelSummary);
+        createGroupSectionController('prompt', buildGroupPromptSummary);
+
+        if (!groupSettingsForm?.dataset.summaryBindings) {
+            const bindSummaryRefresh = (element, events = ['input']) => {
+                if (!element || element.dataset.groupSummaryBound) return;
+                events.forEach((eventName) => {
+                    element.addEventListener(eventName, () => updateAllGroupSectionSummaries());
+                });
+                element.dataset.groupSummaryBound = 'true';
+            };
+
+            [
+                groupNameInput,
+                groupChatModeSelect,
+                tagMatchModeSelect,
+                groupUseUnifiedModel,
+                groupUnifiedModelInput,
+                groupPromptTextarea,
+                invitePromptTextarea
+            ].forEach((element) => bindSummaryRefresh(element, ['input', 'change']));
+
+            if (groupAvatarPreview && !groupAvatarPreview.dataset.groupSummaryObserverBound) {
+                const avatarObserver = new MutationObserver(() => updateGroupSectionSummary('identity'));
+                avatarObserver.observe(groupAvatarPreview, { attributes: true, attributeFilter: ['src'] });
+                groupAvatarPreview.dataset.groupSummaryObserverBound = 'true';
+            }
+
+            groupSettingsForm.dataset.summaryBindings = 'true';
+        }
+
+        ['identity', 'mode', 'model', 'prompt'].forEach((key) => {
+            const controller = groupSectionControllers.get(key);
+            if (controller) controller.setCollapsed(true);
+        });
+
+        updateAllGroupSectionSummaries();
     }
 
 
@@ -213,7 +349,7 @@ window.GroupRenderer = (() => {
         // Remove previous event listener to avoid multiple submissions
         const newForm = form.cloneNode(true);
         form.parentNode.replaceChild(newForm, form);
-        
+
         newForm.addEventListener('submit', async (event) => {
             event.preventDefault();
             const groupName = document.getElementById('newGroupNameInput').value.trim(); // Get value from the new form's input
@@ -257,9 +393,9 @@ window.GroupRenderer = (() => {
             mainRendererElements.currentChatNameH3.textContent = `与群组 ${groupName} 聊天中`;
         }
         if (mainRendererElements.currentItemActionBtn) {
-            mainRendererElements.currentItemActionBtn.textContent = '新建群聊话题';
+            setCurrentItemActionButtonText(mainRendererElements.currentItemActionBtn, '新建群聊话题');
             mainRendererElements.currentItemActionBtn.title = `为群组 ${groupName} 新建群聊话题`;
-            mainRendererElements.currentItemActionBtn.style.display = 'inline-block';
+            mainRendererElements.currentItemActionBtn.style.display = 'inline-flex';
         }
         // mainRendererElements.clearCurrentChatBtn.style.display = 'inline-block'; // This button is removed
 
@@ -324,7 +460,7 @@ window.GroupRenderer = (() => {
 
     async function displayGroupSettingsPage(groupId) {
         console.log('[GroupRenderer] displayGroupSettingsPage called for groupId:', groupId);
-        
+
         // Use the module-level specific references that were set during init
         // const localSelectPrompt = selectAgentPromptForSettingsElementFromRenderer; // No longer needed if mainRendererElements is used directly
         // const localAgentSettingsContainer = agentSettingsContainerFromRenderer; // No longer needed
@@ -341,7 +477,7 @@ window.GroupRenderer = (() => {
         const groupConfig = await electronAPI.getAgentGroupConfig(groupId);
         if (!groupConfig || groupConfig.error) {
             alert(`加载群组配置失败: ${groupConfig?.error || '未知错误'}`);
-            if (groupSettingsContainer) groupSettingsContainer.style.display = 'none'; // Hide group settings form
+            if (groupSettingsContainer) groupSettingsContainer.style.display = 'none';
             if (selectAgentPromptForSettingsElementFromRenderer) { // Use direct module-level ref
                 selectAgentPromptForSettingsElementFromRenderer.textContent = `加载群组 ${groupId} 配置失败。`;
                 selectAgentPromptForSettingsElementFromRenderer.style.display = 'block';
@@ -360,12 +496,12 @@ window.GroupRenderer = (() => {
             if (fallbackAgentSettings) fallbackAgentSettings.style.display = 'none';
             else console.warn('[GroupRenderer] agentSettingsContainerFromRenderer (and fallback) is undefined, cannot hide agent settings.');
         }
-        
+
         // Show group-specific settings container (this is managed within GroupRenderer)
         if (groupSettingsContainer && typeof groupSettingsContainer.style !== 'undefined') {
-            groupSettingsContainer.style.display = 'block';
+            groupSettingsContainer.style.display = '';
         }
-        
+
         // Hide the "select item" prompt (using the specific ref from renderer)
         if (selectAgentPromptForSettingsElementFromRenderer) { // Use direct module-level ref
             selectAgentPromptForSettingsElementFromRenderer.style.display = 'none';
@@ -396,50 +532,94 @@ window.GroupRenderer = (() => {
         document.getElementById('editingGroupId').value = groupId;
 
         groupNameInput.value = groupConfig.name || '';
-        groupAvatarPreview.style.display = groupConfig.avatarUrl ? 'block' : 'none';
-        groupAvatarPreview.src = groupConfig.avatarUrl ? `${groupConfig.avatarUrl}?t=${Date.now()}` : '#';
+        groupAvatarPreview.style.display = 'block';
+        groupAvatarPreview.src = groupConfig.avatarUrl
+            ? `${groupConfig.avatarUrl}?t=${Date.now()}`
+            : 'assets/default_group_avatar.png';
         groupAvatarInput.value = ''; // Clear file input
 
         groupChatModeSelect.value = groupConfig.mode || 'sequential';
+        if (tagMatchModeSelect) {
+            tagMatchModeSelect.value = groupConfig.tagMatchMode || 'strict';
+        }
         groupPromptTextarea.value = groupConfig.groupPrompt || '';
         invitePromptTextarea.value = groupConfig.invitePrompt || '现在轮到你{{VCPChatAgentName}}发言了。';
 
         await populateGroupMembersSettings(groupConfig);
         toggleMemberTagsVisibility(groupConfig.mode);
 
-       // 新增：处理统一模型UI
-       groupUseUnifiedModel.checked = groupConfig.useUnifiedModel === true;
-       groupUnifiedModelInput.value = groupConfig.unifiedModel || '';
-       groupUnifiedModelContainer.style.display = groupUseUnifiedModel.checked ? 'block' : 'none';
+        // 新增：处理统一模型UI
+        groupUseUnifiedModel.checked = groupConfig.useUnifiedModel === true;
+        groupUnifiedModelInput.value = groupConfig.unifiedModel || '';
+        groupUnifiedModelContainer.style.display = groupUseUnifiedModel.checked ? 'block' : 'none';
 
-       groupUseUnifiedModel.onchange = () => {
-           groupUnifiedModelContainer.style.display = groupUseUnifiedModel.checked ? 'block' : 'none';
-       };
-       
-       // To prevent adding multiple listeners, we replace the button with a clone of itself, which removes all old listeners.
-       const newBtn = openGroupModelSelectBtn.cloneNode(true);
-       openGroupModelSelectBtn.parentNode.replaceChild(newBtn, openGroupModelSelectBtn);
-       openGroupModelSelectBtn = newBtn; // Update our reference to the new button
+        setupGroupSettingsSections();
 
-       openGroupModelSelectBtn.addEventListener('click', async () => {
-           try {
-               console.log('[GroupRenderer] Fetching cached models from main process...');
-               const models = await electronAPI.getCachedModels();
-               console.log(`[GroupRenderer] Received ${models.length} cached models.`);
-               // We assume the generic modal can accept a 'models' array in its options to prevent re-fetching.
-               uiHelper.openModal('modelSelectModal', (selectedModel) => {
-                   if (selectedModel && groupUnifiedModelInput) {
-                       groupUnifiedModelInput.value = selectedModel;
-                   }
-               }, { models: models });
-           } catch (error) {
-               console.error('Error fetching cached models for group settings:', error);
-               uiHelper.showToastNotification('加载模型列表失败', 'error');
-           }
-       });
+        groupUseUnifiedModel.onchange = () => {
+            groupUnifiedModelContainer.style.display = groupUseUnifiedModel.checked ? 'block' : 'none';
+            updateGroupSectionSummary('model');
+        };
+
+        // To prevent adding multiple listeners, we replace the button with a clone of itself, which removes all old listeners.
+        if (openGroupModelSelectBtn?.parentNode) {
+            const newBtn = openGroupModelSelectBtn.cloneNode(true);
+            openGroupModelSelectBtn.parentNode.replaceChild(newBtn, openGroupModelSelectBtn);
+            openGroupModelSelectBtn = newBtn; // Update our reference to the new button
+
+            openGroupModelSelectBtn.addEventListener('click', async () => {
+            try {
+                // Reuse SettingsManager's model selector pipeline so callback/list behavior stays consistent.
+                if (window.settingsManager && typeof window.settingsManager.openModelSelectForInput === 'function') {
+                    try {
+                        await window.settingsManager.openModelSelectForInput(groupUnifiedModelInput);
+                        updateGroupSectionSummary('model');
+                        return;
+                    } catch (settingsManagerError) {
+                        console.warn('[GroupRenderer] settingsManager model selector failed, falling back.', settingsManagerError);
+                    }
+                }
+
+                // Fallback path: basic list rendering + click-to-select.
+                console.warn('[GroupRenderer] settingsManager.openModelSelectForInput is not available, using fallback model selector.');
+                const models = await electronAPI.getCachedModels();
+                uiHelper.openModal('modelSelectModal');
+
+                const modelListElement = document.getElementById('modelList');
+                if (!modelListElement) {
+                    throw new Error('modelList element not found.');
+                }
+
+                modelListElement.innerHTML = '';
+                if (!Array.isArray(models) || models.length === 0) {
+                    modelListElement.innerHTML = '<li>没有可用的模型。请检查 VCP 服务或刷新模型列表。</li>';
+                    return;
+                }
+
+                models.forEach((modelItem) => {
+                    const modelId = typeof modelItem === 'string' ? modelItem : modelItem.id;
+                    if (!modelId) return;
+                    const li = document.createElement('li');
+                    li.textContent = modelId;
+                    li.dataset.modelId = modelId;
+                    li.addEventListener('click', () => {
+                        if (groupUnifiedModelInput) {
+                            groupUnifiedModelInput.value = modelId;
+                        }
+                        updateGroupSectionSummary('model');
+                        uiHelper.closeModal('modelSelectModal');
+                    });
+                    modelListElement.appendChild(li);
+                });
+            } catch (error) {
+                console.error('Error fetching cached models for group settings:', error);
+                uiHelper.showToastNotification('加载模型列表失败', 'error');
+            }
+            });
+        }
 
         groupChatModeSelect.onchange = () => {
             toggleMemberTagsVisibility(groupChatModeSelect.value);
+            updateGroupSectionSummary('mode');
         };
 
         if (groupSettingsForm._eventListenerAttached) {
@@ -449,17 +629,21 @@ window.GroupRenderer = (() => {
         groupSettingsForm._eventListenerAttached = true;
 
 
-        if (deleteGroupBtn._eventListenerAttached) {
+        if (deleteGroupBtn?._eventListenerAttached) {
             deleteGroupBtn.removeEventListener('click', handleDeleteCurrentGroup);
         }
-        deleteGroupBtn.addEventListener('click', handleDeleteCurrentGroup);
-        deleteGroupBtn._eventListenerAttached = true;
+        if (deleteGroupBtn) {
+            deleteGroupBtn.addEventListener('click', handleDeleteCurrentGroup);
+            deleteGroupBtn._eventListenerAttached = true;
+        }
 
         if (groupAvatarInput._eventListenerAttached) {
             groupAvatarInput.removeEventListener('change', handleGroupAvatarChange);
         }
         groupAvatarInput.addEventListener('change', handleGroupAvatarChange);
         groupAvatarInput._eventListenerAttached = true;
+
+        updateAllGroupSectionSummaries();
     }
 
 
@@ -472,6 +656,7 @@ window.GroupRenderer = (() => {
                     groupAvatarPreview.src = URL.createObjectURL(croppedFile);
                     groupAvatarPreview.style.display = 'block';
                 }
+                updateGroupSectionSummary('identity');
             });
         }
     }
@@ -502,7 +687,11 @@ window.GroupRenderer = (() => {
                 checkbox.id = `member_agent_${agent.id}`;
                 checkbox.value = agent.id;
                 checkbox.checked = groupConfig.members && groupConfig.members.includes(agent.id);
-                checkbox.onchange = () => updateMemberTagsInputs(groupConfig);
+                checkbox.onchange = () => {
+                    updateMemberTagsInputs(groupConfig);
+                    updateGroupSectionSummary('identity');
+                    updateGroupSectionSummary('mode');
+                };
 
 
                 const label = document.createElement('label');
@@ -520,6 +709,8 @@ window.GroupRenderer = (() => {
                 groupMembersListDiv.appendChild(memberDiv);
             });
             updateMemberTagsInputs(groupConfig); // Initial population of tag inputs
+            updateGroupSectionSummary('identity');
+            updateGroupSectionSummary('mode');
         } catch (error) {
             groupMembersListDiv.innerHTML = `加载Agent列表时出错: ${error.message}`;
             console.error("Error populating group members settings:", error);
@@ -528,6 +719,10 @@ window.GroupRenderer = (() => {
 
     function updateMemberTagsInputs(groupConfig) {
         if (!memberTagsInputsDiv || !groupMembersListDiv) return;
+        const draftTags = {};
+        memberTagsInputsDiv.querySelectorAll('input[type="text"]').forEach((input) => {
+            draftTags[input.dataset.agentId] = input.value;
+        });
         memberTagsInputsDiv.innerHTML = ''; // Clear existing
         const selectedMemberIds = Array.from(groupMembersListDiv.querySelectorAll('input[type="checkbox"]:checked'))
             .map(cb => cb.value);
@@ -545,7 +740,8 @@ window.GroupRenderer = (() => {
                 input.id = `tags_for_${agentId}`;
                 input.dataset.agentId = agentId;
                 input.placeholder = "例如: 猫娘,小克,科学";
-                input.value = (groupConfig.memberTags && groupConfig.memberTags[agentId]) ? groupConfig.memberTags[agentId] : '';
+                input.value = draftTags[agentId] ?? ((groupConfig.memberTags && groupConfig.memberTags[agentId]) ? groupConfig.memberTags[agentId] : '');
+                input.addEventListener('input', () => updateGroupSectionSummary('mode'));
                 tagInputDiv.appendChild(label);
                 tagInputDiv.appendChild(input);
                 memberTagsInputsDiv.appendChild(tagInputDiv);
@@ -558,6 +754,7 @@ window.GroupRenderer = (() => {
         if (memberTagsContainer) {
             memberTagsContainer.style.display = mode === 'naturerandom' ? 'block' : 'none';
         }
+        updateGroupSectionSummary('mode');
     }
 
     async function handleSaveGroupSettings(event) {
@@ -571,7 +768,20 @@ window.GroupRenderer = (() => {
         const selectedMemberIds = Array.from(groupMembersListDiv.querySelectorAll('input[type="checkbox"]:checked'))
             .map(cb => cb.value);
 
-        const memberTags = {};
+        // 保留所有成员的 tag 数据（包括当前未勾选的成员），防止踢出后再加回时 tag 丢失
+        // 先获取服务端已有的完整 memberTags 作为基础
+        let existingMemberTags = {};
+        try {
+            const existingConfig = await electronAPI.getAgentGroupConfig(groupId);
+            if (existingConfig && existingConfig.memberTags) {
+                existingMemberTags = { ...existingConfig.memberTags };
+            }
+        } catch (e) {
+            console.warn('[GroupRenderer] 获取现有 memberTags 失败，将仅使用当前表单数据:', e);
+        }
+
+        // 用当前 DOM 中的值覆盖（当前勾选成员的最新编辑）
+        const memberTags = { ...existingMemberTags };
         if (memberTagsInputsDiv) {
             memberTagsInputsDiv.querySelectorAll('input[type="text"]').forEach(input => {
                 memberTags[input.dataset.agentId] = input.value.trim();
@@ -582,9 +792,10 @@ window.GroupRenderer = (() => {
             name: groupNameInput.value.trim(),
             members: selectedMemberIds,
             mode: groupChatModeSelect.value,
-           // 新增：读取统一模型设置
-           useUnifiedModel: groupUseUnifiedModel.checked,
-           unifiedModel: groupUnifiedModelInput.value.trim(),
+            tagMatchMode: tagMatchModeSelect ? tagMatchModeSelect.value : 'strict',
+            // 新增：读取统一模型设置
+            useUnifiedModel: groupUseUnifiedModel.checked,
+            unifiedModel: groupUnifiedModelInput.value.trim(),
             memberTags: memberTags,
             groupPrompt: groupPromptTextarea.value.trim(),
             invitePrompt: invitePromptTextarea.value.trim()
@@ -592,6 +803,19 @@ window.GroupRenderer = (() => {
 
         if (!newConfig.name) {
             alert("群组名称不能为空！");
+            return;
+        }
+
+        if (newConfig.useUnifiedModel && !newConfig.unifiedModel) {
+            const errorMessage = "启用群组统一模型时，群组统一模型不能为空。";
+            if (uiHelper && typeof uiHelper.showToastNotification === 'function') {
+                uiHelper.showToastNotification(errorMessage, 'error');
+            } else {
+                alert(errorMessage);
+            }
+            if (groupUnifiedModelInput) {
+                groupUnifiedModelInput.focus();
+            }
             return;
         }
 
@@ -641,19 +865,19 @@ window.GroupRenderer = (() => {
                 if (selectedItemNameForSettingsElementFromRenderer) {
                     selectedItemNameForSettingsElementFromRenderer.textContent = result.agentGroup.name;
                 } else {
-                     console.error('[GroupRenderer] selectedItemNameForSettingsElementFromRenderer is undefined in handleSaveGroupSettings, cannot set textContent.');
-                     const fallbackElement = document.getElementById('selectedAgentNameForSettings'); // Fallback
-                     if (fallbackElement) {
+                    console.error('[GroupRenderer] selectedItemNameForSettingsElementFromRenderer is undefined in handleSaveGroupSettings, cannot set textContent.');
+                    const fallbackElement = document.getElementById('selectedAgentNameForSettings'); // Fallback
+                    if (fallbackElement) {
                         console.warn('[GroupRenderer] Fallback: Setting selectedAgentNameForSettings using direct getElementById in handleSaveGroupSettings.');
                         fallbackElement.textContent = result.agentGroup.name;
-                     } else {
+                    } else {
                         console.error('[GroupRenderer] CRITICAL: selectedAgentNameForSettings element not found even with direct getElementById in handleSaveGroupSettings.');
-                     }
+                    }
                 }
                 // uiHelper.showToastNotification(`群组 "${result.agentGroup.name}" 设置已保存。`); // Removed successful save notification
-           } else {
-               if (saveButton) uiHelper.showSaveFeedback(saveButton, false, "保存失败", "保存群组设置");
-               alert(`保存群组设置失败: ${result.error}`);
+            } else {
+                if (saveButton) uiHelper.showSaveFeedback(saveButton, false, "保存失败", "保存群组设置");
+                alert(`保存群组设置失败: ${result.error}`);
             }
 
             // Update invite buttons based on new mode after saving
@@ -685,7 +909,7 @@ window.GroupRenderer = (() => {
         const groupId = document.getElementById('editingGroupId').value;
         const groupName = groupNameInput.value || '当前选中的群组';
 
-        if (confirm(`您确定要删除群组 "${groupName}" 吗？其所有聊天记录和设置都将被删除，此操作不可撤销！`)) {
+        if (await uiHelper.showConfirmDialog(`您确定要删除群组 "${groupName}" 吗？其所有聊天记录和设置都将被删除，此操作不可撤销！`, '删除确认', '删除', '取消', true)) {
             try {
                 const result = await electronAPI.deleteAgentGroup(groupId);
                 if (result.success) {
@@ -718,7 +942,7 @@ window.GroupRenderer = (() => {
                         // 确保Agent设置容器也隐藏 (如果之前是显示的)
                         // agentSettingsContainerFromRenderer 是从 renderer.js 传入的 Agent 设置容器
                         if (agentSettingsContainerFromRenderer && agentSettingsContainerFromRenderer.style) {
-                             agentSettingsContainerFromRenderer.style.display = 'none';
+                            agentSettingsContainerFromRenderer.style.display = 'none';
                         }
                         // selectAgentPromptForSettingsElementFromRenderer 是从 renderer.js 传入的提示元素
                         if (selectAgentPromptForSettingsElementFromRenderer && selectAgentPromptForSettingsElementFromRenderer.style) {
@@ -731,7 +955,7 @@ window.GroupRenderer = (() => {
                         }
                     }
                     if (mainRendererFunctions && mainRendererFunctions.loadItems) await mainRendererFunctions.loadItems();
-                    
+
                     // 调用 displaySettingsForItem。
                     // 如果 currentSelectedItemRef.get().id 仍然为 null (例如，列表为空或没有自动选择),
                     // 它应该基于我们上面设置的UI状态正确显示“请选择”提示。
@@ -858,7 +1082,7 @@ window.GroupRenderer = (() => {
     }
 
     async function handleDeleteGroupTopic(groupId, topicId, topicName) {
-        if (confirm(`确定要删除群组话题 "${topicName}" 吗？此操作不可撤销。`)) {
+        if (await uiHelper.showConfirmDialog(`确定要删除群组话题 "${topicName}" 吗？此操作不可撤销。`, '删除确认', '删除', '取消', true)) {
             const result = await electronAPI.deleteGroupTopic(groupId, topicId);
             if (result.success) {
                 // uiHelper.showToastNotification(`群组话题 "${topicName}" 已删除。`); // 移除成功提示
@@ -917,7 +1141,13 @@ window.GroupRenderer = (() => {
 
                 if (senderElement && contentElement) {
                     const sender = senderElement.textContent.trim().replace(':', '');
-                    let content = contentElement.innerText || contentElement.textContent || "";
+                    // 克隆节点，移除思维链气泡后再取文本（<think> 已渲染为 DOM 节点）
+                    const contentClone = contentElement.cloneNode(true);
+                    contentClone.querySelectorAll('.vcp-thought-chain-bubble').forEach(el => el.remove());
+                    let content = contentClone.innerText || contentClone.textContent || "";
+                    // 兜底：清理明文形式思维链
+                    content = content.replace(/\[--- VCP元思考链(?::\s*"[^"]*")?\s*---\][\s\S]*?\[--- 元思考链结束 ---\]/gs, '');
+                    content = content.replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi, '');
                     content = content.trim();
 
                     if (sender && content) {
@@ -969,7 +1199,7 @@ window.GroupRenderer = (() => {
             if (uiHelper && uiHelper.showToastNotification) uiHelper.showToastNotification('请先选择一个群组和话题！', 'error'); else alert('请先选择一个群组和话题！');
             return;
         }
-        
+
         if (!globalSettings) {
             console.error("[GroupRenderer] handleSendGroupMessage called before settings reference was initialized. Aborting.");
             if (uiHelper && uiHelper.showToastNotification) uiHelper.showToastNotification('群组模块尚未完全初始化，请稍后再试。', 'error');
@@ -999,10 +1229,24 @@ window.GroupRenderer = (() => {
                 };
                 uiAttachments.push(attachmentInfoForUI);
 
+                // 🔴 关键修复：在群聊发送前就准备好完整路径
+                const fileManagerData = af._fileManagerData || {};
+                // 🟢 极其关键：优先使用 internalPath (物理路径)
+                const filePathForContext = (fileManagerData && fileManagerData.internalPath) || 
+                                           af.localPath || 
+                                           af.src || 
+                                           af.originalName;
+
                 if (af._fileManagerData && af._fileManagerData.extractedText) {
-                    combinedTextContent += `\n\n[附加文件: ${af.originalName}]\n${af._fileManagerData.extractedText}\n[/附加文件结束: ${af.originalName}]`;
+                    combinedTextContent += `\n\n[附加文件: ${filePathForContext}]\n${af._fileManagerData.extractedText}\n[/附加文件结束: ${af.originalName}]`;
+                } else if (af.file.type.startsWith('audio/')) {
+                    combinedTextContent += `\n\n[附加音频: ${filePathForContext}]`;
+                } else if (af.file.type.startsWith('video/')) {
+                    combinedTextContent += `\n\n[附加视频: ${filePathForContext}]`;
+                } else if (af.file.type.startsWith('image/')) {
+                    combinedTextContent += `\n\n[附加图片: ${filePathForContext}]`;
                 } else if (af._fileManagerData && af.file.type && !af.file.type.startsWith('image/')) {
-                    combinedTextContent += `\n\n[附加文件: ${af.originalName} (无法预览文本内容)]`;
+                    combinedTextContent += `\n\n[附加文件: ${filePathForContext} (无法预览文本内容)]`;
                 }
             }
         }
@@ -1105,7 +1349,7 @@ window.GroupRenderer = (() => {
         if (groupId && topicId) {
             localStorage.setItem(`lastActiveTopic_${groupId}_group`, topicId);
         }
-}
+    }
 
     function clearInviteAgentButtons() {
         const container = inviteAgentButtonsContainerRef ? inviteAgentButtonsContainerRef.get() : null;

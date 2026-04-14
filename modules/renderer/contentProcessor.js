@@ -141,8 +141,12 @@ function deIndentToolRequestBlocks(text) {
     let inToolBlock = false;
 
     return lines.map(line => {
-        const isStart = line.includes('<<<[TOOL_REQUEST]>>>');
-        const isEnd = line.includes('<<<[END_TOOL_REQUEST]>>>');
+        // 🟢 加固：排除被反引号包裹的占位符（如 `<<<[TOOL_REQUEST]>>>`）
+        const isBacktickWrapped = /`[^`]*<<<\[TOOL_REQUEST\]>>>[^`]*`/.test(line) ||
+                                   /`[^`]*<<<\[END_TOOL_REQUEST\]>>>[^`]*`/.test(line);
+        
+        const isStart = !isBacktickWrapped && line.includes('<<<[TOOL_REQUEST]>>>');
+        const isEnd = !isBacktickWrapped && line.includes('<<<[END_TOOL_REQUEST]>>>');
 
         let needsTrim = false;
         // If a line contains the start marker, we begin trimming.
@@ -239,6 +243,7 @@ function prettifySinglePreElement(preElement, type, relevantContent) {
 }
 
 const TAG_REGEX = /@([\u4e00-\u9fa5A-Za-z0-9_]+)/g;
+const ALERT_TAG_REGEX = /@!([\u4e00-\u9fa5A-Za-z0-9_]+)/g;
 const BOLD_REGEX = /\*\*([^\*]+)\*\*/g;
 const QUOTE_REGEX = /(?:"([^"]*)"|“([^”]*)”)/g; // Matches English "..." and Chinese “...”
 
@@ -280,6 +285,9 @@ function highlightAllPatternsInMessage(messageElement) {
             let match;
             while ((match = TAG_REGEX.exec(text)) !== null) {
                 matches.push({ type: 'tag', index: match.index, length: match[0].length, content: match[0] });
+            }
+            while ((match = ALERT_TAG_REGEX.exec(text)) !== null) {
+                matches.push({ type: 'alert-tag', index: match.index, length: match[0].length, content: match[0] });
             }
             while ((match = BOLD_REGEX.exec(text)) !== null) {
                 matches.push({ type: 'bold', index: match.index, length: match[0].length, content: match[1] });
@@ -334,6 +342,9 @@ function highlightAllPatternsInMessage(messageElement) {
             const span = document.createElement(match.type === 'bold' ? 'strong' : 'span');
             if (match.type === 'tag') {
                 span.className = 'highlighted-tag';
+                span.textContent = match.content;
+            } else if (match.type === 'alert-tag') {
+                span.className = 'highlighted-alert-tag';
                 span.textContent = match.content;
             } else if (match.type === 'quote') {
                 span.className = 'highlighted-quote';
@@ -450,7 +461,28 @@ function setupHtmlPreview(preElement, htmlContent) {
     container.appendChild(actionBtn);
 
     let previewFrame = null;
+    let messageHandler = null;
     const frameId = `vcp-frame-${Math.random().toString(36).substr(2, 9)}`;
+
+    const destroyPreview = () => {
+        if (messageHandler) {
+            window.removeEventListener('message', messageHandler);
+            messageHandler = null;
+        }
+        if (previewFrame) {
+            // 🔴 关键修复：彻底切断 iframe 内部进程
+            try {
+                previewFrame.srcdoc = '';
+                previewFrame.src = 'about:blank';
+                previewFrame.contentWindow?.stop?.();
+            } catch (e) { /* ignore */ }
+            previewFrame.remove();
+            previewFrame = null;
+        }
+    };
+
+    // 将清理函数绑定到容器，以便外部（如 messageRenderer）调用
+    container._vcpCleanup = destroyPreview;
 
     actionBtn.addEventListener('click', (e) => {
         // 🔴 彻底阻止事件传播，防止触发任何父级监听器
@@ -503,6 +535,7 @@ function setupHtmlPreview(preElement, htmlContent) {
                         <script>
                             function updateHeight() {
                                 const wrapper = document.getElementById('vcp-wrapper');
+                                if (!wrapper) return;
                                 const height = Math.max(wrapper.scrollHeight + 40, document.body.scrollHeight);
                                 window.parent.postMessage({
                                     type: 'vcp-html-resize',
@@ -520,7 +553,7 @@ function setupHtmlPreview(preElement, htmlContent) {
                     </html>
                 `;
                 
-                const messageHandler = (msg) => {
+                messageHandler = (msg) => {
                     if (msg.data && msg.data.type === 'vcp-html-resize' && msg.data.frameId === frameId) {
                         if (previewFrame) {
                             // 🟢 平滑过渡到新高度
@@ -535,10 +568,6 @@ function setupHtmlPreview(preElement, htmlContent) {
                 window.addEventListener('message', messageHandler);
 
                 container.appendChild(previewFrame);
-            } else {
-                previewFrame.style.display = 'block';
-                // 恢复之前的高度
-                previewFrame.style.height = currentHeight + 'px';
             }
             
             // 🟢 延迟隐藏代码块，确保iframe先显示
@@ -551,16 +580,14 @@ function setupHtmlPreview(preElement, htmlContent) {
             container.classList.remove('preview-mode');
             actionBtn.innerHTML = '<span>▶️ 播放</span>';
             
-            // 🟢 先显示代码块，再隐藏iframe
+            // 🟢 先显示代码块
             preElement.style.display = 'block';
             
-            setTimeout(() => {
-                if (previewFrame) {
-                    previewFrame.style.display = 'none';
-                }
-                // 清除固定高度限制
-                container.style.minHeight = '';
-            }, 50);
+            // 🔴 关键修复：点击返回时销毁预览产生的资源，停止 JS 运行
+            destroyPreview();
+
+            // 清除固定高度限制
+            container.style.minHeight = '';
         }
     });
 }
@@ -829,14 +856,36 @@ function processRenderedContent(contentDiv, settings = {}) {
  * @returns {string} 处理后的 CSS 文本。
  */
 function scopeSelector(selector, scopeId) {
-    // 跳过特殊选择器
-    if (selector.match(/^(@|from|to|\d+%|:root|html|body)/)) {
+    // 跳过 @规则 和 keyframe 步骤（这些不是选择器）
+    if (selector.match(/^(@|from|to|\d+%)/)) {
         return selector;
+    }
+    
+    // 🔴 关键安全修复：将全局选择器（:root, html, body）重写为 scoped 选择器
+    // 防止AI输出的CSS（如 body { background: black }）影响整个页面
+    if (selector.match(/^:root$/)) {
+        return `#${scopeId}`;
+    }
+    if (selector.match(/^(html|body)$/i)) {
+        return `#${scopeId}`;
+    }
+    // 处理带后续选择器的情况，如 "body .class" → "#scopeId .class"
+    if (selector.match(/^(html|body)\s+/i)) {
+        return selector.replace(/^(html|body)\s+/i, `#${scopeId} `);
+    }
+    // 处理 ":root .class" 的情况
+    if (selector.match(/^:root\s+/)) {
+        return selector.replace(/^:root\s+/, `#${scopeId} `);
     }
     
     // 处理伪类/伪元素
     if (selector.match(/^::?[\w-]+$/)) {
         return `#${scopeId}${selector}`;
+    }
+    
+    // 🔴 处理通配符选择器 "*"
+    if (selector === '*') {
+        return `#${scopeId} *`;
     }
     
     return `#${scopeId} ${selector}`;
@@ -970,6 +1019,27 @@ function deIndentMisinterpretedCodeBlocks(text) {
 }
 
 
+
+/**
+ * 清理指定容器及其子元素中所有的 HTML 预览资源（iframe、事件监听器等）。
+ * @param {HTMLElement} contentDiv - 存储消息内容的容器。
+ */
+function cleanupPreviewsInContent(contentDiv) {
+    if (!contentDiv) return;
+    const containers = contentDiv.querySelectorAll('.vcp-html-preview-container');
+    containers.forEach(container => {
+        if (typeof container._vcpCleanup === 'function') {
+            try {
+                container._vcpCleanup();
+            } catch (e) {
+                console.error('[ContentProcessor] Error during preview cleanup:', e);
+            }
+            delete container._vcpCleanup;
+        }
+    });
+}
+
+
 export {
     initializeContentProcessor,
     ensureNewlineAfterCodeBlock,
@@ -988,5 +1058,6 @@ export {
     scopeCss, // Export the new CSS scoping function
     applyContentProcessors, // Export the new batch processor
     escapeHtml,
-    processStartEndMarkers
+    processStartEndMarkers,
+    cleanupPreviewsInContent
 };

@@ -1,13 +1,14 @@
 {
   "name": "vcp-chat-desktop",
-  "version": "1.0.0",
+  "version": "4.4.2",
   "description": "一个为VCP服务器打造的AI聊天桌面客户端",
   "main": "main.js",
   "scripts": {
-    "postinstall": "electron-rebuild -f -w selection-hook",
     "start": "electron .",
-    "pack": "electron-rebuild -f -w selection-hook && electron-builder --dir",
-    "dist": "electron-rebuild -f -w selection-hook && electron-builder"
+    "start:desktop": "electron . --desktop-only",
+    "start:rag-observer": "electron . --rag-observer-only",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
   },
   "keywords": [
     "VCP",
@@ -19,7 +20,7 @@
   "author": "莱恩 (由小吉辅助生成)",
   "license": "MIT",
   "devDependencies": {
-    "@electron/rebuild": "^3.7.2",
+    "@electron/rebuild": "^4.0.3",
     "electron": "^37.2.6",
     "electron-builder": "^26.0.12",
     "node-addon-api": "^8.3.1",
@@ -61,7 +62,6 @@
     "pdf-poppler": "^0.2.1",
     "portfinder": "^1.0.37",
     "puppeteer": "^24.15.0",
-    "selection-hook": "^0.9.23",
     "sharp": "^0.34.2",
     "stylelint": "^16.25.0",
     "tesseract.js": "^6.0.1",
@@ -73,12 +73,16 @@
     "xterm": "^5.3.0",
     "xterm-addon-fit": "^0.8.0"
   },
+  "optionalDependencies": {
+    "electron-edge-js": "^38.0.0"
+  },
   "build": {
     "appId": "com.vcp.chatdesktop",
     "productName": "VCP聊天客户端",
     "files": [
       "main.js",
       "preload.js",
+      "preloads/**/*",
       "renderer.js",
       "main.html",
       "image-viewer.html",
@@ -86,6 +90,7 @@
       "style.css",
       "assets/",
       "modules/**/*",
+      "vendor/**/*",
       "node_modules/**/*"
     ],
     "directories": {

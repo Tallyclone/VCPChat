@@ -6,15 +6,25 @@ const { ipcMain } = require('electron');
 const contextSanitizer = require('../modules/contextSanitizer');
 const fileManager = require('../modules/fileManager');
 const canvasHandlers = require('../modules/ipc/canvasHandlers');
-// const { v4: uuidv4 } = require('uuid'); // 如果需要唯一ID生成
+
+// 群聊模式策略模块
+const sequentialMode = require('./modes/sequentialMode');
+const natureRandomMode = require('./modes/natureRandomMode');
+const inviteOnlyMode = require('./modes/inviteOnlyMode');
+
+// 话题标题管理模块
+const topicTitleManager = require('./topicTitleManager');
+
+// 模式注册表 - 添加新模式只需在此注册
+const CHAT_MODES = {
+    'sequential': sequentialMode,
+    'naturerandom': natureRandomMode,
+    'invite_only': inviteOnlyMode
+};
 
 const activeRequestControllers = new Map();
 const CANVAS_PLACEHOLDER = '{{VCPChatCanvas}}';
 const GROUP_SESSION_WATCHER_PLACEHOLDER = '{{VCPChatGroupSessionWatcher}}';
-
-// 新增：话题总结相关常量
-const MIN_MESSAGES_FOR_SUMMARY = 4;
-const DEFAULT_TOPIC_NAMES = ["主要群聊"]; // 也可以包含 "新话题" 的模式匹配
 
 
 let mainAppPaths = {}; // 将由 main.js 初始化时传入
@@ -110,21 +120,49 @@ async function getVcpGlobalSettings() {
                 enableAgentBubbleTheme: settings.enableAgentBubbleTheme === true,
                 // 添加净化器相关配置
                 enableContextSanitizer: settings.enableContextSanitizer === true,
-                contextSanitizerDepth: settings.contextSanitizerDepth
+                contextSanitizerDepth: settings.contextSanitizerDepth,
+                // 添加元思考链注入配置
+                enableThoughtChainInjection: settings.enableThoughtChainInjection === true
             };
         } catch (e) {
             console.error("[GroupChat] Error reading VCP settings from settings.json", e);
         }
     }
-    return { 
-        vcpUrl: null, 
-        vcpApiKey: null, 
-        userName: '用户', 
-        topicSummaryModel: null, 
+    return {
+        vcpUrl: null,
+        vcpApiKey: null,
+        userName: '用户',
+        topicSummaryModel: null,
         enableAgentBubbleTheme: false,
         // 添加净化器默认值
         enableContextSanitizer: false,
-        contextSanitizerDepth: 2
+        contextSanitizerDepth: 2,
+        // 添加元思考链注入默认值
+        enableThoughtChainInjection: false
+    };
+}
+
+/**
+ * Resolve the model that should be used for this agent in group chat.
+ * When unified model is enabled, it has priority over per-agent model.
+ * @param {object} groupConfig
+ * @param {object} agentConfig
+ * @returns {{usingUnifiedModel: boolean, unifiedModel: string, agentModel: string, effectiveModel: string}}
+ */
+function resolveEffectiveModel(groupConfig, agentConfig) {
+    const usingUnifiedModel = groupConfig && groupConfig.useUnifiedModel === true;
+    const unifiedModel = (groupConfig && typeof groupConfig.unifiedModel === 'string')
+        ? groupConfig.unifiedModel.trim()
+        : '';
+    const agentModel = (agentConfig && typeof agentConfig.model === 'string')
+        ? agentConfig.model.trim()
+        : '';
+
+    return {
+        usingUnifiedModel,
+        unifiedModel,
+        agentModel,
+        effectiveModel: usingUnifiedModel ? unifiedModel : agentModel
     };
 }
 
@@ -157,6 +195,7 @@ async function createAgentGroup(groupName, initialConfig = {}) {
             avatarCalculatedColor: null, // 新增：用于存储头像计算出的颜色
             members: [],
             mode: 'sequential', // 可选: 'sequential', 'naturerandom', 'invite_only'
+            tagMatchMode: 'strict', // 可选: 'strict'(原始行为), 'natural'(智能触发，区分tag来源)
             memberTags: {},
             groupPrompt: '',
             invitePrompt: '现在轮到你{{VCPChatAgentName}}发言了。系统已经为大家添加[xxx的发言：]这样的标记头，以用于区分不同发言来自谁。大家不用自己再输出自己的发言标记头，也不需要讨论发言标记系统，正常聊天即可。',
@@ -272,6 +311,19 @@ async function saveAgentGroupConfig(groupId, configData) {
         const { avatarUrl, ...dataToSave } = configData; 
 
         const newConfigData = { ...existingConfig, ...dataToSave, id: groupId };
+
+        // Backend guard: unified model mode must have a non-empty model id.
+        if (newConfigData.useUnifiedModel === true) {
+            const normalizedUnifiedModel = typeof newConfigData.unifiedModel === 'string'
+                ? newConfigData.unifiedModel.trim()
+                : '';
+            if (!normalizedUnifiedModel) {
+                return { success: false, error: '启用群组统一模型时，群组统一模型不能为空。' };
+            }
+            newConfigData.unifiedModel = normalizedUnifiedModel;
+        } else if (typeof newConfigData.unifiedModel === 'string') {
+            newConfigData.unifiedModel = newConfigData.unifiedModel.trim();
+        }
         
         await fs.writeJson(configPath, newConfigData, { spaces: 2 });
         console.log(`[GroupChat] AgentGroup ${groupId} 配置已保存。`);
@@ -401,28 +453,14 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
         return;
     }
 
+    // 使用策略模式决定发言者
     let agentsToRespond = [];
-    if (groupConfig.mode === 'sequential') {
-        // TODO: 实现顺序发言逻辑，可能需要追踪上一位发言者
-        // 简单实现：按成员列表顺序，每次一个？或者全部按顺序？
-        // 假设按列表顺序轮流发言，需要一个状态来记录当前轮到谁
-        // 暂时简化为：顺序模式下，所有成员都尝试按列表顺序发言
-        agentsToRespond = activeMembers; 
-        console.log(`[GroupChat - Sequential] Agents to respond: ${agentsToRespond.map(a => a.name).join(', ')}`);
-    } else if (groupConfig.mode === 'naturerandom') {
-        agentsToRespond = determineNatureRandomSpeakers(
-            activeMembers, // 传递已加载好的详细配置
-            groupHistory,
-            groupConfig,
-            userMessageEntry // 用户消息本身，用于内容匹配
-        );
-    } else if (groupConfig.mode === 'invite_only') {
-        agentsToRespond = []; // 在邀请模式下，用户发言后AI不主动响应
-        console.log(`[GroupChat - Invite Only] No agents will respond automatically to user message.`);
+    const modeHandler = CHAT_MODES[groupConfig.mode];
+    if (modeHandler) {
+        agentsToRespond = modeHandler.determineSpeakers(activeMembers, groupHistory, groupConfig, userMessageEntry);
     } else {
-        console.warn(`[GroupChat] 未知的群聊模式: ${groupConfig.mode}`);
-        // 默认或回退到某种行为，例如不响应或只让第一个发言
-        agentsToRespond = []; // 对于未知模式，也先不响应
+        console.warn(`[GroupChat] 未知的群聊模式: ${groupConfig.mode}，不自动响应。`);
+        agentsToRespond = [];
     }
 
     // 只有在 agentsToRespond 明确有内容时才继续自动发言流程
@@ -497,15 +535,24 @@ ${canvasData.errors || 'No errors'}
                 textForAIContext = (typeof msg.content === 'string') ? msg.content : '';
                 if (msg.attachments && msg.attachments.length > 0) {
                     for (const att of msg.attachments) {
-                        if (att._fileManagerData && typeof att._fileManagerData.extractedText === 'string' && att._fileManagerData.extractedText.trim() !== '') {
-                            textForAIContext += `
+                        const fileManagerData = att._fileManagerData || {};
+                        // 🟢 同步：多级路径探测。优先使用 internalPath (物理路径)
+                        const filePathForContext = (fileManagerData && fileManagerData.internalPath) || 
+                                                   att.localPath || 
+                                                   att.src || 
+                                                   (att.name || '未知文件');
 
-[附加文件: ${att.name || '未知文件'}]
-${att._fileManagerData.extractedText}
-[/附加文件结束: ${att.name || '未知文件'}]`;
-                        } else if (att._fileManagerData && att.type && !att.type.startsWith('image/')) {
-                            textForAIContext += `\n\n[附加文件: ${att.name || '未知文件'} (无法预览文本内容)]`;
-                        } else if (!att._fileManagerData) {
+                        if (fileManagerData && typeof fileManagerData.extractedText === 'string' && fileManagerData.extractedText.trim() !== '') {
+                            textForAIContext += `\n\n[附加文件: ${filePathForContext}]\n${fileManagerData.extractedText}\n[/附加文件结束: ${att.name || '未知文件'}]`;
+                        } else if (att.type && att.type.startsWith('audio/')) {
+                            textForAIContext += `\n\n[附加音频: ${filePathForContext}]`;
+                        } else if (att.type && att.type.startsWith('video/')) {
+                            textForAIContext += `\n\n[附加视频: ${filePathForContext}]`;
+                        } else if (att.type && att.type.startsWith('image/')) {
+                             textForAIContext += `\n\n[附加图片: ${filePathForContext}]`;
+                        } else if (att.type && !att.type.startsWith('image/')) {
+                            textForAIContext += `\n\n[附加文件: ${filePathForContext} (无法预览文本内容)]`;
+                        } else if (!fileManagerData) {
                             console.warn(`[GroupChat Context] Historical message attachment for "${att.name}" is missing _fileManagerData. Text content cannot be appended.`);
                         }
                     }
@@ -558,20 +605,51 @@ ${att._fileManagerData.extractedText}
         messagesForAI.push(...contextForAgent);
         // 添加触发AI发言的模拟用户输入 (as text part of a content array)
         messagesForAI.push({ role: 'user', content: [{ type: 'text', text: invitePromptContent }], name: userNameForMessage });
-        // 添加净化器处理  
-        if (globalVcpSettings.enableContextSanitizer === true) {    
-            const sanitizerDepth = globalVcpSettings.contextSanitizerDepth !== undefined ? globalVcpSettings.contextSanitizerDepth : 2;    
-            console.log(`[GroupChat Context Sanitizer] Enabled with depth: ${sanitizerDepth}`);    
+        // --- VCP Thought Chain Stripping ---
+        try {
+            // 默认不注入元思考链，除非明确开启
+            if (globalVcpSettings.enableThoughtChainInjection !== true) {
+                messagesForAI = messagesForAI.map(msg => {
+                    if (typeof msg.content === 'string') {
+                        return { ...msg, content: contextSanitizer.stripThoughtChains(msg.content) };
+                    } else if (Array.isArray(msg.content)) {
+                        return {
+                            ...msg,
+                            content: msg.content.map(part => {
+                                if (part.type === 'text' && typeof part.text === 'string') {
+                                    return { ...part, text: contextSanitizer.stripThoughtChains(part.text) };
+                                }
+                                return part;
+                            })
+                        };
+                    }
+                    return msg;
+                });
+                console.log(`[GroupChat ThoughtChain] Thought chains stripped from context`);
+            }
+        } catch (e) {
+            console.error('[GroupChat ThoughtChain] Failed to strip thought chains:', e);
+        }
+        // --- End of Thought Chain Stripping ---
+
+        // 添加净化器处理
+        if (globalVcpSettings.enableContextSanitizer === true) {
+            const sanitizerDepth = globalVcpSettings.contextSanitizerDepth !== undefined ? globalVcpSettings.contextSanitizerDepth : 2;
+            console.log(`[GroupChat Context Sanitizer] Enabled with depth: ${sanitizerDepth}`);
               
-            const systemMessages = messagesForAI.filter(m => m.role === 'system');    
-            const nonSystemMessages = messagesForAI.filter(m => m.role !== 'system');    
+            const systemMessages = messagesForAI.filter(m => m.role === 'system');
+            const nonSystemMessages = messagesForAI.filter(m => m.role !== 'system');
               
-            // 使用已加载的净化器
-            const sanitizedNonSystemMessages = contextSanitizer.sanitizeMessages(nonSystemMessages, sanitizerDepth);
+            // 使用已加载的净化器，传入 enableThoughtChainInjection 参数
+            const sanitizedNonSystemMessages = contextSanitizer.sanitizeMessages(
+                nonSystemMessages,
+                sanitizerDepth,
+                globalVcpSettings.enableThoughtChainInjection === true
+            );
               
             messagesForAI = [...systemMessages, ...sanitizedNonSystemMessages];
               
-            console.log(`[GroupChat Context Sanitizer] Messages processed successfully`);    
+            console.log(`[GroupChat Context Sanitizer] Messages processed successfully`);
         }
         // --- Agent Bubble Theme Injection ---
         if (globalVcpSettings.enableAgentBubbleTheme) {
@@ -589,8 +667,23 @@ ${att._fileManagerData.extractedText}
         }
         // --- End of Injection ---
 
-        if (!globalVcpSettings.vcpUrl || !agentConfig.model) {
-            const errorMsg = `Agent ${agentName} (${agentId}) 无法响应：VCP URL 或模型未配置。`;
+        const modelResolution = resolveEffectiveModel(groupConfig, agentConfig);
+        if (!globalVcpSettings.vcpUrl) {
+            const errorMsg = `Agent ${agentName} (${agentId}) 无法响应：VCP URL 未配置。`;
+            console.error(`[GroupChat] ${errorMsg}`);
+            const errorResponse = { role: 'assistant', name: agentName, agentId: agentId, content: `[系统消息] ${errorMsg}`, timestamp: Date.now(), id: messageIdForAgentResponse };
+            groupHistory.push(errorResponse);
+            if (typeof sendStreamChunkToRenderer === 'function') {
+                sendStreamChunkToRenderer({ type: 'error', error: errorMsg, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true } });
+            }
+            continue; // 继续处理下一个需要发言的Agent
+        }
+
+        if (!modelResolution.effectiveModel) {
+            const modelHint = modelResolution.usingUnifiedModel
+                ? '已启用群组统一模型，但群组统一模型为空。'
+                : '当前成员未配置模型。';
+            const errorMsg = `Agent ${agentName} (${agentId}) 无法响应：${modelHint}`;
             console.error(`[GroupChat] ${errorMsg}`);
             const errorResponse = { role: 'assistant', name: agentName, agentId: agentId, content: `[系统消息] ${errorMsg}`, timestamp: Date.now(), id: messageIdForAgentResponse };
             groupHistory.push(errorResponse);
@@ -625,7 +718,7 @@ ${att._fileManagerData.extractedText}
             }
 
             const modelConfigForAgent = {
-               model: groupConfig.useUnifiedModel ? groupConfig.unifiedModel : agentConfig.model,
+               model: modelResolution.effectiveModel,
                 temperature: parseFloat(agentConfig.temperature),
                 max_tokens: agentConfig.maxOutputTokens ? parseInt(agentConfig.maxOutputTokens) : undefined,
                 stream: agentConfig.streamOutput === true || String(agentConfig.streamOutput) === 'true'
@@ -886,7 +979,7 @@ ${att._fileManagerData.extractedText}
     
     if (finalGroupConfigForSummary && finalGroupHistoryForSummary.length > 0) {
         const latestGlobalVcpSettingsForSummary = await getVcpGlobalSettings();
-        await triggerTopicSummarizationIfNeeded(groupId, topicId, finalGroupHistoryForSummary, latestGlobalVcpSettingsForSummary, finalGroupConfigForSummary, sendStreamChunkToRenderer);
+        await topicTitleManager.triggerSummarizationIfNeeded(groupId, topicId, finalGroupHistoryForSummary, latestGlobalVcpSettingsForSummary, finalGroupConfigForSummary, sendStreamChunkToRenderer, saveGroupTopicTitle);
     }
 }
 
@@ -989,15 +1082,24 @@ ${canvasData.errors || 'No errors'}
 
         if (msg.attachments && msg.attachments.length > 0) {
             for (const att of msg.attachments) {
-                if (att._fileManagerData && typeof att._fileManagerData.extractedText === 'string' && att._fileManagerData.extractedText.trim() !== '') {
-                    textForAIContext += `
+                const fileManagerData = att._fileManagerData || {};
+                // 🟢 极其关键：直接强取物理路径，不给文件名回退的机会
+                const filePathForContext = (fileManagerData && fileManagerData.internalPath) || 
+                                           att.localPath || 
+                                           att.src || 
+                                           (att.name || '未知文件');
 
-[附加文件: ${att.name || '未知文件'}]
-${att._fileManagerData.extractedText}
-[/附加文件结束: ${att.name || '未知文件'}]`;
-                } else if (att._fileManagerData && att.type && !att.type.startsWith('image/')) {
-                    textForAIContext += `\n\n[附加文件: ${att.name || '未知文件'} (无法预览文本内容)]`;
-                } else if (!att._fileManagerData) {
+                if (fileManagerData && typeof fileManagerData.extractedText === 'string' && fileManagerData.extractedText.trim() !== '') {
+                    textForAIContext += `\n\n[附加文件: ${filePathForContext}]\n${fileManagerData.extractedText}\n[/附加文件结束: ${att.name || '未知文件'}]`;
+                } else if (att.type && att.type.startsWith('audio/')) {
+                    textForAIContext += `\n\n[附加音频: ${filePathForContext}]`;
+                } else if (att.type && att.type.startsWith('video/')) {
+                    textForAIContext += `\n\n[附加视频: ${filePathForContext}]`;
+                } else if (att.type && att.type.startsWith('image/')) {
+                     textForAIContext += `\n\n[附加图片: ${filePathForContext}]`;
+                } else if (fileManagerData && att.type && !att.type.startsWith('image/')) {
+                    textForAIContext += `\n\n[附加文件: ${filePathForContext} (无法预览文本内容)]`;
+                } else if (!fileManagerData) {
                     console.warn(`[GroupChat Invite Context] Historical message attachment for "${att.name}" is missing _fileManagerData. Text content cannot be appended.`);
                 }
             }
@@ -1044,20 +1146,51 @@ ${att._fileManagerData.extractedText}
     }
     messagesForAI.push(...contextForAgent);
     messagesForAI.push({ role: 'user', content: [{ type: 'text', text: invitePromptContent }], name: (globalVcpSettings.userName || '用户') }); // 模拟用户触发
-    // 添加净化器处理  
-    if (globalVcpSettings.enableContextSanitizer === true) {    
-        const sanitizerDepth = globalVcpSettings.contextSanitizerDepth !== undefined ? globalVcpSettings.contextSanitizerDepth : 2;    
-        console.log(`[GroupChat Context Sanitizer] Enabled with depth: ${sanitizerDepth}`);    
+    // --- VCP Thought Chain Stripping ---
+    try {
+        // 默认不注入元思考链，除非明确开启
+        if (globalVcpSettings.enableThoughtChainInjection !== true) {
+            messagesForAI = messagesForAI.map(msg => {
+                if (typeof msg.content === 'string') {
+                    return { ...msg, content: contextSanitizer.stripThoughtChains(msg.content) };
+                } else if (Array.isArray(msg.content)) {
+                    return {
+                        ...msg,
+                        content: msg.content.map(part => {
+                            if (part.type === 'text' && typeof part.text === 'string') {
+                                return { ...part, text: contextSanitizer.stripThoughtChains(part.text) };
+                            }
+                            return part;
+                        })
+                    };
+                }
+                return msg;
+            });
+            console.log(`[GroupChat Invite ThoughtChain] Thought chains stripped from context`);
+        }
+    } catch (e) {
+        console.error('[GroupChat Invite ThoughtChain] Failed to strip thought chains:', e);
+    }
+    // --- End of Thought Chain Stripping ---
+
+    // 添加净化器处理
+    if (globalVcpSettings.enableContextSanitizer === true) {
+        const sanitizerDepth = globalVcpSettings.contextSanitizerDepth !== undefined ? globalVcpSettings.contextSanitizerDepth : 2;
+        console.log(`[GroupChat Context Sanitizer] Enabled with depth: ${sanitizerDepth}`);
           
-        const systemMessages = messagesForAI.filter(m => m.role === 'system');    
-        const nonSystemMessages = messagesForAI.filter(m => m.role !== 'system');    
+        const systemMessages = messagesForAI.filter(m => m.role === 'system');
+        const nonSystemMessages = messagesForAI.filter(m => m.role !== 'system');
           
-        // 使用已加载的净化器
-        const sanitizedNonSystemMessages = contextSanitizer.sanitizeMessages(nonSystemMessages, sanitizerDepth);
+        // 使用已加载的净化器，传入 enableThoughtChainInjection 参数
+        const sanitizedNonSystemMessages = contextSanitizer.sanitizeMessages(
+            nonSystemMessages,
+            sanitizerDepth,
+            globalVcpSettings.enableThoughtChainInjection === true
+        );
           
         messagesForAI = [...systemMessages, ...sanitizedNonSystemMessages];
           
-        console.log(`[GroupChat Context Sanitizer] Messages processed successfully`);    
+        console.log(`[GroupChat Context Sanitizer] Messages processed successfully`);
     }
     // --- Agent Bubble Theme Injection ---
     if (globalVcpSettings.enableAgentBubbleTheme) {
@@ -1075,8 +1208,24 @@ ${att._fileManagerData.extractedText}
     }
     // --- End of Injection ---
 
-    if (!globalVcpSettings.vcpUrl || !agentConfig.model) {
-        const errorMsg = `Agent ${agentName} (${invitedAgentId}) 无法响应（邀请）：VCP URL 或模型未配置。`;
+    const modelResolution = resolveEffectiveModel(groupConfig, agentConfig);
+    if (!globalVcpSettings.vcpUrl) {
+        const errorMsg = `Agent ${agentName} (${invitedAgentId}) 无法响应（邀请）：VCP URL 未配置。`;
+        console.error(`[GroupChat Invite] ${errorMsg}`);
+        const errorResponse = { role: 'assistant', name: agentName, agentId: invitedAgentId, content: `[系统消息] ${errorMsg}`, timestamp: Date.now(), id: messageIdForAgentResponse };
+        groupHistory.push(errorResponse);
+        await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
+        if (typeof sendStreamChunkToRenderer === 'function') {
+            sendStreamChunkToRenderer({ type: 'error', error: errorMsg, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true } });
+        }
+        return;
+    }
+
+    if (!modelResolution.effectiveModel) {
+        const modelHint = modelResolution.usingUnifiedModel
+            ? '已启用群组统一模型，但群组统一模型为空。'
+            : '当前成员未配置模型。';
+        const errorMsg = `Agent ${agentName} (${invitedAgentId}) 无法响应（邀请）：${modelHint}`;
         console.error(`[GroupChat Invite] ${errorMsg}`);
         const errorResponse = { role: 'assistant', name: agentName, agentId: invitedAgentId, content: `[系统消息] ${errorMsg}`, timestamp: Date.now(), id: messageIdForAgentResponse };
         groupHistory.push(errorResponse);
@@ -1107,7 +1256,7 @@ ${att._fileManagerData.extractedText}
         }
 
         const modelConfigForAgent = {
-           model: groupConfig.useUnifiedModel ? groupConfig.unifiedModel : agentConfig.model,
+           model: modelResolution.effectiveModel,
             temperature: parseFloat(agentConfig.temperature),
             max_tokens: agentConfig.maxOutputTokens ? parseInt(agentConfig.maxOutputTokens) : undefined,
             stream: agentConfig.streamOutput === true || String(agentConfig.streamOutput) === 'true'
@@ -1346,322 +1495,13 @@ ${att._fileManagerData.extractedText}
     
     if (finalGroupConfigForSummary && finalGroupHistoryForSummary.length > 0) {
         const latestGlobalVcpSettingsForSummary = await getVcpGlobalSettings();
-        await triggerTopicSummarizationIfNeeded(groupId, topicId, finalGroupHistoryForSummary, latestGlobalVcpSettingsForSummary, finalGroupConfigForSummary, sendStreamChunkToRenderer);
+        await topicTitleManager.triggerSummarizationIfNeeded(groupId, topicId, finalGroupHistoryForSummary, latestGlobalVcpSettingsForSummary, finalGroupConfigForSummary, sendStreamChunkToRenderer, saveGroupTopicTitle);
     }
 }
 
+// cleanSummarizedTitle, triggerTopicSummarizationIfNeeded, determineNatureRandomSpeakers
+// 已模块化至 Groupmodules/topicTitleManager.js 和 Groupmodules/modes/ 目录
 
-/**
- * 清理和格式化从AI获取的话题标题
- * @param {string} rawTitle - AI返回的原始标题
- * @returns {string} 清理后的标题
- */
-function cleanSummarizedTitle(rawTitle) {
-    if (!rawTitle || typeof rawTitle !== 'string') return "AI总结话题";
-
-    let cleanedTitle = rawTitle.split('\n')[0].trim(); // 取第一行
-    // 移除常见标点、数字编号、特定前后缀
-    cleanedTitle = cleanedTitle.replace(/[^\u4e00-\u9fa5a-zA-Z0-9\s（）()-]/g, ''); // 保留一些常用括号
-    cleanedTitle = cleanedTitle.replace(/^\s*[\d①②③④⑤⑥⑦⑧⑨⑩❶❷❸❹❺❻❼❽❾❿一二三四五六七八九十]+\s*[\.\uff0e\s、]\s*/, ''); // 移除 "1. ", "①. " 等
-    cleanedTitle = cleanedTitle.replace(/^(话题|标题|总结|Topic|Title|Summary)[:：\s]*/i, '');
-    cleanedTitle = cleanedTitle.replace(/[。？！，、；：“”‘’（）《》〈〉【】「」『』]/g, ''); // 移除特定标点
-    cleanedTitle = cleanedTitle.replace(/\s+/g, ' ').trim(); // 合并多个空格为一个，并去除首尾空格
-
-    if (cleanedTitle.length > 15) { // 限制长度
-        cleanedTitle = cleanedTitle.substring(0, 15);
-    }
-    return cleanedTitle || "AI总结话题"; // 如果清理后为空，返回默认
-}
-
-
-/**
- * 触发话题总结（如果需要）
- * @param {string} groupId
- * @param {string} topicId
- * @param {Array<object>} groupHistory - 当前话题的完整历史记录
- * @param {object} globalVcpSettings - 全局VCP设置
- * @param {object} groupConfig - 当前群组的配置
- * @param {function} sendStreamChunkToRenderer - 用于发送通知回渲染器的函数
- */
-async function triggerTopicSummarizationIfNeeded(groupId, topicId, groupHistory, globalVcpSettings, groupConfig, sendStreamChunkToRenderer) {
-    if (!groupConfig || !groupConfig.topics) return;
-
-    const currentTopic = groupConfig.topics.find(t => t.id === topicId);
-    if (!currentTopic) {
-        console.warn(`[TopicSummary] 尝试总结时未找到话题 ${topicId} in group ${groupId}`);
-        return;
-    }
-
-    const isDefaultTitle = DEFAULT_TOPIC_NAMES.includes(currentTopic.name) || currentTopic.name.startsWith("新话题");
-
-    if (groupHistory.length >= MIN_MESSAGES_FOR_SUMMARY && isDefaultTitle) {
-        console.log(`[TopicSummary] 话题 ${topicId} (${currentTopic.name}) 满足总结条件。消息数: ${groupHistory.length}`);
-
-        const recentMessagesContent = groupHistory.slice(-MIN_MESSAGES_FOR_SUMMARY).map(msg => {
-            const speakerName = msg.name || (msg.role === 'user' ? (globalVcpSettings.userName || '用户') : 'AI成员');
-            // 确保从消息内容中提取文本，即使它是对象 { text: '...' }
-            let contentText = typeof msg.content === 'string' ? msg.content : (msg.content?.text || '');
-            // 如果消息有附件且包含提取的文本，也将其包含在内
-            if (msg.attachments && msg.attachments.length > 0) {
-                for (const att of msg.attachments) {
-                    if (att._fileManagerData && typeof att._fileManagerData.extractedText === 'string' && att._fileManagerData.extractedText.trim() !== '') {
-                        contentText += `
-
-[附加文件: ${att.name || '未知文件'}]
-${att._fileManagerData.extractedText}
-[/附加文件结束: ${att.name || '未知文件'}]`;
-                    } else if (att._fileManagerData && att.type && !att.type.startsWith('image/')) {
-                        contentText += `\n\n[附加文件: ${att.name || '未知文件'} (无法预览文本内容)]`;
-                    }
-                }
-            }
-            return `${speakerName}: ${contentText}`;
-        }).join('\n\n');
-
-        const summaryPrompt = `请根据以下群聊对话内容，仅返回一个简洁的话题标题。要求：1. 标题长度控制在10个汉字或20个英文字符以内。2. 标题本身不能包含任何标点符号、数字编号或任何非标题文字。3. 直接给出标题文字，不要添加任何解释或前缀。\n\n对话内容：\n${recentMessagesContent}`;
-        
-        const messagesForAISummary = [{ role: 'user', content: [{ type: 'text', text: summaryPrompt }] }];
-
-        try {
-            if (!globalVcpSettings.vcpUrl) {
-                console.error("[TopicSummary] VCP URL not configured. Cannot summarize topic.");
-                return;
-            }
-
-            // 添加超时控制
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 20000); // 20秒超时（总结用时较短）
-            
-            let response;
-            try {
-                response = await fetch(globalVcpSettings.vcpUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${globalVcpSettings.vcpApiKey}`
-                    },
-                    body: JSON.stringify({
-                        messages: messagesForAISummary,
-                        model: globalVcpSettings.topicSummaryModel || 'gemini-2.5-flash-preview-05-20',
-                        temperature: 0.3,
-                        max_tokens: 4000,
-                        stream: false // 总结通常不需要流式
-                    }),
-                    signal: controller.signal
-                });
-            } catch (fetchError) {
-                clearTimeout(timeoutId);
-                if (fetchError.name === 'AbortError') {
-                    console.error(`[TopicSummary] VCP request timeout after 20 seconds`);
-                    return;
-                }
-                throw fetchError;
-            } finally {
-                clearTimeout(timeoutId);
-            }
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error(`[TopicSummary] VCP请求失败. Status: ${response.status}, Response: ${errorText}`);
-                return;
-            }
-
-            const summaryResponseJson = await response.json();
-            if (summaryResponseJson.choices && summaryResponseJson.choices.length > 0) {
-                const rawTitle = summaryResponseJson.choices[0].message.content;
-                const newTitle = cleanSummarizedTitle(rawTitle);
-                
-                // 检查新标题是否有效且与原标题不同
-                if (newTitle && newTitle !== "AI总结话题" && newTitle !== currentTopic.name) {
-                    console.log(`[TopicSummary] 话题 ${topicId} 新标题: "${newTitle}" (原: "${currentTopic.name}")`);
-                    const saveResult = await saveGroupTopicTitle(groupId, topicId, newTitle);
-                    if (saveResult.success && sendStreamChunkToRenderer) {
-                        // 通知渲染器话题标题已更新
-                        sendStreamChunkToRenderer({
-                            type: 'topic_updated', // Use a type to distinguish from chat chunks
-                            context: {
-                                groupId,
-                                topicId,
-                                newTitle,
-                                topics: saveResult.topics,
-                                isGroupMessage: true // Maintain context structure
-                            }
-                        });
-                        console.log(`[TopicSummary] 已通知渲染器话题 ${topicId} 标题更新。`);
-                    } else if (!saveResult.success) {
-                        console.error(`[TopicSummary] 保存新话题标题失败: ${saveResult.error}`);
-                    }
-                } else if (newTitle === "AI总结话题") {
-                    console.log(`[TopicSummary] AI未能有效总结话题 ${topicId} (返回默认值)，不更新标题。原始AI返回: "${rawTitle}"`);
-                } else if (newTitle === currentTopic.name) {
-                    console.log(`[TopicSummary] AI总结的标题与原标题 "${currentTopic.name}" 相同，不更新。`);
-                } else {
-                    console.log(`[TopicSummary] 生成的标题为空或无效，不更新: "${newTitle}"`);
-                }
-            } else {
-                console.warn('[TopicSummary] AI未能生成有效的总结标题或响应格式不符。Response:', summaryResponseJson);
-            }
-        } catch (error) {
-            console.error('[TopicSummary] 调用VCP进行话题总结时出错:', error);
-        }
-    }
-}
-
-
-/**
- * NatureRandom 模式：决定哪些 Agent 发言
- * @param {Array<object>} activeMembersConfigs - 当前群聊中活跃的成员 Agent 的完整配置对象数组
- * @param {Array<object>} history - 当前聊天历史
- * @param {object} groupConfig - 当前群组的配置
- * @param {object} userMessageEntry - 用户最新发送的消息条目 { content: "用户说的文本内容" }
- * @returns {Array<object>} - 需要发言的 Agent 配置对象数组，按发言顺序排列
- */
-function determineNatureRandomSpeakers(activeMembersConfigs, history, groupConfig, userMessageEntry) {
-    const speakers = [];
-    const spokenThisTurn = new Set(); // 存储已确定发言的 Agent ID
-    const userMessageText = (userMessageEntry.content && typeof userMessageEntry.content === 'string')
-                            ? userMessageEntry.content.toLowerCase()
-                            : "";
-
-    // --- 主要修改点：定义并使用上下文进行话题分析 ---
-    const CONTEXT_WINDOW = 8; // 定义上下文窗口大小，例如最近5条消息
-    const recentHistory = history.slice(-CONTEXT_WINDOW);
-    const contextText = recentHistory
-        .map(msg => {
-            const rawContent = typeof msg.content === 'string' ? msg.content : (msg.content?.text || '');
-            // 新增：移除发言者标记，避免角色名自我匹配导致循环发言
-            return rawContent.replace(/^\[.*?的发言\]:\s*/, '');
-        })
-        .join(' \n ') // 使用换行符连接，更清晰
-        .toLowerCase();
-    // --- 修改结束 ---
-
-    // 优先级1: @角色名 (直接在最新消息中匹配)
-    activeMembersConfigs.forEach(memberConfig => {
-        if (userMessageText.includes(`@${memberConfig.name.toLowerCase()}`)) {
-            if (!spokenThisTurn.has(memberConfig.id)) {
-                speakers.push(memberConfig);
-                spokenThisTurn.add(memberConfig.id);
-                console.log(`[NatureRandom] @${memberConfig.name} triggered by direct mention.`);
-            }
-        }
-    });
-
-    // 优先级2: @角色Tag 或 关键词匹配 Tag (在上下文中匹配)
-    activeMembersConfigs.forEach(memberConfig => {
-        if (spokenThisTurn.has(memberConfig.id)) return; // 如果已因@角色名被选中，则跳过
-
-        const tagsString = groupConfig.memberTags ? groupConfig.memberTags[memberConfig.id] : '';
-        if (tagsString) {
-            const tags = tagsString.split(/,|，/).map(t => t.trim().toLowerCase()).filter(t => t);
-            // 使用 contextText 进行关键词匹配，但 @tag 还是检查最新消息以示区别
-            if (tags.some(tag => contextText.includes(tag) || userMessageText.includes(`@${tag}`))) {
-                 if (!spokenThisTurn.has(memberConfig.id)) {
-                    speakers.push(memberConfig);
-                    spokenThisTurn.add(memberConfig.id);
-                    console.log(`[NatureRandom] Tag match for ${memberConfig.name} in recent context (tags: ${tags.join('/')}).`);
-                }
-            }
-        }
-    });
-    
-    // 优先级3: @所有人 (在最新消息中匹配)
-    if (userMessageText.includes('@所有人')) {
-        activeMembersConfigs.forEach(memberConfig => {
-            if (!spokenThisTurn.has(memberConfig.id)) {
-                speakers.push(memberConfig);
-                spokenThisTurn.add(memberConfig.id);
-                console.log(`[NatureRandom] @所有人 triggered for ${memberConfig.name}.`);
-            }
-        });
-    }
-
-    // 优先级4: 概率发言 (对于未被上述规则触发的)
-    const nonTriggeredMembers = activeMembersConfigs.filter(member => !spokenThisTurn.has(member.id));
-    const baseRandomSpeakProbability = 0.15; // 10% 的基础概率，避免群里太安静
-    
-    nonTriggeredMembers.forEach(memberConfig => {
-        // 检查此成员的tag是否在上下文中，如果是，则提高发言概率
-        const tagsString = groupConfig.memberTags ? groupConfig.memberTags[memberConfig.id] : '';
-        let speakChance = baseRandomSpeakProbability;
-        if (tagsString) {
-            const tags = tagsString.split(/,|，/).map(t => t.trim().toLowerCase()).filter(t => t);
-            if (tags.some(tag => contextText.includes(tag))) {
-                speakChance = 0.85; // 如果话题相关，概率大幅提升到 85%
-                console.log(`[NatureRandom] Increased speak probability for relevant agent ${memberConfig.name}.`);
-            }
-        }
-
-        if (Math.random() < speakChance) {
-            if (!spokenThisTurn.has(memberConfig.id)) {
-                speakers.push(memberConfig);
-                spokenThisTurn.add(memberConfig.id);
-                console.log(`[NatureRandom] Random/Probabilistic speak triggered for ${memberConfig.name} with chance ${speakChance.toFixed(2)}.`);
-            }
-        }
-    });
-
-    // 优先级5: 保底发言 (如果以上都没有触发任何Agent)
-    if (speakers.length === 0 && activeMembersConfigs.length > 0) {
-        // 保底发言也优先选择话题相关的
-        const relevantMembers = activeMembersConfigs.filter(m => {
-            if (spokenThisTurn.has(m.id)) return false; // 确保没被选中过
-            const tagsString = groupConfig.memberTags ? groupConfig.memberTags[m.id] : '';
-            if (!tagsString) return false;
-            const tags = tagsString.split(/,|，/).map(t => t.trim().toLowerCase()).filter(t => t);
-            return tags.some(tag => contextText.includes(tag));
-        });
-
-        let fallbackSpeaker;
-        if (relevantMembers.length > 0) {
-            // 从相关成员中随机选一个
-            const randomIndex = Math.floor(Math.random() * relevantMembers.length);
-            fallbackSpeaker = relevantMembers[randomIndex];
-            console.log(`[NatureRandom] Fallback speaker triggered (relevant): ${fallbackSpeaker.name}.`);
-        } else {
-            // 从所有未发言成员中随机选一个
-            const fallbackCandidates = activeMembersConfigs.filter(m => !spokenThisTurn.has(m.id));
-            if (fallbackCandidates.length > 0) {
-                const randomIndex = Math.floor(Math.random() * fallbackCandidates.length);
-                fallbackSpeaker = fallbackCandidates[randomIndex];
-                console.log(`[NatureRandom] Fallback speaker triggered (random): ${fallbackSpeaker.name}.`);
-            }
-        }
-        if (fallbackSpeaker) {
-            speakers.push(fallbackSpeaker);
-        }
-    }
-    
-    // --- 新增：优化发言顺序，将Tag在用户最新发言中命中的角色排在最前 ---
-    speakers.sort((a, b) => {
-        const getRelevance = (memberConfig) => {
-            const tagsString = groupConfig.memberTags ? groupConfig.memberTags[memberConfig.id] : '';
-            if (!tagsString) return 0;
-            const tags = tagsString.split(/,|，/).map(t => t.trim().toLowerCase()).filter(t => t);
-            // 如果tag在最新用户消息中，则相关性最高
-            if (tags.some(tag => userMessageText.includes(tag))) {
-                return 2;
-            }
-            // 如果tag在上下文中，则相关性次之
-            if (tags.some(tag => contextText.includes(tag))) {
-                return 1;
-            }
-            return 0;
-        };
-
-        const relevanceA = getRelevance(a);
-        const relevanceB = getRelevance(b);
-
-        // 相关性高的排在前面
-        return relevanceB - relevanceA;
-    });
-    
-    console.log(`[NatureRandom] Sorted speakers by relevance. New order: ${speakers.map(s => s.name).join(', ')}`);
-    // --- 排序优化结束 ---
-
-    console.log(`[GroupChat - NatureRandom] Determined speakers: ${speakers.map(s => s.name).join(', ')}`);
-    return speakers; // 返回的是 Agent 配置对象的数组
-}
 
 
 /**

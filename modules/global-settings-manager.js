@@ -2,6 +2,7 @@
  * This module handles the logic for saving global settings.
  */
 export async function handleSaveGlobalSettings(e, deps) {
+    const chatAPI = window.chatAPI || window.electronAPI;
     e.preventDefault();
 
     const {
@@ -11,16 +12,28 @@ export async function handleSaveGlobalSettings(e, deps) {
         uiHelperFunctions,
         settingsManager
     } = deps;
+    const currentSettings = refs.globalSettings.get();
+
+    const clampBubbleWidthPercent = (rawValue, fallback) => {
+        const parsed = Number.parseInt(rawValue, 10);
+        if (!Number.isFinite(parsed)) return fallback;
+        return Math.min(98, Math.max(50, parsed));
+    };
 
     const networkNotesPathsContainer = document.getElementById('networkNotesPathsContainer');
     const pathInputs = networkNotesPathsContainer.querySelectorAll('input[name="networkNotesPath"]');
     const networkNotesPaths = Array.from(pathInputs).map(input => input.value.trim()).filter(path => path);
+    const parseMultilineKeywords = (id) => {
+        const value = document.getElementById(id)?.value || '';
+        return value
+            .split(/\r?\n|,|，|;|；/)
+            .map(item => item.trim())
+            .filter(Boolean);
+    };
 
-    const remoteAllowedRootsText = document.getElementById('remoteAllowedRoots')?.value || '';
-    const remoteAllowedRoots = remoteAllowedRootsText
-        .split(';')
-        .map(s => s.trim())
-        .filter(Boolean);
+    const voiceMode = document.getElementById('voiceModeNetwork')?.checked ? 'network' : 'local';
+    const speechRecognizerBrowserPath = document.getElementById('speechRecognizerBrowserPath')?.value.trim() || '';
+    const speechRecognizerPagePath = document.getElementById('speechRecognizerPagePath')?.value.trim() || '';
 
     const newSettings = {
         userName: document.getElementById('userName').value.trim() || '用户',
@@ -44,15 +57,41 @@ export async function handleSaveGlobalSettings(e, deps) {
         notificationsSidebarWidth: refs.globalSettings.get().notificationsSidebarWidth,
         enableAgentBubbleTheme: document.getElementById('enableAgentBubbleTheme').checked,
         enableSmoothStreaming: document.getElementById('enableSmoothStreaming').checked,
+        chatFontPreset: document.getElementById('chatFontPreset')?.value || currentSettings.chatFontPreset || 'system',
+        chatFontCustom: document.getElementById('chatFontCustom')?.value.trim() || '',
+        chatCodeFontPreset: document.getElementById('chatCodeFontPreset')?.value || currentSettings.chatCodeFontPreset || 'consolas',
+        chatCodeFontCustom: document.getElementById('chatCodeFontCustom')?.value.trim() || '',
+        chatDiaryFontPreset: document.getElementById('chatDiaryFontPreset')?.value || currentSettings.chatDiaryFontPreset || 'serif',
+        chatDiaryFontCustom: document.getElementById('chatDiaryFontCustom')?.value.trim() || '',
+        chatToolFontPreset: document.getElementById('chatToolFontPreset')?.value || currentSettings.chatToolFontPreset || 'system',
+        chatToolFontCustom: document.getElementById('chatToolFontCustom')?.value.trim() || '',
+        enableWideChatLayout: document.getElementById('chatLayoutModeWide')?.checked || false,
+        enableUserChatBubbleUi: document.getElementById('enableUserChatBubbleUi')?.checked !== false,
+        showUserMetaInChatBubbleUi: document.getElementById('showUserMetaInChatBubbleUi')?.checked !== false,
+        chatBubbleMaxWidthDefault: clampBubbleWidthPercent(currentSettings.chatBubbleMaxWidthDefault, 82),
+        chatBubbleMaxWidthNotifications: clampBubbleWidthPercent(currentSettings.chatBubbleMaxWidthNotifications, 90),
+        chatBubbleMaxWidthNarrow: clampBubbleWidthPercent(currentSettings.chatBubbleMaxWidthNarrow, 85),
+        chatBubbleMaxWidthWideDefault: clampBubbleWidthPercent(document.getElementById('chatBubbleMaxWidthWideDefault')?.value, 92),
+        chatBubbleMaxWidthWideNotifications: clampBubbleWidthPercent(document.getElementById('chatBubbleMaxWidthWideNotifications')?.value, 96),
+        chatBubbleMaxWidthWideNarrow: clampBubbleWidthPercent(
+            document.getElementById('chatBubbleMaxWidthWideNarrow')?.value,
+            clampBubbleWidthPercent(currentSettings.chatBubbleMaxWidthWideNarrow, 92)
+        ),
         minChunkBufferSize: parseInt(document.getElementById('minChunkBufferSize').value, 10) || 16,
         smoothStreamIntervalMs: parseInt(document.getElementById('smoothStreamIntervalMs').value, 10) || 100,
         assistantAgent: document.getElementById('assistantAgent').value,
+        voiceMode,
+        speechRecognizerBrowserPath,
+        speechRecognizerPagePath,
+        voiceLocalSettings: {
+            sovitsUrl: document.getElementById('voiceLocalSovitsUrl')?.value.trim() || '',
+            sovitsKey: document.getElementById('voiceLocalSovitsKey')?.value || ''
+        },
+        voiceNetworkSettings: {
+            providerUrl: document.getElementById('voiceNetworkProviderUrl')?.value.trim() || '',
+            providerKey: document.getElementById('voiceNetworkProviderKey')?.value || ''
+        },
         enableDistributedServer: document.getElementById('enableDistributedServer').checked,
-        remoteGatewayEnabled: document.getElementById('remoteGatewayEnabled')?.checked ?? true,
-        remoteGatewayHost: (document.getElementById('remoteGatewayHost')?.value || '').trim() || '0.0.0.0',
-        remoteGatewayPort: parseInt(document.getElementById('remoteGatewayPort')?.value, 10) || 17888,
-        remoteGatewayToken: (document.getElementById('remoteGatewayToken')?.value || '').trim() || 'vchat-remote-token',
-        remoteAllowedRoots,
         agentMusicControl: document.getElementById('agentMusicControl').checked,
         enableVcpToolInjection: document.getElementById('enableVcpToolInjection').checked,
         enableThoughtChainInjection: document.getElementById('enableThoughtChainInjection').checked,
@@ -60,12 +99,47 @@ export async function handleSaveGlobalSettings(e, deps) {
         contextSanitizerDepth: parseInt(document.getElementById('contextSanitizerDepth').value, 10) || 0,
         enableAiMessageButtons: document.getElementById('enableAiMessageButtons').checked,
     };
+
+    // 处理规则模式选择
+    const ruleMode = document.getElementById('rustRuleMode')?.value || 'none';
+    const whitelist = ruleMode === 'whitelist' ? parseMultilineKeywords('rustWhitelistKeywords') : [];
+    const blacklist = ruleMode === 'blacklist' ? parseMultilineKeywords('rustBlacklistKeywords') : [];
+    const screenshotApps = parseMultilineKeywords('rustScreenshotApps');
+
+    // 处理自定义阈值
+    const enableCustomThresholds = document.getElementById('rustEnableCustomThresholds')?.checked || false;
+    let runtimeThresholds = {
+        minEventIntervalMs: 80,
+        minDistance: 0,
+        screenshotSuspendMs: 3000,
+        clipboardConflictSuspendMs: 1000,
+        clipboardCheckIntervalMs: 500
+    };
+
+    if (enableCustomThresholds) {
+        runtimeThresholds = {
+            minEventIntervalMs: Math.max(0, parseInt(document.getElementById('rustMinEventIntervalMs')?.value || 80, 10)),
+            minDistance: Math.max(0, parseInt(document.getElementById('rustMinDistance')?.value || 0, 10)),
+            screenshotSuspendMs: Math.max(0, parseInt(document.getElementById('rustScreenshotSuspendMs')?.value || 3000, 10)),
+            clipboardConflictSuspendMs: Math.max(0, parseInt(document.getElementById('rustClipboardConflictSuspendMs')?.value || 1000, 10)),
+            clipboardCheckIntervalMs: Math.max(50, parseInt(document.getElementById('rustClipboardCheckIntervalMs')?.value || 500, 10))
+        };
+    }
+
+    const rustConfigPatch = {
+        useRustAssistant: true,
+        debugMode: document.getElementById('rustDebugMode')?.checked || false,
+        whitelist: whitelist,
+        blacklist: blacklist,
+        screenshotApps: screenshotApps,
+        runtimeThresholds: runtimeThresholds,
+    };
  
      const userAvatarCropped = getCroppedFile('user');
     if (userAvatarCropped) {
         try {
             const arrayBuffer = await userAvatarCropped.arrayBuffer();
-            const avatarSaveResult = await window.electronAPI.saveUserAvatar({
+            const avatarSaveResult = await chatAPI.saveUserAvatar({
                 name: userAvatarCropped.name,
                 type: userAvatarCropped.type,
                 buffer: arrayBuffer
@@ -85,11 +159,11 @@ export async function handleSaveGlobalSettings(e, deps) {
                 if (window.messageRenderer) {
                     window.messageRenderer.setUserAvatar(avatarSaveResult.avatarUrl);
                 }
-                if (avatarSaveResult.needsColorExtraction && window.electronAPI && window.electronAPI.saveAvatarColor) {
+                if (avatarSaveResult.needsColorExtraction && chatAPI?.saveAvatarColor) {
                     if (window.getDominantAvatarColor) {
                         window.getDominantAvatarColor(avatarSaveResult.avatarUrl).then(avgColor => {
                             if (avgColor) {
-                                window.electronAPI.saveAvatarColor({ type: 'user', id: 'user_global', color: avgColor })
+                                chatAPI.saveAvatarColor({ type: 'user', id: 'user_global', color: avgColor })
                                     .then((saveColorResult) => {
                                         if (saveColorResult && saveColorResult.success) {
                                             refs.globalSettings.get().userAvatarCalculatedColor = avgColor;
@@ -112,15 +186,49 @@ export async function handleSaveGlobalSettings(e, deps) {
         }
     }
 
-    const result = await window.electronAPI.saveSettings(newSettings);
+    // 保存论坛配置 (forum.config.json)
+    const adminUsername = document.getElementById('adminUsername')?.value?.trim() || '';
+    const adminPassword = document.getElementById('adminPassword')?.value || '';
+    if (adminUsername || adminPassword) {
+        try {
+            const forumConfig = {
+                username: adminUsername,
+                password: adminPassword,
+                replyUsername: newSettings.userName || '用户',
+                rememberCredentials: true
+            };
+            const forumResult = await chatAPI.saveForumConfig(forumConfig);
+            if (!forumResult?.success) {
+                console.warn('[GlobalSettings] Failed to save forum config:', forumResult?.error);
+            }
+        } catch (forumErr) {
+            console.warn('[GlobalSettings] Error saving forum config:', forumErr);
+        }
+    }
+
+    const result = await chatAPI.saveSettings(newSettings);
     if (result.success) {
+        if (chatAPI?.saveRustAssistantConfig) {
+            const rustSaveResult = await chatAPI.saveRustAssistantConfig(rustConfigPatch);
+            if (!rustSaveResult?.success) {
+                uiHelperFunctions.showToastNotification(`Rust助手配置保存失败: ${rustSaveResult?.error || '未知错误'}`, 'warning');
+            } else if (rustSaveResult.reconcile?.modeChanged) {
+                const modeLabel = rustSaveResult.reconcile.mode === 'rust' ? 'Rust' : 'Disabled';
+                const restartText = rustSaveResult.reconcile.restarted ? '并已热重启监听器' : '将在下次启用监听器时生效';
+                uiHelperFunctions.showToastNotification(`划词监听已切换到 ${modeLabel} 实现，${restartText}`, 'success');
+            }
+        }
+
         Object.assign(refs.globalSettings.get(), newSettings);
+        if (typeof window.applyChatBubbleLayoutSettings === 'function') {
+            window.applyChatBubbleLayoutSettings(refs.globalSettings.get());
+        }
         uiHelperFunctions.showToastNotification('全局设置已保存！部分设置（如通知URL/Key）可能需要重新连接生效。');
         uiHelperFunctions.closeModal('globalSettingsModal');
         if (refs.globalSettings.get().vcpLogUrl && refs.globalSettings.get().vcpLogKey) {
-             window.electronAPI.connectVCPLog(refs.globalSettings.get().vcpLogUrl, refs.globalSettings.get().vcpLogKey);
+             chatAPI.connectVCPLog(refs.globalSettings.get().vcpLogUrl, refs.globalSettings.get().vcpLogKey);
         } else {
-             window.electronAPI.disconnectVCPLog();
+             chatAPI.disconnectVCPLog();
              if (window.notificationRenderer) window.notificationRenderer.updateVCPLogStatus({ status: 'error', message: 'VCPLog未配置' }, document.getElementById('vcpLogConnectionStatus'));
         }
    } else {
