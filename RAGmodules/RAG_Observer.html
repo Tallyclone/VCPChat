@@ -888,6 +888,45 @@
         align-items: center;
         margin-bottom: 15px;
       }
+
+      .scroll-top-btn {
+        position: fixed;
+        right: 28px;
+        bottom: 28px;
+        width: 36px;
+        height: 36px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 999px;
+        background: rgba(20, 20, 20, 0.72);
+        color: rgba(255, 255, 255, 0.82);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        z-index: 1600;
+        opacity: 0;
+        visibility: hidden;
+        transform: translateY(8px);
+        transition: opacity 0.2s ease, transform 0.2s ease,
+          visibility 0.2s ease, background 0.2s ease;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+      }
+
+      .scroll-top-btn.visible {
+        opacity: 1;
+        visibility: visible;
+        transform: translateY(0);
+      }
+
+      .scroll-top-btn:hover {
+        background: rgba(52, 152, 219, 0.22);
+        color: #fff;
+      }
+
+      .scroll-top-btn svg {
+        width: 16px;
+        height: 16px;
+      }
     </style>
     <script src="../vendor/marked.min.js"></script>
     <script>
@@ -1093,6 +1132,26 @@
       </div>
     </div>
 
+    <button
+      id="scrollToTopBtn"
+      class="scroll-top-btn"
+      type="button"
+      title="回到顶部"
+      aria-label="回到顶部"
+      onclick="scrollInfoToTop()"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M18 15l-6-6-6 6"></path>
+      </svg>
+    </button>
+
     <!-- Settings Modal -->
     <div
       id="settingsModal"
@@ -1267,6 +1326,7 @@
 
       // --- Visuals & Utils ---
       const infoContainer = document.getElementById("infoContainer");
+      const scrollToTopBtn = document.getElementById("scrollToTopBtn");
       let currentFilter = "all";
       let _cardCount = 0; // 跟踪当前卡片数量，避免频繁querySelectorAll
 
@@ -1862,6 +1922,20 @@
         else dot.classList.add("dot-red");
 
         text.textContent = message;
+      }
+
+      function updateScrollTopButtonVisibility() {
+        if (!scrollToTopBtn || !infoContainer) return;
+        const shouldShow = infoContainer.scrollTop > 240;
+        scrollToTopBtn.classList.toggle("visible", shouldShow);
+      }
+
+      function scrollInfoToTop() {
+        if (!infoContainer) return;
+        infoContainer.scrollTo({
+          top: 0,
+          behavior: "smooth",
+        });
       }
 
       function filterLogs(type, btnElement) {
@@ -3016,6 +3090,11 @@
             window.setNotificationChannelEnabledFromObserver(false);
           }
         });
+
+        if (infoContainer) {
+          infoContainer.addEventListener("scroll", updateScrollTopButtonVisibility);
+          updateScrollTopButtonVisibility();
+        }
       });
     </script>
   </body>
