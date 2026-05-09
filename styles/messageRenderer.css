@@ -1604,3 +1604,36 @@ body.light-theme .vcp-desktop-push-preview pre {
     background: rgba(0, 0, 0, 0.05);
     color: rgba(0, 0, 0, 0.5);
 }
+
+/* --- Markdown Horizontal Rule Refinement --- */
+.md-content hr,
+.diary-content hr,
+.vcp-tool-result-markdown-content hr,
+.vcp-thought-chain-body hr {
+    border: 0;
+    height: 1px;
+    margin: 1.1em 0;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        color-mix(in srgb, var(--secondary-text, #586374) 22%, transparent) 18%,
+        color-mix(in srgb, var(--secondary-text, #586374) 72%, transparent) 50%,
+        color-mix(in srgb, var(--secondary-text, #586374) 22%, transparent) 82%,
+        transparent 100%
+    );
+    opacity: 0.95;
+}
+
+body.light-theme .md-content hr,
+body.light-theme .diary-content hr,
+body.light-theme .vcp-tool-result-markdown-content hr,
+body.light-theme .vcp-thought-chain-body hr {
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        color-mix(in srgb, var(--secondary-text, #9ca0a4) 18%, transparent) 18%,
+        color-mix(in srgb, var(--secondary-text, #9ca0a4) 58%, transparent) 50%,
+        color-mix(in srgb, var(--secondary-text, #9ca0a4) 18%, transparent) 82%,
+        transparent 100%
+    );
+}
