@@ -1,0 +1,21 @@
+{
+  "alwaysApprovedTools": [
+    "filesystem-read",
+    "ace-text_search",
+    "filesystem-replaceedit",
+    "terminal-execute",
+    "notebook-manage",
+    "filesystem-create",
+    "filesystem_readfilesystem_read",
+    "filesystem_read",
+    "terminal_execute",
+    "ace-file_outline",
+    "ace_text_search",
+    "filesystem_create",
+    "filesystem-readtodo-manage",
+    "filesystem-readfilesystem-read",
+    "subagent-agent_explore",
+    "ide-get_diagnostics",
+    "ace-search"
+  ]
+}

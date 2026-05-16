@@ -1,0 +1,33 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "VChatSyncAdapter",
+  "displayName": "VChat 同步桌面 Adapter",
+  "version": "0.1.0",
+  "description": "扫描并监听 VChat AppData，推导消息级同步 operation，并通过离线队列提交到 VChatSyncCenter。",
+  "author": "VCPChat Sync Team",
+  "pluginType": "service",
+  "entryPoint": {
+    "type": "nodejs",
+    "script": "index.js"
+  },
+  "communication": {
+    "protocol": "direct"
+  },
+  "configSchema": {
+    "VCHAT_ADAPTER_ENABLED": "boolean",
+    "VCHAT_ADAPTER_MODE": "string",
+    "VCHAT_APPDATA_PATH": "string",
+    "VCHAT_SYNC_CENTER_URL": "string",
+    "VCHAT_SYNC_KEY": "string",
+    "VCHAT_DEVICE_ID": "string",
+    "VCHAT_DEVICE_NAME": "string",
+    "VCHAT_WATCH_DEBOUNCE_MS": "integer",
+    "VCHAT_QUEUE_INTERVAL_MS": "integer",
+    "VCHAT_PULL_INTERVAL_MS": "integer",
+    "VCHAT_ATTACHMENT_MULTIPART_THRESHOLD_BYTES": "integer",
+    "VCHAT_SYNC_ENABLE_WS": "boolean",
+    "VCHAT_BOOTSTRAP_MODE": "string",
+    "VCHAT_RELEASE_MODE": "string",
+    "DebugMode": "boolean"
+  }
+}

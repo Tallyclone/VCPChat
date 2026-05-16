@@ -1,0 +1,442 @@
+{
+  "../docs/多端数据同步源码分析.md": [
+    {
+      "id": "notebook-1778259009413_3dkogxa2u",
+      "filePath": "../docs/多端数据同步源码分析.md",
+      "note": "fileManager.js 已按 SHA-256 内容哈希存储附件，与需求文档高度吻合。后端 attachments.storage_path 可直接复用 internalFileName 模式（{hash}.ext）。但 extractedText/imageFrames 可能很大（PDF 转 Base64），建议第一版就拆表存储而非塞在 raw_json 中。",
+      "createdAt": "2026-05-09T00:50:09.413",
+      "updatedAt": "2026-05-09T00:50:09.413"
+    },
+    {
+      "id": "notebook-1778258983258_bg4v4e259",
+      "filePath": "../docs/多端数据同步源码分析.md",
+      "note": "群聊 groupchat.js 有 20+ 处 fs.writeJson 写入 history.json，远多于需求文档所述。同步事件生成不能只拦截 save-chat-history IPC，必须统一处理群聊写入点。建议方案：统一写入函数 + Watcher 兜底。",
+      "createdAt": "2026-05-09T00:49:43.258",
+      "updatedAt": "2026-05-09T00:49:43.258"
+    }
+  ],
+  "../vcp同步功能开发过程/VChat多端数据同步需求文档.md": [
+    {
+      "id": "notebook-1778343504340_qhe7s4dcj",
+      "filePath": "../vcp同步功能开发过程/VChat多端数据同步需求文档.md",
+      "note": "已修订文档：确认 VCPToolBox service 插件已有 `hasApiRoutes + registerApiRoutes` 命名空间挂载能力，`VChatSyncCenter` 可直接挂到 `/api/plugins/VChatSyncCenter/*`，不需要新增宿主 API 挂载机制；同时补充说明 `registerApiRoutes` 收到的是 WebSocketServer 模块对象引用，而主 WebSocketServer 的底层 initialize 在 app.listen 回调中执行，路由注册阶段不能默认其已完成初始化。",
+      "createdAt": "2026-05-10T00:18:24.340",
+      "updatedAt": "2026-05-10T00:18:24.340"
+    },
+    {
+      "id": "notebook-1778342944491_wlbjyg0i8",
+      "filePath": "../vcp同步功能开发过程/VChat多端数据同步需求文档.md",
+      "note": "已按 VCPToolBox 当前源码确认：Plugin.js 存在 initializeServices(app, adminApiRouter, projectBasePath)，会在 manifest.hasApiRoutes && module.registerApiRoutes 时挂载到 /api/plugins/{name}，也兼容 registerRoutes(app, adminApiRouter, pluginConfig, projectBasePath) 或 registerRoutes(app, pluginConfig, projectBasePath)。server.js 在 loadPlugins 后 setWebSocketServer 并调用 initializeServices。因此 VChatSyncCenter 可按 hasApiRoutes + registerApiRoutes 落地，无需新增宿主挂载机制；但 WebSocketServer.initialize 在 app.listen 回调内发生，registerApiRoutes 收到的是模块对象引用而非已 initialized 的 WS 实例。",
+      "createdAt": "2026-05-10T00:09:04.491",
+      "updatedAt": "2026-05-10T00:09:04.491"
+    },
+    {
+      "id": "notebook-1778320245982_ya6kxx2ea",
+      "filePath": "../vcp同步功能开发过程/VChat多端数据同步需求文档.md",
+      "note": "v4.5 已补充关键落地约束：DeepMemo mtime 排除最新 topic 验收风险、watcher size/mtime 稳定读取与 JSON parse retry、初次接入 mode 前置状态机、附件 _fileManagerData 投影兼容、中心剥离派生内容但桌面可恢复、/operations 单一写入口优先、同步投影写回原子化边界。后续实现不要倒退为 history.json 文件同步或单 msg_id 主键。",
+      "createdAt": "2026-05-09T17:50:45.982",
+      "updatedAt": "2026-05-09T17:50:45.982"
+    }
+  ],
+  "../vcp同步功能开发过程/VChat多端数据同步技术实现文档.md": [
+    {
+      "id": "notebook-1778347386814_3i608l7k5",
+      "filePath": "../vcp同步功能开发过程/VChat多端数据同步技术实现文档.md",
+      "note": "v1.1 已按评估报告补齐关键实现约束：完整 DDL/索引/外键策略、server_seq 规则、VCHAT_SYNC_WS_ENABLED、配置 DTO 示例、batch 子事件幂等预留、Adapter 接口兼容、群聊专项语义、remoteGateway 覆盖、投影聚合算法、local_order null 排序、memo/forum 策略、normalized_id 预扫描、M6 写点收口占位。后续实现不要退回 v1.0 的简略表结构或遗漏这些安全边界。",
+      "createdAt": "2026-05-10T01:23:06.814",
+      "updatedAt": "2026-05-10T01:23:06.814"
+    }
+  ],
+  "../vcp同步功能开发过程/开发周期总览与索引.md": [
+    {
+      "id": "notebook-1778370591157_7qc9r4heh",
+      "filePath": "../vcp同步功能开发过程/开发周期总览与索引.md",
+      "note": "已按需求文档 v4.6、技术实现文档 v1.1、评估报告与代码事实拆分为 Cycle 0-7：中心骨架、中心 operation、桌面 Adapter、投影闭环、附件配置、bootstrap、测试发布、写点收口增强。后续实施应按这些周期文档推进，避免跳过 message-level/复合身份/atomicWriter/DTO 白名单等安全边界。",
+      "createdAt": "2026-05-10T07:49:51.157",
+      "updatedAt": "2026-05-10T07:49:51.157"
+    }
+  ],
+  "../vcp同步功能开发过程/项目周期开发文档/周期开发文档评估报告.md": [
+    {
+      "id": "notebook-1778380772834_h2erexgum",
+      "filePath": "../vcp同步功能开发过程/项目周期开发文档/周期开发文档评估报告.md",
+      "note": "已核对周期评估报告：核心结论基本正确，但 Cycle 2 的 VCPChat registerRoutes 签名被评估报告误判为支持 3/4 参数，源码实际只传 registerRoutes(app, pluginConfig, projectBasePath)；remoteGateway 实际直接写 AppData 范围不小，应覆盖 history/config/forum/memo/settings/文件操作；Cycle 4 需补附件扁平目录兼容，Cycle 2 需补 better-sqlite3/Electron rebuild 或改用纯 JS SQLite。",
+      "createdAt": "2026-05-10T10:39:32.834",
+      "updatedAt": "2026-05-10T10:39:32.834"
+    }
+  ],
+  "../vcp同步功能开发过程/项目周期开发文档/开发周期总览与索引.md": [
+    {
+      "id": "notebook-1778387547384_3obc260co",
+      "filePath": "../vcp同步功能开发过程/项目周期开发文档/开发周期总览与索引.md",
+      "note": "已按源码核对修订周期文档：评估报告修正 VCPChat registerRoutes 仅三参数、remoteGateway 写 AppData 范围；Cycle 0 补 schema_migrations/version/checksum/事务/备份策略；Cycle 2 补 better-sqlite3/Electron rebuild 风险、2a/2b 里程碑、remoteGateway 覆盖、流式中间态过滤、localIndex/state/offline_queue 恢复；Cycle 4 补桌面附件扁平目录 AppData/UserData/attachments/{hash}{ext} 兼容。",
+      "createdAt": "2026-05-10T12:32:27.384",
+      "updatedAt": "2026-05-10T12:32:27.384"
+    }
+  ],
+  "../VCPToolBox/Plugin/VChatSyncCenter/core/migrations.js": [
+    {
+      "id": "notebook-1778462330203_ff26ps8jn",
+      "filePath": "../VCPToolBox/Plugin/VChatSyncCenter/core/migrations.js",
+      "note": "Cycle 5 schema uses migration v4 for bootstrap_sessions and messages.local_order. Earlier migrations v1-v3 are checksum-gated and must not be edited; future bootstrap schema changes need new migration versions.",
+      "createdAt": "2026-05-11T09:18:50.203",
+      "updatedAt": "2026-05-11T09:18:50.203"
+    },
+    {
+      "id": "notebook-1778457106920_c7pz5u8xn",
+      "filePath": "../VCPToolBox/Plugin/VChatSyncCenter/core/migrations.js",
+      "note": "Cycle 4 schema changes are migration v3 only. Do not edit already-applied migration v1/v2 SQL because checksum gating will refuse startup; future schema changes must be appended as new migration versions.",
+      "createdAt": "2026-05-11T07:51:46.920",
+      "updatedAt": "2026-05-11T07:51:46.920"
+    },
+    {
+      "id": "notebook-1778426712885_rnxjch8sm",
+      "filePath": "../VCPToolBox/Plugin/VChatSyncCenter/core/migrations.js",
+      "note": "Cycle 1 adds migration v2 for messages.raw_json/checksum/server_seq/deleted_at and tombstones.retain_until. Because migration checksums are immutable, never edit successful migration v1 SQL; add new versions for schema changes.",
+      "createdAt": "2026-05-10T23:25:12.885",
+      "updatedAt": "2026-05-10T23:25:12.885"
+    },
+    {
+      "id": "notebook-1778421953838_3gnt9fep3",
+      "filePath": "../VCPToolBox/Plugin/VChatSyncCenter/core/migrations.js",
+      "note": "Cycle 0 migration uses schema_migrations checksum gating and must refuse startup if an already-successful migration checksum changes. change_log/tombstones/conflicts intentionally avoid strong business-entity FKs; messages PK is (item_type,item_id,topic_id,id), topics PK is (item_id,item_type,id).",
+      "createdAt": "2026-05-10T22:05:53.838",
+      "updatedAt": "2026-05-10T22:05:53.838"
+    }
+  ],
+  "../VCPToolBox/Plugin/VChatSyncCenter/core/auth.js": [
+    {
+      "id": "notebook-1778425947347_p517jk51k",
+      "filePath": "../VCPToolBox/Plugin/VChatSyncCenter/core/auth.js",
+      "note": "Query-string sync_key authentication was removed after review to avoid leaking secrets via URLs/logs. Keep auth to Authorization: Bearer or x-vchat-sync-key unless explicitly re-approved for dev-only use.",
+      "createdAt": "2026-05-10T23:12:27.347",
+      "updatedAt": "2026-05-10T23:12:27.347"
+    },
+    {
+      "id": "notebook-1778421954134_3gtyphim9",
+      "filePath": "../VCPToolBox/Plugin/VChatSyncCenter/core/auth.js",
+      "note": "VChatSyncCenter /status is gated by VCHAT_SYNC_ENABLED and VCHAT_SYNC_KEY. Default false/change-me must not grant access; logs must not expose token/key values.",
+      "createdAt": "2026-05-10T22:05:54.134",
+      "updatedAt": "2026-05-10T22:05:54.134"
+    }
+  ],
+  "../VCPToolBox/Plugin/VChatSyncCenter/core/messageService.js": [
+    {
+      "id": "notebook-1778460992847_ubi393wbw",
+      "filePath": "../VCPToolBox/Plugin/VChatSyncCenter/core/messageService.js",
+      "note": "Cycle 4 requires center message raw_json/change_log payloads to use sanitized messages only: extractedText/imageFrames/thumbnail-like large derivative fields are stripped and summarized in _syncDerivatives/derivatives. Do not reintroduce raw large file-manager fields into message payloads.",
+      "createdAt": "2026-05-11T08:56:32.847",
+      "updatedAt": "2026-05-11T08:56:32.847"
+    },
+    {
+      "id": "notebook-1778428329708_r377xdbg8",
+      "filePath": "../VCPToolBox/Plugin/VChatSyncCenter/core/messageService.js",
+      "note": "Cycle 1 intentionally does not create attachment placeholders. message attachments are only inserted into message_attachments when attachments(hash) already exists; missing hashes remain in change_log.payload.attachment_refs.skipped so Cycle 4 can upload/link them without blocking message operations.",
+      "createdAt": "2026-05-10T23:52:09.708",
+      "updatedAt": "2026-05-10T23:52:09.708"
+    }
+  ],
+  "VCPDistributedServer/Plugin/VChatSyncAdapter/plugin-manifest.json": [
+    {
+      "id": "notebook-1778431637058_jmtvkwmri",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/plugin-manifest.json",
+      "note": "VCPDistributedServer PluginManager expects configSchema values to be plain strings like \"boolean\"/\"integer\"/\"string\". Do not use VCPToolBox object-style {type, default} here unless PluginManager is upgraded, or service config parsing will break.",
+      "createdAt": "2026-05-11T00:47:17.058",
+      "updatedAt": "2026-05-11T00:47:17.058"
+    }
+  ],
+  "VCPDistributedServer/Plugin/VChatSyncAdapter/sync/modePolicy.js": [
+    {
+      "id": "notebook-1778433907959_4cwkgqqzh",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/sync/modePolicy.js",
+      "note": "Cycle 2 safety gate: only mode=active may enqueue or submit operations. uninitialized/recovering must observe without advancing localIndex, otherwise initial changes can be swallowed or corrupt-index recovery can upload duplicate creates.",
+      "createdAt": "2026-05-11T01:25:07.959",
+      "updatedAt": "2026-05-11T01:25:07.959"
+    }
+  ],
+  "VCPDistributedServer/Plugin/VChatSyncAdapter/projector/appDataProjector.js": [
+    {
+      "id": "notebook-1778457099692_gymut0js7",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/projector/appDataProjector.js",
+      "note": "Cycle 4 实现后，config/attachment events 不再是 blocking unsupported：config 必须经 configProjector 写安全 DTO，attachment 事件至少记录元数据；不要重新把它们加入 unsupported，否则 pullLoop 会卡住 Cycle 4 同步。",
+      "createdAt": "2026-05-11T07:51:39.692",
+      "updatedAt": "2026-05-11T07:51:39.692"
+    },
+    {
+      "id": "notebook-1778454964889_jhmdoyfzq",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/projector/appDataProjector.js",
+      "note": "Cycle 3 projector intentionally treats config/attachment/unknown events as blocking unsupported until their real projectors are implemented. Do not add them to appliedSeqs without writing AppData, or pullLoop may advance last_applied_seq and permanently skip events.",
+      "createdAt": "2026-05-11T07:16:04.889",
+      "updatedAt": "2026-05-11T07:16:04.889"
+    },
+    {
+      "id": "notebook-1778435143301_6w6kyvcly",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/projector/appDataProjector.js",
+      "note": "Cycle 3 projector writes AppData history.json via atomicWriter and records writeIntentLock before writing. Watcher must keep checksum-aware lock handling; otherwise synced remote changes will loop back into offlineQueue.",
+      "createdAt": "2026-05-11T01:45:43.301",
+      "updatedAt": "2026-05-11T01:45:43.301"
+    }
+  ],
+  "VCPDistributedServer/Plugin/VChatSyncAdapter/projector/configProjector.js": [
+    {
+      "id": "notebook-1778460993048_scf6vw330",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/projector/configProjector.js",
+      "note": "Cycle 4 config projector now MUST merge safe_projection_json into existing local config: delete schema-managed sync keys, apply remote DTO keys, and preserve local non-sync fields. Do not revert to full DTO overwrite or naive shallow merge.",
+      "createdAt": "2026-05-11T08:56:33.048",
+      "updatedAt": "2026-05-11T16:19:58.751"
+    }
+  ],
+  "VCPDistributedServer/Plugin/VChatSyncAdapter/sync/bootstrapManager.js": [
+    {
+      "id": "notebook-1778605187819_mhq8rbft9",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/sync/bootstrapManager.js",
+      "note": "bootstrapPrimary 在 importBootstrap 成功后必须先 recordBootstrapPrimaryBaseline 写入 messages/configs localIndex，再切 active 并 scanAppData；否则 bootstrap 基线会被 active scan 误判为本地新变更并入队 /operations。",
+      "createdAt": "2026-05-13T00:59:47.819",
+      "updatedAt": "2026-05-13T00:59:47.819"
+    },
+    {
+      "id": "notebook-1778595928715_u3gfc5ttj",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/sync/bootstrapManager.js",
+      "note": "bootstrapPrimary 必须先调用 centerClient.importBootstrap 导入中心基线，再上传本地附件文件；不要在 /bootstrap/import 前调用 uploadLocalAttachment，否则附件上传会写 attachments/change_log，使中心不再为空并触发 `center is not empty; bootstrap_primary refused`。",
+      "createdAt": "2026-05-12T22:25:28.715",
+      "updatedAt": "2026-05-12T22:25:28.715"
+    },
+    {
+      "id": "notebook-1778579873470_5e2mk58p5",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/sync/bootstrapManager.js",
+      "note": "bootstrapPrimary/joinExisting 备份 AppData 时必须写到 AppData 同级的 `${basename(AppData)}_sync_backups`，不要放回 AppData/sync/backups，否则 fs-extra 会拒绝把 AppData 复制到自身子目录并导致 bootstrap 失败。",
+      "createdAt": "2026-05-12T17:57:53.470",
+      "updatedAt": "2026-05-12T17:57:53.470"
+    },
+    {
+      "id": "notebook-1778463830612_00zlg8yz9",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/sync/bootstrapManager.js",
+      "note": "Cycle 5 修复后：join_existing 的 baseline events 只使用连续本地 baseline_seq，state.last_applied_seq 仍只取中心 latest_seq，禁止再用 100000/200000 伪 seq 污染游标；merge_existing 必须输出 local_only/center_only/checksum_mismatch diff。",
+      "createdAt": "2026-05-11T09:43:50.612",
+      "updatedAt": "2026-05-11T09:43:50.612"
+    },
+    {
+      "id": "notebook-1778462342842_djae71uas",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/sync/bootstrapManager.js",
+      "note": "Cycle 5 bootstrap flow backs up AppData before bootstrap_primary/join_existing, scans normalized-id conflicts before import, writes missing history message ids with stable sync_ SHA-based ids through atomicWriter, and keeps merge_existing as report-only by default.",
+      "createdAt": "2026-05-11T09:19:02.842",
+      "updatedAt": "2026-05-11T09:19:02.842"
+    }
+  ],
+  "../VCPToolBox/Plugin/VChatSyncCenter/core/bootstrapService.js": [
+    {
+      "id": "notebook-1778463830143_8cem22dcv",
+      "filePath": "../VCPToolBox/Plugin/VChatSyncCenter/core/bootstrapService.js",
+      "note": "Cycle 5 修复后：bootstrap import 会记录 bootstrap_sessions started/completed/failed；export 支持 kind/cursor/limit 分页元数据；messages 导出必须按 local_order/server_seq/id 排序，避免历史顺序丢失。",
+      "createdAt": "2026-05-11T09:43:50.143",
+      "updatedAt": "2026-05-11T09:43:50.143"
+    }
+  ],
+  "VCPDistributedServer/Plugin/VChatSyncAdapter/index.js": [
+    {
+      "id": "notebook-1778514914157_o7340dmda",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/index.js",
+      "note": "VChatSyncAdapter 现在支持插件目录独立 config.env，且优先级为插件 config.env > 宿主 pluginConfig > 内建默认值；后续不要反向改回仅依赖宿主注入。",
+      "createdAt": "2026-05-11T23:55:14.157",
+      "updatedAt": "2026-05-11T23:55:14.157"
+    },
+    {
+      "id": "notebook-1778468768084_oklreva7x",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/index.js",
+      "note": "Cycle 6 后 requireAdapterAuth 已作为真实鉴权 helper 导出，status/bootstrap/manifest/conflicts 路由和 smoke 测试必须复用该函数；不要在测试中复制一份本地鉴权逻辑以免偏离真实行为。",
+      "createdAt": "2026-05-11T11:06:08.084",
+      "updatedAt": "2026-05-11T11:06:08.084"
+    },
+    {
+      "id": "notebook-1778463831110_tjx9r0ln5",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/index.js",
+      "note": "VChatSyncAdapter 本地 bootstrap/manifest/conflicts API 已复用 VCHAT_SYNC_KEY 鉴权，支持 Authorization Bearer、x-vchat-sync-key、x-vchat-bootstrap-key；未配置或 change-me 必须拒绝。",
+      "createdAt": "2026-05-11T09:43:51.110",
+      "updatedAt": "2026-05-11T09:43:51.110"
+    }
+  ],
+  "../VCPToolBox/Plugin/VChatSyncCenter/core/backupService.js": [
+    {
+      "id": "notebook-1778465088782_rqvp5uno3",
+      "filePath": "../VCPToolBox/Plugin/VChatSyncCenter/core/backupService.js",
+      "note": "Cycle 6 起中心 SQLite 备份必须用 better-sqlite3 .backup() 且先 wal_checkpoint(FULL)，备份后用独立只读 DB integrity_check + latest_seq 验证；禁止仅复制 .db 文件作为 WAL 模式备份。",
+      "createdAt": "2026-05-11T10:04:48.782",
+      "updatedAt": "2026-05-11T10:04:48.782"
+    }
+  ],
+  "VCPDistributedServer/Plugin/VChatSyncAdapter/sync/pullLoop.js": [
+    {
+      "id": "notebook-1778465089027_301bs44bo",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/sync/pullLoop.js",
+      "note": "Cycle 6 状态页依赖 pullLoop.stats() 暴露 last_duration_ms/last_applied/total_events_applied，用于验证 WS 丢包后 REST 补拉与启动同步性能；不要移除这些轻量指标。",
+      "createdAt": "2026-05-11T10:04:49.027",
+      "updatedAt": "2026-05-11T10:04:49.027"
+    }
+  ],
+  "../VCPToolBox/WebSocketServer.js": [
+    {
+      "id": "notebook-1778468815753_fgzcbect1",
+      "filePath": "../VCPToolBox/WebSocketServer.js",
+      "note": "VChatSync latest_seq WebSocket (/vchat-sync/latest-seq) 必须通过 registerVChatSyncAuthValidator 注册的校验器验证 Authorization Bearer/x-vchat-sync-key；禁止恢复为无条件接收，否则会泄露同步 latest_seq 通知。",
+      "createdAt": "2026-05-11T11:06:55.753",
+      "updatedAt": "2026-05-11T11:06:55.753"
+    }
+  ],
+  "../VCPToolBox/Plugin/VChatSyncCenter/core/configService.js": [
+    {
+      "id": "notebook-1778605188012_12ylj9nol",
+      "filePath": "../VCPToolBox/Plugin/VChatSyncCenter/core/configService.js",
+      "note": "配置 DTO checksum 标准为 sha256(stableJsonStringify({dto_version,schema,entity_id,safe_projection_json}))；Center 是最终校验边界，Adapter/bootstrap/projector 必须保持同一语义，不能退回只 hash safe_projection_json。",
+      "createdAt": "2026-05-13T00:59:48.012",
+      "updatedAt": "2026-05-13T00:59:48.012"
+    },
+    {
+      "id": "notebook-1778487599055_393ky0mpt",
+      "filePath": "../VCPToolBox/Plugin/VChatSyncCenter/core/configService.js",
+      "note": "Center configService is the final security boundary: config safe_projection_json must pass schema whitelist validation plus sensitive-key scan before checksum/write/change_log. Do not rely only on desktop safeConfigDto.",
+      "createdAt": "2026-05-11T16:19:59.055",
+      "updatedAt": "2026-05-11T16:19:59.055"
+    }
+  ],
+  "VCPDistributedServer/Plugin/VChatSyncAdapter/sync/attachmentSync.js": [
+    {
+      "id": "notebook-1778487599312_39iqlivfv",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/sync/attachmentSync.js",
+      "note": "Attachment upload keeps small files as base64 JSON but switches files larger than config.multipartAttachmentThresholdBytes (default 8 MiB) to multipart via centerClient buffer upload. Lazy download/pending_attachment remains intentional.",
+      "createdAt": "2026-05-11T16:19:59.312",
+      "updatedAt": "2026-05-11T16:19:59.312"
+    }
+  ],
+  "../VCPToolBox/Plugin/VChatSyncCenter/core/itemService.js": [
+    {
+      "id": "notebook-1778597034671_gvemdv568",
+      "filePath": "../VCPToolBox/Plugin/VChatSyncCenter/core/itemService.js",
+      "note": "ensureItem/ensureTopic callers may pass null metadata during bootstrap imports because VChat history manifest messages often lack item/topic metadata. Always normalize null/non-object metadata to {} before reading title/summary.",
+      "createdAt": "2026-05-12T22:43:54.671",
+      "updatedAt": "2026-05-12T22:43:54.671"
+    }
+  ],
+  "VCPDistributedServer/Plugin/VChatSyncAdapter/projector/historyProjector.js": [
+    {
+      "id": "notebook-1778678526770_d61gxh238",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/projector/historyProjector.js",
+      "note": "消息同步当前遵循“尽量整条消息透传”语义：diff/buildOperation 发送 payload.message 的完整消息对象，projector 只删除同步内部字段 item_type/item_id/topic_id/local_order/server_seq/server_version/_syncDerivatives/sync_status 后写回 history.json。临时/占位/流式消息会在 diff 阶段被过滤，因此不能宣称‘所有字段/所有消息状态都同步’。",
+      "createdAt": "2026-05-13T21:22:06.770",
+      "updatedAt": "2026-05-13T21:22:06.770"
+    },
+    {
+      "id": "notebook-1778598220294_7jfkco3ok",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/projector/historyProjector.js",
+      "note": "history.json 投影必须保持原生消息结构：不要写入 item_type/item_id/topic_id/local_order/server_seq/server_version/_syncDerivatives/sync_status 等同步内部字段；同步版本/seq/checksum 仅写 localIndex。",
+      "createdAt": "2026-05-12T23:03:40.294",
+      "updatedAt": "2026-05-12T23:03:40.294"
+    }
+  ],
+  "VCPDistributedServer/Plugin/VChatSyncAdapter/diff/historyDiffEngine.js": [
+    {
+      "id": "notebook-1778676243254_t7iqnojkq",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/diff/historyDiffEngine.js",
+      "note": "message.delete base_version now follows the same confirmed-remote rule as update: only non-null/non-undefined last_known_server_version is treated as confirmed remote existence.",
+      "createdAt": "2026-05-13T20:44:03.254",
+      "updatedAt": "2026-05-13T20:44:03.254"
+    },
+    {
+      "id": "notebook-1778676243254_6kfvsjr1y",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/diff/historyDiffEngine.js",
+      "note": "applyLocalSnapshot now merges the previous local_index row before refreshing checksum/pending fields so server-version and repair metadata survive local rescans until projector/queue updates them.",
+      "createdAt": "2026-05-13T20:44:03.254",
+      "updatedAt": "2026-05-13T20:44:03.254"
+    },
+    {
+      "id": "notebook-1778674109046_2ek4jwdh4",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/diff/historyDiffEngine.js",
+      "note": "For message sync repair, localIndex existence alone must not be treated as proof of remote existence; create-vs-update decisions should consider last_known_server_version / projector evidence or self-heal on 400 target-missing.",
+      "createdAt": "2026-05-13T20:08:29.046",
+      "updatedAt": "2026-05-13T20:08:29.046"
+    },
+    {
+      "id": "notebook-1778674109046_e5twoo1pw",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/diff/historyDiffEngine.js",
+      "note": "message rows can exist in local_index without any center message/change_log row because applyLocalSnapshot writes them immediately after enqueueMany; if the queue later retains only an update or a create is lost, diffHistory will emit update forever and center rejects with `message update target does not exist`.",
+      "createdAt": "2026-05-13T20:08:29.046",
+      "updatedAt": "2026-05-13T20:08:29.046"
+    }
+  ],
+  "VCPDistributedServer/Plugin/VChatSyncAdapter/sync/offlineQueue.js": [
+    {
+      "id": "notebook-1778675566113_m0hjh4j9f",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/sync/offlineQueue.js",
+      "note": "P1 repair implemented: when a message.update submit fails with `message update target does not exist` (including axios response.data.error/message), the queue drops that update row, clears pending fields, sets last_known_server_version=null and pending_status=`needs_create` so next local scan recreates the message instead of retrying update forever.",
+      "createdAt": "2026-05-13T20:32:46.113",
+      "updatedAt": "2026-05-13T20:32:46.113"
+    },
+    {
+      "id": "notebook-1778674109454_fy4ymxy3x",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/sync/offlineQueue.js",
+      "note": "Current queue worker keeps retrying 400 rejects forever and markSubmitted clears pending flags without preserving pending_action. A permanent `message update target does not exist` reject leaves local_index with pending=null so future scans keep generating update instead of recreating missing message.",
+      "createdAt": "2026-05-13T20:08:29.454",
+      "updatedAt": "2026-05-13T20:08:29.454"
+    }
+  ],
+  "VCPDistributedServer/Plugin/VChatSyncAdapter/test/missingMessageRepairSmoke.js": [
+    {
+      "id": "notebook-1778675566302_v84zlvtm5",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/test/missingMessageRepairSmoke.js",
+      "note": "Smoke test covers both P0 diff behavior (local_index row without confirmed remote server version emits create) and P1 2B self-heal (missing update target rolls back remote-existence assumption and removes the bad update row).",
+      "createdAt": "2026-05-13T20:32:46.302",
+      "updatedAt": "2026-05-13T20:32:46.302"
+    }
+  ],
+  "VCPDistributedServer/Plugin/VChatSyncAdapter/core/configSchema.js": [
+    {
+      "id": "notebook-1778677777055_2reabguxp",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/core/configSchema.js",
+      "note": "当前代码实际可同步的配置范围以 configSchema/pathRules 为准：Agent config、Agent regex_rules.json（按 agent_config 白名单处理）、Group config、settings.json、forum.config.json；memo.config.json 虽被 watcher/scanner 识别为配置路径，但 schemaForPath 返回 unsupported_config，因此当前实现不会真正入队或投影同步。",
+      "createdAt": "2026-05-13T21:09:37.054",
+      "updatedAt": "2026-05-13T21:09:37.054"
+    }
+  ],
+  "VCPDistributedServer/Plugin/VChatSyncAdapter/utils/pathRules.js": [
+    {
+      "id": "notebook-1778680104421_r8sejdwcc",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/utils/pathRules.js",
+      "note": "当前同步扫描范围不包含 DesktopWidgets、systemPromptPresets、DesktopData：pathRules 只识别 history.json、Agents/*/(config|regex_rules).json、AgentGroups/*/config.json、UserData/(memo|forum).config.json、settings.json，以及头像/attachments/fileManager 类文件。文档 5.4.1 也强调未列入白名单的字段/路径默认不同步。",
+      "createdAt": "2026-05-13T21:48:24.421",
+      "updatedAt": "2026-05-13T21:48:24.421"
+    }
+  ],
+  "../vcp同步功能开发过程/VChat多端数据同步开发文档-按新同步范围收敛版.md": [
+    {
+      "id": "notebook-1778696269550_256afo1vb",
+      "filePath": "../vcp同步功能开发过程/VChat多端数据同步开发文档-按新同步范围收敛版.md",
+      "note": "收敛版开发文档已修订：Topic 明确升级为一等实时同步实体，不再作为 Agent/Group config DTO 的 topics 字段夹带同步；本地仍通过 config.json.topics 兼容 UI。实施要求新增 topicDiffEngine/topicProjector，Center 扩展 topicService/topics 表/change_log，ensureTopic 只作为消息乱序或旧客户端兜底。topic.delete 第一版为软删除/隐藏入口，不级联删除 history/message。附件策略明确为第一版消息投影时自动下载优先，失败 pending/可重试。",
+      "createdAt": "2026-05-14T02:17:49.550",
+      "updatedAt": "2026-05-14T02:17:49.550"
+    },
+    {
+      "id": "notebook-1778683732583_eu1t625ph",
+      "filePath": "../vcp同步功能开发过程/VChat多端数据同步开发文档-按新同步范围收敛版.md",
+      "note": "已新增一份按新策略收敛的开发文档：日常实时同步聚焦 Agent/Group 基础列表、Topic、正式消息、附件、必要头像；Agent 详细设置、UI 偏好、forum 非敏感设置仅在首次接入时同步一次，后续默认不参与 watcher 实时同步。",
+      "createdAt": "2026-05-13T22:48:52.583",
+      "updatedAt": "2026-05-13T22:48:52.583"
+    }
+  ],
+  "../vcp同步功能开发过程/同步文档评估报告-基于代码实现.md": [
+    {
+      "id": "notebook-1778694543829_4kvxub4bg",
+      "filePath": "../vcp同步功能开发过程/同步文档评估报告-基于代码实现.md",
+      "note": "已修订评估报告：Topic 不再建议临时放入 AGENT_REALTIME_ALLOWED，而明确升级为一等实时同步实体；本地仍兼容 config.json.topics，但协议层新增 topic.create/update/delete、topicDiffEngine/topicProjector/Center topicService。topic.delete 第一版建议软删除/隐藏入口，不级联删除 history/message。附件下载策略也修正为“metadata event 只记录元数据；带附件消息投影时当前代码会尝试即时下载并重写本机路径”。",
+      "createdAt": "2026-05-14T01:49:03.829",
+      "updatedAt": "2026-05-14T01:49:03.829"
+    }
+  ],
+  "VCPDistributedServer/Plugin/VChatSyncAdapter/watcher/appDataWatcher.js": [
+    {
+      "id": "notebook-1778729925792_rbpv42sj4",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/watcher/appDataWatcher.js",
+      "note": "2026-05-14 排查：Adapter 状态路由在 5974 正常，pull loop 活跃，但 state/local_index 最后更新停在 09:27；若此后有 AppData/UserData history.json 更新而 sync 状态不变，优先怀疑 chokidar watcher 事件未触发或监听进程未看到实际写入路径。",
+      "createdAt": "2026-05-14T11:38:45.792",
+      "updatedAt": "2026-05-14T11:38:45.792"
+    }
+  ]
+}
