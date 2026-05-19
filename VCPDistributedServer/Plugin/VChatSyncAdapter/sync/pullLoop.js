@@ -110,7 +110,14 @@ function createPullLoop(
         if (events.length > 0) {
           const projection = await projectEvents(
             events.filter((event) => event.device_id !== config.deviceId),
-            { config, localIndex, writeIntentLock, logger, centerClient }
+            {
+              config,
+              localIndex,
+              writeIntentLock,
+              logger,
+              centerClient,
+              syncProfileConfig: config.syncProfileConfig,
+            }
           );
           if (projection.error) {
             rememberProjectionFailure(projection, events);

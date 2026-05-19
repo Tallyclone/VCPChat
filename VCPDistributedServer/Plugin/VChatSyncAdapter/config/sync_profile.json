@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "runtimeSync": {
+    "agent_config": {
+      "include": [],
+      "exclude": []
+    },
+    "group_config": {
+      "include": [],
+      "exclude": []
+    }
+  },
+  "bootstrap": {
+    "conflictPolicy": "report_only"
+  }
+}

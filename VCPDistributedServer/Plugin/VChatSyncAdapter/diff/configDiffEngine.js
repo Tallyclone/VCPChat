@@ -3,15 +3,27 @@ const { operationId } = require("../core/identity");
 const { safeConfigDto } = require("../core/safeConfigDto");
 
 async function diffConfig(relativePath, parsedJson, localIndex, context = {}) {
-  const dto = safeConfigDto(relativePath, parsedJson);
-  if (dto.schema === "unsupported_config" || dto.syncable === false) {
+  const profile = context.profile || "bootstrap";
+  const dto = safeConfigDto(relativePath, parsedJson, {
+    profile,
+    syncProfileConfig: context.syncProfileConfig,
+  });
+  if (
+    dto.schema === "skip" ||
+    dto.schema === "unsupported_config" ||
+    dto.syncable === false
+  ) {
     return {
       changed: false,
       skipped: true,
-      reason: "unsupported_config",
+      reason:
+        profile === "runtime"
+          ? "runtime_profile_excluded"
+          : "unsupported_config",
       dto,
     };
   }
+
   const checksum = checksumJson(dto.checksum_source);
   const previous = localIndex.getFile(relativePath);
   const changed = !previous || previous.checksum !== checksum;
@@ -36,6 +48,8 @@ async function diffConfig(relativePath, parsedJson, localIndex, context = {}) {
       schema: dto.schema,
       entity_id: dto.entity_id,
       relative_path: relativePath,
+      profile: dto.profile,
+      projection_fields: dto.projection_fields,
       safe_projection_json: dto.safe_projection_json,
       checksum,
     },

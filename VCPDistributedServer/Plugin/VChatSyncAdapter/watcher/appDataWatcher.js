@@ -1,46 +1,86 @@
-const chokidar = require('chokidar');
-const path = require('path');
-const { debounce } = require('../utils/debounce');
-const { relativeAppDataPath, isHistoryPath, isConfigPath, isAttachmentLikePath } = require('../utils/pathRules');
-const { handleFile } = require('../scanner/appDataScanner');
+const chokidar = require("chokidar");
+const path = require("path");
+const { debounce } = require("../utils/debounce");
+const {
+  relativeAppDataPath,
+  isHistoryPath,
+  isConfigPath,
+  isAttachmentLikePath,
+} = require("../utils/pathRules");
+const { handleFile } = require("../scanner/appDataScanner");
 
-function createWatcher(config, localIndex, offlineQueue, writeIntentLock, logger, context = {}) {
+function createWatcher(
+  config,
+  localIndex,
+  offlineQueue,
+  writeIntentLock,
+  logger,
+  context = {}
+) {
   let watcher = null;
   const pendingHandlers = new Map();
 
   async function processFile(filePath) {
     const relativePath = relativeAppDataPath(config.appDataPath, filePath);
-    if (relativePath.startsWith('sync/')) return;
-    if (!isHistoryPath(relativePath) && !isConfigPath(relativePath) && !isAttachmentLikePath(relativePath)) return;
+    if (relativePath.startsWith("sync/")) return;
+    if (
+      !isHistoryPath(relativePath) &&
+      !isConfigPath(relativePath) &&
+      !isAttachmentLikePath(relativePath)
+    )
+      return;
     const mode = context.modeProvider ? context.modeProvider() : context.mode;
     try {
-      await handleFile(config.appDataPath, filePath, localIndex, offlineQueue, writeIntentLock, logger, {
-        mode,
-        deviceId: context.deviceId,
-      });
+      await handleFile(
+        config.appDataPath,
+        filePath,
+        localIndex,
+        offlineQueue,
+        writeIntentLock,
+        logger,
+        {
+          mode,
+          profile: "runtime",
+          deviceId: context.deviceId,
+          syncProfileConfig: context.syncProfileConfig,
+        }
+      );
     } catch (error) {
-      logger.warn('watch event handling failed', { relativePath, error: error.message });
+      logger.warn("watch event handling failed", {
+        relativePath,
+        error: error.message,
+      });
     }
   }
 
   return {
     async start() {
       watcher = chokidar.watch(config.appDataPath, {
-        ignored: [path.join(config.syncDir, '**')],
+        ignored: [path.join(config.syncDir, "**")],
         ignoreInitial: true,
         awaitWriteFinish: false,
         persistent: true,
       });
-      watcher.on('add', (filePath) => {
-        if (!pendingHandlers.has(filePath)) pendingHandlers.set(filePath, debounce(processFile, config.watchDebounceMs));
+      watcher.on("add", (filePath) => {
+        if (!pendingHandlers.has(filePath))
+          pendingHandlers.set(
+            filePath,
+            debounce(processFile, config.watchDebounceMs)
+          );
         pendingHandlers.get(filePath)(filePath);
       });
-      watcher.on('change', (filePath) => {
-        if (!pendingHandlers.has(filePath)) pendingHandlers.set(filePath, debounce(processFile, config.watchDebounceMs));
+      watcher.on("change", (filePath) => {
+        if (!pendingHandlers.has(filePath))
+          pendingHandlers.set(
+            filePath,
+            debounce(processFile, config.watchDebounceMs)
+          );
         pendingHandlers.get(filePath)(filePath);
       });
-      watcher.on('error', (error) => logger.error('watcher error', { error: error.message }));
-      logger.info('watcher started', { appDataPath: config.appDataPath });
+      watcher.on("error", (error) =>
+        logger.error("watcher error", { error: error.message })
+      );
+      logger.info("watcher started", { appDataPath: config.appDataPath });
     },
     async stop() {
       if (watcher) await watcher.close();

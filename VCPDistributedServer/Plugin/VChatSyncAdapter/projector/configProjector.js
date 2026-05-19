@@ -33,15 +33,31 @@ async function applyConfigEvents(events, context) {
     const filePath = pathForConfigEvent(config, event);
     if (!filePath || !dto || typeof dto !== "object") continue;
 
-    validateSafeConfigDto(schema, dto);
+    const profile = payload.profile || event.profile || "bootstrap";
+    const projectionFields = payload.projection_fields || event.projection_fields;
+    if (profile === "runtime" && !Array.isArray(projectionFields)) {
+      throw new Error(
+        `runtime config event requires projection_fields: ${schema}:${payload.entity_id || event.entity_id}`
+      );
+    }
+    validateSafeConfigDto(schema, dto, {
+      profile,
+      projection_fields: projectionFields,
+    });
     const localConfig = await readLocalConfig(filePath);
-    const next = mergeProjectedConfig(localConfig, dto, schema);
+    const next = mergeProjectedConfig(localConfig, dto, {
+      schema,
+      profile,
+      projection_fields: projectionFields,
+    });
     const expectedChecksum = checksumJson(next);
     const remoteDtoChecksum = checksumJson({
       dto_version: payload.dto_version,
       schema,
       entity_id: payload.entity_id || event.entity_id,
       safe_projection_json: dto,
+      projection_fields: projectionFields,
+      profile,
     });
     const relativePath = normalizeSlashes(
       path.relative(config.appDataPath, filePath)

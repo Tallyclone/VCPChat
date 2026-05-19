@@ -4,8 +4,8 @@ const {
   buildSafeConfigDto,
 } = require("./configSchema");
 
-function safeConfigDto(relativePath, parsedJson) {
-  return buildSafeConfigDto(relativePath, parsedJson);
+function safeConfigDto(relativePath, parsedJson, options = {}) {
+  return buildSafeConfigDto(relativePath, parsedJson, options);
 }
 
 module.exports = { safeConfigDto, schemaForPath, SENSITIVE_KEY_PATTERN };

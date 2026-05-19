@@ -88,12 +88,10 @@ async function handleFile(
     }
     if (!read.ok)
       return { skipped: true, reason: "corrupt_json", relativePath };
-    const result = await diffConfig(
-      relativePath,
-      read.value,
-      localIndex,
-      context
-    );
+    const result = await diffConfig(relativePath, read.value, localIndex, {
+      ...context,
+      profile: context.profile || "runtime",
+    });
     const mode = context.mode || "uninitialized";
     const enqueued = result.changed
       ? await offlineQueue.enqueueMany([result.operation], { mode })

@@ -226,8 +226,17 @@ async function buildLocalManifest(config, options = {}) {
     if (isConfigPath(relativePath)) {
       const parsed = await fs.readJson(filePath).catch(() => null);
       if (!parsed) return;
-      const dto = safeConfigDto(relativePath, parsed);
-      if (dto.schema === "unsupported_config") return;
+      const dto = safeConfigDto(relativePath, parsed, {
+        profile: options.profile || "bootstrap",
+        syncProfileConfig: options.syncProfileConfig,
+      });
+      if (
+        dto.schema === "skip" ||
+        dto.schema === "unsupported_config" ||
+        dto.syncable === false
+      ) {
+        return;
+      }
       const checksum = checksumJson(dto.checksum_source);
       configs.push({
         ...dto,
@@ -239,6 +248,7 @@ async function buildLocalManifest(config, options = {}) {
       });
       return;
     }
+
     if (isAttachmentLikePath(relativePath)) {
       const buffer = await fs.readFile(filePath).catch(() => null);
       if (!buffer) return;

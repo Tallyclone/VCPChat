@@ -28,7 +28,7 @@ function parseHistoryIdentity(relativePath) {
 
 function isConfigPath(relativePath) {
   const normalized = normalizeSlashes(relativePath);
-  return /(^Agents\/[^/]+\/(config|regex_rules)\.json$)|(^AgentGroups\/[^/]+\/config\.json$)|(^UserData\/(memo|forum)\.config\.json$)|(^settings\.json$)/i.test(
+  return /(^Agents\/[^/]+\/(config|regex_rules)\.json$)|(^AgentGroups\/[^/]+\/config\.json$)|(^global_prompt_warehouse\.json$)|(^systemPromptPresets\/.+\.json$)|(^UserData\/(memo|forum)\.config\.json$)|(^settings\.json$)/i.test(
     normalized
   );
 }

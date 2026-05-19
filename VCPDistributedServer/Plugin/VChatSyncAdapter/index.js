@@ -1,4 +1,5 @@
 const fs = require("fs");
+const fsp = require("fs-extra");
 const path = require("path");
 const os = require("os");
 const dotenv = require("dotenv");
@@ -75,6 +76,77 @@ function pickConfigValue(hostValue, envValue, fallback = "") {
   if (hostValue !== undefined && hostValue !== null && hostValue !== "")
     return hostValue;
   return fallback;
+}
+
+async function loadSyncProfileConfig(adapterDir = __dirname, logger = null) {
+  const configPath = path.join(adapterDir, "config", "sync_profile.json");
+  const defaultConfig = {
+    version: 1,
+    runtimeSync: {
+      agent_config: { include: [], exclude: [], deleteMissing: false },
+      group_config: { include: [], exclude: [], deleteMissing: false },
+    },
+    bootstrap: { conflictPolicy: "report_only" },
+  };
+  try {
+    if (!(await fsp.pathExists(configPath))) {
+      await fsp.ensureDir(path.dirname(configPath));
+      await fsp.writeJson(configPath, defaultConfig, { spaces: 2 });
+      if (logger && logger.info) {
+        logger.info("sync profile config created with defaults", {
+          configPath,
+        });
+      }
+      return defaultConfig;
+    }
+    const loaded = await fsp.readJson(configPath);
+    const loadedRuntimeSync =
+      loaded && loaded.runtimeSync && typeof loaded.runtimeSync === "object"
+        ? loaded.runtimeSync
+        : {};
+    const merged = {
+      ...defaultConfig,
+      ...(loaded && typeof loaded === "object" ? loaded : {}),
+      runtimeSync: {
+        ...defaultConfig.runtimeSync,
+        ...loadedRuntimeSync,
+        agent_config: {
+          ...defaultConfig.runtimeSync.agent_config,
+          ...((loadedRuntimeSync && loadedRuntimeSync.agent_config) || {}),
+        },
+        group_config: {
+          ...defaultConfig.runtimeSync.group_config,
+          ...((loadedRuntimeSync && loadedRuntimeSync.group_config) || {}),
+        },
+      },
+      bootstrap: {
+        ...defaultConfig.bootstrap,
+        ...((loaded && loaded.bootstrap) || {}),
+      },
+    };
+    if (logger && logger.info) {
+      logger.info("sync profile config loaded", {
+        configPath,
+        agentInclude: merged.runtimeSync.agent_config.include.length,
+        agentExclude: merged.runtimeSync.agent_config.exclude.length,
+        agentDeleteMissing:
+          merged.runtimeSync.agent_config.deleteMissing === true,
+        groupInclude: merged.runtimeSync.group_config.include.length,
+        groupExclude: merged.runtimeSync.group_config.exclude.length,
+        groupDeleteMissing:
+          merged.runtimeSync.group_config.deleteMissing === true,
+      });
+    }
+    return merged;
+  } catch (error) {
+    if (logger && logger.warn) {
+      logger.warn("failed to load sync profile config; using defaults", {
+        configPath,
+        error: error.message,
+      });
+    }
+    return defaultConfig;
+  }
 }
 
 function resolveAppDataPath(pluginConfig, projectBasePath) {
@@ -203,6 +275,8 @@ async function startAdapter(app, pluginConfig, projectBasePath) {
     )
   );
   const config = buildConfig(pluginConfig, projectBasePath);
+  const syncProfileConfig = await loadSyncProfileConfig(__dirname, logger);
+  config.syncProfileConfig = syncProfileConfig;
   logger.info("adapter config resolved", {
     adapterEnvPath: adapterEnvState.envPath,
     adapterEnvLoaded: adapterEnvState.loaded,
@@ -310,6 +384,8 @@ async function startAdapter(app, pluginConfig, projectBasePath) {
       const manifest = await buildLocalManifest(config, {
         logger,
         allowConflicts: true,
+        profile: "bootstrap",
+        syncProfileConfig,
       });
       return res.json(manifest);
     } catch (error) {
@@ -367,12 +443,15 @@ async function startAdapter(app, pluginConfig, projectBasePath) {
     logger,
     {
       mode: state.mode || "uninitialized",
+      profile: "runtime",
       deviceId: config.deviceId,
       centerClient,
-      config,
+      syncProfileConfig,
     }
   );
+
   state.last_scan_at = new Date().toISOString();
+
   state.last_scan_result = scanResult.summary;
   await writeState(config, state, logger);
 
@@ -392,9 +471,11 @@ async function startAdapter(app, pluginConfig, projectBasePath) {
       deviceId: config.deviceId,
       centerClient,
       config,
+      syncProfileConfig,
     }
   );
   await runtime.watcher.start();
+
   logger.info("adapter started", {
     appDataPath: config.appDataPath,
     mode: state.mode,
