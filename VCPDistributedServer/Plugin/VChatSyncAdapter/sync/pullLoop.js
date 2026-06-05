@@ -106,6 +106,33 @@ function createPullLoop(
     metrics.last_error = null;
     try {
       let state = await readState(config, logger);
+      const mode = String(state.mode || "uninitialized")
+        .trim()
+        .toLowerCase();
+      if (mode !== "active") {
+        const finishedAt = new Date().toISOString();
+        stopped = true;
+        metrics.last_finished_at = finishedAt;
+        metrics.last_duration_ms = Date.now() - startedAt;
+        metrics.last_applied = 0;
+        metrics.last_error = null;
+        if (timer) clearTimeout(timer);
+        timer = null;
+        if (activityOrderTimer) clearTimeout(activityOrderTimer);
+        activityOrderTimer = null;
+        if (ws) ws.close();
+        ws = null;
+        logger.warn("pull skipped because adapter mode is not active", {
+          mode,
+          reason,
+        });
+        return {
+          ok: true,
+          skipped: true,
+          reason: "mode_not_active",
+          mode,
+        };
+      }
       let afterSeq = Number(state.last_applied_seq || 0);
       let totalApplied = 0;
       let hasMore = true;

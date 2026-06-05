@@ -302,7 +302,15 @@ async function backupAppData(config, label, logger) {
     await fs.copy(config.appDataPath, path.join(backupRoot, "AppData"), {
       filter: (src) => {
         const relativePath = relativeAppDataPath(config.appDataPath, src);
-        return !relativePath.startsWith("sync/backups/");
+        if (!relativePath) return true;
+        const normalized = relativePath.replace(/\\/g, "/");
+        const baseName = path.basename(normalized);
+        if (normalized === "sync" || normalized.startsWith("sync/"))
+          return false;
+        if (/\.backup-[^/]*$/i.test(baseName)) return false;
+        if (/\.tmp(?:-|$)/i.test(baseName)) return false;
+        if (/^(?:state|local_index)\.json\.tmp/i.test(baseName)) return false;
+        return true;
       },
     });
   }
@@ -312,6 +320,38 @@ async function backupAppData(config, label, logger) {
       label,
     });
   return backupRoot;
+}
+
+async function pauseRuntimeServices(runtime, reason) {
+  if (!runtime) return;
+  const { logger } = runtime;
+  const stopped = [];
+  const stopOne = async (name, service) => {
+    if (!service || typeof service.stop !== "function") return;
+    try {
+      await service.stop();
+      stopped.push(name);
+    } catch (error) {
+      if (logger && logger.warn) {
+        logger.warn("runtime service stop failed before bootstrap operation", {
+          name,
+          reason,
+          error: error.message,
+        });
+      }
+    }
+  };
+  await stopOne("watcher", runtime.watcher);
+  await stopOne("themeWatcher", runtime.themeWatcher);
+  await stopOne("pullLoop", runtime.pullLoop);
+  await stopOne("offlineQueue", runtime.offlineQueue);
+  runtime.runtimeServicesStarted = false;
+  if (logger && logger.info) {
+    logger.info("runtime services paused before bootstrap operation", {
+      reason,
+      stopped,
+    });
+  }
 }
 
 async function buildLocalManifest(config, options = {}) {
@@ -609,6 +649,7 @@ async function bootstrapPrimary(runtime, options = {}) {
     writeIntentLock,
     logger,
   } = runtime;
+  await pauseRuntimeServices(runtime, "bootstrap_primary");
   await backupAppData(config, "bootstrap-primary", logger);
   const manifest = await buildLocalManifest(config, { logger });
   if (!manifest.ok) return manifest;
@@ -1050,6 +1091,7 @@ async function uploadSameNameAgentMergeAttachments(
 
 async function joinExisting(runtime) {
   const { config, centerClient, localIndex, writeIntentLock, logger } = runtime;
+  await pauseRuntimeServices(runtime, "join_existing");
   await backupAppData(config, "join-existing", logger);
   const exported = await centerClient.exportBootstrap();
   const baseline = exported.baseline || {};
@@ -1082,6 +1124,7 @@ async function joinExisting(runtime) {
 
 async function mergeExisting(runtime) {
   const { config, centerClient, localIndex, writeIntentLock, logger } = runtime;
+  await pauseRuntimeServices(runtime, "merge_existing");
   await backupAppData(config, "merge-existing", logger);
   const local = await buildLocalManifest(config, {
     logger,

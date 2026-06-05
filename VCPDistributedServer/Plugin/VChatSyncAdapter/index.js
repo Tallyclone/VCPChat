@@ -441,8 +441,82 @@ async function startAdapter(app, pluginConfig, projectBasePath) {
     themeWatcher,
     writeState: async (nextState) => writeState(config, nextState, logger),
     watcher: null,
+    runtimeServicesStarted: false,
     startedAt: new Date().toISOString(),
   };
+
+  async function startRuntimeServicesIfActive() {
+    const latestState = await readState(config, logger);
+    const mode = latestState.mode || runtime.state.mode || "uninitialized";
+    runtime.state.mode = mode;
+    if (!canUploadInMode(mode)) {
+      logger.warn(
+        "runtime services not started because adapter mode is not active",
+        {
+          mode,
+        }
+      );
+      return false;
+    }
+    if (runtime.runtimeServicesStarted) return true;
+
+    const startedServices = [];
+    try {
+      await offlineQueue.start({
+        modeProvider: () => runtime.state.mode || "uninitialized",
+      });
+      startedServices.push({ name: "offlineQueue", service: offlineQueue });
+
+      await pullLoop.start();
+      startedServices.push({ name: "pullLoop", service: pullLoop });
+
+      runtime.watcher = createWatcher(
+        config,
+        localIndex,
+        offlineQueue,
+        writeIntentLock,
+        logger,
+        {
+          modeProvider: () => runtime.state.mode || "uninitialized",
+          deviceId: config.deviceId,
+          centerClient,
+          config,
+          syncProfileConfig,
+        }
+      );
+      await runtime.watcher.start();
+      startedServices.push({ name: "watcher", service: runtime.watcher });
+
+      await runtime.themeWatcher.start();
+      startedServices.push({
+        name: "themeWatcher",
+        service: runtime.themeWatcher,
+      });
+
+      runtime.runtimeServicesStarted = true;
+      logger.info("adapter runtime services started", { mode });
+      return true;
+    } catch (error) {
+      for (const entry of startedServices.reverse()) {
+        try {
+          if (entry.service && typeof entry.service.stop === "function") {
+            await entry.service.stop();
+          }
+        } catch (stopError) {
+          logger.warn("runtime service rollback stop failed", {
+            name: entry.name,
+            error: stopError.message,
+          });
+        }
+      }
+      runtime.runtimeServicesStarted = false;
+      logger.error("adapter runtime services failed to start", {
+        mode,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
 
   app.get("/api/vchat-sync-adapter/status", async (req, res) => {
     try {
@@ -483,6 +557,9 @@ async function startAdapter(app, pluginConfig, projectBasePath) {
           .status(400)
           .json({ ok: false, error: "unsupported bootstrap mode" });
       const result = await actions[mode](runtime, req.body || {});
+      if (result && result.ok !== false && result.mode === "active") {
+        await startRuntimeServicesIfActive();
+      }
       return res.json(result);
     } catch (error) {
       logger.error("bootstrap action failed", { error: error.message });
@@ -544,45 +621,60 @@ async function startAdapter(app, pluginConfig, projectBasePath) {
     }
   }
 
-  if (canUploadInMode(state.mode || "uninitialized")) {
+  const currentMode = state.mode || "uninitialized";
+  let scanResult = {
+    summary: { skipped: true, reason: "mode_not_active", mode: currentMode },
+  };
+  let themeScanResult = {
+    summary: { skipped: true, reason: "mode_not_active", mode: currentMode },
+  };
+
+  if (canUploadInMode(currentMode)) {
     await centerClient.registerDevice().catch((error) => {
       logger.warn(
         "device registration failed; queue will retry operations later",
         { error: error.message }
       );
     });
-  }
 
-  const scanResult = await scanAppData(
-    config.appDataPath,
-    localIndex,
-    offlineQueue,
-    writeIntentLock,
-    logger,
-    {
-      mode: state.mode || "uninitialized",
-      profile: "runtime",
-      deviceId: config.deviceId,
+    scanResult = await scanAppData(
+      config.appDataPath,
+      localIndex,
+      offlineQueue,
+      writeIntentLock,
+      logger,
+      {
+        mode: currentMode,
+        profile: "runtime",
+        deviceId: config.deviceId,
+        centerClient,
+        config,
+        syncProfileConfig,
+      }
+    );
+    themeScanResult = await syncLocalThemes(
+      {
+        ...config,
+        themeStylesDir: path.resolve(projectBasePath, "styles", "themes"),
+        wallpaperDir: path.resolve(projectBasePath, "assets", "wallpaper"),
+        appRootPath: projectBasePath,
+      },
+      localIndex,
       centerClient,
-      config,
-      syncProfileConfig,
-    }
-  );
-  const themeScanResult = await syncLocalThemes(
-    {
-      ...config,
-      themeStylesDir: path.resolve(projectBasePath, "styles", "themes"),
-      wallpaperDir: path.resolve(projectBasePath, "assets", "wallpaper"),
-      appRootPath: projectBasePath,
-    },
-    localIndex,
-    centerClient,
-    logger,
-    {
-      mode: state.mode || "uninitialized",
-      deviceId: config.deviceId,
-    }
-  );
+      logger,
+      {
+        mode: currentMode,
+        deviceId: config.deviceId,
+      }
+    );
+  } else {
+    logger.warn(
+      "runtime startup scan skipped because adapter mode is not active",
+      {
+        mode: currentMode,
+      }
+    );
+  }
 
   state.last_scan_at = new Date().toISOString();
 
@@ -592,31 +684,12 @@ async function startAdapter(app, pluginConfig, projectBasePath) {
   };
   await writeState(config, state, logger);
 
-  await offlineQueue.start({
-    modeProvider: () => runtime.state.mode || "uninitialized",
-  });
-  await pullLoop.start();
-
-  runtime.watcher = createWatcher(
-    config,
-    localIndex,
-    offlineQueue,
-    writeIntentLock,
-    logger,
-    {
-      modeProvider: () => runtime.state.mode || "uninitialized",
-      deviceId: config.deviceId,
-      centerClient,
-      config,
-      syncProfileConfig,
-    }
-  );
-  await runtime.watcher.start();
-  await runtime.themeWatcher.start();
+  await startRuntimeServicesIfActive();
 
   logger.info("adapter started", {
     appDataPath: config.appDataPath,
     mode: state.mode,
+    runtimeServicesStarted: runtime.runtimeServicesStarted,
   });
   return runtime;
 }
