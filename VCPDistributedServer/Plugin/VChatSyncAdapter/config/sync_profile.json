@@ -2,11 +2,11 @@
   "version": 1,
   "runtimeSync": {
     "agent_config": {
-      "include": [],
+      "include": ["topics"],
       "exclude": []
     },
     "group_config": {
-      "include": [],
+      "include": ["topics"],
       "exclude": []
     }
   },

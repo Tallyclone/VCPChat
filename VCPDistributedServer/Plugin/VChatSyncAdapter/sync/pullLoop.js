@@ -1,5 +1,8 @@
 const { readState, writeState } = require("./state");
-const { projectEvents } = require("../projector/appDataProjector");
+const {
+  projectEvents,
+  applyPendingTopicActivityOrder,
+} = require("../projector/appDataProjector");
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -14,9 +17,12 @@ function createPullLoop(
 ) {
   let stopped = true;
   let timer = null;
+  let activityOrderTimer = null;
   let ws = null;
   let running = false;
   let retryMs = config.pullIntervalMs || 15000;
+  const activityOrderIntervalMs =
+    config.topicActivityOrderIntervalMs || 30 * 60 * 1000;
   const metrics = {
     last_reason: null,
     last_started_at: null,
@@ -30,6 +36,9 @@ function createPullLoop(
     blocked_event: null,
     total_pulls: 0,
     total_events_applied: 0,
+    last_activity_order_sync_at: null,
+    last_activity_order_sync_result: null,
+    last_activity_order_sync_error: null,
   };
   const poisonFailures = new Map();
 
@@ -138,12 +147,28 @@ function createPullLoop(
           const ownSeqs = events
             .filter((event) => event.device_id === config.deviceId)
             .map((event) => Number(event.seq || 0));
-          const appliedMaxSeq = Math.max(afterSeq, ...remoteSeqs, ...ownSeqs);
+          const checkpointSeq = Number(
+            changes.checkpoint_seq || changes.next_after_seq || 0
+          );
+          const appliedMaxSeq = Math.max(
+            afterSeq,
+            checkpointSeq,
+            ...remoteSeqs,
+            ...ownSeqs
+          );
           if (appliedMaxSeq > afterSeq) {
             afterSeq = appliedMaxSeq;
             await advanceStateTo(afterSeq);
           }
           totalApplied += projection.appliedSeqs.length;
+        } else if (changes.checkpoint_seq || changes.next_after_seq) {
+          const checkpointSeq = Number(
+            changes.checkpoint_seq || changes.next_after_seq || 0
+          );
+          if (checkpointSeq > afterSeq) {
+            afterSeq = checkpointSeq;
+            await advanceStateTo(afterSeq);
+          }
         }
 
         hasMore = !!changes.has_more;
@@ -188,10 +213,61 @@ function createPullLoop(
     }, delayMs);
   }
 
+  async function syncActivityOrder(filter = {}) {
+    try {
+      const result = await applyPendingTopicActivityOrder(
+        {
+          config,
+          localIndex,
+          writeIntentLock,
+          logger,
+          centerClient,
+          syncProfileConfig: config.syncProfileConfig,
+        },
+        filter
+      );
+      metrics.last_activity_order_sync_at = new Date().toISOString();
+      metrics.last_activity_order_sync_result = result;
+      metrics.last_activity_order_sync_error = null;
+      if (logger && logger.info) {
+        logger.info("pending topic activity order synced", result);
+      }
+      return result;
+    } catch (error) {
+      metrics.last_activity_order_sync_error = error.message;
+      if (logger && logger.warn) {
+        logger.warn("pending topic activity order sync failed", {
+          error: error.message,
+        });
+      }
+      throw error;
+    }
+  }
+
+  function scheduleActivityOrderSync(delayMs = activityOrderIntervalMs) {
+    if (stopped) return;
+    if (activityOrderTimer) clearTimeout(activityOrderTimer);
+    activityOrderTimer = setTimeout(async () => {
+      try {
+        await syncActivityOrder();
+      } catch (error) {
+        // syncActivityOrder 已记录错误；继续按固定 30 分钟节奏重试。
+      }
+      scheduleActivityOrderSync(activityOrderIntervalMs);
+    }, delayMs);
+  }
+
   return {
     pullOnce,
+    syncActivityOrder,
     stats() {
-      return { ...metrics, running, stopped, retry_ms: retryMs };
+      return {
+        ...metrics,
+        running,
+        stopped,
+        retry_ms: retryMs,
+        activity_order_interval_ms: activityOrderIntervalMs,
+      };
     },
     async start() {
       stopped = false;
@@ -205,11 +281,14 @@ function createPullLoop(
         });
       }
       schedule(1000);
+      scheduleActivityOrderSync(activityOrderIntervalMs);
     },
     async stop() {
       stopped = true;
       if (timer) clearTimeout(timer);
       timer = null;
+      if (activityOrderTimer) clearTimeout(activityOrderTimer);
+      activityOrderTimer = null;
       if (ws) ws.close();
       ws = null;
     },

@@ -11,30 +11,43 @@ const TOOL_RESULT_TRUNCATE_LINES = 80; // 截断后只显示前80行
 const toolResultFullContentMap = new Map(); // placeholderId -> { raw: string, fieldKey: string }
 let toolResultContentIdCounter = 0;
 
-import { avatarColorCache, getDominantAvatarColor } from './renderer/colorUtils.js';
-import { initializeImageHandler, setContentAndProcessImages } from './renderer/imageHandler.js';
-import { processAnimationsInContent, cleanupAnimationsInContent } from './renderer/animation.js';
-import * as visibilityOptimizer from './renderer/visibilityOptimizer.js';
-import { createMessageSkeleton, formatMessageTimestamp } from './renderer/domBuilder.js';
-import * as streamManager from './renderer/streamManager.js';
-import * as emoticonUrlFixer from './renderer/emoticonUrlFixer.js';
-import { createContentPipeline, PIPELINE_MODES } from './renderer/contentPipeline.js';
+import {
+  avatarColorCache,
+  getDominantAvatarColor,
+} from "./renderer/colorUtils.js";
+import {
+  initializeImageHandler,
+  setContentAndProcessImages,
+} from "./renderer/imageHandler.js";
+import {
+  processAnimationsInContent,
+  cleanupAnimationsInContent,
+} from "./renderer/animation.js";
+import * as visibilityOptimizer from "./renderer/visibilityOptimizer.js";
+import {
+  createMessageSkeleton,
+  formatMessageTimestamp,
+} from "./renderer/domBuilder.js";
+import * as streamManager from "./renderer/streamManager.js";
+import * as emoticonUrlFixer from "./renderer/emoticonUrlFixer.js";
+import {
+  createContentPipeline,
+  PIPELINE_MODES,
+} from "./renderer/contentPipeline.js";
 
 const colorExtractionPromises = new Map();
 
 async function getDominantAvatarColorCached(url) {
-    if (!colorExtractionPromises.has(url)) {
-        colorExtractionPromises.set(url, getDominantAvatarColor(url));
-    }
-    return colorExtractionPromises.get(url);
+  if (!colorExtractionPromises.has(url)) {
+    colorExtractionPromises.set(url, getDominantAvatarColor(url));
+  }
+  return colorExtractionPromises.get(url);
 }
 
-import * as contentProcessor from './renderer/contentProcessor.js';
-import * as contextMenu from './renderer/messageContextMenu.js';
+import * as contentProcessor from "./renderer/contentProcessor.js";
+import * as contextMenu from "./renderer/messageContextMenu.js";
 
-
-import * as middleClickHandler from './renderer/middleClickHandler.js';
-
+import * as middleClickHandler from "./renderer/middleClickHandler.js";
 
 // --- LaTeX Protection ---
 // 用于在 marked 解析前保护 LaTeX 块，防止 Markdown 解析器破坏 LaTeX 语法
@@ -47,110 +60,110 @@ import * as middleClickHandler from './renderer/middleClickHandler.js';
  * @returns {{text: string, map: Map<string, string>}} 替换后的文本和映射表
  */
 function protectLatexBlocks(text) {
-    const map = new Map();
-    let id = 0;
+  const map = new Map();
+  let id = 0;
 
-    // 🟢 关键修复：先保护代码围栏，防止代码块内的 $ / $$ 被误匹配为 LaTeX
-    // 例如 Python 代码 `b'$$' in data` 中的 $$ 会与文档后面的 $$ 数学公式匹配，
-    // 导致 LaTeX 占位符跨越并吞噬中间的代码围栏标记
-    const codeFenceMap = new Map();
-    let codeFenceId = 0;
+  // 🟢 关键修复：先保护代码围栏，防止代码块内的 $ / $$ 被误匹配为 LaTeX
+  // 例如 Python 代码 `b'$$' in data` 中的 $$ 会与文档后面的 $$ 数学公式匹配，
+  // 导致 LaTeX 占位符跨越并吞噬中间的代码围栏标记
+  const codeFenceMap = new Map();
+  let codeFenceId = 0;
 
-    // 使用逐行状态机识别代码围栏（比正则更可靠）
-    const lines = text.split('\n');
-    const resultLines = [];
-    let fenceStartLine = -1;
-    let fenceBacktickCount = 0;
+  // 使用逐行状态机识别代码围栏（比正则更可靠）
+  const lines = text.split("\n");
+  const resultLines = [];
+  let fenceStartLine = -1;
+  let fenceBacktickCount = 0;
 
-    for (let i = 0; i < lines.length; i++) {
-        const trimmed = lines[i].trimStart();
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trimStart();
 
-        if (fenceStartLine === -1) {
-            // 不在代码块内：检测开始围栏
-            const openMatch = trimmed.match(/^(`{3,})/);
-            if (openMatch) {
-                fenceStartLine = resultLines.length;
-                fenceBacktickCount = openMatch[1].length;
-                resultLines.push(lines[i]);
-            } else {
-                resultLines.push(lines[i]);
-            }
-        } else {
-            // 在代码块内：检测关闭围栏
-            const closeMatch = trimmed.match(/^(`{3,})\s*$/);
-            if (closeMatch && closeMatch[1].length >= fenceBacktickCount) {
-                // 找到关闭围栏，将整个代码块替换为占位符
-                resultLines.push(lines[i]);
-                const blockLines = resultLines.splice(fenceStartLine);
-                const blockContent = blockLines.join('\n');
-                const placeholder = `%%CODEFENCE_FOR_LATEX_${codeFenceId}%%`;
-                codeFenceMap.set(placeholder, blockContent);
-                codeFenceId++;
-                resultLines.push(placeholder);
-                fenceStartLine = -1;
-                fenceBacktickCount = 0;
-            } else {
-                resultLines.push(lines[i]);
-            }
-        }
-    }
-
-    // 如果有未关闭的代码围栏（流式传输场景），也保护起来
-    if (fenceStartLine !== -1) {
+    if (fenceStartLine === -1) {
+      // 不在代码块内：检测开始围栏
+      const openMatch = trimmed.match(/^(`{3,})/);
+      if (openMatch) {
+        fenceStartLine = resultLines.length;
+        fenceBacktickCount = openMatch[1].length;
+        resultLines.push(lines[i]);
+      } else {
+        resultLines.push(lines[i]);
+      }
+    } else {
+      // 在代码块内：检测关闭围栏
+      const closeMatch = trimmed.match(/^(`{3,})\s*$/);
+      if (closeMatch && closeMatch[1].length >= fenceBacktickCount) {
+        // 找到关闭围栏，将整个代码块替换为占位符
+        resultLines.push(lines[i]);
         const blockLines = resultLines.splice(fenceStartLine);
-        const blockContent = blockLines.join('\n');
+        const blockContent = blockLines.join("\n");
         const placeholder = `%%CODEFENCE_FOR_LATEX_${codeFenceId}%%`;
         codeFenceMap.set(placeholder, blockContent);
         codeFenceId++;
         resultLines.push(placeholder);
+        fenceStartLine = -1;
+        fenceBacktickCount = 0;
+      } else {
+        resultLines.push(lines[i]);
+      }
     }
+  }
 
-    let processed = resultLines.join('\n');
+  // 如果有未关闭的代码围栏（流式传输场景），也保护起来
+  if (fenceStartLine !== -1) {
+    const blockLines = resultLines.splice(fenceStartLine);
+    const blockContent = blockLines.join("\n");
+    const placeholder = `%%CODEFENCE_FOR_LATEX_${codeFenceId}%%`;
+    codeFenceMap.set(placeholder, blockContent);
+    codeFenceId++;
+    resultLines.push(placeholder);
+  }
 
-    // 保护顺序很重要：先保护 display math ($$...$$)，再保护 inline math ($...$)
-    // 同时保护 \[...\] 和 \(...\)
+  let processed = resultLines.join("\n");
 
-    // 1. 保护 $$...$$ (display math) - 支持多行
-    processed = processed.replace(/\$\$([\s\S]*?)\$\$/g, (match) => {
-        const placeholder = `%%LATEX_BLOCK_${id}%%`;
-        map.set(placeholder, match);
-        id++;
-        return placeholder;
-    });
+  // 保护顺序很重要：先保护 display math ($$...$$)，再保护 inline math ($...$)
+  // 同时保护 \[...\] 和 \(...\)
 
-    // 2. 保护 \[...\] (display math) - 支持多行
-    processed = processed.replace(/\\\[([\s\S]*?)\\\]/g, (match) => {
-        const placeholder = `%%LATEX_BLOCK_${id}%%`;
-        map.set(placeholder, match);
-        id++;
-        return placeholder;
-    });
+  // 1. 保护 $$...$$ (display math) - 支持多行
+  processed = processed.replace(/\$\$([\s\S]*?)\$\$/g, (match) => {
+    const placeholder = `%%LATEX_BLOCK_${id}%%`;
+    map.set(placeholder, match);
+    id++;
+    return placeholder;
+  });
 
-    // 3. 保护 \(...\) (inline math)
-    processed = processed.replace(/\\\(([\s\S]*?)\\\)/g, (match) => {
-        const placeholder = `%%LATEX_BLOCK_${id}%%`;
-        map.set(placeholder, match);
-        id++;
-        return placeholder;
-    });
+  // 2. 保护 \[...\] (display math) - 支持多行
+  processed = processed.replace(/\\\[([\s\S]*?)\\\]/g, (match) => {
+    const placeholder = `%%LATEX_BLOCK_${id}%%`;
+    map.set(placeholder, match);
+    id++;
+    return placeholder;
+  });
 
-    // 4. 保护 $...$ (inline math) - 不跨行，避免误匹配价格等
-    // 使用更严格的匹配：$ 后面不能是空格，$ 前面不能是空格，不跨行
-    processed = processed.replace(/\$([^\$\n]+?)\$/g, (match, content) => {
-        // 跳过看起来像价格的情况（如 $100）
-        if (/^\d/.test(content.trim())) return match;
-        const placeholder = `%%LATEX_BLOCK_${id}%%`;
-        map.set(placeholder, match);
-        id++;
-        return placeholder;
-    });
+  // 3. 保护 \(...\) (inline math)
+  processed = processed.replace(/\\\(([\s\S]*?)\\\)/g, (match) => {
+    const placeholder = `%%LATEX_BLOCK_${id}%%`;
+    map.set(placeholder, match);
+    id++;
+    return placeholder;
+  });
 
-    // 🟢 恢复代码围栏（占位符 → 原始代码块）
-    for (const [placeholder, original] of codeFenceMap.entries()) {
-        processed = processed.split(placeholder).join(original);
-    }
+  // 4. 保护 $...$ (inline math) - 不跨行，避免误匹配价格等
+  // 使用更严格的匹配：$ 后面不能是空格，$ 前面不能是空格，不跨行
+  processed = processed.replace(/\$([^\$\n]+?)\$/g, (match, content) => {
+    // 跳过看起来像价格的情况（如 $100）
+    if (/^\d/.test(content.trim())) return match;
+    const placeholder = `%%LATEX_BLOCK_${id}%%`;
+    map.set(placeholder, match);
+    id++;
+    return placeholder;
+  });
 
-    return { text: processed, map };
+  // 🟢 恢复代码围栏（占位符 → 原始代码块）
+  for (const [placeholder, original] of codeFenceMap.entries()) {
+    processed = processed.split(placeholder).join(original);
+  }
+
+  return { text: processed, map };
 }
 
 /**
@@ -160,57 +173,77 @@ function protectLatexBlocks(text) {
  * @returns {string} 恢复后的 HTML
  */
 function restoreLatexBlocks(html, map) {
-    if (!map || map.size === 0) return html;
-    for (const [placeholder, original] of map.entries()) {
-        // 占位符可能被 marked 包裹在 <p> 标签中，需要处理这种情况
-        // 使用全局替换以防万一有重复
-        html = html.split(placeholder).join(original);
-    }
-    return html;
+  if (!map || map.size === 0) return html;
+  for (const [placeholder, original] of map.entries()) {
+    // 占位符可能被 marked 包裹在 <p> 标签中，需要处理这种情况
+    // 使用全局替换以防万一有重复
+    html = html.split(placeholder).join(original);
+  }
+  return html;
 }
 
 // --- Pre-compiled Regular Expressions for Performance ---
-const TOOL_REGEX = /(?<!`)<<<\[TOOL_REQUEST\]>>>(.*?)<<<\[END_TOOL_REQUEST\]>>>(?!`)/gs;
+const TOOL_REGEX =
+  /(?<!`)<<<\[TOOL_REQUEST\]>>>(.*?)<<<\[END_TOOL_REQUEST\]>>>(?!`)/gs;
 const NOTE_REGEX = /<<<DailyNoteStart>>>(.*?)<<<DailyNoteEnd>>>/gs;
 const TOOL_RESULT_REGEX = /\[\[VCP调用结果信息汇总:(.*?)VCP调用结果结束\]\]/gs;
 const BUTTON_CLICK_REGEX = /\[\[点击按钮:(.*?)\]\]/gs;
 const CANVAS_PLACEHOLDER_REGEX = /\{\{VCPChatCanvas\}\}/g;
 const STYLE_REGEX = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
 const HTML_FENCE_CHECK_REGEX = /```\w*\n<!DOCTYPE html>/i;
-const MERMAID_CODE_REGEX = /<code.*?>\s*(flowchart|graph|mermaid)\s+([\s\S]*?)<\/code>/gi;
-const MERMAID_FENCE_REGEX = /```(mermaid|flowchart|graph)[^\S\n]*\n([\s\S]*?)```/g;
+const MERMAID_CODE_REGEX =
+  /<code.*?>\s*(flowchart|graph|mermaid)\s+([\s\S]*?)<\/code>/gi;
+const MERMAID_FENCE_REGEX =
+  /```(mermaid|flowchart|graph)[^\S\n]*\n([\s\S]*?)```/g;
 const CODE_FENCE_REGEX = /```[^\n]*([\s\S]*?)```/g;
-const THOUGHT_CHAIN_REGEX = /\[--- VCP元思考链(?::\s*"([^"]*)")?\s*---\]([\s\S]*?)\[--- 元思考链结束 ---\]/gs;
-const CONVENTIONAL_THOUGHT_REGEX = /<think(?:ing)?>([\s\S]*?)<\/think(?:ing)?>/gi;
-const ROLE_DIVIDER_REGEX = /<<<\[(END_)?ROLE_DIVIDE_(SYSTEM|ASSISTANT|USER)\]>>>/g;
-const DESKTOP_PUSH_REGEX = /(?<!`)<<<\[DESKTOP_PUSH\]>>>([\s\S]*?)<<<\[DESKTOP_PUSH_END\]>>>(?!`)/gs;
+const THOUGHT_CHAIN_REGEX =
+  /\[--- VCP元思考链(?::\s*"([^"]*)")?\s*---\]([\s\S]*?)\[--- 元思考链结束 ---\]/gs;
+const CONVENTIONAL_THOUGHT_REGEX =
+  /<think(?:ing)?>([\s\S]*?)<\/think(?:ing)?>/gi;
+const ROLE_DIVIDER_REGEX =
+  /<<<\[(END_)?ROLE_DIVIDE_(SYSTEM|ASSISTANT|USER)\]>>>/g;
+const DESKTOP_PUSH_REGEX =
+  /(?<!`)<<<\[DESKTOP_PUSH\]>>>([\s\S]*?)<<<\[DESKTOP_PUSH_END\]>>>(?!`)/gs;
 const DESKTOP_PUSH_PARTIAL_REGEX = /(?<!`)<<<\[DESKTOP_PUSH\]>>>([\s\S]*)$/s; // 流式传输中未闭合的情况
-
+const DESKTOP_WIDGET_REGEX =
+  /(?<!`)<<<\[DESKTOP_WIDGET\]>>>([\s\S]*?)<<<\[DESKTOP_WIDGET_END\]>>>(?!`)/gs;
+const DESKTOP_WIDGET_PARTIAL_REGEX =
+  /(?<!`)<<<\[DESKTOP_WIDGET\]>>>([\s\S]*)$/s; // 流式传输中未闭合的情况
+const DESKTOP_BUILTIN_REGEX =
+  /(?<!`)<<<\[DESKTOP_BUILTIN\]>>>([\s\S]*?)<<<\[DESKTOP_BUILTIN_END\]>>>(?!`)/gs;
+const DESKTOP_BUILTIN_PARTIAL_REGEX =
+  /(?<!`)<<<\[DESKTOP_BUILTIN\]>>>([\s\S]*)$/s; // 流式传输中未闭合的情况
+const DESKTOP_WIDGET_EDIT_REGEX =
+  /(?<!`)<<<\[DESKTOP_WIDGET_EDIT\]>>>([\s\S]*?)<<<\[DESKTOP_WIDGET_EDIT_END\]>>>(?!`)/gs;
+const DESKTOP_WIDGET_EDIT_PARTIAL_REGEX =
+  /(?<!`)<<<\[DESKTOP_WIDGET_EDIT\]>>>([\s\S]*)$/s; // 流式传输中未闭合的情况
 
 // --- Enhanced Rendering Styles (from UserScript) ---
 function injectEnhancedStyles() {
-    try {
-        // 检查是否已经通过 ID 或 href 引入了该样式表
-        const existingStyleElement = document.getElementById('vcp-enhanced-ui-styles');
-        if (existingStyleElement) return;
+  try {
+    // 检查是否已经通过 ID 或 href 引入了该样式表
+    const existingStyleElement = document.getElementById(
+      "vcp-enhanced-ui-styles"
+    );
+    if (existingStyleElement) return;
 
-        const links = document.getElementsByTagName('link');
-        for (let i = 0; i < links.length; i++) {
-            if (links[i].href && links[i].href.includes('messageRenderer.css')) {
-                return;
-            }
-        }
-
-        // 如果没有引入，则尝试从根路径引入（仅对根目录 HTML 有效）
-        const linkElement = document.createElement('link');
-        linkElement.id = 'vcp-enhanced-ui-styles';
-        linkElement.rel = 'stylesheet';
-        linkElement.type = 'text/css';
-        linkElement.href = 'styles/messageRenderer.css';
-        document.head.appendChild(linkElement);
-    } catch (error) {
-        console.error('VCPSub Enhanced UI: Failed to load external styles:', error);
+    const links = document.getElementsByTagName("link");
+    for (let i = 0; i < links.length; i++) {
+      if (links[i].href && links[i].href.includes("messageRenderer.css")) {
+        return;
+      }
     }
+
+    // 如果没有引入，则尝试从根路径引入（仅对根目录 HTML 有效）
+    const linkElement = document.createElement("link");
+    linkElement.id = "vcp-enhanced-ui-styles";
+    linkElement.rel = "stylesheet";
+    linkElement.type = "text/css";
+    linkElement.href = "styles/messageRenderer.css";
+    document.head.appendChild(linkElement);
+  } catch (error) {
+    console.error("VCPSub Enhanced UI: Failed to load external styles:", error);
+  }
 }
 
 // --- Core Logic ---
@@ -221,7 +254,7 @@ function injectEnhancedStyles() {
  * @returns {string} The escaped text.
  */
 function escapeHtml(text) {
-    return contentProcessor.escapeHtml(text);
+  return contentProcessor.escapeHtml(text);
 }
 
 /**
@@ -229,10 +262,10 @@ function escapeHtml(text) {
  * @returns {string} A unique ID string (e.g., 'vcp-bubble-1a2b3c4d').
  */
 function generateUniqueId() {
-    // Use a combination of timestamp and random string for uniqueness
-    const timestampPart = Date.now().toString(36);
-    const randomPart = Math.random().toString(36).substring(2, 9);
-    return `vcp-bubble-${timestampPart}${randomPart}`;
+  // Use a combination of timestamp and random string for uniqueness
+  const timestampPart = Date.now().toString(36);
+  const randomPart = Math.random().toString(36).substring(2, 9);
+  return `vcp-bubble-${timestampPart}${randomPart}`;
 }
 
 /**
@@ -242,47 +275,53 @@ function generateUniqueId() {
  * @param {HTMLElement} container The container element to search within.
  */
 async function renderMermaidDiagrams(container) {
-    const placeholders = Array.from(container.querySelectorAll('.mermaid-placeholder'));
-    if (placeholders.length === 0) return;
+  const placeholders = Array.from(
+    container.querySelectorAll(".mermaid-placeholder")
+  );
+  if (placeholders.length === 0) return;
 
-    // Prepare elements for rendering
-    placeholders.forEach(placeholder => {
-        const code = placeholder.dataset.mermaidCode;
-        if (code) {
-            try {
-                // The placeholder div itself will become the mermaid container
-                let decodedCode = decodeURIComponent(code);
-                // 修复 AI 常用的“智能字符”导致的 Mermaid 语法错误
-                decodedCode = decodedCode.replace(/[—–－]/g, '--');
+  // Prepare elements for rendering
+  placeholders.forEach((placeholder) => {
+    const code = placeholder.dataset.mermaidCode;
+    if (code) {
+      try {
+        // The placeholder div itself will become the mermaid container
+        let decodedCode = decodeURIComponent(code);
+        // 修复 AI 常用的“智能字符”导致的 Mermaid 语法错误
+        decodedCode = decodedCode.replace(/[—–－]/g, "--");
 
-                placeholder.textContent = decodedCode;
-                placeholder.classList.remove('mermaid-placeholder');
-                placeholder.classList.add('mermaid');
-            } catch (e) {
-                console.error('Failed to decode mermaid code', e);
-                placeholder.textContent = '[Mermaid code decoding error]';
-            }
-        }
-    });
-
-    // Get the list of actual .mermaid elements to render
-    const elementsToRender = placeholders.filter(el => el.classList.contains('mermaid'));
-
-    if (elementsToRender.length > 0 && typeof mermaid !== 'undefined') {
-        // Initialize mermaid if it hasn't been already
-        mermaid.initialize({ startOnLoad: false });
-
-        // 逐个渲染以防止单个图表错误导致所有图表显示错误
-        for (const el of elementsToRender) {
-            try {
-                await mermaid.run({ nodes: [el] });
-            } catch (error) {
-                console.error("Error rendering Mermaid diagram:", error);
-                const originalCode = el.textContent;
-                el.innerHTML = `<div class="mermaid-error">Mermaid 渲染错误: ${error.message}</div><pre>${escapeHtml(originalCode)}</pre>`;
-            }
-        }
+        placeholder.textContent = decodedCode;
+        placeholder.classList.remove("mermaid-placeholder");
+        placeholder.classList.add("mermaid");
+      } catch (e) {
+        console.error("Failed to decode mermaid code", e);
+        placeholder.textContent = "[Mermaid code decoding error]";
+      }
     }
+  });
+
+  // Get the list of actual .mermaid elements to render
+  const elementsToRender = placeholders.filter((el) =>
+    el.classList.contains("mermaid")
+  );
+
+  if (elementsToRender.length > 0 && typeof mermaid !== "undefined") {
+    // Initialize mermaid if it hasn't been already
+    mermaid.initialize({ startOnLoad: false });
+
+    // 逐个渲染以防止单个图表错误导致所有图表显示错误
+    for (const el of elementsToRender) {
+      try {
+        await mermaid.run({ nodes: [el] });
+      } catch (error) {
+        console.error("Error rendering Mermaid diagram:", error);
+        const originalCode = el.textContent;
+        el.innerHTML = `<div class="mermaid-error">Mermaid 渲染错误: ${
+          error.message
+        }</div><pre>${escapeHtml(originalCode)}</pre>`;
+      }
+    }
+  }
 }
 
 /**
@@ -292,36 +331,36 @@ async function renderMermaidDiagrams(container) {
  * @returns {string} 处理后的文本
  */
 function applyRegexRule(text, rule) {
-    if (!rule || !rule.findPattern || typeof text !== 'string') {
-        return text;
+  if (!rule || !rule.findPattern || typeof text !== "string") {
+    return text;
+  }
+
+  try {
+    // 使用 uiHelperFunctions.regexFromString 来解析正则表达式
+    let regex = null;
+    if (window.uiHelperFunctions && window.uiHelperFunctions.regexFromString) {
+      regex = window.uiHelperFunctions.regexFromString(rule.findPattern);
+    } else {
+      // 后备方案：手动解析
+      const regexMatch = rule.findPattern.match(/^\/(.+?)\/([gimuy]*)$/);
+      if (regexMatch) {
+        regex = new RegExp(regexMatch[1], regexMatch[2]);
+      } else {
+        regex = new RegExp(rule.findPattern, "g");
+      }
     }
 
-    try {
-        // 使用 uiHelperFunctions.regexFromString 来解析正则表达式
-        let regex = null;
-        if (window.uiHelperFunctions && window.uiHelperFunctions.regexFromString) {
-            regex = window.uiHelperFunctions.regexFromString(rule.findPattern);
-        } else {
-            // 后备方案：手动解析
-            const regexMatch = rule.findPattern.match(/^\/(.+?)\/([gimuy]*)$/);
-            if (regexMatch) {
-                regex = new RegExp(regexMatch[1], regexMatch[2]);
-            } else {
-                regex = new RegExp(rule.findPattern, 'g');
-            }
-        }
-
-        if (!regex) {
-            console.error('无法解析正则表达式:', rule.findPattern);
-            return text;
-        }
-
-        // 应用替换（如果没有替换内容，则默认替换为空字符串）
-        return text.replace(regex, rule.replaceWith || '');
-    } catch (error) {
-        console.error('应用正则规则时出错:', rule.findPattern, error);
-        return text;
+    if (!regex) {
+      console.error("无法解析正则表达式:", rule.findPattern);
+      return text;
     }
+
+    // 应用替换（如果没有替换内容，则默认替换为空字符串）
+    return text.replace(regex, rule.replaceWith || "");
+  } catch (error) {
+    console.error("应用正则规则时出错:", rule.findPattern, error);
+    return text;
+  }
 }
 
 /**
@@ -333,33 +372,40 @@ function applyRegexRule(text, rule) {
  * @returns {string} 处理后的文本
  */
 function applyFrontendRegexRules(text, rules, role, depth) {
-    if (!rules || !Array.isArray(rules) || typeof text !== 'string') {
-        return text;
-    }
+  if (!rules || !Array.isArray(rules) || typeof text !== "string") {
+    return text;
+  }
 
-    let processedText = text;
+  let processedText = text;
 
-    rules.forEach(rule => {
-        // 检查是否应该应用此规则
+  rules.forEach((rule) => {
+    // 检查是否应该应用此规则
 
-        // 1. 检查是否应用于前端
-        if (!rule.applyToFrontend) return;
+    // 1. 检查是否应用于前端
+    if (!rule.applyToFrontend) return;
 
-        // 2. 检查角色
-        const shouldApplyToRole = rule.applyToRoles && rule.applyToRoles.includes(role);
-        if (!shouldApplyToRole) return;
+    // 2. 检查角色
+    const shouldApplyToRole =
+      rule.applyToRoles && rule.applyToRoles.includes(role);
+    if (!shouldApplyToRole) return;
 
-        // 3. 检查深度（-1 表示无限制）
-        const minDepthOk = rule.minDepth === undefined || rule.minDepth === -1 || depth >= rule.minDepth;
-        const maxDepthOk = rule.maxDepth === undefined || rule.maxDepth === -1 || depth <= rule.maxDepth;
+    // 3. 检查深度（-1 表示无限制）
+    const minDepthOk =
+      rule.minDepth === undefined ||
+      rule.minDepth === -1 ||
+      depth >= rule.minDepth;
+    const maxDepthOk =
+      rule.maxDepth === undefined ||
+      rule.maxDepth === -1 ||
+      depth <= rule.maxDepth;
 
-        if (!minDepthOk || !maxDepthOk) return;
+    if (!minDepthOk || !maxDepthOk) return;
 
-        // 应用规则
-        processedText = applyRegexRule(processedText, rule);
-    });
+    // 应用规则
+    processedText = applyRegexRule(processedText, rule);
+  });
 
-    return processedText;
+  return processedText;
 }
 
 /**
@@ -370,215 +416,254 @@ function applyFrontendRegexRules(text, rules, role, depth) {
  * @returns {string} The processed text with special blocks as HTML.
  */
 function transformSpecialBlocks(text, codeBlockMap) {
-    let processed = text;
+  let processed = text;
 
-    const restoreBlocks = (textStr) => {
-        if (!textStr || !codeBlockMap) return textStr;
-        let res = textStr;
-        for (const [placeholder, block] of codeBlockMap.entries()) {
-            if (res.includes(placeholder)) {
-                res = res.replace(placeholder, () => block);
-            }
-        }
-        return res;
-    };
+  const restoreBlocks = (textStr) => {
+    if (!textStr || !codeBlockMap) return textStr;
+    let res = textStr;
+    for (const [placeholder, block] of codeBlockMap.entries()) {
+      if (res.includes(placeholder)) {
+        res = res.replace(placeholder, () => block);
+      }
+    }
+    return res;
+  };
 
-    // 🟢 架构级修复：VCP Tool Results 不再在此处理
-    // 工具结果块在 contentPipeline 中被提取为占位符，贯穿 Markdown 解析后
-    // 由 restoreRenderedToolResults() 独立渲染并恢复，彻底避免内部语法干扰
+  // 🟢 架构级修复：VCP Tool Results 不再在此处理
+  // 工具结果块在 contentPipeline 中被提取为占位符，贯穿 Markdown 解析后
+  // 由 restoreRenderedToolResults() 独立渲染并恢复，彻底避免内部语法干扰
 
-    // Process Tool Requests
-    processed = processed.replace(TOOL_REGEX, (match, content) => {
-        // Check if this is a DailyNote tool call with the 'create' command
-        const isDailyNoteCreate = /tool_name:\s*(?:「始ESCAPE」\s*DailyNote\s*「末ESCAPE」|「始」\s*DailyNote\s*「末」)/.test(content) &&
-            /command:\s*(?:「始ESCAPE」\s*create\s*「末ESCAPE」|「始」\s*create\s*「末」)/.test(content);
+  // Process Tool Requests
+  processed = processed.replace(TOOL_REGEX, (match, content) => {
+    // Check if this is a DailyNote tool call with the 'create' command
+    const isDailyNoteCreate =
+      /tool_name:\s*(?:「始ESCAPE」\s*DailyNote\s*「末ESCAPE」|「始」\s*DailyNote\s*「末」)/.test(
+        content
+      ) &&
+      /command:\s*(?:「始ESCAPE」\s*create\s*「末ESCAPE」|「始」\s*create\s*「末」)/.test(
+        content
+      );
 
-        if (isDailyNoteCreate) {
-            // --- It's a DailyNote Tool, render it as a diary bubble ---
-            const maidRegex = /(?:maid|maidName):\s*(?:「始ESCAPE」([\s\S]*?)「末ESCAPE」|「始」([^「」]*)「末」)/;
-            const dateRegex = /Date:\s*(?:「始ESCAPE」([\s\S]*?)「末ESCAPE」|「始」([^「」]*)「末」)/;
-            const contentRegex = /Content:\s*(?:「始ESCAPE」([\s\S]*?)「末ESCAPE」|「始」([\s\S]*?)「末」)/;
-            const tagRegex = /Tag:\s*(?:「始ESCAPE」([\s\S]*?)「末ESCAPE」|「始」([\s\S]*?)「末」)/;
+    if (isDailyNoteCreate) {
+      // --- It's a DailyNote Tool, render it as a diary bubble ---
+      const maidRegex =
+        /(?:maid|maidName):\s*(?:「始ESCAPE」([\s\S]*?)「末ESCAPE」|「始」([^「」]*)「末」)/;
+      const dateRegex =
+        /Date:\s*(?:「始ESCAPE」([\s\S]*?)「末ESCAPE」|「始」([^「」]*)「末」)/;
+      const contentRegex =
+        /Content:\s*(?:「始ESCAPE」([\s\S]*?)「末ESCAPE」|「始」([\s\S]*?)「末」)/;
+      const tagRegex =
+        /Tag:\s*(?:「始ESCAPE」([\s\S]*?)「末ESCAPE」|「始」([\s\S]*?)「末」)/;
 
-            const maidMatch = content.match(maidRegex);
-            const dateMatch = content.match(dateRegex);
-            const contentMatch = content.match(contentRegex);
-            const tagMatch = content.match(tagRegex);
+      const maidMatch = content.match(maidRegex);
+      const dateMatch = content.match(dateRegex);
+      const contentMatch = content.match(contentRegex);
+      const tagMatch = content.match(tagRegex);
 
-            const maid = maidMatch ? (maidMatch[1] || maidMatch[2] || '').trim() : '';
-            const date = dateMatch ? (dateMatch[1] || dateMatch[2] || '').trim() : '';
-            const diaryContent = contentMatch ? (contentMatch[1] || contentMatch[2] || '').trim() : '[日记内容解析失败]';
-            const diaryTag = tagMatch ? (tagMatch[1] || tagMatch[2] || '').trim() : '';
+      const maid = maidMatch ? (maidMatch[1] || maidMatch[2] || "").trim() : "";
+      const date = dateMatch ? (dateMatch[1] || dateMatch[2] || "").trim() : "";
+      const diaryContent = contentMatch
+        ? (contentMatch[1] || contentMatch[2] || "").trim()
+        : "[日记内容解析失败]";
+      const diaryTag = tagMatch
+        ? (tagMatch[1] || tagMatch[2] || "").trim()
+        : "";
 
-            let html = `<div class="maid-diary-bubble">`;
-            html += `<div class="diary-header">`;
-            html += `<span class="diary-title">Maid's Diary</span>`;
-            if (date) {
-                html += `<span class="diary-date">${escapeHtml(date)}</span>`;
-            }
-            html += `</div>`;
+      let html = `<div class="maid-diary-bubble">`;
+      html += `<div class="diary-header">`;
+      html += `<span class="diary-title">Maid's Diary</span>`;
+      if (date) {
+        html += `<span class="diary-date">${escapeHtml(date)}</span>`;
+      }
+      html += `</div>`;
 
-            if (maid) {
-                html += `<div class="diary-maid-info">`;
-                html += `<span class="diary-maid-label">Maid:</span> `;
-                html += `<span class="diary-maid-name">${escapeHtml(maid)}</span>`;
-                html += `</div>`;
-            }
-
-            let diaryBody = restoreBlocks(diaryContent);
-            if (diaryTag) {
-                diaryBody += `\n\nTag:${diaryTag}`;
-            }
-
-            let processedDiaryContent;
-            if (mainRendererReferences.markedInstance) {
-                try {
-                    processedDiaryContent = mainRendererReferences.markedInstance.parse(diaryBody);
-                } catch (e) {
-                    processedDiaryContent = escapeHtml(diaryBody);
-                }
-            } else {
-                processedDiaryContent = escapeHtml(diaryBody);
-            }
-            html += `<div class="diary-content">${processedDiaryContent}</div>`;
-            html += `</div>`;
-
-            return html;
-        } else {
-            // --- It's a regular tool call, render it normally ---
-            const toolNameRegex = /<tool_name>([\s\S]*?)<\/tool_name>|tool_name:\s*(?:「始ESCAPE」([\s\S]*?)「末ESCAPE」|「始」([^「」]*)「末」)/;
-            const toolNameMatch = content.match(toolNameRegex);
-
-            let toolName = 'Processing...';
-            if (toolNameMatch) {
-                let extractedName = (toolNameMatch[1] || toolNameMatch[2] || toolNameMatch[3] || '').trim();
-                if (extractedName) {
-                    extractedName = extractedName.replace(/「始ESCAPE」|「末ESCAPE」|「始」|「末」/g, '').replace(/,$/, '').trim();
-                }
-                if (extractedName) {
-                    toolName = extractedName;
-                }
-            }
-
-            const escapedFullContent = escapeHtml(restoreBlocks(content));
-            return `<div class="vcp-tool-use-bubble">` +
-                `<div class="vcp-tool-summary">` +
-                `<span class="vcp-tool-label">VCP-ToolUse:</span> ` +
-                `<span class="vcp-tool-name-highlight">${escapeHtml(toolName)}</span>` +
-                `</div>` +
-                `<div class="vcp-tool-details"><pre>${escapedFullContent}</pre></div>` +
-                `</div>`;
-        }
-    });
-
-    // Process Daily Notes
-    processed = processed.replace(NOTE_REGEX, (match, rawContent) => {
-        const content = rawContent.trim();
-        const maidRegex = /Maid:\s*([^\n\r]*)/;
-        const dateRegex = /Date:\s*([^\n\r]*)/;
-        const contentRegex = /Content:\s*([\s\S]*)/;
-
-        const maidMatch = content.match(maidRegex);
-        const dateMatch = content.match(dateRegex);
-        const contentMatch = content.match(contentRegex);
-
-        const maid = maidMatch ? maidMatch[1].trim() : '';
-        const date = dateMatch ? dateMatch[1].trim() : '';
-        // The rest of the text after "Content:", or the full text if "Content:" is not found
-        const diaryContent = contentMatch ? contentMatch[1].trim() : content;
-
-        let html = `<div class="maid-diary-bubble">`;
-        html += `<div class="diary-header">`;
-        html += `<span class="diary-title">Maid's Diary</span>`;
-        if (date) {
-            html += `<span class="diary-date">${escapeHtml(date)}</span>`;
-        }
+      if (maid) {
+        html += `<div class="diary-maid-info">`;
+        html += `<span class="diary-maid-label">Maid:</span> `;
+        html += `<span class="diary-maid-name">${escapeHtml(maid)}</span>`;
         html += `</div>`;
+      }
 
-        if (maid) {
-            html += `<div class="diary-maid-info">`;
-            html += `<span class="diary-maid-label">Maid:</span> `;
-            html += `<span class="diary-maid-name">${escapeHtml(maid)}</span>`;
-            html += `</div>`;
+      let diaryBody = restoreBlocks(diaryContent);
+      if (diaryTag) {
+        diaryBody += `\n\nTag:${diaryTag}`;
+      }
+
+      let processedDiaryContent;
+      if (mainRendererReferences.markedInstance) {
+        try {
+          processedDiaryContent =
+            mainRendererReferences.markedInstance.parse(diaryBody);
+        } catch (e) {
+          processedDiaryContent = escapeHtml(diaryBody);
         }
+      } else {
+        processedDiaryContent = escapeHtml(diaryBody);
+      }
+      html += `<div class="diary-content">${processedDiaryContent}</div>`;
+      html += `</div>`;
 
-        let processedDiaryContent;
-        if (mainRendererReferences.markedInstance) {
-            try {
-                processedDiaryContent = mainRendererReferences.markedInstance.parse(restoreBlocks(diaryContent));
-            } catch (e) {
-                processedDiaryContent = escapeHtml(restoreBlocks(diaryContent));
-            }
-        } else {
-            processedDiaryContent = escapeHtml(restoreBlocks(diaryContent));
+      return html;
+    } else {
+      // --- It's a regular tool call, render it normally ---
+      const toolNameRegex =
+        /<tool_name>([\s\S]*?)<\/tool_name>|tool_name:\s*(?:「始ESCAPE」([\s\S]*?)「末ESCAPE」|「始」([^「」]*)「末」)/;
+      const toolNameMatch = content.match(toolNameRegex);
+
+      let toolName = "Processing...";
+      if (toolNameMatch) {
+        let extractedName = (
+          toolNameMatch[1] ||
+          toolNameMatch[2] ||
+          toolNameMatch[3] ||
+          ""
+        ).trim();
+        if (extractedName) {
+          extractedName = extractedName
+            .replace(/「始ESCAPE」|「末ESCAPE」|「始」|「末」/g, "")
+            .replace(/,$/, "")
+            .trim();
         }
-        html += `<div class="diary-content">${processedDiaryContent}</div>`;
-        html += `</div>`;
-
-        return html;
-    });
-
-    // Process VCP Thought Chains
-    const renderThoughtChain = (theme, rawContent) => {
-        const displayTheme = theme ? theme.trim() : "元思考链";
-        const content = rawContent.trim();
-        const escapedContent = escapeHtml(restoreBlocks(content));
-
-        let html = `<div class="vcp-thought-chain-bubble collapsible">`;
-        html += `<div class="vcp-thought-chain-header">`;
-        html += `<span class="vcp-thought-chain-icon">🧠</span>`;
-        html += `<span class="vcp-thought-chain-label">${escapeHtml(displayTheme)}</span>`;
-        html += `<span class="vcp-result-toggle-icon"></span>`;
-        html += `</div>`;
-
-        html += `<div class="vcp-thought-chain-collapsible-content">`;
-
-        let processedContent;
-        if (mainRendererReferences.markedInstance) {
-            try {
-                processedContent = mainRendererReferences.markedInstance.parse(restoreBlocks(content));
-            } catch (e) {
-                processedContent = `<pre>${escapedContent}</pre>`;
-            }
-        } else {
-            processedContent = `<pre>${escapedContent}</pre>`;
+        if (extractedName) {
+          toolName = extractedName;
         }
+      }
 
-        html += `<div class="vcp-thought-chain-body">${processedContent}</div>`;
-        html += `</div>`; // End of vcp-thought-chain-collapsible-content
-        html += `</div>`; // End of vcp-thought-chain-bubble
+      const escapedFullContent = escapeHtml(restoreBlocks(content));
+      return (
+        `<div class="vcp-tool-use-bubble">` +
+        `<div class="vcp-tool-summary">` +
+        `<span class="vcp-tool-label">VCP-ToolUse:</span> ` +
+        `<span class="vcp-tool-name-highlight">${escapeHtml(toolName)}</span>` +
+        `</div>` +
+        `<div class="vcp-tool-details"><pre>${escapedFullContent}</pre></div>` +
+        `</div>`
+      );
+    }
+  });
 
-        return html;
-    };
+  // Process Daily Notes
+  processed = processed.replace(NOTE_REGEX, (match, rawContent) => {
+    const content = rawContent.trim();
+    const maidRegex = /Maid:\s*([^\n\r]*)/;
+    const dateRegex = /Date:\s*([^\n\r]*)/;
+    const contentRegex = /Content:\s*([\s\S]*)/;
 
-    processed = processed.replace(THOUGHT_CHAIN_REGEX, (match, theme, rawContent) => {
-        return renderThoughtChain(theme, rawContent);
-    });
+    const maidMatch = content.match(maidRegex);
+    const dateMatch = content.match(dateRegex);
+    const contentMatch = content.match(contentRegex);
 
-    // Process Conventional Thought Chains (<think>...</think>)
-    processed = processed.replace(CONVENTIONAL_THOUGHT_REGEX, (match, rawContent) => {
-        return renderThoughtChain("思维链", rawContent);
-    });
+    const maid = maidMatch ? maidMatch[1].trim() : "";
+    const date = dateMatch ? dateMatch[1].trim() : "";
+    // The rest of the text after "Content:", or the full text if "Content:" is not found
+    const diaryContent = contentMatch ? contentMatch[1].trim() : content;
 
-    // Desktop Push blocks 已在 preprocessFullContent 中于代码块保护之后统一处理
-    // 这里不再重复处理，避免与代码块内的语法冲突
+    let html = `<div class="maid-diary-bubble">`;
+    html += `<div class="diary-header">`;
+    html += `<span class="diary-title">Maid's Diary</span>`;
+    if (date) {
+      html += `<span class="diary-date">${escapeHtml(date)}</span>`;
+    }
+    html += `</div>`;
 
-    // Process Role Dividers
-    processed = processed.replace(ROLE_DIVIDER_REGEX, (match, isEnd, role) => {
-        const isEndMarker = !!isEnd;
-        const roleLower = role.toLowerCase();
+    if (maid) {
+      html += `<div class="diary-maid-info">`;
+      html += `<span class="diary-maid-label">Maid:</span> `;
+      html += `<span class="diary-maid-name">${escapeHtml(maid)}</span>`;
+      html += `</div>`;
+    }
 
-        let label = '';
-        if (roleLower === 'system') label = 'System';
-        else if (roleLower === 'assistant') label = 'Assistant';
-        else if (roleLower === 'user') label = 'User';
+    let processedDiaryContent;
+    if (mainRendererReferences.markedInstance) {
+      try {
+        processedDiaryContent = mainRendererReferences.markedInstance.parse(
+          restoreBlocks(diaryContent)
+        );
+      } catch (e) {
+        processedDiaryContent = escapeHtml(restoreBlocks(diaryContent));
+      }
+    } else {
+      processedDiaryContent = escapeHtml(restoreBlocks(diaryContent));
+    }
+    html += `<div class="diary-content">${processedDiaryContent}</div>`;
+    html += `</div>`;
 
-        const actionText = isEndMarker ? '结束' : '起始';
+    return html;
+  });
 
-        return `<div class="vcp-role-divider role-${roleLower} type-${isEndMarker ? 'end' : 'start'}"><span class="divider-text">角色分界: ${label} [${actionText}]</span></div>`;
-    });
+  // Process VCP Thought Chains
+  const renderThoughtChain = (theme, rawContent) => {
+    const displayTheme = theme ? theme.trim() : "元思考链";
+    const content = rawContent.trim();
+    const escapedContent = escapeHtml(restoreBlocks(content));
 
-    return processed;
+    let html = `<div class="vcp-thought-chain-bubble collapsible">`;
+    html += `<div class="vcp-thought-chain-header">`;
+    html += `<span class="vcp-thought-chain-icon">🧠</span>`;
+    html += `<span class="vcp-thought-chain-label">${escapeHtml(
+      displayTheme
+    )}</span>`;
+    html += `<span class="vcp-result-toggle-icon"></span>`;
+    html += `</div>`;
+
+    html += `<div class="vcp-thought-chain-collapsible-content">`;
+
+    let processedContent;
+    if (mainRendererReferences.markedInstance) {
+      try {
+        processedContent = mainRendererReferences.markedInstance.parse(
+          restoreBlocks(content)
+        );
+      } catch (e) {
+        processedContent = `<pre>${escapedContent}</pre>`;
+      }
+    } else {
+      processedContent = `<pre>${escapedContent}</pre>`;
+    }
+
+    html += `<div class="vcp-thought-chain-body">${processedContent}</div>`;
+    html += `</div>`; // End of vcp-thought-chain-collapsible-content
+    html += `</div>`; // End of vcp-thought-chain-bubble
+
+    return html;
+  };
+
+  processed = processed.replace(
+    THOUGHT_CHAIN_REGEX,
+    (match, theme, rawContent) => {
+      return renderThoughtChain(theme, rawContent);
+    }
+  );
+
+  // Process Conventional Thought Chains (<think>...</think>)
+  processed = processed.replace(
+    CONVENTIONAL_THOUGHT_REGEX,
+    (match, rawContent) => {
+      return renderThoughtChain("思维链", rawContent);
+    }
+  );
+
+  // Desktop Push blocks 已在 preprocessFullContent 中于代码块保护之后统一处理
+  // 这里不再重复处理，避免与代码块内的语法冲突
+
+  // Process Role Dividers
+  processed = processed.replace(ROLE_DIVIDER_REGEX, (match, isEnd, role) => {
+    const isEndMarker = !!isEnd;
+    const roleLower = role.toLowerCase();
+
+    let label = "";
+    if (roleLower === "system") label = "System";
+    else if (roleLower === "assistant") label = "Assistant";
+    else if (roleLower === "user") label = "User";
+
+    const actionText = isEndMarker ? "结束" : "起始";
+
+    return `<div class="vcp-role-divider role-${roleLower} type-${
+      isEndMarker ? "end" : "start"
+    }"><span class="divider-text">角色分界: ${label} [${actionText}]</span></div>`;
+  });
+
+  return processed;
 }
 
 /**
@@ -587,30 +672,30 @@ function transformSpecialBlocks(text, codeBlockMap) {
  * @returns {string} The processed text.
  */
 function transformUserButtonClick(text) {
-    return text.replace(BUTTON_CLICK_REGEX, (match, content) => {
-        const escapedContent = escapeHtml(content.trim());
-        return `<span class="user-clicked-button-bubble">${escapedContent}</span>`;
-    });
+  return text.replace(BUTTON_CLICK_REGEX, (match, content) => {
+    const escapedContent = escapeHtml(content.trim());
+    return `<span class="user-clicked-button-bubble">${escapedContent}</span>`;
+  });
 }
 
 function transformVCPChatCanvas(text) {
-    return text.replace(CANVAS_PLACEHOLDER_REGEX, () => {
-        // Use a div for better block-level layout and margin behavior
-        return `<div class="vcp-chat-canvas-placeholder">Canvas协同中<span class="thinking-indicator-dots">...</span></div>`;
-    });
+  return text.replace(CANVAS_PLACEHOLDER_REGEX, () => {
+    // Use a div for better block-level layout and margin behavior
+    return `<div class="vcp-chat-canvas-placeholder">Canvas协同中<span class="thinking-indicator-dots">...</span></div>`;
+  });
 }
 
 function extractSpeakableTextFromContentElement(contentElement) {
-    if (!contentElement) return '';
+  if (!contentElement) return "";
 
-    const contentClone = contentElement.cloneNode(true);
-    contentClone.querySelectorAll(
-        '.vcp-tool-use-bubble, .vcp-tool-result-bubble, .maid-diary-bubble, .vcp-role-divider, .vcp-thought-chain-bubble, style, script'
-    ).forEach(el => el.remove());
+  const contentClone = contentElement.cloneNode(true);
+  contentClone
+    .querySelectorAll(
+      ".vcp-tool-use-bubble, .vcp-tool-result-bubble, .maid-diary-bubble, .vcp-role-divider, .vcp-thought-chain-bubble, style, script"
+    )
+    .forEach((el) => el.remove());
 
-    return (contentClone.innerText || '')
-        .replace(/\n{3,}/g, '\n\n')
-        .trim();
+  return (contentClone.innerText || "").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 /**
@@ -620,34 +705,36 @@ function extractSpeakableTextFromContentElement(contentElement) {
  * @returns {{processedContent: string, styleInjected: boolean}} The content with <style> tags removed, and a flag indicating if styles were injected.
  */
 function processAndInjectScopedCss(content, scopeId) {
-    let cssContent = '';
-    let styleInjected = false;
+  let cssContent = "";
+  let styleInjected = false;
 
-    const processedContent = content.replace(STYLE_REGEX, (match, css) => {
-        cssContent += css.trim() + '\n';
-        return ''; // Remove style tags from the content
-    });
+  const processedContent = content.replace(STYLE_REGEX, (match, css) => {
+    cssContent += css.trim() + "\n";
+    return ""; // Remove style tags from the content
+  });
 
-    if (cssContent.length > 0) {
-        try {
-            const scopedCss = contentProcessor.scopeCss(cssContent, scopeId);
+  if (cssContent.length > 0) {
+    try {
+      const scopedCss = contentProcessor.scopeCss(cssContent, scopeId);
 
-            const styleElement = document.createElement('style');
-            styleElement.type = 'text/css';
-            styleElement.setAttribute('data-vcp-scope-id', scopeId);
-            styleElement.textContent = scopedCss;
-            document.head.appendChild(styleElement);
-            styleInjected = true;
+      const styleElement = document.createElement("style");
+      styleElement.type = "text/css";
+      styleElement.setAttribute("data-vcp-scope-id", scopeId);
+      styleElement.textContent = scopedCss;
+      document.head.appendChild(styleElement);
+      styleInjected = true;
 
-            console.debug(`[ScopedCSS] Injected scoped styles for ID: #${scopeId}`);
-        } catch (error) {
-            console.error(`[ScopedCSS] Failed to scope or inject CSS for ID: ${scopeId}`, error);
-        }
+      console.debug(`[ScopedCSS] Injected scoped styles for ID: #${scopeId}`);
+    } catch (error) {
+      console.error(
+        `[ScopedCSS] Failed to scope or inject CSS for ID: ${scopeId}`,
+        error
+      );
     }
+  }
 
-    return { processedContent, styleInjected };
+  return { processedContent, styleInjected };
 }
-
 
 /**
  * Wraps raw HTML documents in markdown code fences if they aren't already.
@@ -660,99 +747,113 @@ function processAndInjectScopedCss(content, scopeId) {
  * 🟢 跳过「始」「末」标记内的 HTML，防止工具调用参数被错误封装
  */
 function ensureHtmlFenced(text) {
-    const doctypeTag = '<!DOCTYPE html>';
-    const htmlCloseTag = '</html>';
-    const lowerText = text.toLowerCase();
+  const doctypeTag = "<!DOCTYPE html>";
+  const htmlCloseTag = "</html>";
+  const lowerText = text.toLowerCase();
 
-    // 已在代码块中，不处理
-    if (HTML_FENCE_CHECK_REGEX.test(text)) {
-        return text;
+  // 已在代码块中，不处理
+  if (HTML_FENCE_CHECK_REGEX.test(text)) {
+    return text;
+  }
+
+  // 快速检查：没有 doctype 直接返回
+  if (!lowerText.includes(doctypeTag.toLowerCase())) {
+    return text;
+  }
+
+  // 🟢 构建「始」「末」与「始ESCAPE」「末ESCAPE」保护区域
+  const protectedRanges = [];
+  const markerPairs = [
+    { start: "「始ESCAPE」", end: "「末ESCAPE」" },
+    { start: "「始」", end: "「末」" },
+  ];
+  let searchStart = 0;
+
+  while (true) {
+    let matchedPair = null;
+    let startPos = -1;
+
+    for (const pair of markerPairs) {
+      const index = text.indexOf(pair.start, searchStart);
+      if (index !== -1 && (startPos === -1 || index < startPos)) {
+        startPos = index;
+        matchedPair = pair;
+      }
     }
 
-    // 快速检查：没有 doctype 直接返回
-    if (!lowerText.includes(doctypeTag.toLowerCase())) {
-        return text;
+    if (startPos === -1 || !matchedPair) break;
+
+    const endPos = text.indexOf(
+      matchedPair.end,
+      startPos + matchedPair.start.length
+    );
+    if (endPos === -1) {
+      // 未闭合的开始标记，保护到文本末尾（流式传输场景）
+      protectedRanges.push({ start: startPos, end: text.length });
+      break;
     }
 
-    // 🟢 构建「始」「末」与「始ESCAPE」「末ESCAPE」保护区域
-    const protectedRanges = [];
-    const markerPairs = [
-        { start: '「始ESCAPE」', end: '「末ESCAPE」' },
-        { start: '「始」', end: '「末」' }
-    ];
-    let searchStart = 0;
+    protectedRanges.push({
+      start: startPos,
+      end: endPos + matchedPair.end.length,
+    });
+    searchStart = endPos + matchedPair.end.length;
+  }
 
-    while (true) {
-        let matchedPair = null;
-        let startPos = -1;
+  // 🟢 检查位置是否在保护区域内
+  const isProtected = (index) => {
+    return protectedRanges.some(
+      (range) => index >= range.start && index < range.end
+    );
+  };
 
-        for (const pair of markerPairs) {
-            const index = text.indexOf(pair.start, searchStart);
-            if (index !== -1 && (startPos === -1 || index < startPos)) {
-                startPos = index;
-                matchedPair = pair;
-            }
-        }
+  let result = "";
+  let lastIndex = 0;
 
-        if (startPos === -1 || !matchedPair) break;
+  while (true) {
+    const startIndex = text
+      .toLowerCase()
+      .indexOf(doctypeTag.toLowerCase(), lastIndex);
 
-        const endPos = text.indexOf(matchedPair.end, startPos + matchedPair.start.length);
-        if (endPos === -1) {
-            // 未闭合的开始标记，保护到文本末尾（流式传输场景）
-            protectedRanges.push({ start: startPos, end: text.length });
-            break;
-        }
+    result += text.substring(
+      lastIndex,
+      startIndex === -1 ? text.length : startIndex
+    );
 
-        protectedRanges.push({ start: startPos, end: endPos + matchedPair.end.length });
-        searchStart = endPos + matchedPair.end.length;
+    if (startIndex === -1) break;
+
+    const endIndex = text
+      .toLowerCase()
+      .indexOf(htmlCloseTag.toLowerCase(), startIndex + doctypeTag.length);
+
+    if (endIndex === -1) {
+      result += text.substring(startIndex);
+      break;
     }
 
-    // 🟢 检查位置是否在保护区域内
-    const isProtected = (index) => {
-        return protectedRanges.some(range => index >= range.start && index < range.end);
-    };
+    const block = text.substring(startIndex, endIndex + htmlCloseTag.length);
 
-    let result = '';
-    let lastIndex = 0;
-
-    while (true) {
-        const startIndex = text.toLowerCase().indexOf(doctypeTag.toLowerCase(), lastIndex);
-
-        result += text.substring(lastIndex, startIndex === -1 ? text.length : startIndex);
-
-        if (startIndex === -1) break;
-
-        const endIndex = text.toLowerCase().indexOf(htmlCloseTag.toLowerCase(), startIndex + doctypeTag.length);
-
-        if (endIndex === -1) {
-            result += text.substring(startIndex);
-            break;
-        }
-
-        const block = text.substring(startIndex, endIndex + htmlCloseTag.length);
-
-        // 🔴 核心修复：如果在「始」「末」保护区内，直接添加不封装
-        if (isProtected(startIndex)) {
-            result += block;
-            lastIndex = endIndex + htmlCloseTag.length;
-            continue;
-        }
-
-        // 正常逻辑：检查是否已在代码块内
-        const fencesInResult = (result.match(/```/g) || []).length;
-
-        if (fencesInResult % 2 === 0) {
-            result += `\n\`\`\`html\n${block}\n\`\`\`\n`;
-        } else {
-            result += block;
-        }
-
-        lastIndex = endIndex + htmlCloseTag.length;
+    // 🔴 核心修复：如果在「始」「末」保护区内，直接添加不封装
+    if (isProtected(startIndex)) {
+      result += block;
+      lastIndex = endIndex + htmlCloseTag.length;
+      continue;
     }
 
-    return result;
+    // 正常逻辑：检查是否已在代码块内
+    const fencesInResult = (result.match(/```/g) || []).length;
+
+    if (fencesInResult % 2 === 0) {
+      result += `\n\`\`\`html\n${block}\n\`\`\`\n`;
+    } else {
+      result += block;
+    }
+
+    lastIndex = endIndex + htmlCloseTag.length;
+  }
+
+  return result;
 }
-
 
 /**
  * Removes leading whitespace from lines that appear to be HTML tags,
@@ -762,26 +863,27 @@ function ensureHtmlFenced(text) {
  * @returns {string} The processed text.
  */
 function deIndentHtml(text) {
-    const lines = text.split('\n');
-    let inFence = false;
-    return lines.map(line => {
-        if (line.trim().startsWith('```')) {
-            inFence = !inFence;
-            return line;
-        }
-
-        // 🟢 新增：如果行内包含 <img>，不要拆分它
-        if (!inFence && line.includes('<img')) {
-            return line; // 保持原样
-        }
-
-        if (!inFence && /^\s+<(!|[a-zA-Z])/.test(line)) {
-            return line.trimStart();
-        }
+  const lines = text.split("\n");
+  let inFence = false;
+  return lines
+    .map((line) => {
+      if (line.trim().startsWith("```")) {
+        inFence = !inFence;
         return line;
-    }).join('\n');
-}
+      }
 
+      // 🟢 新增：如果行内包含 <img>，不要拆分它
+      if (!inFence && line.includes("<img")) {
+        return line; // 保持原样
+      }
+
+      if (!inFence && /^\s+<(!|[a-zA-Z])/.test(line)) {
+        return line.trimStart();
+      }
+      return line;
+    })
+    .join("\n");
+}
 
 /**
  * 根据对话轮次计算消息的深度。
@@ -790,47 +892,56 @@ function deIndentHtml(text) {
  * @returns {number} - 计算出的深度（0代表最新一轮）。
  */
 function calculateDepthByTurns(messageId, history) {
-    const turns = [];
-    for (let i = history.length - 1; i >= 0; i--) {
-        if (history[i].role === 'assistant') {
-            const turn = { assistant: history[i], user: null };
-            if (i > 0 && history[i - 1].role === 'user') {
-                turn.user = history[i - 1];
-                i--;
-            }
-            turns.push(turn); // ✅ 使用 push
-        } else if (history[i].role === 'user') {
-            turns.push({ assistant: null, user: history[i] });
-        }
+  const turns = [];
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (history[i].role === "assistant") {
+      const turn = { assistant: history[i], user: null };
+      if (i > 0 && history[i - 1].role === "user") {
+        turn.user = history[i - 1];
+        i--;
+      }
+      turns.push(turn); // ✅ 使用 push
+    } else if (history[i].role === "user") {
+      turns.push({ assistant: null, user: history[i] });
     }
-    turns.reverse(); // ✅ 最后反转一次
+  }
+  turns.reverse(); // ✅ 最后反转一次
 
-    const turnIndex = turns.findIndex(t =>
-        (t.assistant?.id === messageId) || (t.user?.id === messageId)
-    );
-    return turnIndex !== -1 ? (turns.length - 1 - turnIndex) : 0;
+  const turnIndex = turns.findIndex(
+    (t) => t.assistant?.id === messageId || t.user?.id === messageId
+  );
+  return turnIndex !== -1 ? turns.length - 1 - turnIndex : 0;
 }
-
 
 /**
  * A helper function to preprocess the full message content string before parsing.
  * @param {string} text The raw text content.
  * @returns {string} The processed text.
  */
-function preprocessFullContent(text, settings = {}, messageRole = 'assistant', depth = 0) {
-    if (!contentPipeline) {
-        console.warn('[MessageRenderer] contentPipeline not initialized, falling back to raw text');
-        return { text, toolResultMap: null };
-    }
+function preprocessFullContent(
+  text,
+  settings = {},
+  messageRole = "assistant",
+  depth = 0
+) {
+  if (!contentPipeline) {
+    console.warn(
+      "[MessageRenderer] contentPipeline not initialized, falling back to raw text"
+    );
+    return { text, toolResultMap: null };
+  }
 
-    const result = contentPipeline.process(text, {
-        mode: PIPELINE_MODES.FULL_RENDER,
-        settings,
-        messageRole,
-        depth
-    });
+  const result = contentPipeline.process(text, {
+    mode: PIPELINE_MODES.FULL_RENDER,
+    settings,
+    messageRole,
+    depth,
+  });
 
-    return { text: result.text, toolResultMap: result.state.toolResultMap || null };
+  return {
+    text: result.text,
+    toolResultMap: result.state.toolResultMap || null,
+  };
 }
 
 /**
@@ -841,135 +952,165 @@ function preprocessFullContent(text, settings = {}, messageRole = 'assistant', d
  * @returns {string} 渲染后的 HTML
  */
 function renderToolResultBlock(fullMatch) {
-    const startMarker = '[[VCP调用结果信息汇总:';
-    const endMarker = 'VCP调用结果结束]]';
-    let content = fullMatch;
-    if (content.startsWith(startMarker)) {
-        content = content.slice(startMarker.length);
-    }
-    if (content.endsWith(endMarker)) {
-        content = content.slice(0, -endMarker.length);
-    }
-    content = content.trim();
+  const startMarker = "[[VCP调用结果信息汇总:";
+  const endMarker = "VCP调用结果结束]]";
+  let content = fullMatch;
+  if (content.startsWith(startMarker)) {
+    content = content.slice(startMarker.length);
+  }
+  if (content.endsWith(endMarker)) {
+    content = content.slice(0, -endMarker.length);
+  }
+  content = content.trim();
 
-    const lines = content.split('\n');
-    let toolName = 'Unknown Tool';
-    let status = 'Unknown Status';
-    const details = [];
-    let otherContent = [];
-    let currentKey = null;
-    let currentValue = [];
+  const lines = content.split("\n");
+  let toolName = "Unknown Tool";
+  let status = "Unknown Status";
+  const details = [];
+  let otherContent = [];
+  let currentKey = null;
+  let currentValue = [];
 
-    lines.forEach(line => {
-        const kvMatch = line.match(/^-\s*([^:]+):\s*(.*)/);
-        if (kvMatch) {
-            if (currentKey) {
-                const val = currentValue.join('\n').trim();
-                if (currentKey === '工具名称') toolName = val;
-                else if (currentKey === '执行状态') status = val;
-                else details.push({ key: currentKey, value: val });
-            }
-            currentKey = kvMatch[1].trim();
-            currentValue = [kvMatch[2].trim()];
-        } else if (currentKey) {
-            currentValue.push(line);
-        } else if (line.trim() !== '') {
-            otherContent.push(line);
-        }
-    });
-
-    if (currentKey) {
-        const val = currentValue.join('\n').trim();
-        if (currentKey === '工具名称') toolName = val;
-        else if (currentKey === '执行状态') status = val;
+  lines.forEach((line) => {
+    const kvMatch = line.match(/^-\s*([^:]+):\s*(.*)/);
+    if (kvMatch) {
+      if (currentKey) {
+        const val = currentValue.join("\n").trim();
+        if (currentKey === "工具名称") toolName = val;
+        else if (currentKey === "执行状态") status = val;
         else details.push({ key: currentKey, value: val });
+      }
+      currentKey = kvMatch[1].trim();
+      currentValue = [kvMatch[2].trim()];
+    } else if (currentKey) {
+      currentValue.push(line);
+    } else if (line.trim() !== "") {
+      otherContent.push(line);
     }
+  });
 
-    let html = `<div class="vcp-tool-result-bubble collapsible">`;
-    html += `<div class="vcp-tool-result-header">`;
-    html += `<span class="vcp-tool-result-label">VCP-ToolResult</span>`;
-    html += `<span class="vcp-tool-result-name">${escapeHtml(toolName)}</span>`;
-    html += `<span class="vcp-tool-result-status">${escapeHtml(status)}</span>`;
-    html += `<span class="vcp-result-toggle-icon"></span>`;
-    html += `</div>`;
+  if (currentKey) {
+    const val = currentValue.join("\n").trim();
+    if (currentKey === "工具名称") toolName = val;
+    else if (currentKey === "执行状态") status = val;
+    else details.push({ key: currentKey, value: val });
+  }
 
-    html += `<div class="vcp-tool-result-collapsible-content">`;
-    html += `<div class="vcp-tool-result-details">`;
+  let html = `<div class="vcp-tool-result-bubble collapsible">`;
+  html += `<div class="vcp-tool-result-header">`;
+  html += `<span class="vcp-tool-result-label">VCP-ToolResult</span>`;
+  html += `<span class="vcp-tool-result-name">${escapeHtml(toolName)}</span>`;
+  html += `<span class="vcp-tool-result-status">${escapeHtml(status)}</span>`;
+  html += `<span class="vcp-result-toggle-icon"></span>`;
+  html += `</div>`;
 
-    details.forEach(({ key, value }) => {
-        const isMarkdownField = (key === '返回内容' || key === '内容' || key === 'Result' || key === '返回结果' || key === 'output');
-        const isImageUrl = typeof value === 'string' && /^https?:\/\/[^\s]+$/i.test(value) && /\.(jpeg|jpg|png|gif|webp)([?&#]|$)/i.test(value);
-        let processedValue;
+  html += `<div class="vcp-tool-result-collapsible-content">`;
+  html += `<div class="vcp-tool-result-details">`;
 
-        if (isImageUrl && (key === '可访问URL' || key === '返回内容' || key === 'url' || key === 'image')) {
-            processedValue = `<a href="${value}" target="_blank" rel="noopener noreferrer" title="点击预览"><img src="${value}" class="vcp-tool-result-image" alt="Generated Image"></a>`;
-        } else if (isMarkdownField) {
-            // 🟢 架构级修复：工具结果内容使用独立的 Markdown 渲染
-            // 由于工具结果块已经从外部文本中完全隔离，这里可以安全地使用 Markdown 解析器
-            // 支持表格、代码围栏、列表等完整 Markdown 语法，不再需要 escapeHtml + <pre> 的妥协方案
+  details.forEach(({ key, value }) => {
+    const isMarkdownField =
+      key === "返回内容" ||
+      key === "内容" ||
+      key === "Result" ||
+      key === "返回结果" ||
+      key === "output";
+    const isImageUrl =
+      typeof value === "string" &&
+      /^https?:\/\/[^\s]+$/i.test(value) &&
+      /\.(jpeg|jpg|png|gif|webp)([?&#]|$)/i.test(value);
+    let processedValue;
 
-            // 🟢 性能优化：大内容二级截断
-            const isLargeContent = value.length > TOOL_RESULT_TRUNCATE_THRESHOLD;
-            let valueToRender = value;
-            let truncationNotice = '';
+    if (
+      isImageUrl &&
+      (key === "可访问URL" ||
+        key === "返回内容" ||
+        key === "url" ||
+        key === "image")
+    ) {
+      processedValue = `<a href="${value}" target="_blank" rel="noopener noreferrer" title="点击预览"><img src="${value}" class="vcp-tool-result-image" alt="Generated Image"></a>`;
+    } else if (isMarkdownField) {
+      // 🟢 架构级修复：工具结果内容使用独立的 Markdown 渲染
+      // 由于工具结果块已经从外部文本中完全隔离，这里可以安全地使用 Markdown 解析器
+      // 支持表格、代码围栏、列表等完整 Markdown 语法，不再需要 escapeHtml + <pre> 的妥协方案
 
-            if (isLargeContent) {
-                // 截断到前 N 行
-                const allLines = value.split('\n');
-                const truncatedLines = allLines.slice(0, TOOL_RESULT_TRUNCATE_LINES);
-                valueToRender = truncatedLines.join('\n');
+      // 🟢 性能优化：大内容二级截断
+      const isLargeContent = value.length > TOOL_RESULT_TRUNCATE_THRESHOLD;
+      let valueToRender = value;
+      let truncationNotice = "";
 
-                // 存储完整内容供懒加载
-                const contentId = toolResultContentIdCounter++;
-                toolResultFullContentMap.set(contentId, { raw: value, fieldKey: key });
+      if (isLargeContent) {
+        // 截断到前 N 行
+        const allLines = value.split("\n");
+        const truncatedLines = allLines.slice(0, TOOL_RESULT_TRUNCATE_LINES);
+        valueToRender = truncatedLines.join("\n");
 
-                const remainingLines = allLines.length - TOOL_RESULT_TRUNCATE_LINES;
-                const sizeKB = Math.round(value.length / 1024);
-                truncationNotice = `<div class="vcp-tool-result-truncated-notice" data-content-id="${contentId}">` +
-                    `<span>📄 内容已截断（共 ${allLines.length} 行 / ${sizeKB}KB），当前显示前 ${TOOL_RESULT_TRUNCATE_LINES} 行</span>` +
-                    `<span style="font-weight:600;">点击展开全部</span>` +
-                    `</div>`;
-            }
+        // 存储完整内容供懒加载
+        const contentId = toolResultContentIdCounter++;
+        toolResultFullContentMap.set(contentId, { raw: value, fieldKey: key });
 
-            let renderedMarkdown;
-            if (mainRendererReferences.markedInstance) {
-                try {
-                    renderedMarkdown = mainRendererReferences.markedInstance.parse(valueToRender);
-                } catch (e) {
-                    renderedMarkdown = `<pre class="vcp-tool-result-raw-content">${escapeHtml(valueToRender)}</pre>`;
-                }
-            } else {
-                renderedMarkdown = `<pre class="vcp-tool-result-raw-content">${escapeHtml(valueToRender)}</pre>`;
-            }
-            processedValue = `<div class="vcp-tool-result-markdown-content">${renderedMarkdown}</div>${truncationNotice}`;
-        } else {
-            const urlRegex = /(https?:\/\/[^\s]+)/g;
-            processedValue = escapeHtml(value);
-            processedValue = processedValue.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+        const remainingLines = allLines.length - TOOL_RESULT_TRUNCATE_LINES;
+        const sizeKB = Math.round(value.length / 1024);
+        truncationNotice =
+          `<div class="vcp-tool-result-truncated-notice" data-content-id="${contentId}">` +
+          `<span>📄 内容已截断（共 ${allLines.length} 行 / ${sizeKB}KB），当前显示前 ${TOOL_RESULT_TRUNCATE_LINES} 行</span>` +
+          `<span style="font-weight:600;">点击展开全部</span>` +
+          `</div>`;
+      }
 
-            if (key === '返回内容') {
-                processedValue = processedValue.replace(/###(.*?)###/g, '<strong>$1</strong>');
-            }
+      let renderedMarkdown;
+      if (mainRendererReferences.markedInstance) {
+        try {
+          renderedMarkdown =
+            mainRendererReferences.markedInstance.parse(valueToRender);
+        } catch (e) {
+          renderedMarkdown = `<pre class="vcp-tool-result-raw-content">${escapeHtml(
+            valueToRender
+          )}</pre>`;
         }
+      } else {
+        renderedMarkdown = `<pre class="vcp-tool-result-raw-content">${escapeHtml(
+          valueToRender
+        )}</pre>`;
+      }
+      processedValue = `<div class="vcp-tool-result-markdown-content">${renderedMarkdown}</div>${truncationNotice}`;
+    } else {
+      const urlRegex = /(https?:\/\/[^\s]+)/g;
+      processedValue = escapeHtml(value);
+      processedValue = processedValue.replace(
+        urlRegex,
+        '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
+      );
 
-        html += `<div class="vcp-tool-result-item">`;
-        html += `<span class="vcp-tool-result-item-key">${escapeHtml(key)}:</span> `;
-        const valueTag = (isMarkdownField && !isImageUrl) ? 'div' : 'span';
-        html += `<${valueTag} class="vcp-tool-result-item-value">${processedValue}</${valueTag}>`;
-        html += `</div>`;
-    });
-    html += `</div>`;
-
-    if (otherContent.length > 0) {
-        const footerText = otherContent.join('\n');
-        const processedFooter = `<pre class="vcp-tool-result-raw-content">${escapeHtml(footerText)}</pre>`;
-        html += `<div class="vcp-tool-result-footer">${processedFooter}</div>`;
+      if (key === "返回内容") {
+        processedValue = processedValue.replace(
+          /###(.*?)###/g,
+          "<strong>$1</strong>"
+        );
+      }
     }
 
+    html += `<div class="vcp-tool-result-item">`;
+    html += `<span class="vcp-tool-result-item-key">${escapeHtml(
+      key
+    )}:</span> `;
+    const valueTag = isMarkdownField && !isImageUrl ? "div" : "span";
+    html += `<${valueTag} class="vcp-tool-result-item-value">${processedValue}</${valueTag}>`;
     html += `</div>`;
-    html += `</div>`;
+  });
+  html += `</div>`;
 
-    return html;
+  if (otherContent.length > 0) {
+    const footerText = otherContent.join("\n");
+    const processedFooter = `<pre class="vcp-tool-result-raw-content">${escapeHtml(
+      footerText
+    )}</pre>`;
+    html += `<div class="vcp-tool-result-footer">${processedFooter}</div>`;
+  }
+
+  html += `</div>`;
+  html += `</div>`;
+
+  return html;
 }
 
 /**
@@ -979,16 +1120,16 @@ function renderToolResultBlock(fullMatch) {
  * @returns {string} 恢复后的 HTML
  */
 function restoreRenderedToolResults(html, toolResultMap) {
-    if (!toolResultMap || toolResultMap.size === 0) return html;
+  if (!toolResultMap || toolResultMap.size === 0) return html;
 
-    let result = html;
-    for (const [placeholder, rawMatch] of toolResultMap.entries()) {
-        const renderedHtml = renderToolResultBlock(rawMatch);
-        // 占位符可能被 marked 包裹在 <p> 标签中
-        result = result.split(`<p>${placeholder}</p>`).join(renderedHtml);
-        result = result.split(placeholder).join(renderedHtml);
-    }
-    return result;
+  let result = html;
+  for (const [placeholder, rawMatch] of toolResultMap.entries()) {
+    const renderedHtml = renderToolResultBlock(rawMatch);
+    // 占位符可能被 marked 包裹在 <p> 标签中
+    result = result.split(`<p>${placeholder}</p>`).join(renderedHtml);
+    result = result.split(placeholder).join(renderedHtml);
+  }
+  return result;
 }
 
 /**
@@ -996,33 +1137,36 @@ function restoreRenderedToolResults(html, toolResultMap) {
  * 处理 ![alt](url) 和 <img src="url"> 两种形式
  */
 function fixEmoticonUrlsInMarkdown(text) {
-    if (!text || typeof text !== 'string') return text;
+  if (!text || typeof text !== "string") return text;
 
-    // 1. 修复 Markdown 图片语法: ![alt](url)
-    text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, url) => {
-        if (emoticonUrlFixer && emoticonUrlFixer.fixEmoticonUrl) {
-            const fixedUrl = emoticonUrlFixer.fixEmoticonUrl(url);
-            if (fixedUrl !== url) {
-                console.debug(`[PreprocessFix] Markdown图片: ${url} → ${fixedUrl}`);
-            }
-            return `![${alt}](${fixedUrl})`;
+  // 1. 修复 Markdown 图片语法: ![alt](url)
+  text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, url) => {
+    if (emoticonUrlFixer && emoticonUrlFixer.fixEmoticonUrl) {
+      const fixedUrl = emoticonUrlFixer.fixEmoticonUrl(url);
+      if (fixedUrl !== url) {
+        console.debug(`[PreprocessFix] Markdown图片: ${url} → ${fixedUrl}`);
+      }
+      return `![${alt}](${fixedUrl})`;
+    }
+    return match;
+  });
+
+  // 2. 修复 HTML img 标签: <img src="url" ...>
+  text = text.replace(
+    /<img([^>]*?)src=["']([^"']+)["']([^>]*?)>/gi,
+    (match, before, url, after) => {
+      if (emoticonUrlFixer && emoticonUrlFixer.fixEmoticonUrl) {
+        const fixedUrl = emoticonUrlFixer.fixEmoticonUrl(url);
+        if (fixedUrl !== url) {
+          console.debug(`[PreprocessFix] HTML图片: ${url} → ${fixedUrl}`);
         }
-        return match;
-    });
+        return `<img${before}src="${fixedUrl}"${after}>`;
+      }
+      return match;
+    }
+  );
 
-    // 2. 修复 HTML img 标签: <img src="url" ...>
-    text = text.replace(/<img([^>]*?)src=["']([^"']+)["']([^>]*?)>/gi, (match, before, url, after) => {
-        if (emoticonUrlFixer && emoticonUrlFixer.fixEmoticonUrl) {
-            const fixedUrl = emoticonUrlFixer.fixEmoticonUrl(url);
-            if (fixedUrl !== url) {
-                console.debug(`[PreprocessFix] HTML图片: ${url} → ${fixedUrl}`);
-            }
-            return `<img${before}src="${fixedUrl}"${after}>`;
-        }
-        return match;
-    });
-
-    return text;
+  return text;
 }
 
 /**
@@ -1030,10 +1174,10 @@ function fixEmoticonUrlsInMarkdown(text) {
  * @property {'user'|'assistant'|'system'} role
  * @property {string} content
  * @property {number} timestamp
- * @property {string} [id] 
+ * @property {string} [id]
  * @property {boolean} [isThinking]
  * @property {Array<{type: string, src: string, name: string}>} [attachments]
- * @property {string} [finishReason] 
+ * @property {string} [finishReason]
  * @property {boolean} [isGroupMessage] // New: Indicates if it's a group message
  * @property {string} [agentId] // New: ID of the speaking agent in a group
  * @property {string} [name] // New: Name of the speaking agent in a group (can override default role name)
@@ -1041,984 +1185,1296 @@ function fixEmoticonUrlsInMarkdown(text) {
  * @property {string} [avatarColor] // New: Specific avatar color for this message
  */
 
-
 /**
  * @typedef {Object} CurrentSelectedItem
  * @property {string|null} id - Can be agentId or groupId
- * @property {'agent'|'group'|null} type 
+ * @property {'agent'|'group'|null} type
  * @property {string|null} name
  * @property {string|null} avatarUrl
  * @property {object|null} config - Full config of the selected item
  */
 
-
 let mainRendererReferences = {
-    currentChatHistoryRef: { get: () => [], set: () => { } }, // Ref to array
-    currentSelectedItemRef: { get: () => ({ id: null, type: null, name: null, avatarUrl: null, config: null }), set: () => { } }, // Ref to object
-    currentTopicIdRef: { get: () => null, set: () => { } }, // Ref to string/null
-    globalSettingsRef: { get: () => ({ userName: '用户', userAvatarUrl: 'assets/default_user_avatar.png', userAvatarCalculatedColor: null }), set: () => { } }, // Ref to object
+  currentChatHistoryRef: { get: () => [], set: () => {} }, // Ref to array
+  currentSelectedItemRef: {
+    get: () => ({
+      id: null,
+      type: null,
+      name: null,
+      avatarUrl: null,
+      config: null,
+    }),
+    set: () => {},
+  }, // Ref to object
+  currentTopicIdRef: { get: () => null, set: () => {} }, // Ref to string/null
+  globalSettingsRef: {
+    get: () => ({
+      userName: "用户",
+      userAvatarUrl: "assets/default_user_avatar.png",
+      userAvatarCalculatedColor: null,
+    }),
+    set: () => {},
+  }, // Ref to object
 
-    chatMessagesDiv: null,
-    electronAPI: null,
-    markedInstance: null,
-    uiHelper: {
-        scrollToBottom: () => { },
-        openModal: () => { },
-        autoResizeTextarea: () => { },
-        // ... other uiHelper functions ...
-    },
-    summarizeTopicFromMessages: async () => "",
-    handleCreateBranch: () => { },
-    // activeStreamingMessageId: null, // ID of the message currently being streamed - REMOVED
+  chatMessagesDiv: null,
+  electronAPI: null,
+  markedInstance: null,
+  uiHelper: {
+    scrollToBottom: () => {},
+    openModal: () => {},
+    autoResizeTextarea: () => {},
+    // ... other uiHelper functions ...
+  },
+  summarizeTopicFromMessages: async () => "",
+  handleCreateBranch: () => {},
+  // activeStreamingMessageId: null, // ID of the message currently being streamed - REMOVED
 };
-
 
 let contentPipeline = null;
 
 let activeRenderSessionId = 0;
 
 function invalidateRenderSession() {
-    activeRenderSessionId += 1;
-    return activeRenderSessionId;
+  activeRenderSessionId += 1;
+  return activeRenderSessionId;
 }
 
 function getActiveRenderSessionId() {
-    return activeRenderSessionId;
+  return activeRenderSessionId;
 }
 
 function isRenderSessionActive(sessionId) {
-    return sessionId === activeRenderSessionId;
+  return sessionId === activeRenderSessionId;
 }
 
 function removeMessageById(messageId, saveHistory = false) {
-    const item = mainRendererReferences.chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
-    if (item) {
-        // --- NEW: Cleanup dynamic content before removing from DOM ---
-        const contentDiv = item.querySelector('.md-content');
-        if (contentDiv) {
-            contentProcessor.cleanupPreviewsInContent(contentDiv);
-            cleanupAnimationsInContent(contentDiv);
-        }
-        // [Pretext集成] 释放高度缓存，防止内存泄漏
-        if (window.pretextBridge && window.pretextBridge.evict) {
-            window.pretextBridge.evict(messageId);
-        }
-        // 停止观察消息可见性
-        visibilityOptimizer.unobserveMessage(item);
-        item.remove();
+  const item = mainRendererReferences.chatMessagesDiv.querySelector(
+    `.message-item[data-message-id="${messageId}"]`
+  );
+  if (item) {
+    // --- NEW: Cleanup dynamic content before removing from DOM ---
+    const contentDiv = item.querySelector(".md-content");
+    if (contentDiv) {
+      contentProcessor.cleanupPreviewsInContent(contentDiv);
+      cleanupAnimationsInContent(contentDiv);
     }
-
-    const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
-    const index = currentChatHistoryArray.findIndex(m => m.id === messageId);
-
-    if (index > -1) {
-        currentChatHistoryArray.splice(index, 1);
-        mainRendererReferences.currentChatHistoryRef.set([...currentChatHistoryArray]);
-        window.updateSendButtonState?.();
-
-        if (saveHistory) {
-            const currentSelectedItemVal = mainRendererReferences.currentSelectedItemRef.get();
-            const currentTopicIdVal = mainRendererReferences.currentTopicIdRef.get();
-            if (currentSelectedItemVal.id && currentTopicIdVal) {
-                if (currentSelectedItemVal.type === 'agent') {
-                    mainRendererReferences.electronAPI.saveChatHistory(currentSelectedItemVal.id, currentTopicIdVal, currentChatHistoryArray);
-                } else if (currentSelectedItemVal.type === 'group' && mainRendererReferences.electronAPI.saveGroupChatHistory) {
-                    mainRendererReferences.electronAPI.saveGroupChatHistory(currentSelectedItemVal.id, currentTopicIdVal, currentChatHistoryArray);
-                }
-            }
-        }
+    // [Pretext集成] 释放高度缓存，防止内存泄漏
+    if (window.pretextBridge && window.pretextBridge.evict) {
+      window.pretextBridge.evict(messageId);
     }
+    // 停止观察消息可见性
+    visibilityOptimizer.unobserveMessage(item);
+    item.remove();
+  }
+
+  const currentChatHistoryArray =
+    mainRendererReferences.currentChatHistoryRef.get();
+  const index = currentChatHistoryArray.findIndex((m) => m.id === messageId);
+
+  if (index > -1) {
+    currentChatHistoryArray.splice(index, 1);
+    mainRendererReferences.currentChatHistoryRef.set([
+      ...currentChatHistoryArray,
+    ]);
+    window.updateSendButtonState?.();
+
+    if (saveHistory) {
+      const currentSelectedItemVal =
+        mainRendererReferences.currentSelectedItemRef.get();
+      const currentTopicIdVal = mainRendererReferences.currentTopicIdRef.get();
+      if (currentSelectedItemVal.id && currentTopicIdVal) {
+        if (currentSelectedItemVal.type === "agent") {
+          mainRendererReferences.electronAPI.saveChatHistory(
+            currentSelectedItemVal.id,
+            currentTopicIdVal,
+            currentChatHistoryArray
+          );
+        } else if (
+          currentSelectedItemVal.type === "group" &&
+          mainRendererReferences.electronAPI.saveGroupChatHistory
+        ) {
+          mainRendererReferences.electronAPI.saveGroupChatHistory(
+            currentSelectedItemVal.id,
+            currentTopicIdVal,
+            currentChatHistoryArray
+          );
+        }
+      }
+    }
+  }
 }
 
 function clearChat() {
-    invalidateRenderSession();
+  invalidateRenderSession();
 
-    if (mainRendererReferences.chatMessagesDiv) {
-        // --- NEW: Cleanup all messages before clearing the container ---
-        const allMessages = mainRendererReferences.chatMessagesDiv.querySelectorAll('.message-item');
-        allMessages.forEach(item => {
-            const contentDiv = item.querySelector('.md-content');
-            if (contentDiv) {
-                contentProcessor.cleanupPreviewsInContent(contentDiv);
-                cleanupAnimationsInContent(contentDiv);
-            }
-            visibilityOptimizer.unobserveMessage(item);
-        });
+  if (mainRendererReferences.chatMessagesDiv) {
+    // --- NEW: Cleanup all messages before clearing the container ---
+    const allMessages =
+      mainRendererReferences.chatMessagesDiv.querySelectorAll(".message-item");
+    allMessages.forEach((item) => {
+      const contentDiv = item.querySelector(".md-content");
+      if (contentDiv) {
+        contentProcessor.cleanupPreviewsInContent(contentDiv);
+        cleanupAnimationsInContent(contentDiv);
+      }
+      visibilityOptimizer.unobserveMessage(item);
+    });
 
-        // 🟢 清理所有注入的 scoped CSS
-        document.querySelectorAll('style[data-vcp-scope-id]').forEach(el => el.remove());
-        document.querySelectorAll('style[data-chat-scope-id]').forEach(el => el.remove());
+    // 🟢 清理所有注入的 scoped CSS
+    document
+      .querySelectorAll("style[data-vcp-scope-id]")
+      .forEach((el) => el.remove());
+    document
+      .querySelectorAll("style[data-chat-scope-id]")
+      .forEach((el) => el.remove());
 
-        // [Pretext集成] 清空所有高度缓存
-        if (window.pretextBridge && window.pretextBridge.clearAll) {
-            window.pretextBridge.clearAll();
-        }
-
-        mainRendererReferences.chatMessagesDiv.innerHTML = '';
+    // [Pretext集成] 清空所有高度缓存
+    if (window.pretextBridge && window.pretextBridge.clearAll) {
+      window.pretextBridge.clearAll();
     }
-    mainRendererReferences.currentChatHistoryRef.set([]); // Clear the history array via its ref
-    window.updateSendButtonState?.();
-}
 
+    mainRendererReferences.chatMessagesDiv.innerHTML = "";
+  }
+  mainRendererReferences.currentChatHistoryRef.set([]); // Clear the history array via its ref
+  window.updateSendButtonState?.();
+}
 
 function initializeMessageRenderer(refs) {
-    Object.assign(mainRendererReferences, refs);
+  Object.assign(mainRendererReferences, refs);
 
-    contentPipeline = createContentPipeline({
-        escapeHtml,
-        processStartEndMarkers: contentProcessor.processStartEndMarkers,
-        fixEmoticonUrlsInMarkdown,
-        deIndentMisinterpretedCodeBlocks: contentProcessor.deIndentMisinterpretedCodeBlocks,
-        deIndentHtml,
-        deIndentToolRequestBlocks: contentProcessor.deIndentToolRequestBlocks,
-        applyContentProcessors: contentProcessor.applyContentProcessors,
-        transformSpecialBlocks,
-        ensureHtmlFenced,
-        transformMermaidPlaceholders: (text) => {
-            let transformed = text.replace(MERMAID_CODE_REGEX, (match, lang, code) => {
-                const tempEl = document.createElement('textarea');
-                tempEl.innerHTML = code;
-                const encodedCode = encodeURIComponent(tempEl.value.trim());
-                return `<div class="mermaid-placeholder" data-mermaid-code="${encodedCode}"></div>`;
-            });
-
-            transformed = transformed.replace(MERMAID_FENCE_REGEX, (match, lang, code) => {
-                const encodedCode = encodeURIComponent(code.trim());
-                return `<div class="mermaid-placeholder" data-mermaid-code="${encodedCode}"></div>`;
-            });
-
-            return transformed;
-        },
-        getToolResultRegex: () => TOOL_RESULT_REGEX,
-        getCodeFenceRegex: () => CODE_FENCE_REGEX,
-        getDesktopPushRegex: () => DESKTOP_PUSH_REGEX,
-        getDesktopPushPartialRegex: () => DESKTOP_PUSH_PARTIAL_REGEX,
-    });
-
-    initializeImageHandler({
-        electronAPI: mainRendererReferences.electronAPI,
-        uiHelper: mainRendererReferences.uiHelper,
-        chatMessagesDiv: mainRendererReferences.chatMessagesDiv,
-    });
-
-    // Start the emoticon fixer initialization, but don't wait for it here.
-    // The await will happen inside renderMessage to ensure it's ready before rendering.
-    emoticonUrlFixer.initialize(mainRendererReferences.electronAPI);
-
-    // 初始化可见性优化器
-    // 🟢 关键修复：IntersectionObserver 的 root 必须是产生滚动条的那个父容器
-    const scrollContainer = mainRendererReferences.chatMessagesDiv.closest('.chat-messages-container');
-    visibilityOptimizer.initializeVisibilityOptimizer(scrollContainer || mainRendererReferences.chatMessagesDiv);
-
-    // --- Event Delegation ---
-    mainRendererReferences.chatMessagesDiv.addEventListener('click', (e) => {
-        // 1. Handle collapsible tool results and thought chains
-        const toolHeader = e.target.closest('.vcp-tool-result-header');
-        if (toolHeader) {
-            const bubble = toolHeader.closest('.vcp-tool-result-bubble.collapsible');
-            if (bubble) {
-                bubble.classList.toggle('expanded');
-            }
-            return;
+  contentPipeline = createContentPipeline({
+    escapeHtml,
+    processStartEndMarkers: contentProcessor.processStartEndMarkers,
+    fixEmoticonUrlsInMarkdown,
+    deIndentMisinterpretedCodeBlocks:
+      contentProcessor.deIndentMisinterpretedCodeBlocks,
+    deIndentHtml,
+    deIndentToolRequestBlocks: contentProcessor.deIndentToolRequestBlocks,
+    applyContentProcessors: contentProcessor.applyContentProcessors,
+    transformSpecialBlocks,
+    ensureHtmlFenced,
+    transformMermaidPlaceholders: (text) => {
+      let transformed = text.replace(
+        MERMAID_CODE_REGEX,
+        (match, lang, code) => {
+          const tempEl = document.createElement("textarea");
+          tempEl.innerHTML = code;
+          const encodedCode = encodeURIComponent(tempEl.value.trim());
+          return `<div class="mermaid-placeholder" data-mermaid-code="${encodedCode}"></div>`;
         }
+      );
 
-        const thoughtHeader = e.target.closest('.vcp-thought-chain-header');
-        if (thoughtHeader) {
-            const bubble = thoughtHeader.closest('.vcp-thought-chain-bubble.collapsible');
-            if (bubble) {
-                bubble.classList.toggle('expanded');
-            }
-            return;
+      transformed = transformed.replace(
+        MERMAID_FENCE_REGEX,
+        (match, lang, code) => {
+          const encodedCode = encodeURIComponent(code.trim());
+          return `<div class="mermaid-placeholder" data-mermaid-code="${encodedCode}"></div>`;
         }
+      );
 
-        // 🟢 3. Handle "展开全部" button for truncated tool results
-        const truncatedNotice = e.target.closest('.vcp-tool-result-truncated-notice');
-        if (truncatedNotice) {
-            const contentId = parseInt(truncatedNotice.dataset.contentId, 10);
-            const fullData = toolResultFullContentMap.get(contentId);
-            if (fullData) {
-                // 找到对应的 markdown-content 容器（紧邻的前一个兄弟元素）
-                const markdownContainer = truncatedNotice.previousElementSibling;
-                if (markdownContainer && markdownContainer.classList.contains('vcp-tool-result-markdown-content')) {
-                    // 渲染完整内容
-                    let fullHtml;
-                    if (mainRendererReferences.markedInstance) {
-                        try {
-                            fullHtml = mainRendererReferences.markedInstance.parse(fullData.raw);
-                        } catch (err) {
-                            fullHtml = `<pre class="vcp-tool-result-raw-content">${escapeHtml(fullData.raw)}</pre>`;
-                        }
-                    } else {
-                        fullHtml = `<pre class="vcp-tool-result-raw-content">${escapeHtml(fullData.raw)}</pre>`;
-                    }
-                    markdownContainer.innerHTML = fullHtml;
-                    // 移除按钮
-                    truncatedNotice.remove();
-                    // 释放缓存
-                    toolResultFullContentMap.delete(contentId);
-                }
-            }
-            return;
-        }
+      return transformed;
+    },
+    getToolResultRegex: () => TOOL_RESULT_REGEX,
+    getCodeFenceRegex: () => CODE_FENCE_REGEX,
+    getDesktopPushRegex: () => DESKTOP_PUSH_REGEX,
+    getDesktopPushPartialRegex: () => DESKTOP_PUSH_PARTIAL_REGEX,
+    getDesktopWidgetRegex: () => DESKTOP_WIDGET_REGEX,
+    getDesktopWidgetPartialRegex: () => DESKTOP_WIDGET_PARTIAL_REGEX,
+    getDesktopBuiltinRegex: () => DESKTOP_BUILTIN_REGEX,
+    getDesktopBuiltinPartialRegex: () => DESKTOP_BUILTIN_PARTIAL_REGEX,
+    getDesktopWidgetEditRegex: () => DESKTOP_WIDGET_EDIT_REGEX,
+    getDesktopWidgetEditPartialRegex: () => DESKTOP_WIDGET_EDIT_PARTIAL_REGEX,
+  });
 
-        // 4. Avatar 点击停止 TTS（也使用委托）
-        const avatar = e.target.closest('.message-avatar');
-        if (avatar) {
-            const messageItem = avatar.closest('.message-item');
-            if (messageItem?.dataset.role === 'assistant') {
-                mainRendererReferences.electronAPI.sovitsStop();
-            }
-        }
-    });
+  initializeImageHandler({
+    electronAPI: mainRendererReferences.electronAPI,
+    uiHelper: mainRendererReferences.uiHelper,
+    chatMessagesDiv: mainRendererReferences.chatMessagesDiv,
+  });
 
-    // Delegated context menu
-    mainRendererReferences.chatMessagesDiv.addEventListener('contextmenu', (e) => {
-        const messageItem = e.target.closest('.message-item');
-        if (!messageItem) return;
+  // Start the emoticon fixer initialization, but don't wait for it here.
+  // The await will happen inside renderMessage to ensure it's ready before rendering.
+  emoticonUrlFixer.initialize(mainRendererReferences.electronAPI);
 
-        const messageId = messageItem.dataset.messageId;
-        const message = mainRendererReferences.currentChatHistoryRef.get()
-            .find(m => m.id === messageId);
+  // 初始化可见性优化器
+  // 🟢 关键修复：IntersectionObserver 的 root 必须是产生滚动条的那个父容器
+  const scrollContainer = mainRendererReferences.chatMessagesDiv.closest(
+    ".chat-messages-container"
+  );
+  visibilityOptimizer.initializeVisibilityOptimizer(
+    scrollContainer || mainRendererReferences.chatMessagesDiv
+  );
 
-        if (message && (message.role === 'assistant' || message.role === 'user')) {
-            e.preventDefault();
-            contextMenu.showContextMenu(e, messageItem, message);
-        }
-    });
-
-    // Delegated middle mouse button click
-    mainRendererReferences.chatMessagesDiv.addEventListener('mousedown', (e) => {
-        if (e.button !== 1) return; // 只处理中键
-
-        const messageItem = e.target.closest('.message-item');
-        if (!messageItem) return;
-
-        const messageId = messageItem.dataset.messageId;
-        const message = mainRendererReferences.currentChatHistoryRef.get()
-            .find(m => m.id === messageId);
-
-        if (message && (message.role === 'assistant' || message.role === 'user')) {
-            e.preventDefault();
-            e.stopPropagation();
-
-            const globalSettings = mainRendererReferences.globalSettingsRef.get();
-            if (globalSettings.enableMiddleClickQuickAction) {
-                middleClickHandler.startMiddleClickTimer(e, messageItem, message, globalSettings.middleClickQuickAction);
-
-                if (globalSettings.enableMiddleClickAdvanced) {
-                    const delay = Math.max(1000, globalSettings.middleClickAdvancedDelay || 1000);
-                    middleClickHandler.startAdvancedMiddleClickTimer(e, messageItem, message, globalSettings);
-                }
-            }
-        }
-    });
-    // --- End Event Delegation ---
-
-    // Create a new marked instance wrapper specifically for the stream manager.
-    const originalMarkedParse = mainRendererReferences.markedInstance.parse.bind(mainRendererReferences.markedInstance);
-    const streamingMarkedInstance = {
-        ...mainRendererReferences.markedInstance,
-        parse: (text) => {
-            const globalSettings = mainRendererReferences.globalSettingsRef.get();
-            const { text: processedText, toolResultMap } = preprocessFullContent(text, globalSettings);
-            // 🟢 LaTeX 保护：在 marked 解析前保护 LaTeX 块
-            const { text: protectedText, map: latexMap } = protectLatexBlocks(processedText);
-            let html = originalMarkedParse(protectedText);
-            // 🟢 LaTeX 恢复：在 marked 解析后恢复 LaTeX 块
-            html = restoreLatexBlocks(html, latexMap);
-            // 🟢 工具结果恢复：在 Markdown 解析后恢复工具结果占位符为渲染好的 HTML
-            html = restoreRenderedToolResults(html, toolResultMap);
-            return html;
-        }
-    };
-
-    contentProcessor.initializeContentProcessor(mainRendererReferences);
-
-    const wrappedProcessRenderedContent = (contentDiv) => {
-        const globalSettings = mainRendererReferences.globalSettingsRef.get();
-        contentProcessor.processRenderedContent(contentDiv, globalSettings);
-    };
-
-    contextMenu.initializeContextMenu(mainRendererReferences, {
-        removeMessageById: removeMessageById,
-        finalizeStreamedMessage: finalizeStreamedMessage,
-        renderMessage: renderMessage,
-        startStreamingMessage: startStreamingMessage,
-        setContentAndProcessImages: setContentAndProcessImages,
-        processRenderedContent: wrappedProcessRenderedContent,
-        runTextHighlights: contentProcessor.highlightAllPatternsInMessage,
-        preprocessFullContent: preprocessFullContent,
-        renderAttachments: renderAttachments,
-        interruptHandler: mainRendererReferences.interruptHandler,
-        updateMessageContent: updateMessageContent, // 🟢 新增：传递 updateMessageContent
-        extractSpeakableTextFromContentElement: extractSpeakableTextFromContentElement,
-    });
-
-    if (typeof contextMenu.toggleEditMode === 'function') {
-        window.toggleEditMode = contextMenu.toggleEditMode;
-        window.messageContextMenu = contextMenu;
+  // --- Event Delegation ---
+  mainRendererReferences.chatMessagesDiv.addEventListener("click", (e) => {
+    // 1. Handle collapsible tool results and thought chains
+    const toolHeader = e.target.closest(".vcp-tool-result-header");
+    if (toolHeader) {
+      const bubble = toolHeader.closest(".vcp-tool-result-bubble.collapsible");
+      if (bubble) {
+        bubble.classList.toggle("expanded");
+      }
+      return;
     }
 
-    streamManager.initStreamManager({
-        globalSettingsRef: mainRendererReferences.globalSettingsRef,
-        currentChatHistoryRef: mainRendererReferences.currentChatHistoryRef,
-        currentSelectedItemRef: mainRendererReferences.currentSelectedItemRef,
-        currentTopicIdRef: mainRendererReferences.currentTopicIdRef,
-        chatMessagesDiv: mainRendererReferences.chatMessagesDiv,
-        markedInstance: streamingMarkedInstance,
-        electronAPI: mainRendererReferences.electronAPI,
-        uiHelper: mainRendererReferences.uiHelper,
-        morphdom: window.morphdom,
-        renderMessage: renderMessage,
-        showContextMenu: contextMenu.showContextMenu,
-        setContentAndProcessImages: setContentAndProcessImages,
-        processRenderedContent: wrappedProcessRenderedContent,
-        runTextHighlights: contentProcessor.highlightAllPatternsInMessage,
-        preprocessFullContent: preprocessFullContent,
-        removeSpeakerTags: contentProcessor.removeSpeakerTags,
-        ensureNewlineAfterCodeBlock: contentProcessor.ensureNewlineAfterCodeBlock,
-        ensureSpaceAfterTilde: contentProcessor.ensureSpaceAfterTilde,
-        removeIndentationFromCodeBlockMarkers: contentProcessor.removeIndentationFromCodeBlockMarkers,
-        deIndentMisinterpretedCodeBlocks: contentProcessor.deIndentMisinterpretedCodeBlocks, // 🟢 传递新函数
-        processStartEndMarkers: contentProcessor.processStartEndMarkers, // 🟢 传递安全处理函数
-        ensureSeparatorBetweenImgAndCode: contentProcessor.ensureSeparatorBetweenImgAndCode,
-        processAnimationsInContent: processAnimationsInContent,
-        emoticonUrlFixer: emoticonUrlFixer, // 🟢 Pass emoticon fixer for live updates
-        enhancedRenderDebounceTimers: enhancedRenderDebounceTimers,
-        ENHANCED_RENDER_DEBOUNCE_DELAY: ENHANCED_RENDER_DEBOUNCE_DELAY,
-        DIARY_RENDER_DEBOUNCE_DELAY: DIARY_RENDER_DEBOUNCE_DELAY,
-    });
+    const thoughtHeader = e.target.closest(".vcp-thought-chain-header");
+    if (thoughtHeader) {
+      const bubble = thoughtHeader.closest(
+        ".vcp-thought-chain-bubble.collapsible"
+      );
+      if (bubble) {
+        bubble.classList.toggle("expanded");
+      }
+      return;
+    }
 
-    middleClickHandler.initialize(mainRendererReferences, {
-        removeMessageById: removeMessageById,
-    });
-
-    // --- 用户气泡文件拖拽支持 ---
-    mainRendererReferences.chatMessagesDiv.addEventListener('dragover', (e) => {
-        const messageItem = e.target.closest('.message-item.user');
-        if (!messageItem) return;
-        
-        const mdContent = messageItem.querySelector('.md-content');
-        if (!mdContent) return;
-        
-        e.preventDefault();
-        e.stopPropagation();
-        
-        // 关键修复：显式设置 dropEffect 允许外部文件放置
-        e.dataTransfer.dropEffect = 'copy';
-        
-        if (!mdContent.classList.contains('drag-over')) {
-            console.debug(`[MessageRenderer] Dragover detected on message ${messageItem.dataset.messageId}`);
-            mdContent.classList.add('drag-over');
-        }
-    });
-
-    mainRendererReferences.chatMessagesDiv.addEventListener('dragleave', (e) => {
-        const messageItem = e.target.closest('.message-item.user');
-        if (!messageItem) return;
-        
-        const mdContent = messageItem.querySelector('.md-content');
-        if (!mdContent) return;
-        
-        // 仅当鼠标真正离开该容器（而不是进入了它的子元素）时才移除类
-        const rect = mdContent.getBoundingClientRect();
-        if (e.clientX <= rect.left || e.clientX >= rect.right || e.clientY <= rect.top || e.clientY >= rect.bottom) {
-            mdContent.classList.remove('drag-over');
-        }
-    });
-
-    mainRendererReferences.chatMessagesDiv.addEventListener('drop', async (e) => {
-        const messageItem = e.target.closest('.message-item.user');
-        if (!messageItem) return;
-        
-        const mdContent = messageItem.querySelector('.md-content');
-        if (!mdContent) return;
-        
-        e.preventDefault();
-        e.stopPropagation();
-        mdContent.classList.remove('drag-over');
-        
-        const messageId = messageItem.dataset.messageId;
-        const files = e.dataTransfer.files;
-        
-        console.log(`[MessageRenderer] Drop detected on message ${messageId}. Files count: ${files?.length || 0}`);
-        
-        if (files && files.length > 0) {
-            if (window.chatManager && window.chatManager.processFilesData) {
-                // 使用通用的文件读取管线
-                const processedFiles = await window.chatManager.processFilesData(files);
-                const successfulFiles = processedFiles.filter(f => !f.error);
-                
-                if (successfulFiles.length > 0) {
-                    window.chatManager.addAttachmentsToMessage(messageId, successfulFiles);
-                } else if (processedFiles.length > 0) {
-                    const firstError = processedFiles.find(f => f.error)?.error;
-                    console.error(`[MessageRenderer] All files failed to process: ${firstError}`);
-                    if (window.uiHelperFunctions && window.uiHelperFunctions.showToastNotification) {
-                        window.uiHelperFunctions.showToastNotification(`读取文件失败: ${firstError}`, 'error');
-                    }
-                }
-            } else {
-                console.error('[MessageRenderer] window.chatManager.processFilesData not available!');
+    // 🟢 3. Handle "展开全部" button for truncated tool results
+    const truncatedNotice = e.target.closest(
+      ".vcp-tool-result-truncated-notice"
+    );
+    if (truncatedNotice) {
+      const contentId = parseInt(truncatedNotice.dataset.contentId, 10);
+      const fullData = toolResultFullContentMap.get(contentId);
+      if (fullData) {
+        // 找到对应的 markdown-content 容器（紧邻的前一个兄弟元素）
+        const markdownContainer = truncatedNotice.previousElementSibling;
+        if (
+          markdownContainer &&
+          markdownContainer.classList.contains(
+            "vcp-tool-result-markdown-content"
+          )
+        ) {
+          // 渲染完整内容
+          let fullHtml;
+          if (mainRendererReferences.markedInstance) {
+            try {
+              fullHtml = mainRendererReferences.markedInstance.parse(
+                fullData.raw
+              );
+            } catch (err) {
+              fullHtml = `<pre class="vcp-tool-result-raw-content">${escapeHtml(
+                fullData.raw
+              )}</pre>`;
             }
+          } else {
+            fullHtml = `<pre class="vcp-tool-result-raw-content">${escapeHtml(
+              fullData.raw
+            )}</pre>`;
+          }
+          markdownContainer.innerHTML = fullHtml;
+          // 移除按钮
+          truncatedNotice.remove();
+          // 释放缓存
+          toolResultFullContentMap.delete(contentId);
         }
-    });
+      }
+      return;
+    }
 
-    injectEnhancedStyles();
-    console.log("[MessageRenderer] Initialized. Current selected item type on init:", mainRendererReferences.currentSelectedItemRef.get()?.type);
+    // 4. Avatar 点击停止 TTS（也使用委托）
+    const avatar = e.target.closest(".message-avatar");
+    if (avatar) {
+      const messageItem = avatar.closest(".message-item");
+      if (messageItem?.dataset.role === "assistant") {
+        mainRendererReferences.electronAPI.sovitsStop();
+      }
+    }
+  });
+
+  // Delegated context menu
+  mainRendererReferences.chatMessagesDiv.addEventListener(
+    "contextmenu",
+    (e) => {
+      const messageItem = e.target.closest(".message-item");
+      if (!messageItem) return;
+
+      const messageId = messageItem.dataset.messageId;
+      const message = mainRendererReferences.currentChatHistoryRef
+        .get()
+        .find((m) => m.id === messageId);
+
+      if (
+        message &&
+        (message.role === "assistant" || message.role === "user")
+      ) {
+        e.preventDefault();
+        contextMenu.showContextMenu(e, messageItem, message);
+      }
+    }
+  );
+
+  // Delegated middle mouse button click
+  mainRendererReferences.chatMessagesDiv.addEventListener("mousedown", (e) => {
+    if (e.button !== 1) return; // 只处理中键
+
+    const messageItem = e.target.closest(".message-item");
+    if (!messageItem) return;
+
+    const messageId = messageItem.dataset.messageId;
+    const message = mainRendererReferences.currentChatHistoryRef
+      .get()
+      .find((m) => m.id === messageId);
+
+    if (message && (message.role === "assistant" || message.role === "user")) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const globalSettings = mainRendererReferences.globalSettingsRef.get();
+      if (globalSettings.enableMiddleClickQuickAction) {
+        middleClickHandler.startMiddleClickTimer(
+          e,
+          messageItem,
+          message,
+          globalSettings.middleClickQuickAction
+        );
+
+        if (globalSettings.enableMiddleClickAdvanced) {
+          const delay = Math.max(
+            1000,
+            globalSettings.middleClickAdvancedDelay || 1000
+          );
+          middleClickHandler.startAdvancedMiddleClickTimer(
+            e,
+            messageItem,
+            message,
+            globalSettings
+          );
+        }
+      }
+    }
+  });
+  // --- End Event Delegation ---
+
+  // Create a new marked instance wrapper specifically for the stream manager.
+  const originalMarkedParse = mainRendererReferences.markedInstance.parse.bind(
+    mainRendererReferences.markedInstance
+  );
+  const streamingMarkedInstance = {
+    ...mainRendererReferences.markedInstance,
+    parse: (text) => {
+      const globalSettings = mainRendererReferences.globalSettingsRef.get();
+      const { text: processedText, toolResultMap } = preprocessFullContent(
+        text,
+        globalSettings
+      );
+      // 🟢 LaTeX 保护：在 marked 解析前保护 LaTeX 块
+      const { text: protectedText, map: latexMap } =
+        protectLatexBlocks(processedText);
+      let html = originalMarkedParse(protectedText);
+      // 🟢 LaTeX 恢复：在 marked 解析后恢复 LaTeX 块
+      html = restoreLatexBlocks(html, latexMap);
+      // 🟢 工具结果恢复：在 Markdown 解析后恢复工具结果占位符为渲染好的 HTML
+      html = restoreRenderedToolResults(html, toolResultMap);
+      return html;
+    },
+  };
+
+  contentProcessor.initializeContentProcessor(mainRendererReferences);
+
+  const wrappedProcessRenderedContent = (contentDiv) => {
+    const globalSettings = mainRendererReferences.globalSettingsRef.get();
+    contentProcessor.processRenderedContent(contentDiv, globalSettings);
+  };
+
+  contextMenu.initializeContextMenu(mainRendererReferences, {
+    removeMessageById: removeMessageById,
+    finalizeStreamedMessage: finalizeStreamedMessage,
+    renderMessage: renderMessage,
+    startStreamingMessage: startStreamingMessage,
+    setContentAndProcessImages: setContentAndProcessImages,
+    processRenderedContent: wrappedProcessRenderedContent,
+    runTextHighlights: contentProcessor.highlightAllPatternsInMessage,
+    preprocessFullContent: preprocessFullContent,
+    renderAttachments: renderAttachments,
+    interruptHandler: mainRendererReferences.interruptHandler,
+    updateMessageContent: updateMessageContent, // 🟢 新增：传递 updateMessageContent
+    extractSpeakableTextFromContentElement:
+      extractSpeakableTextFromContentElement,
+  });
+
+  if (typeof contextMenu.toggleEditMode === "function") {
+    window.toggleEditMode = contextMenu.toggleEditMode;
+    window.messageContextMenu = contextMenu;
+  }
+
+  streamManager.initStreamManager({
+    globalSettingsRef: mainRendererReferences.globalSettingsRef,
+    currentChatHistoryRef: mainRendererReferences.currentChatHistoryRef,
+    currentSelectedItemRef: mainRendererReferences.currentSelectedItemRef,
+    currentTopicIdRef: mainRendererReferences.currentTopicIdRef,
+    chatMessagesDiv: mainRendererReferences.chatMessagesDiv,
+    markedInstance: streamingMarkedInstance,
+    electronAPI: mainRendererReferences.electronAPI,
+    uiHelper: mainRendererReferences.uiHelper,
+    morphdom: window.morphdom,
+    renderMessage: renderMessage,
+    showContextMenu: contextMenu.showContextMenu,
+    setContentAndProcessImages: setContentAndProcessImages,
+    processRenderedContent: wrappedProcessRenderedContent,
+    runTextHighlights: contentProcessor.highlightAllPatternsInMessage,
+    preprocessFullContent: preprocessFullContent,
+    removeSpeakerTags: contentProcessor.removeSpeakerTags,
+    ensureNewlineAfterCodeBlock: contentProcessor.ensureNewlineAfterCodeBlock,
+    ensureSpaceAfterTilde: contentProcessor.ensureSpaceAfterTilde,
+    removeIndentationFromCodeBlockMarkers:
+      contentProcessor.removeIndentationFromCodeBlockMarkers,
+    deIndentMisinterpretedCodeBlocks:
+      contentProcessor.deIndentMisinterpretedCodeBlocks, // 🟢 传递新函数
+    processStartEndMarkers: contentProcessor.processStartEndMarkers, // 🟢 传递安全处理函数
+    ensureSeparatorBetweenImgAndCode:
+      contentProcessor.ensureSeparatorBetweenImgAndCode,
+    processAnimationsInContent: processAnimationsInContent,
+    emoticonUrlFixer: emoticonUrlFixer, // 🟢 Pass emoticon fixer for live updates
+    enhancedRenderDebounceTimers: enhancedRenderDebounceTimers,
+    ENHANCED_RENDER_DEBOUNCE_DELAY: ENHANCED_RENDER_DEBOUNCE_DELAY,
+    DIARY_RENDER_DEBOUNCE_DELAY: DIARY_RENDER_DEBOUNCE_DELAY,
+  });
+
+  middleClickHandler.initialize(mainRendererReferences, {
+    removeMessageById: removeMessageById,
+  });
+
+  // --- 用户气泡文件拖拽支持 ---
+  mainRendererReferences.chatMessagesDiv.addEventListener("dragover", (e) => {
+    const messageItem = e.target.closest(".message-item.user");
+    if (!messageItem) return;
+
+    const mdContent = messageItem.querySelector(".md-content");
+    if (!mdContent) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    // 关键修复：显式设置 dropEffect 允许外部文件放置
+    e.dataTransfer.dropEffect = "copy";
+
+    if (!mdContent.classList.contains("drag-over")) {
+      console.debug(
+        `[MessageRenderer] Dragover detected on message ${messageItem.dataset.messageId}`
+      );
+      mdContent.classList.add("drag-over");
+    }
+  });
+
+  mainRendererReferences.chatMessagesDiv.addEventListener("dragleave", (e) => {
+    const messageItem = e.target.closest(".message-item.user");
+    if (!messageItem) return;
+
+    const mdContent = messageItem.querySelector(".md-content");
+    if (!mdContent) return;
+
+    // 仅当鼠标真正离开该容器（而不是进入了它的子元素）时才移除类
+    const rect = mdContent.getBoundingClientRect();
+    if (
+      e.clientX <= rect.left ||
+      e.clientX >= rect.right ||
+      e.clientY <= rect.top ||
+      e.clientY >= rect.bottom
+    ) {
+      mdContent.classList.remove("drag-over");
+    }
+  });
+
+  mainRendererReferences.chatMessagesDiv.addEventListener("drop", async (e) => {
+    const messageItem = e.target.closest(".message-item.user");
+    if (!messageItem) return;
+
+    const mdContent = messageItem.querySelector(".md-content");
+    if (!mdContent) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    mdContent.classList.remove("drag-over");
+
+    const messageId = messageItem.dataset.messageId;
+    const files = e.dataTransfer.files;
+
+    console.log(
+      `[MessageRenderer] Drop detected on message ${messageId}. Files count: ${
+        files?.length || 0
+      }`
+    );
+
+    if (files && files.length > 0) {
+      if (window.chatManager && window.chatManager.processFilesData) {
+        // 使用通用的文件读取管线
+        const processedFiles = await window.chatManager.processFilesData(files);
+        const successfulFiles = processedFiles.filter((f) => !f.error);
+
+        if (successfulFiles.length > 0) {
+          window.chatManager.addAttachmentsToMessage(
+            messageId,
+            successfulFiles
+          );
+        } else if (processedFiles.length > 0) {
+          const firstError = processedFiles.find((f) => f.error)?.error;
+          console.error(
+            `[MessageRenderer] All files failed to process: ${firstError}`
+          );
+          if (
+            window.uiHelperFunctions &&
+            window.uiHelperFunctions.showToastNotification
+          ) {
+            window.uiHelperFunctions.showToastNotification(
+              `读取文件失败: ${firstError}`,
+              "error"
+            );
+          }
+        }
+      } else {
+        console.error(
+          "[MessageRenderer] window.chatManager.processFilesData not available!"
+        );
+      }
+    }
+  });
+
+  injectEnhancedStyles();
+  console.log(
+    "[MessageRenderer] Initialized. Current selected item type on init:",
+    mainRendererReferences.currentSelectedItemRef.get()?.type
+  );
 }
 
-
 function setCurrentSelectedItem(item) {
-    // This function is mainly for renderer.js to update the shared state.
-    // messageRenderer will read from currentSelectedItemRef.get() when rendering.
-    // console.log("[MessageRenderer] setCurrentSelectedItem called with:", item);
+  // This function is mainly for renderer.js to update the shared state.
+  // messageRenderer will read from currentSelectedItemRef.get() when rendering.
+  // console.log("[MessageRenderer] setCurrentSelectedItem called with:", item);
 }
 
 function setCurrentTopicId(topicId) {
-    // console.log("[MessageRenderer] setCurrentTopicId called with:", topicId);
+  // console.log("[MessageRenderer] setCurrentTopicId called with:", topicId);
 }
 
 // These are for specific avatar of the current *context* (agent or user), not for individual group member messages
-function setCurrentItemAvatar(avatarUrl) { // Renamed from setCurrentAgentAvatar
-    // This updates the avatar for the main selected agent/group, not individual group members in a message.
-    // The currentSelectedItemRef should hold the correct avatar for the overall context.
+function setCurrentItemAvatar(avatarUrl) {
+  // Renamed from setCurrentAgentAvatar
+  // This updates the avatar for the main selected agent/group, not individual group members in a message.
+  // The currentSelectedItemRef should hold the correct avatar for the overall context.
 }
 
-function setUserAvatar(avatarUrl) { // For the user's global avatar
-    const globalSettings = mainRendererReferences.globalSettingsRef.get();
-    const oldUrl = globalSettings.userAvatarUrl;
-    if (oldUrl && oldUrl !== (avatarUrl || 'assets/default_user_avatar.png')) {
-        avatarColorCache.delete(oldUrl.split('?')[0]);
-    }
-    mainRendererReferences.globalSettingsRef.set({ ...globalSettings, userAvatarUrl: avatarUrl || 'assets/default_user_avatar.png' });
+function setUserAvatar(avatarUrl) {
+  // For the user's global avatar
+  const globalSettings = mainRendererReferences.globalSettingsRef.get();
+  const oldUrl = globalSettings.userAvatarUrl;
+  if (oldUrl && oldUrl !== (avatarUrl || "assets/default_user_avatar.png")) {
+    avatarColorCache.delete(oldUrl.split("?")[0]);
+  }
+  mainRendererReferences.globalSettingsRef.set({
+    ...globalSettings,
+    userAvatarUrl: avatarUrl || "assets/default_user_avatar.png",
+  });
 }
 
-function setCurrentItemAvatarColor(color) { // Renamed from setCurrentAgentAvatarColor
-    // For the main selected agent/group
+function setCurrentItemAvatarColor(color) {
+  // Renamed from setCurrentAgentAvatarColor
+  // For the main selected agent/group
 }
 
-function setUserAvatarColor(color) { // For the user's global avatar
-    const globalSettings = mainRendererReferences.globalSettingsRef.get();
-    mainRendererReferences.globalSettingsRef.set({ ...globalSettings, userAvatarCalculatedColor: color });
+function setUserAvatarColor(color) {
+  // For the user's global avatar
+  const globalSettings = mainRendererReferences.globalSettingsRef.get();
+  mainRendererReferences.globalSettingsRef.set({
+    ...globalSettings,
+    userAvatarCalculatedColor: color,
+  });
 }
-function getAttachmentFileVisualDescriptor(name = '', type = '') {
-    const resolver = window.uiHelperFunctions?.resolveAttachmentFileVisual;
-    if (typeof resolver === 'function') {
-        return resolver(name, type);
-    }
-    return {
-        kind: 'file',
-        iconMarkup: `
+function getAttachmentFileVisualDescriptor(name = "", type = "") {
+  const resolver = window.uiHelperFunctions?.resolveAttachmentFileVisual;
+  if (typeof resolver === "function") {
+    return resolver(name, type);
+  }
+  return {
+    kind: "file",
+    iconMarkup: `
 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"></path>
     <path d="M14 2v5a1 1 0 0 0 1 1h5"></path>
-</svg>`
-    };
+</svg>`,
+  };
 }
 
 async function renderAttachments(message, contentDiv) {
-    const { electronAPI } = mainRendererReferences;
-    if (message.attachments && message.attachments.length > 0) {
-        const attachmentsContainer = document.createElement('div');
-        attachmentsContainer.classList.add('message-attachments');
-        message.attachments.forEach((att, index) => {
-            const wrapper = document.createElement('div');
-            wrapper.classList.add('message-attachment-wrapper');
-            
-            let attachmentElement;
-            if (att.type.startsWith('image/')) {
-                attachmentElement = document.createElement('img');
-                attachmentElement.src = att.src;
-                attachmentElement.alt = `附件图片: ${att.name}`;
-                attachmentElement.title = `点击在新窗口预览: ${att.name}`;
-                attachmentElement.classList.add('message-attachment-image-thumbnail');
-                attachmentElement.onclick = (e) => {
-                    e.stopPropagation();
-                    const currentTheme = document.body.classList.contains('light-theme') ? 'light' : 'dark';
-                    electronAPI.openImageViewer({ src: att.src, title: att.name, theme: currentTheme });
-                };
-                attachmentElement.addEventListener('contextmenu', (e) => {
-                    e.preventDefault(); e.stopPropagation();
-                    electronAPI.showImageContextMenu(att.src);
-                });
-            } else if (att.type.startsWith('audio/')) {
-                attachmentElement = document.createElement('audio');
-                attachmentElement.src = att.src;
-                attachmentElement.controls = true;
-            } else if (att.type.startsWith('video/')) {
-                attachmentElement = document.createElement('video');
-                attachmentElement.src = att.src;
-                attachmentElement.controls = true;
-                attachmentElement.style.maxWidth = '300px';
-            } else {
-                attachmentElement = document.createElement('a');
-                attachmentElement.href = att.src;
-                const fileVisual = getAttachmentFileVisualDescriptor(att.name, att.type);
-                attachmentElement.classList.add('message-attachment-file', `message-attachment-file--${fileVisual.kind}`);
-                attachmentElement.title = `点击打开文件: ${att.name}`;
-                attachmentElement.onclick = (e) => {
-                    e.preventDefault();
-                    if (electronAPI.sendOpenExternalLink && att.src.startsWith('file://')) {
-                        electronAPI.sendOpenExternalLink(att.src);
-                    } else {
-                        console.warn("Cannot open local file attachment", att.src);
-                    }
-                };
-                const iconSpan = document.createElement('span');
-                iconSpan.className = 'message-attachment-file-icon';
-                iconSpan.innerHTML = fileVisual.iconMarkup;
-                const nameSpan = document.createElement('span');
-                nameSpan.className = 'message-attachment-file-name';
-                nameSpan.textContent = att.name;
-                attachmentElement.appendChild(iconSpan);
-                attachmentElement.appendChild(nameSpan);
-            }
-            if (attachmentElement) {
-                wrapper.appendChild(attachmentElement);
-                // 添加删除按钮
-                const removeBtn = document.createElement('div');
-                removeBtn.className = 'message-attachment-remove-btn';
-                removeBtn.innerHTML = '&times;';
-                removeBtn.title = '移除此附件';
-                removeBtn.onclick = (e) => {
-                    e.preventDefault(); e.stopPropagation();
-                    if (window.chatManager && window.chatManager.removeAttachmentFromMessage) {
-                        window.chatManager.removeAttachmentFromMessage(message.id, index);
-                    }
-                };
-                wrapper.appendChild(removeBtn);
-                attachmentsContainer.appendChild(wrapper);
-            }
+  const { electronAPI } = mainRendererReferences;
+  if (message.attachments && message.attachments.length > 0) {
+    const attachmentsContainer = document.createElement("div");
+    attachmentsContainer.classList.add("message-attachments");
+    message.attachments.forEach((att, index) => {
+      const wrapper = document.createElement("div");
+      wrapper.classList.add("message-attachment-wrapper");
+
+      let attachmentElement;
+      if (att.type.startsWith("image/")) {
+        attachmentElement = document.createElement("img");
+        attachmentElement.src = att.src;
+        attachmentElement.alt = `附件图片: ${att.name}`;
+        attachmentElement.title = `点击在新窗口预览: ${att.name}`;
+        attachmentElement.classList.add("message-attachment-image-thumbnail");
+        attachmentElement.onclick = (e) => {
+          e.stopPropagation();
+          const currentTheme = document.body.classList.contains("light-theme")
+            ? "light"
+            : "dark";
+          electronAPI.openImageViewer({
+            src: att.src,
+            title: att.name,
+            theme: currentTheme,
+          });
+        };
+        attachmentElement.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          electronAPI.showImageContextMenu(att.src);
         });
-        contentDiv.appendChild(attachmentsContainer);
-    }
+      } else if (att.type.startsWith("audio/")) {
+        attachmentElement = document.createElement("audio");
+        attachmentElement.src = att.src;
+        attachmentElement.controls = true;
+      } else if (att.type.startsWith("video/")) {
+        attachmentElement = document.createElement("video");
+        attachmentElement.src = att.src;
+        attachmentElement.controls = true;
+        attachmentElement.style.maxWidth = "300px";
+      } else {
+        attachmentElement = document.createElement("a");
+        attachmentElement.href = att.src;
+        const fileVisual = getAttachmentFileVisualDescriptor(
+          att.name,
+          att.type
+        );
+        attachmentElement.classList.add(
+          "message-attachment-file",
+          `message-attachment-file--${fileVisual.kind}`
+        );
+        attachmentElement.title = `点击打开文件: ${att.name}`;
+        attachmentElement.onclick = (e) => {
+          e.preventDefault();
+          if (
+            electronAPI.sendOpenExternalLink &&
+            att.src.startsWith("file://")
+          ) {
+            electronAPI.sendOpenExternalLink(att.src);
+          } else {
+            console.warn("Cannot open local file attachment", att.src);
+          }
+        };
+        const iconSpan = document.createElement("span");
+        iconSpan.className = "message-attachment-file-icon";
+        iconSpan.innerHTML = fileVisual.iconMarkup;
+        const nameSpan = document.createElement("span");
+        nameSpan.className = "message-attachment-file-name";
+        nameSpan.textContent = att.name;
+        attachmentElement.appendChild(iconSpan);
+        attachmentElement.appendChild(nameSpan);
+      }
+      if (attachmentElement) {
+        wrapper.appendChild(attachmentElement);
+        // 添加删除按钮
+        const removeBtn = document.createElement("div");
+        removeBtn.className = "message-attachment-remove-btn";
+        removeBtn.innerHTML = "&times;";
+        removeBtn.title = "移除此附件";
+        removeBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (
+            window.chatManager &&
+            window.chatManager.removeAttachmentFromMessage
+          ) {
+            window.chatManager.removeAttachmentFromMessage(message.id, index);
+          }
+        };
+        wrapper.appendChild(removeBtn);
+        attachmentsContainer.appendChild(wrapper);
+      }
+    });
+    contentDiv.appendChild(attachmentsContainer);
+  }
 }
 
-async function renderMessage(message, isInitialLoad = false, appendToDom = true, renderSessionId = getActiveRenderSessionId()) {
-    // console.debug('[MessageRenderer renderMessage] Received message:', JSON.parse(JSON.stringify(message)));
-    const { chatMessagesDiv, electronAPI, markedInstance, uiHelper } = mainRendererReferences;
-    const globalSettings = mainRendererReferences.globalSettingsRef.get();
-    const currentSelectedItem = mainRendererReferences.currentSelectedItemRef.get();
-    const currentChatHistory = mainRendererReferences.currentChatHistoryRef.get();
+async function renderMessage(
+  message,
+  isInitialLoad = false,
+  appendToDom = true,
+  renderSessionId = getActiveRenderSessionId()
+) {
+  // console.debug('[MessageRenderer renderMessage] Received message:', JSON.parse(JSON.stringify(message)));
+  const { chatMessagesDiv, electronAPI, markedInstance, uiHelper } =
+    mainRendererReferences;
+  const globalSettings = mainRendererReferences.globalSettingsRef.get();
+  const currentSelectedItem =
+    mainRendererReferences.currentSelectedItemRef.get();
+  const currentChatHistory = mainRendererReferences.currentChatHistoryRef.get();
 
-    // Prevent re-rendering if the message already exists in the DOM, unless it's a thinking message being replaced.
-    const existingMessageDom = chatMessagesDiv.querySelector(`.message-item[data-message-id="${message.id}"]`);
-    if (existingMessageDom && !existingMessageDom.classList.contains('thinking')) {
-        // console.log(`[MessageRenderer] Message ${message.id} already in DOM. Skipping render.`);
-        // return existingMessageDom;
+  // Prevent re-rendering if the message already exists in the DOM, unless it's a thinking message being replaced.
+  const existingMessageDom = chatMessagesDiv.querySelector(
+    `.message-item[data-message-id="${message.id}"]`
+  );
+  if (
+    existingMessageDom &&
+    !existingMessageDom.classList.contains("thinking")
+  ) {
+    // console.log(`[MessageRenderer] Message ${message.id} already in DOM. Skipping render.`);
+    // return existingMessageDom;
+  }
+
+  if (!chatMessagesDiv || !electronAPI || !markedInstance) {
+    console.error(
+      "MessageRenderer: Missing critical references for rendering."
+    );
+    return null;
+  }
+
+  if (!message.id) {
+    message.id = `msg_${message.timestamp}_${Math.random()
+      .toString(36)
+      .substring(2, 9)}`;
+  }
+
+  const { messageItem, contentDiv, avatarImg, senderNameDiv } =
+    createMessageSkeleton(message, globalSettings, currentSelectedItem);
+
+  // --- NEW: Scoped CSS Implementation ---
+  let scopeId = null;
+  if (message.role === "assistant") {
+    scopeId = generateUniqueId();
+    messageItem.id = scopeId; // Assign the unique ID to the message container
+  }
+  // --- END Scoped CSS Implementation ---
+
+  // 先确定颜色值（但不应用）
+  let avatarColorToUse;
+  let avatarUrlToUse; // This was the missing variable
+  let customBorderColor = null; // 自定义边框颜色
+  let customNameColor = null; // 自定义名称颜色
+  let shouldApplyColorToName = false; // 是否应该将头像颜色也应用到名称
+  let useThemeColors = false; // 是否使用主题颜色
+
+  if (message.role === "user") {
+    avatarColorToUse = globalSettings.userAvatarCalculatedColor;
+    avatarUrlToUse = globalSettings.userAvatarUrl;
+    // 检查用户是否启用了"会话中使用主题颜色"
+    useThemeColors = globalSettings.userUseThemeColorsInChat || false;
+
+    if (!useThemeColors) {
+      // 用户消息：获取自定义颜色（仅在未启用主题颜色时应用）
+      customBorderColor = globalSettings.userAvatarBorderColor;
+      customNameColor = globalSettings.userNameTextColor;
     }
+    // 用户消息：头像颜色也应用到名称
+    shouldApplyColorToName = true;
+  } else if (message.role === "assistant") {
+    if (message.isGroupMessage) {
+      avatarColorToUse = message.avatarColor;
+      avatarUrlToUse = message.avatarUrl;
+      // 群组消息中的Agent，获取其自定义颜色
+      if (message.agentId) {
+        const agentConfig = currentSelectedItem?.config?.agents?.find(
+          (a) => a.id === message.agentId
+        );
+        if (agentConfig) {
+          useThemeColors = agentConfig.useThemeColorsInChat || false;
+          if (!useThemeColors) {
+            customBorderColor = agentConfig.avatarBorderColor;
+            customNameColor = agentConfig.nameTextColor;
+          }
+        }
+      }
+    } else if (currentSelectedItem) {
+      avatarColorToUse =
+        currentSelectedItem.config?.avatarCalculatedColor ||
+        currentSelectedItem.avatarCalculatedColor ||
+        currentSelectedItem.config?.avatarColor ||
+        currentSelectedItem.avatarColor;
+      avatarUrlToUse = currentSelectedItem.avatarUrl;
 
-    if (!chatMessagesDiv || !electronAPI || !markedInstance) {
-        console.error("MessageRenderer: Missing critical references for rendering.");
-        return null;
-    }
-
-    if (!message.id) {
-        message.id = `msg_${message.timestamp}_${Math.random().toString(36).substring(2, 9)}`;
-    }
-
-    const { messageItem, contentDiv, avatarImg, senderNameDiv } = createMessageSkeleton(message, globalSettings, currentSelectedItem);
-
-    // --- NEW: Scoped CSS Implementation ---
-    let scopeId = null;
-    if (message.role === 'assistant') {
-        scopeId = generateUniqueId();
-        messageItem.id = scopeId; // Assign the unique ID to the message container
-    }
-    // --- END Scoped CSS Implementation ---
-
-
-    // 先确定颜色值（但不应用）
-    let avatarColorToUse;
-    let avatarUrlToUse; // This was the missing variable
-    let customBorderColor = null; // 自定义边框颜色
-    let customNameColor = null; // 自定义名称颜色
-    let shouldApplyColorToName = false; // 是否应该将头像颜色也应用到名称
-    let useThemeColors = false; // 是否使用主题颜色
-
-    if (message.role === 'user') {
-        avatarColorToUse = globalSettings.userAvatarCalculatedColor;
-        avatarUrlToUse = globalSettings.userAvatarUrl;
-        // 检查用户是否启用了"会话中使用主题颜色"
-        useThemeColors = globalSettings.userUseThemeColorsInChat || false;
-
+      // 非群组消息，获取当前Agent的设置
+      const agentConfig = currentSelectedItem.config || currentSelectedItem;
+      if (agentConfig) {
+        useThemeColors = agentConfig.useThemeColorsInChat || false;
         if (!useThemeColors) {
-            // 用户消息：获取自定义颜色（仅在未启用主题颜色时应用）
-            customBorderColor = globalSettings.userAvatarBorderColor;
-            customNameColor = globalSettings.userNameTextColor;
+          customBorderColor = agentConfig.avatarBorderColor;
+          customNameColor = agentConfig.nameTextColor;
         }
-        // 用户消息：头像颜色也应用到名称
-        shouldApplyColorToName = true;
-    } else if (message.role === 'assistant') {
-        if (message.isGroupMessage) {
-            avatarColorToUse = message.avatarColor;
-            avatarUrlToUse = message.avatarUrl;
-            // 群组消息中的Agent，获取其自定义颜色
-            if (message.agentId) {
-                const agentConfig = currentSelectedItem?.config?.agents?.find(a => a.id === message.agentId);
-                if (agentConfig) {
-                    useThemeColors = agentConfig.useThemeColorsInChat || false;
-                    if (!useThemeColors) {
-                        customBorderColor = agentConfig.avatarBorderColor;
-                        customNameColor = agentConfig.nameTextColor;
-                    }
-                }
-            }
-        } else if (currentSelectedItem) {
-            avatarColorToUse = currentSelectedItem.config?.avatarCalculatedColor
-                || currentSelectedItem.avatarCalculatedColor
-                || currentSelectedItem.config?.avatarColor
-                || currentSelectedItem.avatarColor;
-            avatarUrlToUse = currentSelectedItem.avatarUrl;
-
-            // 非群组消息，获取当前Agent的设置
-            const agentConfig = currentSelectedItem.config || currentSelectedItem;
-            if (agentConfig) {
-                useThemeColors = agentConfig.useThemeColorsInChat || false;
-                if (!useThemeColors) {
-                    customBorderColor = agentConfig.avatarBorderColor;
-                    customNameColor = agentConfig.nameTextColor;
-                }
-            }
-        }
+      }
     }
+  }
 
-    // 先添加到DOM
-    if (appendToDom) {
-        chatMessagesDiv.appendChild(messageItem);
-        // 观察新消息的可见性
-        visibilityOptimizer.observeMessage(messageItem);
-    }
+  // 先添加到DOM
+  if (appendToDom) {
+    chatMessagesDiv.appendChild(messageItem);
+    // 观察新消息的可见性
+    visibilityOptimizer.observeMessage(messageItem);
+  }
 
-    if (message.isThinking) {
-        contentDiv.innerHTML = `<span class="thinking-indicator">${message.content || '思考中'}<span class="thinking-indicator-dots">...</span></span>`;
-        messageItem.classList.add('thinking');
+  if (message.isThinking) {
+    contentDiv.innerHTML = `<span class="thinking-indicator">${
+      message.content || "思考中"
+    }<span class="thinking-indicator-dots">...</span></span>`;
+    messageItem.classList.add("thinking");
+  } else {
+    let textToRender = "";
+    if (typeof message.content === "string") {
+      textToRender = message.content;
+    } else if (message.content && typeof message.content.text === "string") {
+      // This case handles objects like { text: "..." }, common for group messages before history saving
+      textToRender = message.content.text;
+    } else if (message.content === null || message.content === undefined) {
+      textToRender = ""; // Handle null or undefined content gracefully
+      console.warn(
+        "[MessageRenderer] message.content is null or undefined for message ID:",
+        message.id
+      );
     } else {
-        let textToRender = "";
-        if (typeof message.content === 'string') {
-            textToRender = message.content;
-        } else if (message.content && typeof message.content.text === 'string') {
-            // This case handles objects like { text: "..." }, common for group messages before history saving
-            textToRender = message.content.text;
-        } else if (message.content === null || message.content === undefined) {
-            textToRender = ""; // Handle null or undefined content gracefully
-            console.warn('[MessageRenderer] message.content is null or undefined for message ID:', message.id);
-        } else {
-            // Fallback for other unexpected object structures, log and use a placeholder
-            console.warn('[MessageRenderer] Unexpected message.content type. Message ID:', message.id, 'Content:', JSON.stringify(message.content));
-            textToRender = "[消息内容格式异常]";
-        }
-
-        if (message.role === 'user') {
-            textToRender = prepareUserMessageText(textToRender);
-        } else if (message.role === 'assistant' && scopeId) {
-            // --- 🟢 关键修复：先保护所有可能包含 <style> 的特殊区域，再提取样式 ---
-            // 这样可以避免代码块、推送块、工具请求块、工具结果块和「始」「末」标记内的 <style> 被误当作真正的样式注入
-            const protectedBlocks = [];
-
-            // 🔴 最高优先级：保护工具结果块（[[VCP调用结果信息汇总:...VCP调用结果结束]]）
-            // 工具结果可能包含任意内容（大型 markdown 文件、代码、「始」「末」标记等）
-            // 必须在「始」「末」标记保护之前运行，否则结果内部的标记会被错误匹配
-            TOOL_RESULT_REGEX.lastIndex = 0;
-            let textWithProtectedBlocks = textToRender.replace(TOOL_RESULT_REGEX, (match) => {
-                const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
-                protectedBlocks.push(match);
-                return placeholder;
-            });
-            TOOL_RESULT_REGEX.lastIndex = 0;
-            
-            // 🔴 保护工具请求块（<<<[TOOL_REQUEST]>>>...<<<[END_TOOL_REQUEST]>>>）
-            // 工具请求参数中可能包含完整的HTML文档（如壁纸HTML），其中的 <style> 不应被注入
-            // 使用与 TOOL_REGEX 相同的加固版正则（排除反引号包裹）
-            textWithProtectedBlocks = textWithProtectedBlocks.replace(TOOL_REGEX, (match) => {
-                const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
-                protectedBlocks.push(match);
-                return placeholder;
-            });
-            
-            // 🔴 保护「始」「末」与「始ESCAPE」「末ESCAPE」标记区域
-            // 这些标记内的内容是工具参数，可能包含任意HTML（含<style>），不应被提取
-            textWithProtectedBlocks = textWithProtectedBlocks.replace(/「始ESCAPE」[\s\S]*?(「末ESCAPE」|$)|「始」[\s\S]*?(「末」|$)/g, (match) => {
-                const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
-                protectedBlocks.push(match);
-                return placeholder;
-            });
-            
-            // 保护桌面推送块（必须在代码块之前，因为推送块可能包含代码围栏）
-            textWithProtectedBlocks = textWithProtectedBlocks.replace(DESKTOP_PUSH_REGEX, (match) => {
-                const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
-                protectedBlocks.push(match);
-                return placeholder;
-            });
-            // 也保护未闭合的推送块
-            textWithProtectedBlocks = textWithProtectedBlocks.replace(DESKTOP_PUSH_PARTIAL_REGEX, (match) => {
-                const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
-                protectedBlocks.push(match);
-                return placeholder;
-            });
-            
-            // 保护代码块
-            textWithProtectedBlocks = textWithProtectedBlocks.replace(CODE_FENCE_REGEX, (match) => {
-                const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
-                protectedBlocks.push(match);
-                return placeholder;
-            });
-
-            // 现在只会匹配不在保护区域内的 <style> 标签
-            const { processedContent: contentWithoutStyles } = processAndInjectScopedCss(textWithProtectedBlocks, scopeId);
-
-            // 恢复所有被保护的块
-            // 🟢 关键修复：使用函数回调替换，避免代码块中的 $ 字符
-            // （如 $'、$$、$&）被 String.replace() 误解释为特殊替换模式
-            textToRender = contentWithoutStyles;
-            protectedBlocks.forEach((block, i) => {
-                const placeholder = `__VCP_STYLE_PROTECT_${i}__`;
-                textToRender = textToRender.split(placeholder).join(block);
-            });
-            // --- 修复结束 ---
-        }
-
-        // --- 按“对话轮次”计算深度 ---
-        // 如果是新消息，它此时还不在 history 数组里，先临时加进去计算
-        const historyForDepthCalc = currentChatHistory.some(m => m.id === message.id)
-            ? [...currentChatHistory]
-            : [...currentChatHistory, message];
-        const depth = calculateDepthByTurns(message.id, historyForDepthCalc);
-        // --- 深度计算结束 ---
-
-        // --- 应用前端正则规则 ---
-        // 核心修复：将正则规则应用移出 preprocessFullContent，以避免在流式传输的块上执行
-        // 这样可以确保正则表达式在完整的消息内容上运行
-        const agentConfigForRegex = currentSelectedItem?.config || currentSelectedItem;
-        if (agentConfigForRegex?.stripRegexes && Array.isArray(agentConfigForRegex.stripRegexes)) {
-            textToRender = applyFrontendRegexRules(textToRender, agentConfigForRegex.stripRegexes, message.role, depth);
-        }
-        // --- 正则规则应用结束 ---
-
-        const { text: processedContent, toolResultMap } = preprocessFullContent(textToRender, globalSettings, message.role, depth);
-        // 🟢 LaTeX 保护：在 marked 解析前保护 LaTeX 块
-        const { text: protectedContent, map: latexMap } = protectLatexBlocks(processedContent);
-        let rawHtml = markedInstance.parse(protectedContent);
-        // 🟢 LaTeX 恢复：在 marked 解析后恢复 LaTeX 块
-        rawHtml = restoreLatexBlocks(rawHtml, latexMap);
-        // 🟢 工具结果恢复：在 Markdown 解析后恢复工具结果占位符为渲染好的 HTML
-        rawHtml = restoreRenderedToolResults(rawHtml, toolResultMap);
-
-        // 修复：清理 Markdown 解析器可能生成的损坏的 SVG viewBox 属性
-        // 错误 "Unexpected end of attribute" 表明 viewBox 的值不完整, 例如 "0 "
-        rawHtml = rawHtml.replace(/viewBox="0 "/g, 'viewBox="0 0 24 24"');
-
-        // Synchronously set the base HTML content
-        const finalHtml = rawHtml;
-        contentDiv.innerHTML = finalHtml;
-
-        // [Pretext集成] 延后填充文本高度缓存，避免阻塞首屏与批量历史渲染
-        scheduleMessagePretextEstimate(message.id, textToRender, chatMessagesDiv);
-
-        // Define the post-processing logic as a function.
-        // This allows us to control WHEN it gets executed.
-        const runPostRenderProcessing = async () => {
-            if (!isRenderSessionActive(renderSessionId) || !messageItem.isConnected || !contentDiv.isConnected) {
-                return;
-            }
-
-            // This function should only be called when messageItem is connected to the DOM.
-
-            // Process images, attachments, and synchronous content first.
-            setContentAndProcessImages(contentDiv, finalHtml, message.id);
-            if (!isRenderSessionActive(renderSessionId) || !messageItem.isConnected || !contentDiv.isConnected) {
-                return;
-            }
-
-            renderAttachments(message, contentDiv);
-            contentProcessor.processRenderedContent(contentDiv, globalSettings);
-            await renderMermaidDiagrams(contentDiv); // Render mermaid diagrams
-
-            if (!isRenderSessionActive(renderSessionId) || !messageItem.isConnected || !contentDiv.isConnected) {
-                return;
-            }
-
-            // Defer TreeWalker-based highlighters with a hardcoded delay to ensure the DOM is stable.
-            setTimeout(() => {
-                if (isRenderSessionActive(renderSessionId) && contentDiv && contentDiv.isConnected) {
-                    contentProcessor.highlightAllPatternsInMessage(contentDiv);
-                }
-            }, 0);
-
-            // Finally, process any animations and execute scripts/3D scenes.
-            processAnimationsInContent(contentDiv);
-        };
-
-        // If we are appending directly to the DOM, schedule the processing immediately.
-        if (appendToDom) {
-            // We still use requestAnimationFrame to ensure the element is painted before we process it.
-            requestAnimationFrame(() => {
-                if (!isRenderSessionActive(renderSessionId) || !messageItem.isConnected) return;
-                runPostRenderProcessing();
-            });
-        } else {
-            // If not, attach the processing function to the element itself.
-            // The caller (e.g., a batch renderer) will be responsible for executing it
-            // AFTER the element has been attached to the DOM.
-            messageItem._vcp_process = () => {
-                if (!isRenderSessionActive(renderSessionId) || !messageItem.isConnected) return;
-                return runPostRenderProcessing();
-            };
-            messageItem._vcp_renderSessionId = renderSessionId;
-        }
+      // Fallback for other unexpected object structures, log and use a placeholder
+      console.warn(
+        "[MessageRenderer] Unexpected message.content type. Message ID:",
+        message.id,
+        "Content:",
+        JSON.stringify(message.content)
+      );
+      textToRender = "[消息内容格式异常]";
     }
 
-    // 然后应用颜色（现在 messageItem.isConnected 是 true）
-    if ((message.role === 'user' || message.role === 'assistant') && avatarImg && senderNameDiv) {
-        const applyColorToElements = (colorStr) => {
-            if (colorStr) {
-                console.debug(`[DEBUG] Applying color ${colorStr} to message item ${messageItem.dataset.messageId}`);
-                messageItem.style.setProperty('--dynamic-avatar-color', colorStr);
+    if (message.role === "user") {
+      textToRender = prepareUserMessageText(textToRender);
+    } else if (message.role === "assistant" && scopeId) {
+      // --- 🟢 关键修复：先保护所有可能包含 <style> 的特殊区域，再提取样式 ---
+      // 这样可以避免代码块、推送块、工具请求块、工具结果块和「始」「末」标记内的 <style> 被误当作真正的样式注入
+      const protectedBlocks = [];
 
-                // 后备方案：直接应用到avatarImg
-                if (avatarImg) {
-                    avatarImg.style.borderColor = colorStr;
-                    avatarImg.style.borderWidth = '2px';
-                    avatarImg.style.borderStyle = 'solid';
-                }
-
-                // 如果需要，也应用到名称
-                if (shouldApplyColorToName && senderNameDiv) {
-                    senderNameDiv.style.color = colorStr;
-                }
-            } else {
-                console.debug(`[DEBUG] No color to apply, using default`);
-                messageItem.style.removeProperty('--dynamic-avatar-color');
-            }
-        };
-
-        // 如果启用了主题颜色模式，不应用任何自定义颜色，让CSS主题接管
-        if (useThemeColors) {
-            console.debug(`[DEBUG] Using theme colors for message ${messageItem.dataset.messageId}`);
-            messageItem.style.removeProperty('--dynamic-avatar-color');
-            if (avatarImg) {
-                avatarImg.style.removeProperty('border-color');
-            }
-            if (senderNameDiv) {
-                senderNameDiv.style.removeProperty('color');
-            }
-        } else if (customBorderColor && avatarImg) {
-            // 优先应用自定义颜色（如果启用且未启用主题颜色）
-            console.debug(`[DEBUG] Applying custom border color ${customBorderColor} to avatar`);
-            avatarImg.style.borderColor = customBorderColor;
-            avatarImg.style.borderWidth = '2px';
-            avatarImg.style.borderStyle = 'solid';
-        } else if (avatarColorToUse) {
-            // 没有自定义颜色或禁用时，使用计算的颜色
-            applyColorToElements(avatarColorToUse);
-        } else if (avatarUrlToUse && !avatarUrlToUse.includes('default_')) { // No persisted color, try to extract
-            // 🟢 Non-blocking color calculation
-            // Immediately apply a default border, which will be overridden if color extraction succeeds.
-            if (avatarImg) {
-                avatarImg.style.borderColor = 'var(--border-color)';
-            }
-
-            getDominantAvatarColorCached(avatarUrlToUse).then(dominantColor => {
-                if (dominantColor && messageItem.isConnected) {
-                    // 只有在没有自定义边框颜色时才应用提取的颜色到边框
-                    if (!customBorderColor) {
-                        applyColorToElements(dominantColor);
-                    } else if (shouldApplyColorToName && senderNameDiv) {
-                        // 如果有自定义边框颜色但需要应用颜色到名称，单独处理
-                        senderNameDiv.style.color = dominantColor;
-                    }
-
-                    // Persist the extracted color
-                    let typeToSave, idToSaveFor;
-                    if (message.role === 'user') {
-                        typeToSave = 'user'; idToSaveFor = 'user_global';
-                    } else if (message.isGroupMessage && message.agentId) {
-                        typeToSave = 'agent'; idToSaveFor = message.agentId;
-                    } else if (currentSelectedItem && currentSelectedItem.type === 'agent') {
-                        typeToSave = 'agent'; idToSaveFor = currentSelectedItem.id;
-                    }
-
-                    if (typeToSave && idToSaveFor) {
-                        electronAPI.saveAvatarColor({ type: typeToSave, id: idToSaveFor, color: dominantColor })
-                            .then(result => {
-                                if (result.success) {
-                                    if (typeToSave === 'user') {
-                                        mainRendererReferences.globalSettingsRef.set({ ...globalSettings, userAvatarCalculatedColor: dominantColor });
-                                    } else if (typeToSave === 'agent' && idToSaveFor === currentSelectedItem.id) {
-                                        if (currentSelectedItem.config) {
-                                            currentSelectedItem.config.avatarCalculatedColor = dominantColor;
-                                        } else {
-                                            currentSelectedItem.avatarCalculatedColor = dominantColor;
-                                        }
-                                    }
-                                }
-                            });
-                    }
-                }
-            }).catch(err => {
-                console.warn(`[Color] Failed to extract dominant color for ${avatarUrlToUse}:`, err);
-                // The default border is already applied, so no further action is needed on error.
-            });
-        } else if (!customBorderColor) { // Default avatar or no URL, reset to theme defaults (only if no custom color)
-            // Remove the custom property. The CSS will automatically use its fallback values.
-            messageItem.style.removeProperty('--dynamic-avatar-color');
+      // 🔴 最高优先级：保护工具结果块（[[VCP调用结果信息汇总:...VCP调用结果结束]]）
+      // 工具结果可能包含任意内容（大型 markdown 文件、代码、「始」「末」标记等）
+      // 必须在「始」「末」标记保护之前运行，否则结果内部的标记会被错误匹配
+      TOOL_RESULT_REGEX.lastIndex = 0;
+      let textWithProtectedBlocks = textToRender.replace(
+        TOOL_RESULT_REGEX,
+        (match) => {
+          const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
+          protectedBlocks.push(match);
+          return placeholder;
         }
+      );
+      TOOL_RESULT_REGEX.lastIndex = 0;
 
-        // 应用自定义名称文字颜色
-        if (customNameColor && senderNameDiv) {
-            console.debug(`[DEBUG] Applying custom name color ${customNameColor} to sender name`);
-            senderNameDiv.style.color = customNameColor;
+      // 🔴 保护工具请求块（<<<[TOOL_REQUEST]>>>...<<<[END_TOOL_REQUEST]>>>）
+      // 工具请求参数中可能包含完整的HTML文档（如壁纸HTML），其中的 <style> 不应被注入
+      // 使用与 TOOL_REGEX 相同的加固版正则（排除反引号包裹）
+      textWithProtectedBlocks = textWithProtectedBlocks.replace(
+        TOOL_REGEX,
+        (match) => {
+          const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
+          protectedBlocks.push(match);
+          return placeholder;
         }
+      );
 
-        // 应用会话样式CSS到聊天消息
-        if (message.role === 'assistant') {
-            let chatCss = '';
-
-            if (message.isGroupMessage && message.agentId) {
-                // 群组消息中的Agent
-                const agentConfig = currentSelectedItem?.config?.agents?.find(a => a.id === message.agentId);
-                chatCss = agentConfig?.chatCss || '';
-            } else if (currentSelectedItem) {
-                // 非群组消息
-                const agentConfig = currentSelectedItem.config || currentSelectedItem;
-                chatCss = agentConfig?.chatCss || '';
-            }
-
-            // 通过动态注入<style>标签应用会话CSS
-            if (chatCss && chatCss.trim()) {
-                console.debug(`[DEBUG] Applying chat CSS to message ${message.id}:`, chatCss);
-
-                // 为此消息创建唯一的scope ID
-                const chatScopeId = `vcp-chat-${message.id}`;
-                messageItem.setAttribute('data-chat-scope', chatScopeId);
-
-                // 检查是否已存在相同的style标签
-                let existingStyle = document.head.querySelector(`style[data-chat-scope-id="${chatScopeId}"]`);
-                if (existingStyle) {
-                    existingStyle.remove();
-                }
-
-                // 创建scoped CSS（为当前消息添加作用域）
-                const scopedChatCss = `[data-chat-scope="${chatScopeId}"] ${chatCss}`;
-
-                // 注入到<head>
-                const styleElement = document.createElement('style');
-                styleElement.type = 'text/css';
-                styleElement.setAttribute('data-chat-scope-id', chatScopeId);
-                styleElement.textContent = scopedChatCss;
-                document.head.appendChild(styleElement);
-            }
+      // 🔴 保护「始」「末」与「始ESCAPE」「末ESCAPE」标记区域
+      // 这些标记内的内容是工具参数，可能包含任意HTML（含<style>），不应被提取
+      textWithProtectedBlocks = textWithProtectedBlocks.replace(
+        /「始ESCAPE」[\s\S]*?(「末ESCAPE」|$)|「始」[\s\S]*?(「末」|$)/g,
+        (match) => {
+          const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
+          protectedBlocks.push(match);
+          return placeholder;
         }
+      );
+
+      // 保护桌面推送/挂件/内置挂件块（必须在代码块之前，因为这些块可能包含代码围栏）
+      textWithProtectedBlocks = textWithProtectedBlocks.replace(
+        DESKTOP_PUSH_REGEX,
+        (match) => {
+          const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
+          protectedBlocks.push(match);
+          return placeholder;
+        }
+      );
+      textWithProtectedBlocks = textWithProtectedBlocks.replace(
+        DESKTOP_WIDGET_REGEX,
+        (match) => {
+          const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
+          protectedBlocks.push(match);
+          return placeholder;
+        }
+      );
+      textWithProtectedBlocks = textWithProtectedBlocks.replace(
+        DESKTOP_BUILTIN_REGEX,
+        (match) => {
+          const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
+          protectedBlocks.push(match);
+          return placeholder;
+        }
+      );
+      // 也保护未闭合的推送/挂件/内置挂件块
+      textWithProtectedBlocks = textWithProtectedBlocks.replace(
+        DESKTOP_PUSH_PARTIAL_REGEX,
+        (match) => {
+          const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
+          protectedBlocks.push(match);
+          return placeholder;
+        }
+      );
+      textWithProtectedBlocks = textWithProtectedBlocks.replace(
+        DESKTOP_WIDGET_PARTIAL_REGEX,
+        (match) => {
+          const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
+          protectedBlocks.push(match);
+          return placeholder;
+        }
+      );
+      textWithProtectedBlocks = textWithProtectedBlocks.replace(
+        DESKTOP_BUILTIN_PARTIAL_REGEX,
+        (match) => {
+          const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
+          protectedBlocks.push(match);
+          return placeholder;
+        }
+      );
+
+      // 保护代码块
+      textWithProtectedBlocks = textWithProtectedBlocks.replace(
+        CODE_FENCE_REGEX,
+        (match) => {
+          const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
+          protectedBlocks.push(match);
+          return placeholder;
+        }
+      );
+
+      // 现在只会匹配不在保护区域内的 <style> 标签
+      const { processedContent: contentWithoutStyles } =
+        processAndInjectScopedCss(textWithProtectedBlocks, scopeId);
+
+      // 恢复所有被保护的块
+      // 🟢 关键修复：使用函数回调替换，避免代码块中的 $ 字符
+      // （如 $'、$$、$&）被 String.replace() 误解释为特殊替换模式
+      textToRender = contentWithoutStyles;
+      protectedBlocks.forEach((block, i) => {
+        const placeholder = `__VCP_STYLE_PROTECT_${i}__`;
+        textToRender = textToRender.split(placeholder).join(block);
+      });
+      // --- 修复结束 ---
     }
 
+    // --- 按“对话轮次”计算深度 ---
+    // 如果是新消息，它此时还不在 history 数组里，先临时加进去计算
+    const historyForDepthCalc = currentChatHistory.some(
+      (m) => m.id === message.id
+    )
+      ? [...currentChatHistory]
+      : [...currentChatHistory, message];
+    const depth = calculateDepthByTurns(message.id, historyForDepthCalc);
+    // --- 深度计算结束 ---
 
-    // Attachments and content processing are now deferred within a requestAnimationFrame
-    // to prevent race conditions during history loading. See the block above.
+    // --- 应用前端正则规则 ---
+    // 核心修复：将正则规则应用移出 preprocessFullContent，以避免在流式传输的块上执行
+    // 这样可以确保正则表达式在完整的消息内容上运行
+    const agentConfigForRegex =
+      currentSelectedItem?.config || currentSelectedItem;
+    if (
+      agentConfigForRegex?.stripRegexes &&
+      Array.isArray(agentConfigForRegex.stripRegexes)
+    ) {
+      textToRender = applyFrontendRegexRules(
+        textToRender,
+        agentConfigForRegex.stripRegexes,
+        message.role,
+        depth
+      );
+    }
+    // --- 正则规则应用结束 ---
 
-    // The responsibility of updating the history array is now moved to the caller (e.g., chatManager.handleSendMessage)
-    // to ensure a single source of truth and prevent race conditions.
-    /*
+    const { text: processedContent, toolResultMap } = preprocessFullContent(
+      textToRender,
+      globalSettings,
+      message.role,
+      depth
+    );
+    // 🟢 LaTeX 保护：在 marked 解析前保护 LaTeX 块
+    const { text: protectedContent, map: latexMap } =
+      protectLatexBlocks(processedContent);
+    let rawHtml = markedInstance.parse(protectedContent);
+    // 🟢 LaTeX 恢复：在 marked 解析后恢复 LaTeX 块
+    rawHtml = restoreLatexBlocks(rawHtml, latexMap);
+    // 🟢 工具结果恢复：在 Markdown 解析后恢复工具结果占位符为渲染好的 HTML
+    rawHtml = restoreRenderedToolResults(rawHtml, toolResultMap);
+
+    // 修复：清理 Markdown 解析器可能生成的损坏的 SVG viewBox 属性
+    // 错误 "Unexpected end of attribute" 表明 viewBox 的值不完整, 例如 "0 "
+    rawHtml = rawHtml.replace(/viewBox="0 "/g, 'viewBox="0 0 24 24"');
+
+    // Synchronously set the base HTML content
+    const finalHtml = rawHtml;
+    contentDiv.innerHTML = finalHtml;
+
+    // [Pretext集成] 延后填充文本高度缓存，避免阻塞首屏与批量历史渲染
+    scheduleMessagePretextEstimate(message.id, textToRender, chatMessagesDiv);
+
+    // Define the post-processing logic as a function.
+    // This allows us to control WHEN it gets executed.
+    const runPostRenderProcessing = async () => {
+      if (
+        !isRenderSessionActive(renderSessionId) ||
+        !messageItem.isConnected ||
+        !contentDiv.isConnected
+      ) {
+        return;
+      }
+
+      // This function should only be called when messageItem is connected to the DOM.
+
+      // Process images, attachments, and synchronous content first.
+      setContentAndProcessImages(contentDiv, finalHtml, message.id);
+      if (
+        !isRenderSessionActive(renderSessionId) ||
+        !messageItem.isConnected ||
+        !contentDiv.isConnected
+      ) {
+        return;
+      }
+
+      renderAttachments(message, contentDiv);
+      contentProcessor.processRenderedContent(contentDiv, globalSettings);
+      await renderMermaidDiagrams(contentDiv); // Render mermaid diagrams
+
+      if (
+        !isRenderSessionActive(renderSessionId) ||
+        !messageItem.isConnected ||
+        !contentDiv.isConnected
+      ) {
+        return;
+      }
+
+      // Defer TreeWalker-based highlighters with a hardcoded delay to ensure the DOM is stable.
+      setTimeout(() => {
+        if (
+          isRenderSessionActive(renderSessionId) &&
+          contentDiv &&
+          contentDiv.isConnected
+        ) {
+          contentProcessor.highlightAllPatternsInMessage(contentDiv);
+        }
+      }, 0);
+
+      // Finally, process any animations and execute scripts/3D scenes.
+      processAnimationsInContent(contentDiv);
+    };
+
+    // If we are appending directly to the DOM, schedule the processing immediately.
+    if (appendToDom) {
+      // We still use requestAnimationFrame to ensure the element is painted before we process it.
+      requestAnimationFrame(() => {
+        if (!isRenderSessionActive(renderSessionId) || !messageItem.isConnected)
+          return;
+        runPostRenderProcessing();
+      });
+    } else {
+      // If not, attach the processing function to the element itself.
+      // The caller (e.g., a batch renderer) will be responsible for executing it
+      // AFTER the element has been attached to the DOM.
+      messageItem._vcp_process = () => {
+        if (!isRenderSessionActive(renderSessionId) || !messageItem.isConnected)
+          return;
+        return runPostRenderProcessing();
+      };
+      messageItem._vcp_renderSessionId = renderSessionId;
+    }
+  }
+
+  // 然后应用颜色（现在 messageItem.isConnected 是 true）
+  if (
+    (message.role === "user" || message.role === "assistant") &&
+    avatarImg &&
+    senderNameDiv
+  ) {
+    const applyColorToElements = (colorStr) => {
+      if (colorStr) {
+        console.debug(
+          `[DEBUG] Applying color ${colorStr} to message item ${messageItem.dataset.messageId}`
+        );
+        messageItem.style.setProperty("--dynamic-avatar-color", colorStr);
+
+        // 后备方案：直接应用到avatarImg
+        if (avatarImg) {
+          avatarImg.style.borderColor = colorStr;
+          avatarImg.style.borderWidth = "2px";
+          avatarImg.style.borderStyle = "solid";
+        }
+
+        // 如果需要，也应用到名称
+        if (shouldApplyColorToName && senderNameDiv) {
+          senderNameDiv.style.color = colorStr;
+        }
+      } else {
+        console.debug(`[DEBUG] No color to apply, using default`);
+        messageItem.style.removeProperty("--dynamic-avatar-color");
+      }
+    };
+
+    // 如果启用了主题颜色模式，不应用任何自定义颜色，让CSS主题接管
+    if (useThemeColors) {
+      console.debug(
+        `[DEBUG] Using theme colors for message ${messageItem.dataset.messageId}`
+      );
+      messageItem.style.removeProperty("--dynamic-avatar-color");
+      if (avatarImg) {
+        avatarImg.style.removeProperty("border-color");
+      }
+      if (senderNameDiv) {
+        senderNameDiv.style.removeProperty("color");
+      }
+    } else if (customBorderColor && avatarImg) {
+      // 优先应用自定义颜色（如果启用且未启用主题颜色）
+      console.debug(
+        `[DEBUG] Applying custom border color ${customBorderColor} to avatar`
+      );
+      avatarImg.style.borderColor = customBorderColor;
+      avatarImg.style.borderWidth = "2px";
+      avatarImg.style.borderStyle = "solid";
+    } else if (avatarColorToUse) {
+      // 没有自定义颜色或禁用时，使用计算的颜色
+      applyColorToElements(avatarColorToUse);
+    } else if (avatarUrlToUse && !avatarUrlToUse.includes("default_")) {
+      // No persisted color, try to extract
+      // 🟢 Non-blocking color calculation
+      // Immediately apply a default border, which will be overridden if color extraction succeeds.
+      if (avatarImg) {
+        avatarImg.style.borderColor = "var(--border-color)";
+      }
+
+      getDominantAvatarColorCached(avatarUrlToUse)
+        .then((dominantColor) => {
+          if (dominantColor && messageItem.isConnected) {
+            // 只有在没有自定义边框颜色时才应用提取的颜色到边框
+            if (!customBorderColor) {
+              applyColorToElements(dominantColor);
+            } else if (shouldApplyColorToName && senderNameDiv) {
+              // 如果有自定义边框颜色但需要应用颜色到名称，单独处理
+              senderNameDiv.style.color = dominantColor;
+            }
+
+            // Persist the extracted color
+            let typeToSave, idToSaveFor;
+            if (message.role === "user") {
+              typeToSave = "user";
+              idToSaveFor = "user_global";
+            } else if (message.isGroupMessage && message.agentId) {
+              typeToSave = "agent";
+              idToSaveFor = message.agentId;
+            } else if (
+              currentSelectedItem &&
+              currentSelectedItem.type === "agent"
+            ) {
+              typeToSave = "agent";
+              idToSaveFor = currentSelectedItem.id;
+            }
+
+            if (typeToSave && idToSaveFor) {
+              electronAPI
+                .saveAvatarColor({
+                  type: typeToSave,
+                  id: idToSaveFor,
+                  color: dominantColor,
+                })
+                .then((result) => {
+                  if (result.success) {
+                    if (typeToSave === "user") {
+                      mainRendererReferences.globalSettingsRef.set({
+                        ...globalSettings,
+                        userAvatarCalculatedColor: dominantColor,
+                      });
+                    } else if (
+                      typeToSave === "agent" &&
+                      idToSaveFor === currentSelectedItem.id
+                    ) {
+                      if (currentSelectedItem.config) {
+                        currentSelectedItem.config.avatarCalculatedColor =
+                          dominantColor;
+                      } else {
+                        currentSelectedItem.avatarCalculatedColor =
+                          dominantColor;
+                      }
+                    }
+                  }
+                });
+            }
+          }
+        })
+        .catch((err) => {
+          console.warn(
+            `[Color] Failed to extract dominant color for ${avatarUrlToUse}:`,
+            err
+          );
+          // The default border is already applied, so no further action is needed on error.
+        });
+    } else if (!customBorderColor) {
+      // Default avatar or no URL, reset to theme defaults (only if no custom color)
+      // Remove the custom property. The CSS will automatically use its fallback values.
+      messageItem.style.removeProperty("--dynamic-avatar-color");
+    }
+
+    // 应用自定义名称文字颜色
+    if (customNameColor && senderNameDiv) {
+      console.debug(
+        `[DEBUG] Applying custom name color ${customNameColor} to sender name`
+      );
+      senderNameDiv.style.color = customNameColor;
+    }
+
+    // 应用会话样式CSS到聊天消息
+    if (message.role === "assistant") {
+      let chatCss = "";
+
+      if (message.isGroupMessage && message.agentId) {
+        // 群组消息中的Agent
+        const agentConfig = currentSelectedItem?.config?.agents?.find(
+          (a) => a.id === message.agentId
+        );
+        chatCss = agentConfig?.chatCss || "";
+      } else if (currentSelectedItem) {
+        // 非群组消息
+        const agentConfig = currentSelectedItem.config || currentSelectedItem;
+        chatCss = agentConfig?.chatCss || "";
+      }
+
+      // 通过动态注入<style>标签应用会话CSS
+      if (chatCss && chatCss.trim()) {
+        console.debug(
+          `[DEBUG] Applying chat CSS to message ${message.id}:`,
+          chatCss
+        );
+
+        // 为此消息创建唯一的scope ID
+        const chatScopeId = `vcp-chat-${message.id}`;
+        messageItem.setAttribute("data-chat-scope", chatScopeId);
+
+        // 检查是否已存在相同的style标签
+        let existingStyle = document.head.querySelector(
+          `style[data-chat-scope-id="${chatScopeId}"]`
+        );
+        if (existingStyle) {
+          existingStyle.remove();
+        }
+
+        // 创建scoped CSS（为当前消息添加作用域）
+        const scopedChatCss = `[data-chat-scope="${chatScopeId}"] ${chatCss}`;
+
+        // 注入到<head>
+        const styleElement = document.createElement("style");
+        styleElement.type = "text/css";
+        styleElement.setAttribute("data-chat-scope-id", chatScopeId);
+        styleElement.textContent = scopedChatCss;
+        document.head.appendChild(styleElement);
+      }
+    }
+  }
+
+  // Attachments and content processing are now deferred within a requestAnimationFrame
+  // to prevent race conditions during history loading. See the block above.
+
+  // The responsibility of updating the history array is now moved to the caller (e.g., chatManager.handleSendMessage)
+  // to ensure a single source of truth and prevent race conditions.
+  /*
     if (!isInitialLoad && !message.isThinking) {
          const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
          currentChatHistoryArray.push(message);
@@ -2033,34 +2489,36 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
          }
      }
      */
-    if (isInitialLoad && message.isThinking) {
-        // This case should ideally not happen if thinking messages aren't persisted.
-        // If it does, remove the transient thinking message.
-        const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
-        const thinkingMsgIndex = currentChatHistoryArray.findIndex(m => m.id === message.id && m.isThinking);
-        if (thinkingMsgIndex > -1) {
-            currentChatHistoryArray.splice(thinkingMsgIndex, 1);
-            mainRendererReferences.currentChatHistoryRef.set(currentChatHistoryArray);
-        }
-        messageItem.remove();
-        return null;
+  if (isInitialLoad && message.isThinking) {
+    // This case should ideally not happen if thinking messages aren't persisted.
+    // If it does, remove the transient thinking message.
+    const currentChatHistoryArray =
+      mainRendererReferences.currentChatHistoryRef.get();
+    const thinkingMsgIndex = currentChatHistoryArray.findIndex(
+      (m) => m.id === message.id && m.isThinking
+    );
+    if (thinkingMsgIndex > -1) {
+      currentChatHistoryArray.splice(thinkingMsgIndex, 1);
+      mainRendererReferences.currentChatHistoryRef.set(currentChatHistoryArray);
     }
+    messageItem.remove();
+    return null;
+  }
 
-    // Highlighting is now part of processRenderedContent
+  // Highlighting is now part of processRenderedContent
 
-    if (appendToDom) {
-        mainRendererReferences.uiHelper.scrollToBottom();
-    }
-    return messageItem;
+  if (appendToDom) {
+    mainRendererReferences.uiHelper.scrollToBottom();
+  }
+  return messageItem;
 }
 
 function startStreamingMessage(message, messageItem = null) {
-    return streamManager.startStreamingMessage(message, messageItem);
+  return streamManager.startStreamingMessage(message, messageItem);
 }
 
-
 function appendStreamChunk(messageId, chunkData, context) {
-    streamManager.appendStreamChunk(messageId, chunkData, context);
+  streamManager.appendStreamChunk(messageId, chunkData, context);
 }
 
 /**
@@ -2069,43 +2527,55 @@ function appendStreamChunk(messageId, chunkData, context) {
  * 在finalize时补充推送。如果流式推送已经成功处理过，这里不会重复推送。
  */
 function extractAndPushDesktopBlocks(content) {
-    // 此函数已被流式推送（processDesktopPushToken + setInterval）取代
-    // 仅在非流式场景（如历史消息重新渲染）中作为兜底
-    // 流式场景下，streamManager已经在token流中完成了推送，不需要重复
-    //
-    // 判断依据：如果桌面画布已存在挂件，说明流式推送已成功，跳过兜底
-    // 目前简单处理：完全禁用兜底推送，因为流式推送已经工作
-    // 未来可以加更智能的去重逻辑（基于widgetId映射）
+  // 此函数已被流式推送（processDesktopPushToken + setInterval）取代
+  // 仅在非流式场景（如历史消息重新渲染）中作为兜底
+  // 流式场景下，streamManager已经在token流中完成了推送，不需要重复
+  //
+  // 判断依据：如果桌面画布已存在挂件，说明流式推送已成功，跳过兜底
+  // 目前简单处理：完全禁用兜底推送，因为流式推送已经工作
+  // 未来可以加更智能的去重逻辑（基于widgetId映射）
 }
 
-async function finalizeStreamedMessage(messageId, finishReason, context, finalPayload = null) {
-    // 责任完全在 streamManager 内部，它应该使用自己拼接好的文本。
-    // 我们现在只传递必要的元数据。
-    await streamManager.finalizeStreamedMessage(messageId, finishReason, context, finalPayload);
+async function finalizeStreamedMessage(
+  messageId,
+  finishReason,
+  context,
+  finalPayload = null
+) {
+  // 责任完全在 streamManager 内部，它应该使用自己拼接好的文本。
+  // 我们现在只传递必要的元数据。
+  await streamManager.finalizeStreamedMessage(
+    messageId,
+    finishReason,
+    context,
+    finalPayload
+  );
 
-    // --- 核心修复：流式结束后，对完整内容重新应用前端正则 ---
-    // 这是为了解决流式传输导致正则表达式（如元思考链）被分割而无法匹配的问题
-    const finalMessage = mainRendererReferences.currentChatHistoryRef.get().find(m => m.id === messageId);
-    if (finalMessage) {
-        // 使用 updateMessageContent 来安全地重新渲染消息，这将触发我们之前添加的正则逻辑
-        updateMessageContent(messageId, finalMessage.content);
+  // --- 核心修复：流式结束后，对完整内容重新应用前端正则 ---
+  // 这是为了解决流式传输导致正则表达式（如元思考链）被分割而无法匹配的问题
+  const finalMessage = mainRendererReferences.currentChatHistoryRef
+    .get()
+    .find((m) => m.id === messageId);
+  if (finalMessage) {
+    // 使用 updateMessageContent 来安全地重新渲染消息，这将触发我们之前添加的正则逻辑
+    updateMessageContent(messageId, finalMessage.content);
 
-        // --- VCPdesktop：从完整内容中提取桌面推送块，一次性推送到桌面画布 ---
-        extractAndPushDesktopBlocks(finalMessage.content);
+    // --- VCPdesktop：从完整内容中提取桌面推送块，一次性推送到桌面画布 ---
+    extractAndPushDesktopBlocks(finalMessage.content);
+  }
+  // --- 修复结束 ---
+
+  // After the stream is finalized in the DOM, find the message and render any mermaid blocks.
+  const messageItem = mainRendererReferences.chatMessagesDiv.querySelector(
+    `.message-item[data-message-id="${messageId}"]`
+  );
+  if (messageItem) {
+    const contentDiv = messageItem.querySelector(".md-content");
+    if (contentDiv) {
+      await renderMermaidDiagrams(contentDiv);
     }
-    // --- 修复结束 ---
-
-    // After the stream is finalized in the DOM, find the message and render any mermaid blocks.
-    const messageItem = mainRendererReferences.chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
-    if (messageItem) {
-        const contentDiv = messageItem.querySelector('.md-content');
-        if (contentDiv) {
-            await renderMermaidDiagrams(contentDiv);
-        }
-    }
+  }
 }
-
-
 
 /**
  * Renders a full, non-streamed message, replacing a 'thinking' placeholder.
@@ -2115,211 +2585,307 @@ async function finalizeStreamedMessage(messageId, finishReason, context, finalPa
  * @param {string} agentId - The ID of the agent sending the message.
  */
 async function renderFullMessage(messageId, fullContent, agentName, agentId) {
-    console.debug(`[MessageRenderer renderFullMessage] Rendering full message for ID: ${messageId}`);
-    const { chatMessagesDiv, electronAPI, uiHelper, markedInstance } = mainRendererReferences;
-    const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
-    const currentSelectedItem = mainRendererReferences.currentSelectedItemRef.get();
-    const currentTopicIdVal = mainRendererReferences.currentTopicIdRef.get();
+  console.debug(
+    `[MessageRenderer renderFullMessage] Rendering full message for ID: ${messageId}`
+  );
+  const { chatMessagesDiv, electronAPI, uiHelper, markedInstance } =
+    mainRendererReferences;
+  const currentChatHistoryArray =
+    mainRendererReferences.currentChatHistoryRef.get();
+  const currentSelectedItem =
+    mainRendererReferences.currentSelectedItemRef.get();
+  const currentTopicIdVal = mainRendererReferences.currentTopicIdRef.get();
 
-    // --- Update History First ---
-    const messageIndex = currentChatHistoryArray.findIndex(msg => msg.id === messageId);
-    if (messageIndex > -1) {
-        const message = currentChatHistoryArray[messageIndex];
-        message.content = fullContent;
-        message.isThinking = false;
-        message.finishReason = 'completed_non_streamed';
-        message.name = agentName || message.name;
-        message.agentId = agentId || message.agentId;
-        mainRendererReferences.currentChatHistoryRef.set([...currentChatHistoryArray]);
+  // --- Update History First ---
+  const messageIndex = currentChatHistoryArray.findIndex(
+    (msg) => msg.id === messageId
+  );
+  if (messageIndex > -1) {
+    const message = currentChatHistoryArray[messageIndex];
+    message.content = fullContent;
+    message.isThinking = false;
+    message.finishReason = "completed_non_streamed";
+    message.name = agentName || message.name;
+    message.agentId = agentId || message.agentId;
+    mainRendererReferences.currentChatHistoryRef.set([
+      ...currentChatHistoryArray,
+    ]);
 
-        // Save history
-        if (currentSelectedItem && currentSelectedItem.id && currentTopicIdVal && currentSelectedItem.type === 'group') {
-            if (electronAPI.saveGroupChatHistory) {
-                try {
-                    await electronAPI.saveGroupChatHistory(currentSelectedItem.id, currentTopicIdVal, currentChatHistoryArray.filter(m => !m.isThinking));
-                } catch (error) {
-                    console.error(`[MR renderFullMessage] FAILED to save GROUP history for ${currentSelectedItem.id}, topic ${currentTopicIdVal}:`, error);
-                }
-            }
+    // Save history
+    if (
+      currentSelectedItem &&
+      currentSelectedItem.id &&
+      currentTopicIdVal &&
+      currentSelectedItem.type === "group"
+    ) {
+      if (electronAPI.saveGroupChatHistory) {
+        try {
+          await electronAPI.saveGroupChatHistory(
+            currentSelectedItem.id,
+            currentTopicIdVal,
+            currentChatHistoryArray.filter((m) => !m.isThinking)
+          );
+        } catch (error) {
+          console.error(
+            `[MR renderFullMessage] FAILED to save GROUP history for ${currentSelectedItem.id}, topic ${currentTopicIdVal}:`,
+            error
+          );
         }
-    } else {
-        console.warn(`[renderFullMessage] Message ID ${messageId} not found in history. UI will be updated, but history may be inconsistent.`);
-        // Even if not in history, we might still want to render it if the DOM element exists (e.g., from a 'thinking' state)
+      }
     }
+  } else {
+    console.warn(
+      `[renderFullMessage] Message ID ${messageId} not found in history. UI will be updated, but history may be inconsistent.`
+    );
+    // Even if not in history, we might still want to render it if the DOM element exists (e.g., from a 'thinking' state)
+  }
 
-    const messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
-    if (!messageItem) {
-        console.debug(`[renderFullMessage] No DOM element for ${messageId}. History updated, UI skipped.`);
-        return; // No UI to update, but history is now consistent.
+  const messageItem = chatMessagesDiv.querySelector(
+    `.message-item[data-message-id="${messageId}"]`
+  );
+  if (!messageItem) {
+    console.debug(
+      `[renderFullMessage] No DOM element for ${messageId}. History updated, UI skipped.`
+    );
+    return; // No UI to update, but history is now consistent.
+  }
+
+  messageItem.classList.remove("thinking", "streaming");
+  window.updateSendButtonState?.();
+
+  const contentDiv = messageItem.querySelector(".md-content");
+  if (!contentDiv) {
+    console.error(
+      `[renderFullMessage] Could not find .md-content div for message ID ${messageId}.`
+    );
+    return;
+  }
+
+  // Update timestamp display if it was missing
+  const nameTimeBlock = messageItem.querySelector(".name-time-block");
+  if (nameTimeBlock && !nameTimeBlock.querySelector(".message-timestamp")) {
+    const timestampDiv = document.createElement("div");
+    timestampDiv.classList.add("message-timestamp");
+    const messageFromHistory = currentChatHistoryArray.find(
+      (m) => m.id === messageId
+    );
+    timestampDiv.textContent = formatMessageTimestamp(
+      messageFromHistory?.timestamp || Date.now()
+    );
+    nameTimeBlock.appendChild(timestampDiv);
+  }
+
+  // --- Update DOM ---
+  const globalSettings = mainRendererReferences.globalSettingsRef.get();
+  // --- 应用前端正则规则 (修复流式处理问题) ---
+  const agentConfigForRegex =
+    currentSelectedItem?.config || currentSelectedItem;
+  const messageFromHistoryForRegex = currentChatHistoryArray.find(
+    (msg) => msg.id === messageId
+  );
+  if (
+    agentConfigForRegex?.stripRegexes &&
+    Array.isArray(agentConfigForRegex.stripRegexes) &&
+    messageFromHistoryForRegex
+  ) {
+    const depth = calculateDepthByTurns(messageId, currentChatHistoryArray);
+    fullContent = applyFrontendRegexRules(
+      fullContent,
+      agentConfigForRegex.stripRegexes,
+      messageFromHistoryForRegex.role,
+      depth
+    );
+  }
+  // --- 正则规则应用结束 ---
+  const { text: processedFinalText, toolResultMap: toolResultMapFinal } =
+    preprocessFullContent(fullContent, globalSettings, "assistant");
+  // 🟢 LaTeX 保护：在 marked 解析前保护 LaTeX 块
+  const { text: protectedFinalText, map: latexMapFinal } =
+    protectLatexBlocks(processedFinalText);
+  let rawHtml = markedInstance.parse(protectedFinalText);
+  // 🟢 LaTeX 恢复：在 marked 解析后恢复 LaTeX 块
+  rawHtml = restoreLatexBlocks(rawHtml, latexMapFinal);
+  // 🟢 工具结果恢复
+  rawHtml = restoreRenderedToolResults(rawHtml, toolResultMapFinal);
+
+  setContentAndProcessImages(contentDiv, rawHtml, messageId);
+
+  // Apply post-processing in two steps
+  // Step 1: Synchronous processing
+  contentProcessor.processRenderedContent(contentDiv, globalSettings);
+  await renderMermaidDiagrams(contentDiv);
+
+  // Step 2: Asynchronous, deferred highlighting for DOM stability with a hardcoded delay
+  setTimeout(() => {
+    if (contentDiv && contentDiv.isConnected) {
+      contentProcessor.highlightAllPatternsInMessage(contentDiv);
     }
+  }, 0);
 
-    messageItem.classList.remove('thinking', 'streaming');
-    window.updateSendButtonState?.();
+  // After content is rendered, run animations/scripts/3D scenes
+  processAnimationsInContent(contentDiv);
 
-    const contentDiv = messageItem.querySelector('.md-content');
-    if (!contentDiv) {
-        console.error(`[renderFullMessage] Could not find .md-content div for message ID ${messageId}.`);
-        return;
-    }
-
-    // Update timestamp display if it was missing
-    const nameTimeBlock = messageItem.querySelector('.name-time-block');
-    if (nameTimeBlock && !nameTimeBlock.querySelector('.message-timestamp')) {
-        const timestampDiv = document.createElement('div');
-        timestampDiv.classList.add('message-timestamp');
-        const messageFromHistory = currentChatHistoryArray.find(m => m.id === messageId);
-        timestampDiv.textContent = formatMessageTimestamp(messageFromHistory?.timestamp || Date.now());
-        nameTimeBlock.appendChild(timestampDiv);
-    }
-
-    // --- Update DOM ---
-    const globalSettings = mainRendererReferences.globalSettingsRef.get();
-    // --- 应用前端正则规则 (修复流式处理问题) ---
-    const agentConfigForRegex = currentSelectedItem?.config || currentSelectedItem;
-    const messageFromHistoryForRegex = currentChatHistoryArray.find(msg => msg.id === messageId);
-    if (agentConfigForRegex?.stripRegexes && Array.isArray(agentConfigForRegex.stripRegexes) && messageFromHistoryForRegex) {
-        const depth = calculateDepthByTurns(messageId, currentChatHistoryArray);
-        fullContent = applyFrontendRegexRules(fullContent, agentConfigForRegex.stripRegexes, messageFromHistoryForRegex.role, depth);
-    }
-    // --- 正则规则应用结束 ---
-    const { text: processedFinalText, toolResultMap: toolResultMapFinal } = preprocessFullContent(fullContent, globalSettings, 'assistant');
-    // 🟢 LaTeX 保护：在 marked 解析前保护 LaTeX 块
-    const { text: protectedFinalText, map: latexMapFinal } = protectLatexBlocks(processedFinalText);
-    let rawHtml = markedInstance.parse(protectedFinalText);
-    // 🟢 LaTeX 恢复：在 marked 解析后恢复 LaTeX 块
-    rawHtml = restoreLatexBlocks(rawHtml, latexMapFinal);
-    // 🟢 工具结果恢复
-    rawHtml = restoreRenderedToolResults(rawHtml, toolResultMapFinal);
-
-    setContentAndProcessImages(contentDiv, rawHtml, messageId);
-
-    // Apply post-processing in two steps
-    // Step 1: Synchronous processing
-    contentProcessor.processRenderedContent(contentDiv, globalSettings);
-    await renderMermaidDiagrams(contentDiv);
-
-    // Step 2: Asynchronous, deferred highlighting for DOM stability with a hardcoded delay
-    setTimeout(() => {
-        if (contentDiv && contentDiv.isConnected) {
-            contentProcessor.highlightAllPatternsInMessage(contentDiv);
-        }
-    }, 0);
-
-    // After content is rendered, run animations/scripts/3D scenes
-    processAnimationsInContent(contentDiv);
-
-    mainRendererReferences.uiHelper.scrollToBottom();
+  mainRendererReferences.uiHelper.scrollToBottom();
 }
 
 function scheduleMessagePretextEstimate(messageId, text, container) {
-    if (!window.pretextBridge || !window.pretextBridge.isReady() || !messageId || !text) return;
+  if (
+    !window.pretextBridge ||
+    !window.pretextBridge.isReady() ||
+    !messageId ||
+    !text
+  )
+    return;
 
-    const run = () => {
-        try {
-            const containerWidth = container ? container.clientWidth : 800;
-            window.pretextBridge.estimateHeight(messageId, text, 'body', containerWidth);
-        } catch (e) {
-            // Pretext 失败不影响正常渲染
-        }
-    };
-
-    if (typeof window.requestIdleCallback === 'function') {
-        window.requestIdleCallback(run, { timeout: 300 });
-    } else {
-        setTimeout(run, 0);
+  const run = () => {
+    try {
+      const containerWidth = container ? container.clientWidth : 800;
+      window.pretextBridge.estimateHeight(
+        messageId,
+        text,
+        "body",
+        containerWidth
+      );
+    } catch (e) {
+      // Pretext 失败不影响正常渲染
     }
+  };
+
+  if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(run, { timeout: 300 });
+  } else {
+    setTimeout(run, 0);
+  }
 }
 
 function updateMessageContent(messageId, newContent) {
-    const { chatMessagesDiv, markedInstance, globalSettingsRef } = mainRendererReferences;
-    const messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
-    if (!messageItem) return;
+  const { chatMessagesDiv, markedInstance, globalSettingsRef } =
+    mainRendererReferences;
+  const messageItem = chatMessagesDiv.querySelector(
+    `.message-item[data-message-id="${messageId}"]`
+  );
+  if (!messageItem) return;
 
-    const contentDiv = messageItem.querySelector('.md-content');
-    if (!contentDiv) return;
+  const contentDiv = messageItem.querySelector(".md-content");
+  if (!contentDiv) return;
 
-    const globalSettings = globalSettingsRef.get();
-    let textToRender = (typeof newContent === 'string') ? newContent : (newContent?.text || "[内容格式异常]");
+  const globalSettings = globalSettingsRef.get();
+  let textToRender =
+    typeof newContent === "string"
+      ? newContent
+      : newContent?.text || "[内容格式异常]";
 
-    // --- 深度计算 (用于历史消息渲染) ---
-    const currentChatHistoryForUpdate = mainRendererReferences.currentChatHistoryRef.get();
-    const messageInHistory = currentChatHistoryForUpdate.find(m => m.id === messageId);
+  // --- 深度计算 (用于历史消息渲染) ---
+  const currentChatHistoryForUpdate =
+    mainRendererReferences.currentChatHistoryRef.get();
+  const messageInHistory = currentChatHistoryForUpdate.find(
+    (m) => m.id === messageId
+  );
 
-    if (messageInHistory && messageInHistory.role === 'user') {
-        textToRender = prepareUserMessageText(textToRender);
+  if (messageInHistory && messageInHistory.role === "user") {
+    textToRender = prepareUserMessageText(textToRender);
+  }
+
+  // --- 按“对话轮次”计算深度 ---
+  const depthForUpdate = calculateDepthByTurns(
+    messageId,
+    currentChatHistoryForUpdate
+  );
+  // --- 深度计算结束 ---
+  // --- 应用前端正则规则 (修复流式处理问题) ---
+  const currentSelectedItem =
+    mainRendererReferences.currentSelectedItemRef.get();
+  const agentConfigForRegex =
+    currentSelectedItem?.config || currentSelectedItem;
+  if (
+    agentConfigForRegex?.stripRegexes &&
+    Array.isArray(agentConfigForRegex.stripRegexes) &&
+    messageInHistory
+  ) {
+    textToRender = applyFrontendRegexRules(
+      textToRender,
+      agentConfigForRegex.stripRegexes,
+      messageInHistory.role,
+      depthForUpdate
+    );
+  }
+  // --- 正则规则应用结束 ---
+  const { text: processedContent, toolResultMap: toolResultMapUpdate } =
+    preprocessFullContent(
+      textToRender,
+      globalSettings,
+      messageInHistory?.role || "assistant",
+      depthForUpdate
+    );
+  // 🟢 LaTeX 保护：在 marked 解析前保护 LaTeX 块
+  const { text: protectedContentUpdate, map: latexMapUpdate } =
+    protectLatexBlocks(processedContent);
+  let rawHtml = markedInstance.parse(protectedContentUpdate);
+  // 🟢 LaTeX 恢复：在 marked 解析后恢复 LaTeX 块
+  rawHtml = restoreLatexBlocks(rawHtml, latexMapUpdate);
+  // 🟢 工具结果恢复
+  rawHtml = restoreRenderedToolResults(rawHtml, toolResultMapUpdate);
+
+  // --- Post-Render Processing (aligned with renderMessage logic) ---
+
+  // 1. Set content and process images
+  setContentAndProcessImages(contentDiv, rawHtml, messageId);
+
+  // 2. Re-render attachments if they exist
+  if (messageInHistory) {
+    const existingAttachments = contentDiv.querySelector(
+      ".message-attachments"
+    );
+    if (existingAttachments) existingAttachments.remove();
+    renderAttachments({ ...messageInHistory, content: newContent }, contentDiv);
+  }
+
+  // 3. Synchronous processing (KaTeX, buttons, etc.)
+  contentProcessor.processRenderedContent(contentDiv, globalSettings);
+  renderMermaidDiagrams(contentDiv); // Fire-and-forget async rendering
+
+  // 4. Asynchronous, deferred highlighting for DOM stability
+  setTimeout(() => {
+    if (contentDiv && contentDiv.isConnected) {
+      contentProcessor.highlightAllPatternsInMessage(contentDiv);
     }
+  }, 0);
 
-    // --- 按“对话轮次”计算深度 ---
-    const depthForUpdate = calculateDepthByTurns(messageId, currentChatHistoryForUpdate);
-    // --- 深度计算结束 ---
-    // --- 应用前端正则规则 (修复流式处理问题) ---
-    const currentSelectedItem = mainRendererReferences.currentSelectedItemRef.get();
-    const agentConfigForRegex = currentSelectedItem?.config || currentSelectedItem;
-    if (agentConfigForRegex?.stripRegexes && Array.isArray(agentConfigForRegex.stripRegexes) && messageInHistory) {
-        textToRender = applyFrontendRegexRules(textToRender, agentConfigForRegex.stripRegexes, messageInHistory.role, depthForUpdate);
-    }
-    // --- 正则规则应用结束 ---
-    const { text: processedContent, toolResultMap: toolResultMapUpdate } = preprocessFullContent(textToRender, globalSettings, messageInHistory?.role || 'assistant', depthForUpdate);
-    // 🟢 LaTeX 保护：在 marked 解析前保护 LaTeX 块
-    const { text: protectedContentUpdate, map: latexMapUpdate } = protectLatexBlocks(processedContent);
-    let rawHtml = markedInstance.parse(protectedContentUpdate);
-    // 🟢 LaTeX 恢复：在 marked 解析后恢复 LaTeX 块
-    rawHtml = restoreLatexBlocks(rawHtml, latexMapUpdate);
-    // 🟢 工具结果恢复
-    rawHtml = restoreRenderedToolResults(rawHtml, toolResultMapUpdate);
-
-    // --- Post-Render Processing (aligned with renderMessage logic) ---
-
-    // 1. Set content and process images
-    setContentAndProcessImages(contentDiv, rawHtml, messageId);
-
-    // 2. Re-render attachments if they exist
-    if (messageInHistory) {
-        const existingAttachments = contentDiv.querySelector('.message-attachments');
-        if (existingAttachments) existingAttachments.remove();
-        renderAttachments({ ...messageInHistory, content: newContent }, contentDiv);
-    }
-
-    // 3. Synchronous processing (KaTeX, buttons, etc.)
-    contentProcessor.processRenderedContent(contentDiv, globalSettings);
-    renderMermaidDiagrams(contentDiv); // Fire-and-forget async rendering
-
-    // 4. Asynchronous, deferred highlighting for DOM stability
-    setTimeout(() => {
-        if (contentDiv && contentDiv.isConnected) {
-            contentProcessor.highlightAllPatternsInMessage(contentDiv);
-        }
-    }, 0);
-
-    // 5. Re-run animations/scripts/3D scenes
-    processAnimationsInContent(contentDiv);
+  // 5. Re-run animations/scripts/3D scenes
+  processAnimationsInContent(contentDiv);
 }
 
 function prepareUserMessageText(text) {
-    let processedText = text;
+  let processedText = text;
 
-    // 🔴 关键安全修复：用户输入属于不可信内容，必须先行进行 HTML 转义以防 XSS
-    // 🟢 改进：允许用户发送 <img> 标签（表情包），但需排除包含事件处理器的恶意标签
-    const userImgBlocks = [];
-    processedText = processedText.replace(/<img\s+[^>]*src=["']([^"']+)["'][^>]*>/gi, (match) => {
-        if (/on\w+\s*=/i.test(match) || /src\s*=\s*["']\s*javascript:/i.test(match)) {
-            return match;
-        }
-        const placeholder = `__VCP_USER_IMG_${userImgBlocks.length}__`;
-        userImgBlocks.push(match);
-        return placeholder;
-    });
+  // 🔴 关键安全修复：用户输入属于不可信内容，必须先行进行 HTML 转义以防 XSS
+  // 🟢 改进：允许用户发送 <img> 标签（表情包），但需排除包含事件处理器的恶意标签
+  const userImgBlocks = [];
+  processedText = processedText.replace(
+    /<img\s+[^>]*src=["']([^"']+)["'][^>]*>/gi,
+    (match) => {
+      if (
+        /on\w+\s*=/i.test(match) ||
+        /src\s*=\s*["']\s*javascript:/i.test(match)
+      ) {
+        return match;
+      }
+      const placeholder = `__VCP_USER_IMG_${userImgBlocks.length}__`;
+      userImgBlocks.push(match);
+      return placeholder;
+    }
+  );
 
-    processedText = escapeHtml(processedText);
+  processedText = escapeHtml(processedText);
 
-    userImgBlocks.forEach((img, i) => {
-        processedText = processedText.replace(`__VCP_USER_IMG_${i}__`, img);
-    });
+  userImgBlocks.forEach((img, i) => {
+    processedText = processedText.replace(`__VCP_USER_IMG_${i}__`, img);
+  });
 
-    processedText = transformUserButtonClick(processedText);
-    processedText = transformVCPChatCanvas(processedText);
+  processedText = transformUserButtonClick(processedText);
+  processedText = transformVCPChatCanvas(processedText);
 
-    return processedText;
+  return processedText;
 }
 
 // Expose methods to renderer.js
@@ -2333,47 +2899,52 @@ function prepareUserMessageText(text) {
  * @param {number} options.batchDelay - Delay between batches in ms (default: 100)
  */
 async function renderHistory(history, options = {}) {
-    const renderSessionId = invalidateRenderSession();
+  const renderSessionId = invalidateRenderSession();
 
-    const {
-        initialBatch = 5,
-        batchSize = 10,
-        batchDelay = 100
-    } = options;
+  const { initialBatch = 5, batchSize = 10, batchDelay = 100 } = options;
 
-    // 核心修复：在开始批量渲染前，只等待一次依赖项。
-    await emoticonUrlFixer.initialize(mainRendererReferences.electronAPI);
+  // 核心修复：在开始批量渲染前，只等待一次依赖项。
+  await emoticonUrlFixer.initialize(mainRendererReferences.electronAPI);
 
-    if (!history || history.length === 0) {
-        return Promise.resolve();
-    }
+  if (!history || history.length === 0) {
+    return Promise.resolve();
+  }
 
-    // 如果消息数量很少，直接使用原来的方式渲染
-    if (history.length <= initialBatch) {
-        return renderHistoryLegacy(history, renderSessionId);
-    }
+  // 如果消息数量很少，直接使用原来的方式渲染
+  if (history.length <= initialBatch) {
+    return renderHistoryLegacy(history, renderSessionId);
+  }
 
-    console.debug(`[MessageRenderer] 开始分批渲染 ${history.length} 条消息，首批 ${initialBatch} 条，后续每批 ${batchSize} 条`);
+  console.debug(
+    `[MessageRenderer] 开始分批渲染 ${history.length} 条消息，首批 ${initialBatch} 条，后续每批 ${batchSize} 条`
+  );
 
-    // 分离最新的消息和历史消息
-    const latestMessages = history.slice(-initialBatch);
-    const olderMessages = history.slice(0, -initialBatch);
+  // 分离最新的消息和历史消息
+  const latestMessages = history.slice(-initialBatch);
+  const olderMessages = history.slice(0, -initialBatch);
 
-    // 第一阶段：立即渲染最新的消息
-    await renderMessageBatch(latestMessages, true, renderSessionId);
-    if (!isRenderSessionActive(renderSessionId)) return;
-    console.debug(`[MessageRenderer] 首批 ${latestMessages.length} 条最新消息已渲染`);
+  // 第一阶段：立即渲染最新的消息
+  await renderMessageBatch(latestMessages, true, renderSessionId);
+  if (!isRenderSessionActive(renderSessionId)) return;
+  console.debug(
+    `[MessageRenderer] 首批 ${latestMessages.length} 条最新消息已渲染`
+  );
 
-    // 第二阶段：分批渲染历史消息（从旧到新）
-    if (olderMessages.length > 0) {
-        await renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay, renderSessionId);
-    }
+  // 第二阶段：分批渲染历史消息（从旧到新）
+  if (olderMessages.length > 0) {
+    await renderOlderMessagesInBatches(
+      olderMessages,
+      batchSize,
+      batchDelay,
+      renderSessionId
+    );
+  }
 
-    if (!isRenderSessionActive(renderSessionId)) return;
+  if (!isRenderSessionActive(renderSessionId)) return;
 
-    // 最终滚动到底部
-    mainRendererReferences.uiHelper.scrollToBottom();
-    console.debug(`[MessageRenderer] 所有 ${history.length} 条消息渲染完成`);
+  // 最终滚动到底部
+  mainRendererReferences.uiHelper.scrollToBottom();
+  console.debug(`[MessageRenderer] 所有 ${history.length} 条消息渲染完成`);
 }
 
 /**
@@ -2381,68 +2952,74 @@ async function renderHistory(history, options = {}) {
  * @param {Array<Message>} messages 要渲染的消息数组
  * @param {boolean} scrollToBottom 是否滚动到底部
  */
-async function renderMessageBatch(messages, scrollToBottom = false, renderSessionId = getActiveRenderSessionId()) {
-    if (!isRenderSessionActive(renderSessionId)) return;
+async function renderMessageBatch(
+  messages,
+  scrollToBottom = false,
+  renderSessionId = getActiveRenderSessionId()
+) {
+  if (!isRenderSessionActive(renderSessionId)) return;
 
-    const fragment = document.createDocumentFragment();
-    const messageElements = [];
+  const fragment = document.createDocumentFragment();
+  const messageElements = [];
 
-    // 使用 Promise.allSettled 避免单个失败影响整体
-    const results = await Promise.allSettled(
-        messages.map(msg => renderMessage(msg, true, false, renderSessionId))
-    );
+  // 使用 Promise.allSettled 避免单个失败影响整体
+  const results = await Promise.allSettled(
+    messages.map((msg) => renderMessage(msg, true, false, renderSessionId))
+  );
 
-    results.forEach((result, index) => {
-        if (result.status === 'fulfilled' && result.value) {
-            messageElements.push(result.value);
-        } else {
-            console.error(`Failed to render message ${messages[index].id}:`,
-                result.reason);
+  results.forEach((result, index) => {
+    if (result.status === "fulfilled" && result.value) {
+      messageElements.push(result.value);
+    } else {
+      console.error(
+        `Failed to render message ${messages[index].id}:`,
+        result.reason
+      );
+    }
+  });
+
+  if (!isRenderSessionActive(renderSessionId)) return;
+
+  // 一次性添加到 fragment
+  messageElements.forEach((el) => fragment.appendChild(el));
+
+  // 使用 requestAnimationFrame 确保 DOM 更新不阻塞 UI
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      if (!isRenderSessionActive(renderSessionId)) {
+        resolve();
+        return;
+      }
+
+      // Step 1: Append all elements to the DOM at once.
+      mainRendererReferences.chatMessagesDiv.appendChild(fragment);
+
+      // Step 2: Now that they are in the DOM, run the deferred processing for each.
+      messageElements.forEach((el) => {
+        if (!isRenderSessionActive(renderSessionId) || !el.isConnected) {
+          if (typeof el._vcp_process === "function") {
+            delete el._vcp_process;
+          }
+          delete el._vcp_renderSessionId;
+          return;
         }
+
+        // 观察批量渲染的消息
+        visibilityOptimizer.observeMessage(el);
+
+        if (typeof el._vcp_process === "function") {
+          el._vcp_process();
+          delete el._vcp_process; // Clean up to avoid memory leaks
+        }
+        delete el._vcp_renderSessionId;
+      });
+
+      if (scrollToBottom && isRenderSessionActive(renderSessionId)) {
+        mainRendererReferences.uiHelper.scrollToBottom();
+      }
+      resolve();
     });
-
-    if (!isRenderSessionActive(renderSessionId)) return;
-
-    // 一次性添加到 fragment
-    messageElements.forEach(el => fragment.appendChild(el));
-
-    // 使用 requestAnimationFrame 确保 DOM 更新不阻塞 UI
-    return new Promise(resolve => {
-        requestAnimationFrame(() => {
-            if (!isRenderSessionActive(renderSessionId)) {
-                resolve();
-                return;
-            }
-
-            // Step 1: Append all elements to the DOM at once.
-            mainRendererReferences.chatMessagesDiv.appendChild(fragment);
-
-            // Step 2: Now that they are in the DOM, run the deferred processing for each.
-            messageElements.forEach(el => {
-                if (!isRenderSessionActive(renderSessionId) || !el.isConnected) {
-                    if (typeof el._vcp_process === 'function') {
-                        delete el._vcp_process;
-                    }
-                    delete el._vcp_renderSessionId;
-                    return;
-                }
-
-                // 观察批量渲染的消息
-                visibilityOptimizer.observeMessage(el);
-
-                if (typeof el._vcp_process === 'function') {
-                    el._vcp_process();
-                    delete el._vcp_process; // Clean up to avoid memory leaks
-                }
-                delete el._vcp_renderSessionId;
-            });
-
-            if (scrollToBottom && isRenderSessionActive(renderSessionId)) {
-                mainRendererReferences.uiHelper.scrollToBottom();
-            }
-            resolve();
-        });
-    });
+  });
 }
 
 /**
@@ -2454,216 +3031,248 @@ async function renderMessageBatch(messages, scrollToBottom = false, renderSessio
 /**
  * 智能批量渲染：使用 requestIdleCallback 在浏览器空闲时渲染
  */
-async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay, renderSessionId = getActiveRenderSessionId()) {
-    const totalBatches = Math.ceil(olderMessages.length / batchSize);
+async function renderOlderMessagesInBatches(
+  olderMessages,
+  batchSize,
+  batchDelay,
+  renderSessionId = getActiveRenderSessionId()
+) {
+  const totalBatches = Math.ceil(olderMessages.length / batchSize);
 
-    for (let i = totalBatches - 1; i >= 0; i--) {
-        if (!isRenderSessionActive(renderSessionId)) return;
+  for (let i = totalBatches - 1; i >= 0; i--) {
+    if (!isRenderSessionActive(renderSessionId)) return;
 
-        const startIndex = i * batchSize;
-        const endIndex = Math.min(startIndex + batchSize, olderMessages.length);
-        const batch = olderMessages.slice(startIndex, endIndex);
+    const startIndex = i * batchSize;
+    const endIndex = Math.min(startIndex + batchSize, olderMessages.length);
+    const batch = olderMessages.slice(startIndex, endIndex);
 
-        // 创建批次 fragment
-        const batchFragment = document.createDocumentFragment();
-        const elementsForProcessing = [];
+    // 创建批次 fragment
+    const batchFragment = document.createDocumentFragment();
+    const elementsForProcessing = [];
 
-        for (const msg of batch) {
-            if (!isRenderSessionActive(renderSessionId)) return;
+    for (const msg of batch) {
+      if (!isRenderSessionActive(renderSessionId)) return;
 
-            const messageElement = await renderMessage(msg, true, false, renderSessionId);
-            if (messageElement) {
-                batchFragment.appendChild(messageElement);
-                elementsForProcessing.push(messageElement);
-            }
+      const messageElement = await renderMessage(
+        msg,
+        true,
+        false,
+        renderSessionId
+      );
+      if (messageElement) {
+        batchFragment.appendChild(messageElement);
+        elementsForProcessing.push(messageElement);
+      }
+    }
+
+    // 🟢 使用 requestIdleCallback 在空闲时插入（降级到 requestAnimationFrame）
+    await new Promise((resolve) => {
+      const insertBatch = () => {
+        if (!isRenderSessionActive(renderSessionId)) {
+          resolve();
+          return;
         }
 
-        // 🟢 使用 requestIdleCallback 在空闲时插入（降级到 requestAnimationFrame）
-        await new Promise(resolve => {
-            const insertBatch = () => {
-                if (!isRenderSessionActive(renderSessionId)) {
-                    resolve();
-                    return;
-                }
+        const chatMessagesDiv = mainRendererReferences.chatMessagesDiv;
+        let insertPoint = chatMessagesDiv.firstChild;
+        while (insertPoint?.classList?.contains("topic-timestamp-bubble")) {
+          insertPoint = insertPoint.nextSibling;
+        }
 
-                const chatMessagesDiv = mainRendererReferences.chatMessagesDiv;
-                let insertPoint = chatMessagesDiv.firstChild;
-                while (insertPoint?.classList?.contains('topic-timestamp-bubble')) {
-                    insertPoint = insertPoint.nextSibling;
-                }
+        if (insertPoint) {
+          chatMessagesDiv.insertBefore(batchFragment, insertPoint);
+        } else {
+          chatMessagesDiv.appendChild(batchFragment);
+        }
 
-                if (insertPoint) {
-                    chatMessagesDiv.insertBefore(batchFragment, insertPoint);
-                } else {
-                    chatMessagesDiv.appendChild(batchFragment);
-                }
-
-                elementsForProcessing.forEach(el => {
-                    if (!isRenderSessionActive(renderSessionId) || !el.isConnected) {
-                        if (typeof el._vcp_process === 'function') {
-                            delete el._vcp_process;
-                        }
-                        delete el._vcp_renderSessionId;
-                        return;
-                    }
-
-                    // 观察批量渲染的历史消息
-                    visibilityOptimizer.observeMessage(el);
-
-                    if (typeof el._vcp_process === 'function') {
-                        el._vcp_process();
-                        delete el._vcp_process;
-                    }
-                    delete el._vcp_renderSessionId;
-                });
-
-                resolve();
-            };
-
-            // 优先使用 requestIdleCallback，不支持时降级到 rAF
-            if ('requestIdleCallback' in window) {
-                requestIdleCallback(insertBatch, { timeout: 1000 });
-            } else {
-                requestAnimationFrame(insertBatch);
+        elementsForProcessing.forEach((el) => {
+          if (!isRenderSessionActive(renderSessionId) || !el.isConnected) {
+            if (typeof el._vcp_process === "function") {
+              delete el._vcp_process;
             }
+            delete el._vcp_renderSessionId;
+            return;
+          }
+
+          // 观察批量渲染的历史消息
+          visibilityOptimizer.observeMessage(el);
+
+          if (typeof el._vcp_process === "function") {
+            el._vcp_process();
+            delete el._vcp_process;
+          }
+          delete el._vcp_renderSessionId;
         });
 
-        if (!isRenderSessionActive(renderSessionId)) return;
+        resolve();
+      };
 
-        // 动态调整延迟：如果批次小，减少延迟
-        if (i > 0 && batchDelay > 0) {
-            const actualDelay = batch.length < batchSize / 2 ? batchDelay / 2 : batchDelay;
-            await new Promise(resolve => setTimeout(resolve, actualDelay));
-        }
+      // 优先使用 requestIdleCallback，不支持时降级到 rAF
+      if ("requestIdleCallback" in window) {
+        requestIdleCallback(insertBatch, { timeout: 1000 });
+      } else {
+        requestAnimationFrame(insertBatch);
+      }
+    });
+
+    if (!isRenderSessionActive(renderSessionId)) return;
+
+    // 动态调整延迟：如果批次小，减少延迟
+    if (i > 0 && batchDelay > 0) {
+      const actualDelay =
+        batch.length < batchSize / 2 ? batchDelay / 2 : batchDelay;
+      await new Promise((resolve) => setTimeout(resolve, actualDelay));
     }
+  }
 }
 
 /**
  * 原始的历史渲染方法（用于少量消息的情况）
  * @param {Array<Message>} history 聊天历史
  */
-async function renderHistoryLegacy(history, renderSessionId = getActiveRenderSessionId()) {
+async function renderHistoryLegacy(
+  history,
+  renderSessionId = getActiveRenderSessionId()
+) {
+  if (!isRenderSessionActive(renderSessionId)) return;
+
+  const fragment = document.createDocumentFragment();
+  const allMessageElements = [];
+
+  // Phase 1: Create all message elements in memory without appending to DOM
+  for (const msg of history) {
     if (!isRenderSessionActive(renderSessionId)) return;
 
-    const fragment = document.createDocumentFragment();
-    const allMessageElements = [];
-
-    // Phase 1: Create all message elements in memory without appending to DOM
-    for (const msg of history) {
-        if (!isRenderSessionActive(renderSessionId)) return;
-
-        const messageElement = await renderMessage(msg, true, false, renderSessionId);
-        if (messageElement) {
-            allMessageElements.push(messageElement);
-        }
+    const messageElement = await renderMessage(
+      msg,
+      true,
+      false,
+      renderSessionId
+    );
+    if (messageElement) {
+      allMessageElements.push(messageElement);
     }
+  }
 
-    if (!isRenderSessionActive(renderSessionId)) return;
+  if (!isRenderSessionActive(renderSessionId)) return;
 
-    // Phase 2: Append all created elements at once using a DocumentFragment
-    allMessageElements.forEach(el => fragment.appendChild(el));
+  // Phase 2: Append all created elements at once using a DocumentFragment
+  allMessageElements.forEach((el) => fragment.appendChild(el));
 
-    return new Promise(resolve => {
-        requestAnimationFrame(() => {
-            if (!isRenderSessionActive(renderSessionId)) {
-                resolve();
-                return;
-            }
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      if (!isRenderSessionActive(renderSessionId)) {
+        resolve();
+        return;
+      }
 
-            // Step 1: Append all elements to the DOM.
-            mainRendererReferences.chatMessagesDiv.appendChild(fragment);
+      // Step 1: Append all elements to the DOM.
+      mainRendererReferences.chatMessagesDiv.appendChild(fragment);
 
-            // Step 2: Run the deferred processing for each element now that it's attached.
-            allMessageElements.forEach(el => {
-                if (!isRenderSessionActive(renderSessionId) || !el.isConnected) {
-                    if (typeof el._vcp_process === 'function') {
-                        delete el._vcp_process;
-                    }
-                    delete el._vcp_renderSessionId;
-                    return;
-                }
+      // Step 2: Run the deferred processing for each element now that it's attached.
+      allMessageElements.forEach((el) => {
+        if (!isRenderSessionActive(renderSessionId) || !el.isConnected) {
+          if (typeof el._vcp_process === "function") {
+            delete el._vcp_process;
+          }
+          delete el._vcp_renderSessionId;
+          return;
+        }
 
-                // 观察历史消息
-                visibilityOptimizer.observeMessage(el);
+        // 观察历史消息
+        visibilityOptimizer.observeMessage(el);
 
-                if (typeof el._vcp_process === 'function') {
-                    el._vcp_process();
-                    delete el._vcp_process; // Clean up
-                }
-                delete el._vcp_renderSessionId;
-            });
+        if (typeof el._vcp_process === "function") {
+          el._vcp_process();
+          delete el._vcp_process; // Clean up
+        }
+        delete el._vcp_renderSessionId;
+      });
 
-            if (isRenderSessionActive(renderSessionId)) {
-                mainRendererReferences.uiHelper.scrollToBottom();
-            }
-            resolve();
-        });
+      if (isRenderSessionActive(renderSessionId)) {
+        mainRendererReferences.uiHelper.scrollToBottom();
+      }
+      resolve();
     });
+  });
 }
 
 window.messageRenderer = {
-    initializeMessageRenderer,
-    setCurrentSelectedItem, // Keep for renderer.js to call
-    setCurrentTopicId,      // Keep for renderer.js to call
-    setCurrentItemAvatar,   // Renamed for clarity
-    setUserAvatar,
-    setCurrentItemAvatarColor, // Renamed
-    setUserAvatarColor,
-    renderMessage,
-    renderHistory, // Expose the new progressive batch rendering function
-    renderHistoryLegacy, // Expose the legacy rendering for compatibility
-    renderMessageBatch, // Expose batch rendering utility
-    startStreamingMessage,
-    appendStreamChunk,
-    finalizeStreamedMessage,
-    renderFullMessage,
-    clearChat,
-    removeMessageById,
-    updateMessageContent, // Expose the new function
-    extractSpeakableTextFromContentElement,
-    updateMessageUI: async (messageId, updatedMessage) => {
-        const { chatMessagesDiv } = mainRendererReferences;
-        const existingMessageDom = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
-        if (!existingMessageDom) return;
-        const newMessageDom = await renderMessage(updatedMessage, true, false);
-        if (newMessageDom) {
-            existingMessageDom.replaceWith(newMessageDom);
-            // 重新观察
-            visibilityOptimizer.observeMessage(newMessageDom);
-            // 运行后续处理 logic
-            if (typeof newMessageDom._vcp_process === 'function') {
-                newMessageDom._vcp_process();
-                delete newMessageDom._vcp_process;
-            }
-        }
-    },
-    isMessageInitialized: (messageId) => {
-        // Check if message exists in DOM or is being tracked by streamManager
-        const messageInDom = mainRendererReferences.chatMessagesDiv?.querySelector(`.message-item[data-message-id="${messageId}"]`);
-        if (messageInDom) return true;
-
-        // Also check if streamManager is tracking this message
-        if (streamManager && typeof streamManager.isMessageInitialized === 'function') {
-            return streamManager.isMessageInitialized(messageId);
-        }
-
-        return false;
-    },
-    summarizeTopicFromMessages: async (history, agentName) => { // Example: Keep this if it's generic enough
-        // This function was passed in, so it's likely defined in renderer.js or another module.
-        // If it's meant to be internal to messageRenderer, its logic would go here.
-        // For now, assume it's an external utility.
-        if (mainRendererReferences.summarizeTopicFromMessages) {
-            return mainRendererReferences.summarizeTopicFromMessages(history, agentName);
-        }
-        return null;
-    },
-    setContextMenuDependencies: (deps) => {
-        if (contextMenu && typeof contextMenu.setContextMenuDependencies === 'function') {
-            contextMenu.setContextMenuDependencies(deps);
-        } else {
-            console.error("contextMenu or setContextMenuDependencies not available.");
-        }
+  initializeMessageRenderer,
+  setCurrentSelectedItem, // Keep for renderer.js to call
+  setCurrentTopicId, // Keep for renderer.js to call
+  setCurrentItemAvatar, // Renamed for clarity
+  setUserAvatar,
+  setCurrentItemAvatarColor, // Renamed
+  setUserAvatarColor,
+  renderMessage,
+  renderHistory, // Expose the new progressive batch rendering function
+  renderHistoryLegacy, // Expose the legacy rendering for compatibility
+  renderMessageBatch, // Expose batch rendering utility
+  startStreamingMessage,
+  appendStreamChunk,
+  finalizeStreamedMessage,
+  renderFullMessage,
+  clearChat,
+  removeMessageById,
+  updateMessageContent, // Expose the new function
+  extractSpeakableTextFromContentElement,
+  updateMessageUI: async (messageId, updatedMessage) => {
+    const { chatMessagesDiv } = mainRendererReferences;
+    const existingMessageDom = chatMessagesDiv.querySelector(
+      `.message-item[data-message-id="${messageId}"]`
+    );
+    if (!existingMessageDom) return;
+    const newMessageDom = await renderMessage(updatedMessage, true, false);
+    if (newMessageDom) {
+      existingMessageDom.replaceWith(newMessageDom);
+      // 重新观察
+      visibilityOptimizer.observeMessage(newMessageDom);
+      // 运行后续处理 logic
+      if (typeof newMessageDom._vcp_process === "function") {
+        newMessageDom._vcp_process();
+        delete newMessageDom._vcp_process;
+      }
     }
-};
+  },
+  isMessageInitialized: (messageId) => {
+    // Check if message exists in DOM or is being tracked by streamManager
+    const messageInDom = mainRendererReferences.chatMessagesDiv?.querySelector(
+      `.message-item[data-message-id="${messageId}"]`
+    );
+    if (messageInDom) return true;
 
+    // Also check if streamManager is tracking this message
+    if (
+      streamManager &&
+      typeof streamManager.isMessageInitialized === "function"
+    ) {
+      return streamManager.isMessageInitialized(messageId);
+    }
+
+    return false;
+  },
+  summarizeTopicFromMessages: async (history, agentName) => {
+    // Example: Keep this if it's generic enough
+    // This function was passed in, so it's likely defined in renderer.js or another module.
+    // If it's meant to be internal to messageRenderer, its logic would go here.
+    // For now, assume it's an external utility.
+    if (mainRendererReferences.summarizeTopicFromMessages) {
+      return mainRendererReferences.summarizeTopicFromMessages(
+        history,
+        agentName
+      );
+    }
+    return null;
+  },
+  setContextMenuDependencies: (deps) => {
+    if (
+      contextMenu &&
+      typeof contextMenu.setContextMenuDependencies === "function"
+    ) {
+      contextMenu.setContextMenuDependencies(deps);
+    } else {
+      console.error("contextMenu or setContextMenuDependencies not available.");
+    }
+  },
+};

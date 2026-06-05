@@ -50,7 +50,6 @@ function main() {
   assert.strictEqual(dto.profile, "runtime");
   assert.deepStrictEqual(dto.projection_fields, [
     "name",
-    "topics",
     "advancedSystemPrompt.hiddenBlocks",
     "advancedSystemPrompt.warehouseOrder",
     "advancedSystemPrompt.viewMode",
@@ -64,9 +63,7 @@ function main() {
     dto.safe_projection_json.advancedSystemPrompt.blocks,
     undefined
   );
-  assert.deepStrictEqual(dto.safe_projection_json.topics, [
-    { id: "topic-2", name: "new topic" },
-  ]);
+  assert.strictEqual(dto.safe_projection_json.topics, undefined);
 
   const merged = mergeProjectedConfig(localConfig, dto.safe_projection_json, {
     schema: dto.schema,
@@ -157,6 +154,7 @@ function main() {
       schema: "agent_config",
       profile: "runtime",
       projection_fields: ["advancedSystemPrompt.hiddenBlocks"],
+      deleted_fields: ["advancedSystemPrompt.hiddenBlocks"],
     }
   );
   assert.strictEqual(
@@ -203,12 +201,92 @@ function main() {
   );
   assert(bootstrapDto.projection_fields.includes("advancedSystemPrompt"));
   assert(
-    !bootstrapDto.projection_fields.includes("advancedSystemPrompt.blocks")
-  );
-  assert(
     !bootstrapDto.projection_fields.includes(
       "advancedSystemPrompt.hiddenBlocks"
     )
+  );
+
+  const settingsRuntimeDto = buildSafeConfigDto(
+    "settings.json",
+    {
+      userName: "runtime-user",
+      userAvatarUrl: "assets/avatar.png",
+      assistantAgent: "must-not-runtime-sync",
+      voiceLocalSettings: { sovitsKey: "must-not-runtime-sync" },
+    },
+    {
+      profile: "runtime",
+      syncProfileConfig: {
+        runtimeSync: {
+          settings: {
+            include: ["assistantAgent", "voiceLocalSettings.sovitsKey"],
+            exclude: [],
+          },
+        },
+      },
+    }
+  );
+  assert.deepStrictEqual(settingsRuntimeDto.projection_fields, [
+    "userName",
+    "userAvatarUrl",
+    "assistantAgent",
+    "voiceLocalSettings.sovitsKey",
+  ]);
+  assert.deepStrictEqual(settingsRuntimeDto.safe_projection_json, {
+    userName: "runtime-user",
+    userAvatarUrl: "assets/avatar.png",
+    assistantAgent: "must-not-runtime-sync",
+    voiceLocalSettings: { sovitsKey: "must-not-runtime-sync" },
+  });
+
+  const settingsBootstrapDto = buildSafeConfigDto(
+    "settings.json",
+    {
+      userName: "bootstrap-user",
+      userAvatarUrl: "assets/avatar.png",
+      assistantAgent: "assistant-a",
+      voiceLocalSettings: { sovitsUrl: "http://local", sovitsKey: "secret" },
+    },
+    { profile: "bootstrap" }
+  );
+  assert.strictEqual(
+    settingsBootstrapDto.safe_projection_json.userName,
+    "bootstrap-user"
+  );
+  assert.strictEqual(
+    settingsBootstrapDto.safe_projection_json.assistantAgent,
+    "assistant-a"
+  );
+  assert.deepStrictEqual(
+    settingsBootstrapDto.safe_projection_json.voiceLocalSettings,
+    {
+      sovitsUrl: "http://local",
+      sovitsKey: "secret",
+    }
+  );
+
+  const warehouseDto = [{ id: "prompt-1", content: "hello" }];
+  assert.deepStrictEqual(
+    validateSafeConfigDto("global_prompt_warehouse", warehouseDto, {
+      profile: "runtime",
+      projection_fields: ["$"],
+    }),
+    warehouseDto
+  );
+  assert.deepStrictEqual(
+    mergeProjectedConfig({}, warehouseDto, {
+      schema: "global_prompt_warehouse",
+      profile: "runtime",
+      projection_fields: ["$"],
+    }),
+    warehouseDto
+  );
+  assert.throws(
+    () =>
+      validateSafeConfigDto("agent_config", [], {
+        projection_fields: ["name"],
+      }),
+    /must be an object/
   );
 
   console.log("runtime projection fields smoke test passed");

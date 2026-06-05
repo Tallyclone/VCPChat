@@ -106,6 +106,13 @@
   ],
   "../VCPToolBox/Plugin/VChatSyncCenter/core/auth.js": [
     {
+      "id": "notebook-1780366417990_p9tfmxafy",
+      "filePath": "../VCPToolBox/Plugin/VChatSyncCenter/core/auth.js",
+      "note": "VChatSyncCenter 鉴权统一只使用 VCHAT_SYNC_KEY：普通同步 API 与 bootstrap import/export 都复用 validateSyncAuth；支持 Authorization: Bearer <VCHAT_SYNC_KEY> 或 x-vchat-sync-key，不再支持 VCHAT_BOOTSTRAP_KEY/bootstrapKey/x-vchat-bootstrap-key。未配置 VCHAT_SYNC_KEY、VCHAT_SYNC_KEY=change-me 或 token 不匹配统一返回 401；插件未启用仍返回 404。",
+      "createdAt": "2026-06-02T10:13:37.990",
+      "updatedAt": "2026-06-02T10:13:37.990"
+    },
+    {
       "id": "notebook-1778425947347_p517jk51k",
       "filePath": "../VCPToolBox/Plugin/VChatSyncCenter/core/auth.js",
       "note": "Query-string sync_key authentication was removed after review to avoid leaking secrets via URLs/logs. Keep auth to Authorization: Bearer or x-vchat-sync-key unless explicitly re-approved for dev-only use.",
@@ -121,6 +128,13 @@
     }
   ],
   "../VCPToolBox/Plugin/VChatSyncCenter/core/messageService.js": [
+    {
+      "id": "notebook-1780387852952_pq340h1xb",
+      "filePath": "../VCPToolBox/Plugin/VChatSyncCenter/core/messageService.js",
+      "note": "同步修复：message update 目标不存在时抛出的错误带 code=MESSAGE_UPDATE_TARGET_MISSING；routes/operations 会返回结构化 code，Adapter offlineQueue 优先按 code 触发 recreate-on-rescan 修复，保留旧错误文案匹配作为兼容。",
+      "createdAt": "2026-06-02T16:10:52.952",
+      "updatedAt": "2026-06-02T16:10:52.952"
+    },
     {
       "id": "notebook-1778460992847_ubi393wbw",
       "filePath": "../VCPToolBox/Plugin/VChatSyncCenter/core/messageService.js",
@@ -155,6 +169,20 @@
     }
   ],
   "VCPDistributedServer/Plugin/VChatSyncAdapter/projector/appDataProjector.js": [
+    {
+      "id": "notebook-1780387852038_zzl05m03y",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/projector/appDataProjector.js",
+      "note": "同步修复：带 payload.cascaded_from 的 delete 事件现在在 Adapter projector 中按已由父删除覆盖的级联事件处理，直接计入 skipped 并推进 seq，避免父级 topic/item/topic_history 删除已完成后，级联子 delete 冗余投影或阻塞 pull cursor。",
+      "createdAt": "2026-06-02T16:10:52.038",
+      "updatedAt": "2026-06-02T16:10:52.038"
+    },
+    {
+      "id": "notebook-1780362409362_awvypmmvu",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/projector/appDataProjector.js",
+      "note": "Topic sync design discussion: runtime config events should no longer be the authoritative source for config.topics[]. Bootstrap may carry full topics[] for initialization, but runtime topic content should use topic upsert/delete events and ordering should use dedicated topic_order move/replace events. Adapter must still project to original VChat paths Agents/<id>/config.json or AgentGroups/<id>/config.json and preserve unknown topic fields; current TOPIC_ALLOWED/topicMetaFromEvent paths may need adjustment to avoid clipping extension fields.",
+      "createdAt": "2026-06-02T09:06:49.362",
+      "updatedAt": "2026-06-02T09:06:49.362"
+    },
     {
       "id": "notebook-1778457099692_gymut0js7",
       "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/projector/appDataProjector.js",
@@ -250,9 +278,9 @@
     {
       "id": "notebook-1778463831110_tjx9r0ln5",
       "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/index.js",
-      "note": "VChatSyncAdapter 本地 bootstrap/manifest/conflicts API 已复用 VCHAT_SYNC_KEY 鉴权，支持 Authorization Bearer、x-vchat-sync-key、x-vchat-bootstrap-key；未配置或 change-me 必须拒绝。",
+      "note": "VChatSyncAdapter 本地 status/bootstrap/manifest/conflicts API 统一只使用 VCHAT_SYNC_KEY 鉴权；支持 Authorization: Bearer <VCHAT_SYNC_KEY> 或 x-vchat-sync-key，不再接受 x-vchat-bootstrap-key。未配置 VCHAT_SYNC_KEY、VCHAT_SYNC_KEY=change-me 或 token 不匹配都必须拒绝并返回 401。",
       "createdAt": "2026-05-11T09:43:51.110",
-      "updatedAt": "2026-05-11T09:43:51.110"
+      "updatedAt": "2026-06-02T10:13:12.531"
     }
   ],
   "../VCPToolBox/Plugin/VChatSyncCenter/core/backupService.js": [
@@ -299,6 +327,13 @@
     }
   ],
   "VCPDistributedServer/Plugin/VChatSyncAdapter/sync/attachmentSync.js": [
+    {
+      "id": "notebook-1780330593890_j86vb7a7u",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/sync/attachmentSync.js",
+      "note": "ensureLocalAttachment() must resolve local attachment filenames using the best available extension metadata: existing remote_attachment:<hash> localIndex ext before download, then X-VChat-Attachment-Ext response header after download. Header ext is sanitized and used for final hash+ext filename so messages with missing ref.ext still rewrite to usable files.",
+      "createdAt": "2026-06-02T00:16:33.890",
+      "updatedAt": "2026-06-02T00:16:33.890"
+    },
     {
       "id": "notebook-1778487599312_39iqlivfv",
       "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/sync/attachmentSync.js",
@@ -389,6 +424,13 @@
   ],
   "VCPDistributedServer/Plugin/VChatSyncAdapter/core/configSchema.js": [
     {
+      "id": "notebook-1780390703455_lcnn8q447",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/core/configSchema.js",
+      "note": "settings.json runtime 同步规则：默认只同步 userName 和 userAvatarUrl；但 sync_profile runtimeSync.settings.include 可以扩展 runtime 字段，扩展范围必须限制在 SETTINGS_BOOTSTRAP_ALLOWED 初始化字段内。不要把 runtimeConfigurableAllowed 改成仅默认字段。",
+      "createdAt": "2026-06-02T16:58:23.454",
+      "updatedAt": "2026-06-02T16:58:23.454"
+    },
+    {
       "id": "notebook-1778677777055_2reabguxp",
       "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/core/configSchema.js",
       "note": "当前代码实际可同步的配置范围以 configSchema/pathRules 为准：Agent config、Agent regex_rules.json（按 agent_config 白名单处理）、Group config、settings.json、forum.config.json；memo.config.json 虽被 watcher/scanner 识别为配置路径，但 schemaForPath 返回 unsupported_config，因此当前实现不会真正入队或投影同步。",
@@ -432,11 +474,572 @@
   ],
   "VCPDistributedServer/Plugin/VChatSyncAdapter/watcher/appDataWatcher.js": [
     {
+      "id": "notebook-1780283070114_s9g0sfnzr",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/watcher/appDataWatcher.js",
+      "note": "2026-06-01 修复头像不同端不同步：watcher 调用 handleFile 时必须把 centerClient 和 config 传入 context；diffAttachment 只有在 mode=active 且 context.centerClient 存在时才会调用 uploadLocalAttachment 并提交 avatar operation。启动 scanAppData 也需要传 config，否则附件/头像本地路径依赖可能退回默认。",
+      "createdAt": "2026-06-01T11:04:30.114",
+      "updatedAt": "2026-06-01T11:04:30.114"
+    },
+    {
       "id": "notebook-1778729925792_rbpv42sj4",
       "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/watcher/appDataWatcher.js",
       "note": "2026-05-14 排查：Adapter 状态路由在 5974 正常，pull loop 活跃，但 state/local_index 最后更新停在 09:27；若此后有 AppData/UserData history.json 更新而 sync 状态不变，优先怀疑 chokidar watcher 事件未触发或监听进程未看到实际写入路径。",
       "createdAt": "2026-05-14T11:38:45.792",
       "updatedAt": "2026-05-14T11:38:45.792"
+    }
+  ],
+  "modules/ipc/NativeFsService.js": [
+    {
+      "id": "notebook-1779939844546_dfyiauxjw",
+      "filePath": "modules/ipc/NativeFsService.js",
+      "note": "2026-05-28 Windows hidden/system directory filtering: _isHiddenName now treats dotfiles plus common Windows system folders ($RECYCLE.BIN, System Volume Information, Recovery, Config.Msi) as hidden when showHidden is false, so drive-root mounts such as F:\\ no longer show $RECYCLE.BIN by default while showHidden:true can still reveal them. node --check passed.",
+      "createdAt": "2026-05-28T11:44:04.546",
+      "updatedAt": "2026-05-28T11:44:04.546"
+    },
+    {
+      "id": "notebook-1779239972022_1pc4mjvec",
+      "filePath": "modules/ipc/NativeFsService.js",
+      "note": "NativeFileMount Agent follow-up 2026-05-20: Agent copy now uses dedicated copyTo instead of globalClipboard copy+paste; Agent trash is enforced server-side with payload.confirmed=true for source=agent, and widget trust mode requires an additional high-risk confirmation for trash/overwrite.",
+      "createdAt": "2026-05-20T09:19:32.022",
+      "updatedAt": "2026-05-20T09:19:32.022"
+    },
+    {
+      "id": "notebook-1779239147449_6i12yy3pm",
+      "filePath": "modules/ipc/NativeFsService.js",
+      "note": "NativeFileMount v2.1 review 2026-05-20: implementation now includes main/preload/desktop/stream/DesktopRemote integration, allowlist authorization persistence, recent openWith validation, 5s fs timeouts for many metadata ops, stat concurrency=16, large-directory filesystem-order paging, cross-device cut/move confirmation, widget cleanup/unmount, and Agent Action Queue. Remaining review concerns: startDrag calls event.sender.startDrag from ipcMain.handle may be invalid depending Electron API; Agent copy currently uses global clipboard and can race/overwrite user clipboard across operations/cards; high-risk Agent trust semantics do not force separate confirmation for trash under trusted mode; streamManager DESKTOP_WIDGET timeout drops incomplete block without emitting placeholder/history cleanup for already swallowed content.",
+      "createdAt": "2026-05-20T09:05:47.449",
+      "updatedAt": "2026-05-20T09:05:47.449"
+    },
+    {
+      "id": "notebook-1779214462311_mlqtj5fmh",
+      "filePath": "modules/ipc/NativeFsService.js",
+      "note": "NativeFileMount follow-up implementation: added per-path allowlist authorization persistence with a three-button prompt, plus openWith recent-app persistence/validation using realpath + mtimeMs + size and a fallback picker. Recent-app entries are capped and stale entries are skipped instead of reused blindly.",
+      "createdAt": "2026-05-20T02:14:22.311",
+      "updatedAt": "2026-05-20T02:14:22.311"
+    },
+    {
+      "id": "notebook-1779213349549_8tw43cram",
+      "filePath": "modules/ipc/NativeFsService.js",
+      "note": "NativeFileMount v2.1 follow-up fixes: registerMount now stores title from widget config; list() wraps key fs ops in a 5s timeout and builds entries with concurrency=16; frontend no longer truncates rendered loaded entries at 180, and Agent openWith requests are explicitly rejected with ERR_AGENT_OPENWITH_FORBIDDEN.",
+      "createdAt": "2026-05-20T01:55:49.549",
+      "updatedAt": "2026-05-20T01:55:49.549"
+    },
+    {
+      "id": "notebook-1779212625011_jr7cyiwhc",
+      "filePath": "modules/ipc/NativeFsService.js",
+      "note": "NativeFileMount review against v2.1: main/preload/desktop/stream/DesktopRemote integration exists and syntax-checks cleanly. Notable follow-ups: list() does sequential stat instead of documented concurrency=16/5s NAS timeout; allowlist/remember authorization and openWith recent app list are not implemented; listActiveMounts title falls back to label because registerMount does not persist title.",
+      "createdAt": "2026-05-20T01:43:45.011",
+      "updatedAt": "2026-05-20T01:43:45.011"
+    },
+    {
+      "id": "notebook-1779212177452_mgzsminxp",
+      "filePath": "modules/ipc/NativeFsService.js",
+      "note": "NativeFileMount large directories are paged by filesystem order after >3000 visible entries using a probe pass plus a page pass; normal directories still sort in memory. Cross-device cut/move now requires confirmedCrossDevice before allowing EXDEV copy+trash fallback.",
+      "createdAt": "2026-05-20T01:36:17.452",
+      "updatedAt": "2026-05-20T01:36:17.452"
+    },
+    {
+      "id": "notebook-1779207865047_7jycns9p9",
+      "filePath": "modules/ipc/NativeFsService.js",
+      "note": "NativeFileMount v1 uses main-process NativeFsService as the security boundary: mount registry holds rootRealPath/mode/ownerWidgetId/capabilityToken; low-risk list/watch APIs validate mountId+path, high-risk action/import/startDrag/unmount require ownerWidgetId+capabilityToken. Renderer/Agent must never receive capabilityToken except the NativeFileMount widget closure.",
+      "createdAt": "2026-05-20T00:24:25.047",
+      "updatedAt": "2026-05-20T00:24:25.047"
+    }
+  ],
+  "Desktopmodules/builtinWidgets/nativeFileMountWidget.js": [
+    {
+      "id": "notebook-1780199793290_cl27sq7sv",
+      "filePath": "Desktopmodules/builtinWidgets/nativeFileMountWidget.js",
+      "note": "2026-05-31 NativeFileMount instance getInfo() now exposes real customUI status: requested/mounted/fallbackToDefault/error plus versions. renderCustomUI() marks mounted only after the custom root is installed; render/runtime failure clears mounted, records error, and marks fallbackToDefault only when default UI is actually restored.",
+      "createdAt": "2026-05-31T11:56:33.290",
+      "updatedAt": "2026-05-31T11:56:33.290"
+    },
+    {
+      "id": "notebook-1779937398491_ahf9zunc7",
+      "filePath": "Desktopmodules/builtinWidgets/nativeFileMountWidget.js",
+      "note": "2026-05-28 scroll fix: NativeFileMount default UI now gives .nfm-main flex:1/min-height:0/display:flex/overflow:hidden and .nfm-side min-height:0/overflow:auto so .nfm-list can scroll within bounded height. NativeFileMount customUI now applies width/height 100%, minHeight 0, and overflow:auto fallback to the custom root after renderShadowWidget, preventing Agent-pushed custom cards from being clipped by the outer overflow:hidden desktop content container when custom UI omits its own scroll styles. node --check passed; npm run pack passed on retry with 360s timeout after one 240s timeout.",
+      "createdAt": "2026-05-28T11:03:18.491",
+      "updatedAt": "2026-05-28T11:03:18.491"
+    },
+    {
+      "id": "notebook-1779902370611_xboxq6el7",
+      "filePath": "Desktopmodules/builtinWidgets/nativeFileMountWidget.js",
+      "note": "2026-05-28 doc-field completion: ui.confirm now maps messageColor/detailColor into CSS variables, applies variant via data-variant (glass/minimal styles), renders showAffectedCount when true, and passes affectedCount for trash/bulkTrash/overwrite/crossDeviceMove/agentHighRisk confirmations. node --check and npm run pack passed.",
+      "createdAt": "2026-05-28T01:19:30.611",
+      "updatedAt": "2026-05-28T01:19:30.611"
+    },
+    {
+      "id": "notebook-1779899616394_2r7q7n0hu",
+      "filePath": "Desktopmodules/builtinWidgets/nativeFileMountWidget.js",
+      "note": "2026-05-27 review note: NativeFileMount already covers most of the doc scope: DESKTOP_BUILTIN parser -> streamManager -> contentPipeline/messageRenderer -> ipcBridge -> builtin mount spawn; default UI supports theme/layout/actions/icons/confirm; customUI v2 exposes list/open/reveal/copy/cut/paste/rename/trash/newFolder/move/copyTo/resolve/relative/onChange/onJobProgress/onAgentRequest; frame options are applied in widgetManager. Build verification passed (node --check + npm run pack). Remaining doc mismatches are mostly around completeness/strictness rather than missing plumbing.",
+      "createdAt": "2026-05-28T00:33:36.394",
+      "updatedAt": "2026-05-28T00:33:36.394"
+    },
+    {
+      "id": "notebook-1779896102471_jw9gwuxui",
+      "filePath": "Desktopmodules/builtinWidgets/nativeFileMountWidget.js",
+      "note": "2026-05-27 NativeFileMount doc-alignment continuation: actions now preserve object configs and render toolbar/context separator/spacer/icon/primary/danger; nfm.confirm returns action+accepted+confirmed and supports buttonOrder/icons/details/position; customUI trash can no longer bypass high-risk confirmation via options.confirmed; nfm.newFolder supports documented (parentRelativePath,name) with single-arg compatibility; nfm.resolve/nfm.relative added with Windows case-insensitive root comparison; agentUI preview/execution position/layout/showRiskSummary/showDetails/showProgress are reflected via data attributes/CSS. Parser now only comma-splits known array-like fields and requires explicit DESKTOP_BUILTIN type. Stream parse failures now output a safe placeholder without leaking original content.",
+      "createdAt": "2026-05-27T23:35:02.471",
+      "updatedAt": "2026-05-27T23:35:02.471"
+    },
+    {
+      "id": "notebook-1779890936741_3giti26kc",
+      "filePath": "Desktopmodules/builtinWidgets/nativeFileMountWidget.js",
+      "note": "2026-05-27 second NativeFileMount doc-alignment fix: default UI now consumes layout.showSize/showMtime/showHiddenBadge, toolbar/path/status bar top/bottom/hidden positions, and readonlyBehavior hide/disable for toolbar/context actions plus runtime guards. agentUI nested preview/execution fields are flattened during normalizeConfig and previewButtons/executionButtons are respected by default Agent dialogs. widgetManager contextmenu initialization TDZ risk was fixed separately. node --check for related renderer/widget/native-fs files and npm run pack passed; mojibake scan for modified widget/core files was clean.",
+      "createdAt": "2026-05-27T22:08:56.741",
+      "updatedAt": "2026-05-27T22:08:56.741"
+    },
+    {
+      "id": "notebook-1779889405770_14wqyrtzp",
+      "filePath": "Desktopmodules/builtinWidgets/nativeFileMountWidget.js",
+      "note": "2026-05-27 DESKTOP_BUILTIN NativeFileMount doc-alignment fix: parser now maps top-level theme./layout./actions./icons./agentUI. shorthand into config.ui.*, supports layout.variant/view aliases and ui.contextMenu; NativeFileMount normalizes layout.variant, flat ui.confirm fields into confirm.style CSS variables, agentUI preview/execution nested objects/buttons, expanded icons including ext overrides and category icon resolution; widgetManager prevents frame.showCloseButton=false plus contextMenu=false from producing a hard-to-close widget by keeping the desktop context menu enabled. node --check on parser/renderer/widget/native fs files and npm run pack passed; corruption scan for common mojibake markers was empty.",
+      "createdAt": "2026-05-27T21:43:25.770",
+      "updatedAt": "2026-05-27T21:43:25.770"
+    },
+    {
+      "id": "notebook-1779880866914_0y58h93me",
+      "filePath": "Desktopmodules/builtinWidgets/nativeFileMountWidget.js",
+      "note": "2026-05-27 review: reviewed DESKTOP_BUILTIN parser/stream/content pipeline, NativeFileMount grid/compact/ui.confirm/ui.agentUI, customUI v2 API, Agent high-risk confirmation, frame pass-through, and NativeFsService security boundary. node --check passed for NativeFileMount, parser/stream/content/message renderer, widgetManager, ipcBridge, NativeFsService, and NativeFsJobs; npm run pack completed successfully. Review found no blocking syntax/build issues, but noted manual end-to-end section 23 acceptance scenarios are still not evidenced in this review.",
+      "createdAt": "2026-05-27T19:21:06.914",
+      "updatedAt": "2026-05-27T19:21:06.914"
+    },
+    {
+      "id": "notebook-1779879742086_antldkv5g",
+      "filePath": "Desktopmodules/builtinWidgets/nativeFileMountWidget.js",
+      "note": "2026-05-27 full document completion pass: NativeFileMount now normalizes initialView/layout.view for list/grid/compact, treats initialView: compact as compact mode, implements default grid rendering with virtualized rows mapped to grid columns and configurable ui.layout.grid minItemWidth/itemHeight, adds CSS-variable driven ui.confirm.style and ui.agentUI.style visual customization, and makes Agent preview/execution text/buttons configurable via ui.agentUI while preserving nfm.onAgentRequest and high-risk nfmConfirm fallback. node --check and npm run pack passed after these changes.",
+      "createdAt": "2026-05-27T19:02:22.086",
+      "updatedAt": "2026-05-27T19:02:22.086"
+    },
+    {
+      "id": "notebook-1779877250742_jwjbdsezo",
+      "filePath": "Desktopmodules/builtinWidgets/nativeFileMountWidget.js",
+      "note": "2026-05-27 continuation validation: after expanding NativeFileMount customUI v2 nfm API and Agent hooks, node --check passed for nativeFileMountWidget.js, widgetManager.js, desktopBuiltinParser.js, streamManager.js, contentPipeline.js, and messageRenderer.js. npm run pack also completed successfully. Latest customUI API includes onJobProgress/onAgentRequest, high-risk overwrite/trash confirmation via nfmConfirm, and statusEl null guards for hidden status bar/custom UI layouts.",
+      "createdAt": "2026-05-27T18:20:50.742",
+      "updatedAt": "2026-05-27T18:20:50.742"
+    },
+    {
+      "id": "notebook-1779875626785_ivh42n3tn",
+      "filePath": "Desktopmodules/builtinWidgets/nativeFileMountWidget.js",
+      "note": "2026-05-27 DESKTOP_BUILTIN/nativeFileMount customization implementation: default NativeFileMount now normalizes config.ui theme/layout/actions/icons/confirm, renders toolbar/context menu from configured action lists, uses configurable icons and compact layout, exposes nfm.confirm(options) to customUI, and enforces high-risk confirmation types (trash/overwrite/crossDeviceMove/agentHighRisk) even when ui.confirm.enabled=false. Frame options are passed through widget.create via options.frame and widgetManager.applyFrameOptions handles outer card visuals/controls/overflow/contextMenu.",
+      "createdAt": "2026-05-27T17:53:46.785",
+      "updatedAt": "2026-05-27T17:53:46.785"
+    },
+    {
+      "id": "notebook-1779813688928_1g6lmvy4q",
+      "filePath": "Desktopmodules/builtinWidgets/nativeFileMountWidget.js",
+      "note": "2026-05-27 NativeFileMount follow-up: implemented accepted paste conflict optimization and UX changes. Backend NativeFsService supports clipboardPreview as a readonly action, caches internal clipboard preview after copy/cut, builds preview from the currently effective internal/system clipboard, and _paste() fast-fails on the first ask-conflict before job creation. Frontend calls clipboardPreview quietly, predicts same-name conflicts from currently loaded entries and prompts immediately when possible, then still lets backend ask-conflict validation be authoritative. Toolbar paste button moved next to cut; row context menu includes “粘贴到当前文件夹” and it always pastes to currentDir/rootPath, not into the selected row. NativeFsJobs enriches failed job errors with operation/src/dest details and uses message before code; Windows EPERM during move/cut falls back to copy+trash like EXDEV. 2026-05-27 fix: same-folder copy+paste of the same file with conflict choice “重命名” previously failed because _paste() compared source with the initial requestedDest before _resolveConflict(); the guard now runs after _resolveConflict() and compares source with the final resolved dest, so autoRename can create “name (1).ext” while overwrite/self-final-dest is still rejected. 2026-05-27 UI fix: row context menu near the bottom of the NativeFileMount card is now measured after insertion and flipped upward/clamped inside the root bounds instead of using fixed 170x240 positioning, preventing the bottom part from being hidden by the card edge. Syntax checks passed for NativeFsJobs.js, NativeFsService.js, and nativeFileMountWidget.js.",
+      "createdAt": "2026-05-27T00:41:28.928",
+      "updatedAt": "2026-05-27T01:14:31.550"
+    },
+    {
+      "id": "notebook-1779809073231_xe7d25oua",
+      "filePath": "Desktopmodules/builtinWidgets/nativeFileMountWidget.js",
+      "note": "2026-05-26 update 8: User confirmed update 7 was insufficient: mount-root paste still failed with a fleeting status, and Windows Explorer interop still failed; Explorer-to-widget showed ERR_SOURCE_NOT_FOUND. Follow-up fixes: nativeFileMountWidget.js now has sticky status handling (statusHoldUntil + setStatus(...,{force,holdMs})) so paste/action errors and failed job messages remain visible for ~15s and are not immediately overwritten by quiet refresh/job progress. NativeFsService.js replaced the failed Set-Clipboard/Get-Clipboard FileDropList attempt with STA PowerShell using System.Windows.Forms.Clipboard DataObject CF_HDROP/FileDrop plus Preferred DropEffect; _writeSystemFileClipboard writes FileDropList and copy/cut effect, _readSystemFileClipboard reads FileDrop and effect, and _existingClipboardPaths filters nonexistent/duplicate paths before returning system clipboard data so malformed Explorer clipboard data should not surface later as ERR_SOURCE_NOT_FOUND. Electron FileNameW remains only as a fallback. _openWith/_reveal structure was repaired after the clipboard edit. node --check passed for Desktopmodules/builtinWidgets/nativeFileMountWidget.js and modules/ipc/NativeFsService.js. Root paste exact backend error is not yet user-confirmed after sticky-status fix; the next repro should now show the real error if it still fails.",
+      "createdAt": "2026-05-26T23:24:33.231",
+      "updatedAt": "2026-05-26T23:48:40.469"
+    },
+    {
+      "id": "notebook-1779805459130_a02fi2s8b",
+      "filePath": "Desktopmodules/builtinWidgets/nativeFileMountWidget.js",
+      "note": "2026-05-26 update 6: User reported copy/cut/paste still not working and selected rows cannot be deselected by clicking blank area. Frontend fixes: added clearSelection() and blank-area pointerdown now focuses root, closes context menu, and clears selection unless Ctrl/Meta is held. Paste flow no longer opens askConflictStrategy dialog by default; toolbar paste and Ctrl+V call pasteToCurrentDir() with conflictStrategy=autoRename to avoid ERR_CONFLICT_NEEDS_CONFIRM making paste appear ineffective when same-name files exist. Backend clipboard path was reviewed: current code still uses Electron clipboard.writeBuffer/readBuffer FileNameW + Preferred DropEffect plus internal globalClipboard; if Explorer paste still fails, likely Electron clipboard does not expose CF_HDROP-compatible shell file clipboard through FileNameW alone and will need a native/PowerShell CF_HDROP implementation or a project-supported clipboard-event integration. node --check passed for nativeFileMountWidget.js and NativeFsService.js.",
+      "createdAt": "2026-05-26T22:24:19.130",
+      "updatedAt": "2026-05-26T22:24:19.130"
+    },
+    {
+      "id": "notebook-1779804558859_4mubr2hg3",
+      "filePath": "Desktopmodules/builtinWidgets/nativeFileMountWidget.js",
+      "note": "2026-05-26 update 5: Follow-up fixes after user reported selected CSS too strong, Enter/copy/cut/paste broken, Explorer paste unavailable, and right-click rename EPERM. Selected visual state is now CSS-owned again: syncSelectionStyles only toggles selected/data-selected/aria-selected and clears inline forced styles. handleKeydown now returns after handled shortcuts and adds Enter to open selected file or enter selected directory. NativeFsService copy/cut now also writes Windows file clipboard formats (FileNameW + Preferred DropEffect) so files can be pasted outside the widget; paste can also fall back to reading FileNameW from the system clipboard when internal globalClipboard is empty. Rename now handles Windows case-only renames through an intermediate temp name to avoid EPERM/same-path failures. node --check passed for nativeFileMountWidget.js and NativeFsService.js.",
+      "createdAt": "2026-05-26T22:09:18.859",
+      "updatedAt": "2026-05-26T22:09:18.859"
+    },
+    {
+      "id": "notebook-1779798592280_h0au5jgzt",
+      "filePath": "Desktopmodules/builtinWidgets/nativeFileMountWidget.js",
+      "note": "2026-05-26 update 4: Follow-up after user rejected context-menu target-path workaround and reported copy/paste still failed. Root causes found in default NativeFileMount UI: (1) loadDir() cleared selected on every non-append list reload, including same-directory quiet reloads from watcher/job/newFolder refresh, so selection vanished after refresh/re-render; (2) row pointerdown was bound to both root and listEl, causing duplicate handling/toggle risk for Ctrl/Meta selection; (3) toolbar had paste but no copy/cut buttons, and copy/cut could send an empty targetPaths array, setting backend globalClipboard to an empty selection. Fix: same-directory loadDir refresh now preserves path-based selection, pointerdown is bound only on root, selected helpers/ensureSelection guard empty copy/cut, toolbar copy/cut buttons were added, right-click action no longer depends on contextMenuTargetPath reselect workaround, and NativeFsService._copy rejects empty selections with ERR_EMPTY_SELECTION. node --check passed for nativeFileMountWidget.js and NativeFsService.js; npm run pack was attempted but timed out after 180s.",
+      "createdAt": "2026-05-26T20:29:52.280",
+      "updatedAt": "2026-05-26T21:33:43.244"
+    },
+    {
+      "id": "notebook-1779729738424_pd3p4fd7z",
+      "filePath": "Desktopmodules/builtinWidgets/nativeFileMountWidget.js",
+      "note": "2026-05-26 fix: NativeFileMount customUI now exposes nfm.requestOperations(plan) via existing handleAgentAction confirmation flow, and nfm.list(relativePath,{limit,cursor,withMeta}) for paged large-directory reads while preserving legacy array return when withMeta is not true. CustomUI runtime failures call restoreDefaultUIAfterCustomFailure(); fallbackToDefault=false shows an error surface and keeps customUIActive true to avoid default UI list rendering against missing .nfm-list.",
+      "createdAt": "2026-05-26T01:22:18.424",
+      "updatedAt": "2026-05-26T01:22:18.424"
+    },
+    {
+      "id": "notebook-1779724774505_vutegyyz0",
+      "filePath": "Desktopmodules/builtinWidgets/nativeFileMountWidget.js",
+      "note": "2026-05-25 implementation validation: NativeFileMount customUI/nfm API integration was completed and syntax-checked with node --check across streamManager.js, messageRenderer.js, contentPipeline.js, ipcBridge.js, nativeFileMountWidget.js, widgetRuntime.js, and NativeFsService.js. npm run pack completed successfully. CustomUI uses widgetRuntime.renderShadowWidget with controlled nfm API; no direct capabilityToken/desktopAPI exposure should be added.",
+      "createdAt": "2026-05-25T23:59:34.505",
+      "updatedAt": "2026-05-25T23:59:34.505"
+    },
+    {
+      "id": "notebook-1779214462934_72amkgfsf",
+      "filePath": "Desktopmodules/builtinWidgets/nativeFileMountWidget.js",
+      "note": "NativeFileMount frontend now uses windowed virtual rendering for the directory list (scroll container + padded visible slice) instead of rendering every row. This keeps loaded data visible and preserves selection by original index while reducing DOM growth.",
+      "createdAt": "2026-05-20T02:14:22.934",
+      "updatedAt": "2026-05-20T02:14:22.934"
+    }
+  ],
+  "modules/renderer/streamManager.js": [
+    {
+      "id": "notebook-1780195376747_ik5tpy9ju",
+      "filePath": "modules/renderer/streamManager.js",
+      "note": "2026-05-31 DESKTOP_WIDGET_EDIT parseDesktopWidgetEditBlock now supports both 「始」/「末」 and 「始ESCAPE」/「末ESCAPE」 for block and inline fields. ESCAPE blocks close only on 「末ESCAPE」 and throw an explicit unclosed-block error instead of silently consuming to EOF.",
+      "createdAt": "2026-05-31T10:42:56.747",
+      "updatedAt": "2026-05-31T10:42:56.747"
+    },
+    {
+      "id": "notebook-1780068341431_obyarhvuk",
+      "filePath": "modules/renderer/streamManager.js",
+      "note": "2026-05-29 DESKTOP_WIDGET_EDIT streaming support added: streamManager parses <<<[DESKTOP_WIDGET_EDIT]>>> blocks with repeated target/replace 「始」「末」 fields into payload.replacements[], dispatches through electronAPI.desktopPush({action:'editWidget'}), and filters edit tags from visible streaming output. ipcBridge handles desktopPush action editWidget by calling applyDesktopWidgetEdit().",
+      "createdAt": "2026-05-29T23:25:41.431",
+      "updatedAt": "2026-05-29T23:25:41.431"
+    },
+    {
+      "id": "notebook-1779630238954_yvjompk0a",
+      "filePath": "modules/renderer/streamManager.js",
+      "note": "2026-05-26 updated: DESKTOP_WIDGET parser chain now exists in modules/renderer/streamManager.js and modules/messageRenderer.js. It parses <<<[DESKTOP_WIDGET]>>> JSON for nativeFileMount and dispatches electronAPI.desktopPush({ action:'createBuiltinWidget', customUI }). Do not rely on the older 2026-05-24 conclusion that DESKTOP_WIDGET renders as plain chat text.",
+      "createdAt": "2026-05-24T21:43:58.954",
+      "updatedAt": "2026-05-26T01:22:03.251"
+    }
+  ],
+  "AppData/canvas/VCPDesktop_NativeFileMount_CustomUI_ShadowDOM_实现方案.md": [
+    {
+      "id": "notebook-1779721364691_gvt46rb6r",
+      "filePath": "AppData/canvas/VCPDesktop_NativeFileMount_CustomUI_ShadowDOM_实现方案.md",
+      "note": "2026-05-25 revision after review report: corrected the CustomUI Shadow DOM plan to state that Desktop widgets already use Shadow DOM in Desktopmodules/core/widgetManager.js and NativeFileMount already exists in Desktopmodules/builtinWidgets/nativeFileMountWidget.js. Clarified that widgetRuntime.renderShadowWidget is a proposed new abstraction, not an existing API; implementation should extract/reuse widgetManager.js ShadowRoot/style/script/cleanup logic and treat customUI as semi-trusted, not iframe-grade isolation.",
+      "createdAt": "2026-05-25T23:02:44.690",
+      "updatedAt": "2026-05-25T23:02:44.690"
+    },
+    {
+      "id": "notebook-1779640828281_yr2k9sms6",
+      "filePath": "AppData/canvas/VCPDesktop_NativeFileMount_CustomUI_ShadowDOM_实现方案.md",
+      "note": "NativeFileMount CustomUI Shadow DOM plan saved. Key decision: support customUI.runtime='vcp-widget-shadow' to reuse normal VCP Widget Shadow DOM rendering, allowing Agent HTML/CSS/JS like ordinary cards while exposing only a controlled window.nfm API for file operations; no direct capabilityToken/desktopAPI/nativeFs exposure, write operations remain system-confirmed, fallback to default UI on failure.",
+      "createdAt": "2026-05-25T00:40:28.281",
+      "updatedAt": "2026-05-25T00:40:28.281"
+    }
+  ],
+  "modules/renderer/contentPipeline.js": [
+    {
+      "id": "notebook-1779726460719_mf7hn9dol",
+      "filePath": "modules/renderer/contentPipeline.js",
+      "note": "2026-05-25 review-fix validation: DESKTOP_WIDGET history placeholder wording was changed from “已创建” to request-sent wording, and transformDesktopPush() no longer depends on DESKTOP_PUSH regex availability before processing DESKTOP_WIDGET regexes. Full post-review syntax checks passed for streamManager/messageRenderer/contentPipeline/ipcBridge/nativeFileMountWidget/widgetRuntime/NativeFsService, and npm run pack succeeded.",
+      "createdAt": "2026-05-26T00:27:40.719",
+      "updatedAt": "2026-05-26T00:27:40.719"
+    }
+  ],
+  "Desktopmodules/runtime/widgetRuntime.js": [
+    {
+      "id": "notebook-1779958786339_hevf2rkyk",
+      "filePath": "Desktopmodules/runtime/widgetRuntime.js",
+      "note": "2026-05-28 customUI JS default-open change: buildSandboxCode no longer masks Function/eval/common constructors or Electron/Node-like globals and no longer applies prototype constructor lockdown. CustomUI scripts run with normal page JS capabilities by default, while nfm filesystem operations remain mediated by NativeFsService IPC/capabilityToken/high-risk confirmations. Runtime still injects a Shadow DOM-scoped document facade for convenient access to customUI elements and tracks timers/window/document listeners for cleanup.",
+      "createdAt": "2026-05-28T16:59:46.339",
+      "updatedAt": "2026-05-28T16:59:46.339"
+    },
+    {
+      "id": "notebook-1779729908112_7lkm6hwsi",
+      "filePath": "Desktopmodules/runtime/widgetRuntime.js",
+      "note": "2026-05-26 fix: widgetRuntime.renderShadowWidget now tracks window error/unhandledrejection listeners in runtimeErrorListeners and calls options.onRuntimeError(error,{runtimeId,widgetId,source}). Cleanup removes these listeners with other runtime resources. This improves CustomUI async error fallback but remains semi-trusted Shadow DOM isolation, not iframe-grade sandboxing.",
+      "createdAt": "2026-05-26T01:25:08.112",
+      "updatedAt": "2026-05-26T01:25:08.112"
+    }
+  ],
+  "../docs/VCPDesktop_NativeFileMoun/VCPDesktop_NativeFileMount_DESKTOP_BUILTIN_自定义架构设计.md": [
+    {
+      "id": "notebook-1779871940482_kvlna4s9v",
+      "filePath": "../docs/VCPDesktop_NativeFileMoun/VCPDesktop_NativeFileMount_DESKTOP_BUILTIN_自定义架构设计.md",
+      "note": "已补充第 12 章“操作确认弹窗 ui.confirm 设计”：确认弹窗支持默认 UI/Agent 配置/customUI v2 自定义视觉，但 trash、overwrite、crossDeviceMove、agentHighRisk 等高危操作不能被 ui.confirm.enabled:false 或 customUI 绕过，仍必须进入统一 ConfirmResult 并由后端 capabilityToken、路径 allowlist、confirmed 等校验兜底。",
+      "createdAt": "2026-05-27T16:52:20.482",
+      "updatedAt": "2026-05-27T16:52:20.482"
+    }
+  ],
+  "../VCPMobile/src/core/stores/theme.ts": [
+    {
+      "id": "notebook-1779967261450_49llcl2lp",
+      "filePath": "../VCPMobile/src/core/stores/theme.ts",
+      "note": "VCPMobile 同步主题资源库不会把桌面 CSS 当成可直接执行主题模块；前端使用 synced:<theme_id> 作为手动应用入口，从 vchat_sync_list_local_themes 读取已落盘 ThemePackage，注入 variables，并把已下载 asset 的 local_path 通过 convertFileSrc 重写为 --chat-wallpaper-dark/light。",
+      "createdAt": "2026-05-28T19:21:01.450",
+      "updatedAt": "2026-05-28T19:21:01.450"
+    },
+    {
+      "id": "notebook-1779896234186_r6y5mkaky",
+      "filePath": "../VCPMobile/src/core/stores/theme.ts",
+      "note": "主题同步方案调研：VCPMobile 当前主题是编译进包内的 TS 模块 import.meta.glob('../../assets/themes/*.ts')，壁纸来自 public/wallpaper/*.webp；桌面端是 styles/themes/*.css + assets/wallpaper 原图。Center/Adapter 当前只同步消息、配置白名单、附件/头像，未支持 styles/themes 或 wallpaper 目录。若未来实现主题同步，手机端不能直接加载任意桌面 CSS，建议同步结构化 ThemePackage（变量+extraCss+wallpaper hash）并下载壁纸到 app data，再由 theme store 合并动态主题。",
+      "createdAt": "2026-05-27T23:37:14.186",
+      "updatedAt": "2026-05-27T23:37:14.186"
+    }
+  ],
+  "../VCPToolBox/Plugin/VChatSyncCenter/core/themeService.js": [
+    {
+      "id": "notebook-1780376298286_ewlrbdaez",
+      "filePath": "../VCPToolBox/Plugin/VChatSyncCenter/core/themeService.js",
+      "note": "修正 theme asset metadata-only 判定：未提供 storage_path 时必须默认 bootstrap-missing/<hash>，且 input.binary_available===false 也应强制 binary_available=false；否则 metadata-only 资产会被误判为二进制可用。",
+      "createdAt": "2026-06-02T12:58:18.286",
+      "updatedAt": "2026-06-02T12:58:18.286"
+    },
+    {
+      "id": "notebook-1780372847615_shs95xkz7",
+      "filePath": "../VCPToolBox/Plugin/VChatSyncCenter/core/themeService.js",
+      "note": "theme_assets.relative_path 表示客户端语义路径（如 assets/wallpaper/foo.png），不要用它判断二进制是否存在；binary_available 应基于 storage_path 是否为 bootstrap-missing/*。",
+      "createdAt": "2026-06-02T12:00:47.615",
+      "updatedAt": "2026-06-02T12:00:47.615"
+    },
+    {
+      "id": "notebook-1780372847614_yygip9k0n",
+      "filePath": "../VCPToolBox/Plugin/VChatSyncCenter/core/themeService.js",
+      "note": "/themes/assets 必须先用稳定 operation_id 调 getOperationResult 做幂等检查；Adapter 使用 theme_asset.${deviceId}.${themeId}.${assetHash}，重试不能重复 appendChange 触发 change_log.operation_id UNIQUE。",
+      "createdAt": "2026-06-02T12:00:47.614",
+      "updatedAt": "2026-06-02T12:00:47.614"
+    },
+    {
+      "id": "notebook-1779938674647_lwdr2ddo4",
+      "filePath": "../VCPToolBox/Plugin/VChatSyncCenter/core/themeService.js",
+      "note": "主题资源库协议定版：theme_package 支持 POST /operations 和 POST /themes，upsert action 在 change_log 中原样保留；theme_asset 是二进制资源，只通过 POST /themes/assets 上传，不进入 /operations。Bootstrap 只导入/导出 theme asset metadata，binary_available=false 时客户端必须从源 Center 按 /themes/assets/:hash 拉取二进制。",
+      "createdAt": "2026-05-28T11:24:34.647",
+      "updatedAt": "2026-05-28T11:24:34.647"
+    },
+    {
+      "id": "notebook-1779926274635_06t6gcik7",
+      "filePath": "../VCPToolBox/Plugin/VChatSyncCenter/core/themeService.js",
+      "note": "Center 主题资源库同步修复：themeService 会重新计算主题 checksum（覆盖 manifest/assets）并拒绝不匹配 checksum；theme asset 仅允许 jpeg/png/webp 且校验 magic/hash/大小/slot/asset_type/path containment。syncRoutes 的 POST /themes 走 processOperation 写 change_log 并通知 latest_seq，POST /themes/assets 返回并通知 theme_asset seq；bootstrapService 导出主题 assets metadata，二进制策略为 download_by_hash（客户端按 /themes/assets/:hash 拉取）。",
+      "createdAt": "2026-05-28T07:57:54.635",
+      "updatedAt": "2026-05-28T07:57:54.635"
+    }
+  ],
+  "VCPDistributedServer/Plugin/VChatSyncAdapter/sync/themePackageSync.js": [
+    {
+      "id": "notebook-1779941484468_lefwyn4u8",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/sync/themePackageSync.js",
+      "note": "Adapter 主题资源库同步基础能力：启动时扫描项目根 styles/themes/*.css，解析 CSS 变量与 --chat-wallpaper-dark/light url，按文件名生成 theme_id，通过 POST /themes 上传 theme_package，通过 POST /themes/assets 上传壁纸资产；监听 styles/themes 与 assets/wallpaper 变化后重新同步。注意桌面 CSS 中 '../assets/wallpaper/...' 会从项目根兜底解析为 assets/wallpaper/...。",
+      "createdAt": "2026-05-28T12:11:24.468",
+      "updatedAt": "2026-05-28T12:11:24.468"
+    }
+  ],
+  "preloads/shared/apiFactory.js": [
+    {
+      "id": "notebook-1779962777727_xnsl03xmf",
+      "filePath": "preloads/shared/apiFactory.js",
+      "note": "2026-05-28 preload/security review: desktopAPI/chatAPI/utility APIs are materialized from fixed catalog keys and expose electronAPI as compatApi, not raw ops. createOps has generic invoke/send/subscribe internally, but exposeRoleApis only exposes roleApi and compatApi created from named catalog entries; no public desktopAPI/electronAPI arbitrary ipcRenderer.invoke(channel,...args) bridge found in main app preloads. Caveat: VCPHumanToolBox exposes electronAPI.invoke/send/on with allowlists, while VCPDistributedServer plugin GUI preloads expose unrestricted send/on in plugin-local windows, not VCPDesktop desktopAPI/electronAPI.",
+      "createdAt": "2026-05-28T18:06:17.727",
+      "updatedAt": "2026-05-28T18:06:17.727"
+    }
+  ],
+  "modules/ipc/desktopHandlers.js": [
+    {
+      "id": "notebook-1779970531068_m488bkr5p",
+      "filePath": "modules/ipc/desktopHandlers.js",
+      "note": "2026-05-28 custom high-risk confirmation: confirmHighRiskDesktopApi now tries a main-process-created custom BrowserWindow modal first (modules/high-risk-confirm.html + preloads/highRiskConfirm.js) with per-request random token IPC channels for payload/decision, contextIsolation/nodeIntegration:false/sandbox:true, default cancel semantics, and native dialog fallback on failure. Existing high-risk call sites remain unchanged; npm run pack and node --check passed.",
+      "createdAt": "2026-05-28T20:15:31.068",
+      "updatedAt": "2026-05-28T20:15:31.068"
+    },
+    {
+      "id": "notebook-1779968274605_wazb49wsu",
+      "filePath": "modules/ipc/desktopHandlers.js",
+      "note": "2026-05-28 high-risk desktop API confirmation: desktop-get-credentials, desktop-shortcut-launch, and desktop-open-system-tool now require a main-process Electron dialog confirmation via confirmHighRiskDesktopApi before returning credentials, launching shortcuts/programs/URLs, or opening system tools/local paths. Denials return { success:false, error:'ERR_USER_DENIED_HIGH_RISK' }. node --check passed for desktopHandlers.js.",
+      "createdAt": "2026-05-28T19:37:54.605",
+      "updatedAt": "2026-05-28T19:37:54.605"
+    }
+  ],
+  "../VCPMobile/src-tauri/src/vcp_modules/vchat_sync/theme_library.rs": [
+    {
+      "id": "notebook-1779970961345_bele89f3x",
+      "filePath": "../VCPMobile/src-tauri/src/vcp_modules/vchat_sync/theme_library.rs",
+      "note": "主题资源库同步修复：sanitize_id 必须拒绝 '.'/'..'；download_asset 必须校验已存在本地文件 SHA-256，不匹配则删除后重新下载；theme_asset change 导入后必须 merge_downloaded_asset 更新 DB 与 manifest；theme_package 删除需通过 state.theme_library_dir() 清理本地 theme_library/<theme_id> 文件。extra_css 信任边界按用户要求暂不收紧。",
+      "createdAt": "2026-05-28T20:22:41.345",
+      "updatedAt": "2026-05-28T20:22:41.345"
+    }
+  ],
+  "../docs/VCPDesktop_NativeFileMoun/VCPDesktop_Widget_Query_Edit_Favorite_Architecture.md": [
+    {
+      "id": "notebook-1780044334512_p3wrdrwru",
+      "filePath": "../docs/VCPDesktop_NativeFileMoun/VCPDesktop_Widget_Query_Edit_Favorite_Architecture.md",
+      "note": "2026-05-29 update: architecture doc now includes three extra robustness recommendations: DesktopChanged/WidgetChanged event extension points as non-mandatory future push notifications, sourceVersion/layoutVersion/widgetVersion/desktopVersion with baseSourceVersion optimistic locking for DESKTOP_WIDGET_EDIT and ERR_SOURCE_VERSION_CONFLICT, and schemaVersion v1->v2 read-compatible/write-new lazy migration for legacy favorites with virtual package representation and ERR_PACKAGE_MIGRATION_FAILED.",
+      "createdAt": "2026-05-29T16:45:34.512",
+      "updatedAt": "2026-05-29T16:45:34.512"
+    },
+    {
+      "id": "notebook-1780031100986_bpm84goq5",
+      "filePath": "../docs/VCPDesktop_NativeFileMoun/VCPDesktop_Widget_Query_Edit_Favorite_Architecture.md",
+      "note": "2026-05-29 update: NativeFileMount reload section now requires reload-safe remove+spawn. The document explicitly blocks naive remove(widgetId)→spawn(widgetId) because widgetManager.remove() uses removingWidgetIds and delayed animation cleanup, which can block or accidentally delete the new widget. Reload must await cleanup, ensure state.widgets is cleared, skip or fully await removal animation, and keep widgetId stable externally while using a reloading lock.",
+      "createdAt": "2026-05-29T13:05:00.986",
+      "updatedAt": "2026-05-29T13:05:00.986"
+    },
+    {
+      "id": "notebook-1780023432749_y5xxz6559",
+      "filePath": "../docs/VCPDesktop_NativeFileMoun/VCPDesktop_Widget_Query_Edit_Favorite_Architecture.md",
+      "note": "2026-05-29 update: NativeFileMount canonical source is explicitly documented as normalized DESKTOP_BUILTIN syntax, not a new protocol. It must be parseable by existing parseDesktopBuiltinBlock, satisfy semantic parse->serialize->parse round-trip, use parser-supported fields (html/css/js/htmlContent/fallbackToDefault or supported customUI.*), keep stable field order, and exclude runtime fields such as mountId/capabilityToken.",
+      "createdAt": "2026-05-29T10:57:12.749",
+      "updatedAt": "2026-05-29T10:57:12.749"
+    },
+    {
+      "id": "notebook-1780021905455_uadmzagwf",
+      "filePath": "../docs/VCPDesktop_NativeFileMoun/VCPDesktop_Widget_Query_Edit_Favorite_Architecture.md",
+      "note": "2026-05-29 update: clarified htmlPackage multi-file edit granularity. QueryWidget source now states top-level source is mainFile content, files[] includes role/editable/encoding, targetFile is required for non-main files, targetReplace uniqueness is scoped to targetFile content, and base64 assets are not source-editable in first version.",
+      "createdAt": "2026-05-29T10:31:45.455",
+      "updatedAt": "2026-05-29T10:31:45.455"
+    },
+    {
+      "id": "notebook-1780020078339_j3ifh0adp",
+      "filePath": "../docs/VCPDesktop_NativeFileMoun/VCPDesktop_Widget_Query_Edit_Favorite_Architecture.md",
+      "note": "2026-05-29 update: section 7.4 ordinary HTML multi-replacement example was aligned with section 7.2; it now uses repeated simplified target/replace blocks and states the system converts them to replacements[] internally. Verified no `replacements:` protocol field remains in the document.",
+      "createdAt": "2026-05-29T10:01:18.339",
+      "updatedAt": "2026-05-29T10:01:18.339"
+    },
+    {
+      "id": "notebook-1780017031684_jnceok6m4",
+      "filePath": "../docs/VCPDesktop_NativeFileMoun/VCPDesktop_Widget_Query_Edit_Favorite_Architecture.md",
+      "note": "2026-05-29 update: section 17.3 Agent multi replacement example now matches section 7.2 simplified repeated target/replace syntax and shows internal conversion to replacements[] in the system flow.",
+      "createdAt": "2026-05-29T09:10:31.684",
+      "updatedAt": "2026-05-29T09:10:31.684"
+    },
+    {
+      "id": "notebook-1780016758859_7xqf2idhk",
+      "filePath": "../docs/VCPDesktop_NativeFileMoun/VCPDesktop_Widget_Query_Edit_Favorite_Architecture.md",
+      "note": "2026-05-29 update: DESKTOP_WIDGET_EDIT targetReplace input is now specified as repeated simplified target/replace blocks; the system parses repeated pairs in order and converts them internally to a replacements array. JSON replacements array is no longer required for first implementation, reducing Agent escaping/format risk.",
+      "createdAt": "2026-05-29T09:05:58.859",
+      "updatedAt": "2026-05-29T09:05:58.859"
+    },
+    {
+      "id": "notebook-1780015811439_ee2cipo57",
+      "filePath": "../docs/VCPDesktop_NativeFileMoun/VCPDesktop_Widget_Query_Edit_Favorite_Architecture.md",
+      "note": "2026-05-29 architecture doc created: defines unified VCPDesktop widget QueryDesktop/QueryWidget summary-editable-source levels, DESKTOP_WIDGET_EDIT replace + multi target/replace source editing, overall reload application model, full favorite package persistence for htmlWidget and nativeFileMount, and restart-safe restoration preserving style/interaction while regenerating NativeFileMount mountId/capabilityToken.",
+      "createdAt": "2026-05-29T08:50:11.439",
+      "updatedAt": "2026-05-29T08:50:11.439"
+    }
+  ],
+  "Desktopmodules/api/ipcBridge.js": [
+    {
+      "id": "notebook-1780197886952_np6hr1cwj",
+      "filePath": "Desktopmodules/api/ipcBridge.js",
+      "note": "2026-05-31 DESKTOP_WIDGET create/edit now emit WidgetOperationResult receipts over desktop-operation-result using requestId. sendDesktopOperationResult() centralizes the envelope; createBuiltinWidget returns success/failure receipts and editWidget forwards applyDesktopWidgetEdit() outcomes. buildVersions() relies on local readNumber() and is safe in this file.",
+      "createdAt": "2026-05-31T11:24:46.952",
+      "updatedAt": "2026-05-31T11:24:46.952"
+    },
+    {
+      "id": "notebook-1780072463682_rjwyfrabs",
+      "filePath": "Desktopmodules/api/ipcBridge.js",
+      "note": "2026-05-30 htmlPackage minimal Query/Edit/Persist implemented: QueryWidget source lists package files/content from widgetData.cardFiles; EditWidget sourceFormat=htmlPackage now supports targetFile (defaults mainFile) with replace/targetReplace scoped to that file, rejects missing/non-editable/base64 files, updates cardPackage/cardFiles and re-renders mainFile edits. persist:ask sends package.json plus files[] to desktopSaveWidget. Syntax checks and npm run pack passed.",
+      "createdAt": "2026-05-30T00:34:23.682",
+      "updatedAt": "2026-05-30T00:34:23.682"
+    },
+    {
+      "id": "notebook-1780068942512_t662gkpik",
+      "filePath": "Desktopmodules/api/ipcBridge.js",
+      "note": "2026-05-29 persist:ask minimal v2 save path added for widget edits. ipcBridge now allows saved NativeFileMount desktopBuiltin edits to call desktopSaveWidget with package.json metadata and source.desktopbuiltin content; modules/ipc/desktopHandlers.js writes package.json and source.desktopbuiltin when provided. htmlPackage edit/persist remains explicitly unsupported until full file-level package editing is implemented.",
+      "createdAt": "2026-05-29T23:35:42.512",
+      "updatedAt": "2026-05-29T23:35:42.512"
+    },
+    {
+      "id": "notebook-1780049792747_stee1dash",
+      "filePath": "Desktopmodules/api/ipcBridge.js",
+      "note": "2026-05-29 partial widget query/edit implementation: ipcBridge now builds QueryDesktop summaries with source metadata/version/layout, adds QueryWidget summary/editable/source, and adds basic EditWidget/DESKTOP_WIDGET_EDIT RPC handling for replace/targetReplace with baseSourceVersion conflict checks. NativeFileMount edit uses current desktop-side parseSource/spawn and delayed remove+respawn; streamManager DESKTOP_WIDGET_EDIT block parsing and favorite v2 persistence still need completion.",
+      "createdAt": "2026-05-29T18:16:32.747",
+      "updatedAt": "2026-05-29T18:16:32.747"
+    }
+  ],
+  "Desktopmodules/desktop-renderer.js": [
+    {
+      "id": "notebook-1780075788013_7gx6x4c7g",
+      "filePath": "Desktopmodules/desktop-renderer.js",
+      "note": "已修复 QueryWidget level=editable 不应删除主 source 的问题：editable 级别要保留可编辑主源码，只省略/裁剪多文件内容正文；否则 DesktopRemote/EditWidget 前置查询无法拿到源码。相关命令链路还需要 DesktopRemote 插件脚本解析 QueryWidget/EditWidget，并由 modules/ipc/desktopRemoteHandlers.js 转发到桌面渲染端。",
+      "createdAt": "2026-05-30T01:29:48.013",
+      "updatedAt": "2026-05-30T01:29:48.013"
+    }
+  ],
+  "Desktopmodules/favorites/favoritesManager.js": [
+    {
+      "id": "notebook-1780107089142_3bntshcyh",
+      "filePath": "Desktopmodules/favorites/favoritesManager.js",
+      "note": "2026-05-30 legacy v1 compatibility: modules/ipc/desktopHandlers.js exposes old widget.html-only favorites through virtual schemaVersion 2 htmlPackage manifests with migration.fromSchemaVersion=1 and packageVirtual=true; load/list now return sourceOrigin/sourceCompleteness/migratedFromSchemaVersion/packageVirtual.",
+      "createdAt": "2026-05-30T10:11:29.142",
+      "updatedAt": "2026-05-30T10:11:29.142"
+    },
+    {
+      "id": "notebook-1780107089142_n72l1upwv",
+      "filePath": "Desktopmodules/favorites/favoritesManager.js",
+      "note": "2026-05-30 favorite save normalization: regular HTML widgets are saved as schemaVersion 2 htmlPackage, even when no prior cardPackage exists. ensureHtmlPackageFiles creates/normalizes cardFiles main entry, sets sourceFormat=htmlPackage/sourceOrigin=stored/sourceCompleteness=full, and buildFavoritePackage always emits mainFile/entry/files metadata.",
+      "createdAt": "2026-05-30T10:11:29.142",
+      "updatedAt": "2026-05-30T10:11:29.142"
+    }
+  ],
+  "../VCPToolBox/TVStxt/DesktopCore.txt": [
+    {
+      "id": "notebook-1780113225558_4e809fxb2",
+      "filePath": "../VCPToolBox/TVStxt/DesktopCore.txt",
+      "note": "2026-05-30: Updated DesktopCore.txt agent instruction file to integrate the new VCPDesktop card Query, Edit (DESKTOP_WIDGET_EDIT), and Persist/Favorite architecture. The documentation was condensed to be extremely concise, highlighting the card type model, version control (optimistic lock with baseSourceVersion), multi-replacement parsing rules, and the updated DesktopRemote plugin command list.",
+      "createdAt": "2026-05-30T11:53:45.558",
+      "updatedAt": "2026-05-30T11:53:45.558"
+    }
+  ],
+  "../VCPToolBox/Plugin/VChatSyncCenter/core/topicService.js": [
+    {
+      "id": "notebook-1780363606219_xakebu54t",
+      "filePath": "../VCPToolBox/Plugin/VChatSyncCenter/core/topicService.js",
+      "note": "Topic protocol implementation: Center now accepts topic create/update/upsert as topic content upserts and topic_order move/replace as ordering operations. topics.metadata_json stores the full topic object to preserve extension fields; order is stored via topics.order_rank and emitted as topic_order change_log events.",
+      "createdAt": "2026-06-02T09:26:46.219",
+      "updatedAt": "2026-06-02T09:26:46.219"
+    }
+  ],
+  "VCPDistributedServer/Plugin/VChatSyncAdapter/projector/themeProjector.js": [
+    {
+      "id": "notebook-1780372847093_j8w9409ui",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/projector/themeProjector.js",
+      "note": "theme_asset baseline 可能只有 metadata 且 binary_available=false；Adapter 投影应记录 pending_binary/download_by_hash，不应阻塞 join_existing 或 pullLoop。",
+      "createdAt": "2026-06-02T12:00:47.093",
+      "updatedAt": "2026-06-02T12:00:47.093"
+    },
+    {
+      "id": "notebook-1780372847093_klhmzfl21",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/projector/themeProjector.js",
+      "note": "主题投影不能只写 AppData/theme_library；VChat 桌面客户端实际读取 styles/themes/*.css 和 assets/wallpaper/*，远端 theme_package/theme_asset 投影必须同时写回这些客户端消费路径。",
+      "createdAt": "2026-06-02T12:00:47.093",
+      "updatedAt": "2026-06-02T12:00:47.093"
+    }
+  ],
+  "../VCPToolBox/Plugin/VChatSyncCenter/core/changeLog.js": [
+    {
+      "id": "notebook-1780376298897_i6qwwq551",
+      "filePath": "../VCPToolBox/Plugin/VChatSyncCenter/core/changeLog.js",
+      "note": "getOperationResult 现在返回 entity_id 和 payload，供幂等重试在业务行缺失等异常场景下有更多回退信息；保持既有 ok/seq/operation_id/idempotent/action/version 字段兼容。",
+      "createdAt": "2026-06-02T12:58:18.897",
+      "updatedAt": "2026-06-02T12:58:18.897"
+    }
+  ],
+  "VCPDistributedServer/Plugin/VChatSyncAdapter/README.md": [
+    {
+      "id": "notebook-1780376786609_n95r192sw",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/README.md",
+      "note": "README 已补充主题同步 API 说明：Adapter 除附件与 bootstrap import/export 外，还支持 /themes 与 /themes/assets；主题包/资源落地后分别投影到 styles/themes/*.css 与 assets/wallpaper/*。",
+      "createdAt": "2026-06-02T13:06:26.609",
+      "updatedAt": "2026-06-02T13:06:26.609"
+    }
+  ],
+  "VCPDistributedServer/Plugin/VChatSyncAdapter/projector/entityDeleteProjector.js": [
+    {
+      "id": "notebook-1780386080169_x3qdpcvnq",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/projector/entityDeleteProjector.js",
+      "note": "VChat 原生 agent topic 删除会从 config.topics 移除 topic，并删除 UserData/<agent>/topics/<topic> 目录；Adapter 的 topic.delete 投影应保持一致删除 topic 目录。topic_history.delete 仍只清空已存在的 history.json，不应新建缺失 history 文件，也不应删除 config.topics。",
+      "createdAt": "2026-06-02T15:41:20.169",
+      "updatedAt": "2026-06-02T15:41:20.169"
+    }
+  ],
+  "VCPDistributedServer/Plugin/VChatSyncAdapter/projector/attachmentProjector.js": [
+    {
+      "id": "notebook-1780387852628_wq4vkngzb",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/projector/attachmentProjector.js",
+      "note": "同步修复：attachment metadata event 到达后不仅记录 remote_attachment:<hash>，还会扫描 local_index 中已知 topic 的 history.json，调用 rewriteMessageAttachments() 对引用该 hash 的已投影消息做附件路径补修并写入 writeIntentLock，解决 message 先到、attachment 后到时本地路径不回填的问题。",
+      "createdAt": "2026-06-02T16:10:52.628",
+      "updatedAt": "2026-06-02T16:10:52.628"
+    }
+  ],
+  "../VCPToolBox/Plugin/VChatSyncCenter/core/deleteService.js": [
+    {
+      "id": "notebook-1780387853235_9l2wmuxib",
+      "filePath": "../VCPToolBox/Plugin/VChatSyncCenter/core/deleteService.js",
+      "note": "同步修复：config delete 和级联 config delete change payload 现在补齐 relative_path。agent_config/group_config 的纯 entity_id 会映射到 Agents/<id>/config.json / AgentGroups/<id>/config.json；已有相对路径或 .json 路径保持不变。",
+      "createdAt": "2026-06-02T16:10:53.235",
+      "updatedAt": "2026-06-02T16:10:53.235"
     }
   ]
 }

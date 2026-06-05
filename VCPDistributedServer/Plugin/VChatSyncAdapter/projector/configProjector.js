@@ -2,7 +2,12 @@ const path = require("path");
 const fs = require("fs-extra");
 const { atomicWriteJson } = require("./atomicWriter");
 const { checksumJson } = require("../core/hash");
-const { normalizeSlashes } = require("../utils/pathRules");
+const {
+  assertInsideAppData,
+  assertSafePathSegment,
+  normalizeSlashes,
+  safeJoinAppData,
+} = require("../utils/pathRules");
 const {
   mergeProjectedConfig,
   validateSafeConfigDto,
@@ -10,10 +15,41 @@ const {
 
 function pathForConfigEvent(config, event) {
   const payload = event.payload || {};
-  const relativePath =
+  const schema = payload.schema || event.entity_type;
+  const rawRelativePath =
     payload.relative_path || payload.entity_id || event.entity_id;
-  if (!relativePath) return null;
-  return path.join(config.appDataPath, relativePath);
+  if (!rawRelativePath) return null;
+
+  const relativePath = normalizeSlashes(rawRelativePath);
+  if (relativePath.includes("/") || /\.json$/i.test(relativePath)) {
+    return safeJoinAppData(config.appDataPath, relativePath);
+  }
+
+  if (schema === "agent_config") {
+    const entityId = assertSafePathSegment(
+      relativePath,
+      "agent_config entity_id"
+    );
+    return safeJoinAppData(
+      config.appDataPath,
+      "Agents",
+      entityId,
+      "config.json"
+    );
+  }
+  if (schema === "group_config") {
+    const entityId = assertSafePathSegment(
+      relativePath,
+      "group_config entity_id"
+    );
+    return safeJoinAppData(
+      config.appDataPath,
+      "AgentGroups",
+      entityId,
+      "config.json"
+    );
+  }
+  return safeJoinAppData(config.appDataPath, relativePath);
 }
 
 async function readLocalConfig(filePath) {
@@ -21,6 +57,22 @@ async function readLocalConfig(filePath) {
   const value = await fs.readJson(filePath);
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return value;
+}
+
+async function applyConfigDeleteEvent(event, context, filePath) {
+  const { config, writeIntentLock, localIndex } = context;
+  const relativePath = assertInsideAppData(config.appDataPath, filePath);
+  await writeIntentLock.record({
+    relative_path: relativePath,
+    filePath,
+    source: "sync_projector",
+    expectedChecksum: null,
+    ttl_ms: 60000,
+    expireAt: Date.now() + 60000,
+  });
+  await fs.remove(filePath);
+  await localIndex.deleteFile(relativePath);
+  return { deleted: true, relativePath, seq: event.seq };
 }
 
 async function applyConfigEvents(events, context) {
@@ -31,14 +83,39 @@ async function applyConfigEvents(events, context) {
     const dto = payload.safe_projection_json;
     const schema = payload.schema || event.entity_type;
     const filePath = pathForConfigEvent(config, event);
-    if (!filePath || !dto || typeof dto !== "object") continue;
+    if (!filePath) continue;
+    if (event.action === "delete") {
+      await applyConfigDeleteEvent(event, context, filePath);
+      written += 1;
+      continue;
+    }
+    if (!dto || typeof dto !== "object") continue;
 
     const profile = payload.profile || event.profile || "bootstrap";
-    const projectionFields = payload.projection_fields || event.projection_fields;
+    const projectionFields =
+      payload.projection_fields || event.projection_fields;
+    const deletedFields = payload.deleted_fields || event.deleted_fields || [];
     if (profile === "runtime" && !Array.isArray(projectionFields)) {
       throw new Error(
-        `runtime config event requires projection_fields: ${schema}:${payload.entity_id || event.entity_id}`
+        `runtime config event requires projection_fields: ${schema}:${
+          payload.entity_id || event.entity_id
+        }`
       );
+    }
+    if (
+      profile === "runtime" &&
+      (schema === "agent_config" || schema === "group_config") &&
+      !(await fs.pathExists(filePath))
+    ) {
+      if (logger && logger.warn) {
+        logger.warn("skip runtime config event for missing local config", {
+          schema,
+          entityId: payload.entity_id || event.entity_id,
+          filePath,
+          seq: event.seq,
+        });
+      }
+      continue;
     }
     validateSafeConfigDto(schema, dto, {
       profile,
@@ -49,7 +126,9 @@ async function applyConfigEvents(events, context) {
       schema,
       profile,
       projection_fields: projectionFields,
+      deleted_fields: deletedFields,
     });
+
     const expectedChecksum = checksumJson(next);
     const remoteDtoChecksum = checksumJson({
       dto_version: payload.dto_version,
@@ -57,11 +136,11 @@ async function applyConfigEvents(events, context) {
       entity_id: payload.entity_id || event.entity_id,
       safe_projection_json: dto,
       projection_fields: projectionFields,
+      deleted_fields: deletedFields,
       profile,
     });
-    const relativePath = normalizeSlashes(
-      path.relative(config.appDataPath, filePath)
-    );
+
+    const relativePath = assertInsideAppData(config.appDataPath, filePath);
     await writeIntentLock.record({
       relative_path: relativePath,
       filePath,
@@ -90,4 +169,9 @@ async function applyConfigEvents(events, context) {
   return { applied: events.length, written };
 }
 
-module.exports = { applyConfigEvents, pathForConfigEvent, readLocalConfig };
+module.exports = {
+  applyConfigEvents,
+  applyConfigDeleteEvent,
+  pathForConfigEvent,
+  readLocalConfig,
+};

@@ -297,5 +297,550 @@
       "op": "add",
       "notebookId": "notebook-1778729925792_rbpv42sj4"
     }
+  ],
+  "dfb51c4d-11b0-46ba-a880-004df3ba55bc:1": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779207865047_7jycns9p9"
+    }
+  ],
+  "609bfc76-91f3-4efe-85ed-c417f32bd2bc:30": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779212177452_mgzsminxp"
+    }
+  ],
+  "5344e35c-3c11-4a0e-8753-8e0716d3068c:1": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779212625011_jr7cyiwhc"
+    }
+  ],
+  "5344e35c-3c11-4a0e-8753-8e0716d3068c:29": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779213349549_8tw43cram"
+    }
+  ],
+  "5344e35c-3c11-4a0e-8753-8e0716d3068c:69": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779214462311_mlqtj5fmh"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1779214462934_72amkgfsf"
+    }
+  ],
+  "ef381da5-f7ee-425c-bb9a-278efd088047:1": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779239147449_6i12yy3pm"
+    }
+  ],
+  "ef381da5-f7ee-425c-bb9a-278efd088047:31": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779239972022_1pc4mjvec"
+    }
+  ],
+  "8673e47b-5212-4c34-a4af-18ba4cc81170:16": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779630238954_yvjompk0a"
+    }
+  ],
+  "8673e47b-5212-4c34-a4af-18ba4cc81170:44": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779640828281_yr2k9sms6"
+    }
+  ],
+  "8673e47b-5212-4c34-a4af-18ba4cc81170:66": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779721364691_gvt46rb6r"
+    }
+  ],
+  "d39ac4ae-c700-4913-b2cb-18d43886dae4:4": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779724774505_vutegyyz0"
+    }
+  ],
+  "d39ac4ae-c700-4913-b2cb-18d43886dae4:31": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779726460719_mf7hn9dol"
+    }
+  ],
+  "3efcbc15-3546-4eaa-83b1-98110fa55f92:53": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779727980502_feaaz6zke"
+    }
+  ],
+  "6682e375-2107-4598-ba18-b7013cafff5e:17": [
+    {
+      "op": "update",
+      "notebookId": "notebook-1779630238954_yvjompk0a",
+      "previousNote": "2026-05-24 investigation: renderer currently only intercepts DESKTOP_PUSH / DESKTOP_PUSH_END. There is no DESKTOP_WIDGET parser chain in streamManager, messageRenderer, or DesktopRemote plugin. So any <<<[DESKTOP_WIDGET]>>> block is treated as ordinary chat text and will render verbatim unless new parsing/dispatch logic is added."
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1779729738424_pd3p4fd7z"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1779729908112_7lkm6hwsi"
+    }
+  ],
+  "d58736c2-b255-4d6c-b0e4-12e9e5514870:71": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779798592280_h0au5jgzt"
+    }
+  ],
+  "d58736c2-b255-4d6c-b0e4-12e9e5514870:114": [
+    {
+      "op": "update",
+      "notebookId": "notebook-1779798592280_h0au5jgzt",
+      "previousNote": "2026-05-26 fix: Default NativeFileMount UI interaction repaired by forcing widgetData.contentContainer to 100% width/height/hidden overflow/block display, adding no-drag root styles and min-height:0 list sizing, removing draggable=true from file rows, focusing root on interactions, centralizing row selection through selectIndex(), and adding a file-level context menu for open/reveal/copy/cut/rename/trash. openWith now requires file/symlink selection."
+    }
+  ],
+  "ae530006-ec54-4f6e-8a4f-2d194122fe23:27": [
+    {
+      "op": "update",
+      "notebookId": "notebook-1779798592280_h0au5jgzt",
+      "previousNote": "2026-05-26 update: Default NativeFileMount interaction fix was refined after user confirmed right-click menu appeared but selection/new-folder still failed. Selection is now path-based and triggered on pointerdown; native prompt() usages for newFolder/rename/conflict strategy were replaced with in-widget askText() dialog to avoid blocked prompt behavior. NOTE: selection/double-click behavior should be validated in UI after reload."
+    }
+  ],
+  "ae530006-ec54-4f6e-8a4f-2d194122fe23:58": [
+    {
+      "op": "update",
+      "notebookId": "notebook-1779798592280_h0au5jgzt",
+      "previousNote": "2026-05-26 update 2: User confirmed newFolder works but other interactions still failed and askText input could not Backspace/Delete. Root cause: root keydown handler intercepted Backspace/Delete even when focus was inside dialog input, and row pointer/dblclick/contextmenu selection called render(), replacing row DOM during click/double-click flow. Fix: askText keydown now stops propagation while only preventing Escape/Enter; handleKeydown ignores editable targets; row selection/dblclick/contextmenu now use syncSelectionStyles() instead of full render() so selection is visually updated without destroying the click target. node --check passed."
+    }
+  ],
+  "ae530006-ec54-4f6e-8a4f-2d194122fe23:141": [
+    {
+      "op": "update",
+      "notebookId": "notebook-1779798592280_h0au5jgzt",
+      "previousNote": "2026-05-26 update 3: User confirmed Backspace and folder double-click work, but selected highlight still vanished and right-click menu actions failed. Fix: selection state still stores entry.path, but render/syncSelectionStyles now also set data-selected/aria-selected and inline selected background/outline/boxShadow so visual selection is independent of hover CSS. Context menu now stores contextMenuTargetPath when opened; click handler passes it to handleFileMenuAction(action,targetPath), which reselects that exact path before executing open/reveal/copy/cut/rename/trash. node --check passed."
+    }
+  ],
+  "d34072f0-9ae0-42c5-bba3-1ee26d481f67:44": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779804558859_4mubr2hg3"
+    }
+  ],
+  "126e75c6-74e1-450d-b359-3817d8341b89:34": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779805459130_a02fi2s8b"
+    }
+  ],
+  "126e75c6-74e1-450d-b359-3817d8341b89:60": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779809073231_xe7d25oua"
+    }
+  ],
+  "84393911-8a58-466b-98fe-24ae5ed79de7:67": [
+    {
+      "op": "update",
+      "notebookId": "notebook-1779809073231_xe7d25oua",
+      "previousNote": "2026-05-26 update 7: Latest NativeFileMount paste fixes. Frontend paste now sends conflictStrategy=ask first and only opens an in-widget conflict dialog when backend returns ERR_CONFLICT_NEEDS_CONFIRM; dialog options are 覆盖 (overwrite+confirmed), 重命名 (autoRename), 取消. pasteToCurrentDir uses currentDir || rootPath so mount-root paste does not send an empty destDir. Backend _paste now pre-resolves all conflicts before creating the async copy job, so conflict errors are returned synchronously to the widget instead of being hidden in job failure; affectedPaths includes destination paths. Windows Explorer interop changed from Electron FileNameW-only to PowerShell file clipboard support: _writeSystemFileClipboard uses Set-Clipboard -LiteralPath and _readSystemFileClipboard uses Get-Clipboard -Format FileDropList, with Electron FileNameW as fallback. Backend tracks a clipboard signature so Explorer-copied files can override stale internal globalClipboard. node --check passed for nativeFileMountWidget.js and NativeFsService.js."
+    }
+  ],
+  "998a3d13-db5a-43b2-863a-a2f3d415465b:54": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779813688928_1g6lmvy4q"
+    }
+  ],
+  "f84d5558-a97d-4d56-8bd2-3b6018a69018:61": [
+    {
+      "op": "update",
+      "notebookId": "notebook-1779813688928_1g6lmvy4q",
+      "previousNote": "2026-05-27 NativeFileMount follow-up: implemented accepted paste conflict optimization and UX changes. Backend NativeFsService now supports clipboardPreview as a readonly action, caches internal clipboard preview after copy/cut, builds preview from the currently effective internal/system clipboard, and _paste() fast-fails on the first ask-conflict before job creation. Frontend now calls clipboardPreview quietly, predicts same-name conflicts from currently loaded entries and prompts immediately when possible, then still lets backend ask-conflict validation be authoritative. Toolbar paste button moved next to cut; row context menu now includes “粘贴到当前文件夹” and it always pastes to currentDir/rootPath, not into the selected row. NativeFsJobs now enriches failed job errors with operation/src/dest details and uses message before code; Windows EPERM during move/cut now falls back to copy+trash like EXDEV. Syntax checks passed for NativeFsJobs.js, NativeFsService.js, and nativeFileMountWidget.js."
+    }
+  ],
+  "4107fe56-561a-4d48-885c-9317928324af:16": [
+    {
+      "op": "update",
+      "notebookId": "notebook-1779813688928_1g6lmvy4q",
+      "previousNote": "2026-05-27 NativeFileMount follow-up: implemented accepted paste conflict optimization and UX changes. Backend NativeFsService supports clipboardPreview as a readonly action, caches internal clipboard preview after copy/cut, builds preview from the currently effective internal/system clipboard, and _paste() fast-fails on the first ask-conflict before job creation. Frontend calls clipboardPreview quietly, predicts same-name conflicts from currently loaded entries and prompts immediately when possible, then still lets backend ask-conflict validation be authoritative. Toolbar paste button moved next to cut; row context menu includes “粘贴到当前文件夹” and it always pastes to currentDir/rootPath, not into the selected row. NativeFsJobs enriches failed job errors with operation/src/dest details and uses message before code; Windows EPERM during move/cut falls back to copy+trash like EXDEV. 2026-05-27 fix: same-folder copy+paste of the same file with conflict choice “重命名” previously failed because _paste() compared source with the initial requestedDest before _resolveConflict(); the guard now runs after _resolveConflict() and compares source with the final resolved dest, so autoRename can create “name (1).ext” while overwrite/self-final-dest is still rejected. Syntax checks passed for NativeFsJobs.js, NativeFsService.js, and nativeFileMountWidget.js."
+    }
+  ],
+  "675b60b9-37b8-4b14-b6c9-7849b27aa69f:11": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779871940482_kvlna4s9v"
+    }
+  ],
+  "a8f5a40c-e019-42e7-a0da-0c4149558b23:28": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779875626785_ivh42n3tn"
+    }
+  ],
+  "6b529a22-2b33-4b65-a31e-ade4d82d65b5:4": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779877250742_jwjbdsezo"
+    }
+  ],
+  "eb137cf0-934d-454e-be84-65fd5d2daeaf:25": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779879742086_antldkv5g"
+    }
+  ],
+  "e5f73cd2-3946-41ef-ad38-296eaf82a5e2:2": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779880866914_0y58h93me"
+    }
+  ],
+  "dc054491-5e3c-4182-a6f8-e549bc50f8ee:27": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779889405770_14wqyrtzp"
+    }
+  ],
+  "6dc59e37-1731-4e08-bc39-6165b7f8b2cb:13": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779890936741_3giti26kc"
+    }
+  ],
+  "d11b1841-fd5e-49c9-9a18-03917f9b2d5a:23": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779896102471_jw9gwuxui"
+    }
+  ],
+  "bd818501-c901-4f95-9d34-88a2d6c43d00:1": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779896234186_r6y5mkaky"
+    }
+  ],
+  "ff4b718c-8e9f-45c4-8081-da99e2b6dc9a:1": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779899616394_2r7q7n0hu"
+    }
+  ],
+  "ff4b718c-8e9f-45c4-8081-da99e2b6dc9a:54": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779902370611_xboxq6el7"
+    }
+  ],
+  "d960ac94-9676-4277-a224-f8bf281b5c45:59": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779926274635_06t6gcik7"
+    }
+  ],
+  "14713c2e-5c98-4d19-901b-7033736e34a3:15": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779937398491_ahf9zunc7"
+    }
+  ],
+  "a1ff534c-28da-49af-b909-68696df3a39f:18": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779938674647_lwdr2ddo4"
+    }
+  ],
+  "14713c2e-5c98-4d19-901b-7033736e34a3:73": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779939844546_dfyiauxjw"
+    }
+  ],
+  "a1ff534c-28da-49af-b909-68696df3a39f:78": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779941484468_lefwyn4u8"
+    }
+  ],
+  "1271095c-065e-4f4d-9786-9788e91c87f1:33": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779958786339_hevf2rkyk"
+    }
+  ],
+  "1271095c-065e-4f4d-9786-9788e91c87f1:61": [
+    {
+      "op": "delete",
+      "entry": {
+        "id": "notebook-1779727980502_feaaz6zke",
+        "filePath": "Desktopmodules/runtime/widgetRuntime.js",
+        "note": "2026-05-25 review-fix: CustomUI sandbox added prototype constructor lockdown during user code/callback execution and masks Function/eval plus common constructors in user scope to reduce constructor.constructor escape risk. This remains semi-trusted Shadow DOM isolation, not iframe-grade isolation. Syntax checks and npm run pack passed after the fix.",
+        "createdAt": "2026-05-26T00:53:00.502",
+        "updatedAt": "2026-05-26T00:53:00.502"
+      }
+    }
+  ],
+  "1271095c-065e-4f4d-9786-9788e91c87f1:88": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779962777727_xnsl03xmf"
+    }
+  ],
+  "efd71c62-86ae-4ff7-94fa-1360b33a2fa3:41": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779967261450_49llcl2lp"
+    }
+  ],
+  "a3c36ef9-dc43-4ce1-b22e-ff60f5ae3a33:34": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779968274605_wazb49wsu"
+    }
+  ],
+  "a3c36ef9-dc43-4ce1-b22e-ff60f5ae3a33:86": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779970531068_m488bkr5p"
+    }
+  ],
+  "efd71c62-86ae-4ff7-94fa-1360b33a2fa3:61": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1779970961345_bele89f3x"
+    }
+  ],
+  "868fbaeb-3162-4bf9-bbc5-f11c6e5e38c8:79": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780015811439_ee2cipo57"
+    }
+  ],
+  "868fbaeb-3162-4bf9-bbc5-f11c6e5e38c8:97": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780016758859_7xqf2idhk"
+    }
+  ],
+  "868fbaeb-3162-4bf9-bbc5-f11c6e5e38c8:108": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780017031684_jnceok6m4"
+    }
+  ],
+  "22e4e08f-d93f-4696-bd87-d1cb7b7dfbdf:2": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780020078339_j3ifh0adp"
+    }
+  ],
+  "22e4e08f-d93f-4696-bd87-d1cb7b7dfbdf:46": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780021905455_uadmzagwf"
+    }
+  ],
+  "22e4e08f-d93f-4696-bd87-d1cb7b7dfbdf:83": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780023432749_y5xxz6559"
+    }
+  ],
+  "22e4e08f-d93f-4696-bd87-d1cb7b7dfbdf:116": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780031100986_bpm84goq5"
+    }
+  ],
+  "4692cc63-a218-4c1c-87dc-42a55517d5c3:5": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780044334512_p3wrdrwru"
+    }
+  ],
+  "4692cc63-a218-4c1c-87dc-42a55517d5c3:44": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780049792747_stee1dash"
+    }
+  ],
+  "7020f863-e1d0-4088-a373-2cbc0d8f74e0:48": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780068341431_obyarhvuk"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1780068942512_t662gkpik"
+    }
+  ],
+  "76483f26-af93-4b77-9a00-93a3896d0a9a:2": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780072463682_rjwyfrabs"
+    }
+  ],
+  "ac0a8589-ba4f-49ee-9b01-3259cc174291:54": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780075788013_7gx6x4c7g"
+    }
+  ],
+  "4dd61e83-9c05-4ca2-96ea-558cbd140f07:29": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780107089142_n72l1upwv"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1780107089142_3bntshcyh"
+    }
+  ],
+  "84fd8189-1ece-40da-98af-2ad2d33c3aec:4": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780113225558_4e809fxb2"
+    }
+  ],
+  "319861f8-a60e-4bb6-aee6-56915810fd3e:17": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780195376747_ik5tpy9ju"
+    }
+  ],
+  "319861f8-a60e-4bb6-aee6-56915810fd3e:43": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780197886952_np6hr1cwj"
+    }
+  ],
+  "ad0ad7ef-a6c4-4f1c-9744-d95d29f18564:54": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780199793290_cl27sq7sv"
+    }
+  ],
+  "f8a82c08-d7fc-4115-83a3-c71eae66f36b:37": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780283070114_s9g0sfnzr"
+    }
+  ],
+  "89f5e715-c04f-4a92-89d7-c7291545ae0d:25": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780330593890_j86vb7a7u"
+    }
+  ],
+  "4c0896b4-56dd-4bde-afc3-def3d0729f7d:58": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780362409362_awvypmmvu"
+    }
+  ],
+  "4c0896b4-56dd-4bde-afc3-def3d0729f7d:84": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780363606219_xakebu54t"
+    }
+  ],
+  "d84a4af5-e3f2-4c86-a3ad-b270dc8b1b4b:20": [
+    {
+      "op": "update",
+      "notebookId": "notebook-1778463831110_tjx9r0ln5",
+      "previousNote": "VChatSyncAdapter 本地 bootstrap/manifest/conflicts API 已复用 VCHAT_SYNC_KEY 鉴权，支持 Authorization Bearer、x-vchat-sync-key、x-vchat-bootstrap-key；未配置或 change-me 必须拒绝。"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1780366417990_p9tfmxafy"
+    }
+  ],
+  "76c06852-aeae-4942-89f3-5229dc369965:111": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780372847093_klhmzfl21"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1780372847093_j8w9409ui"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1780372847614_yygip9k0n"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1780372847615_shs95xkz7"
+    }
+  ],
+  "21d6748a-91a8-42cb-b924-9921c3ffe9af:54": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780376298286_ewlrbdaez"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1780376298897_i6qwwq551"
+    }
+  ],
+  "21d6748a-91a8-42cb-b924-9921c3ffe9af:90": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780376786609_n95r192sw"
+    }
+  ],
+  "21d6748a-91a8-42cb-b924-9921c3ffe9af:174": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780386080169_x3qdpcvnq"
+    }
+  ],
+  "9c1ba947-5d00-4078-a4b3-5085235890ce:35": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780387852038_zzl05m03y"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1780387852628_wq4vkngzb"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1780387852952_pq340h1xb"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1780387853235_9l2wmuxib"
+    }
+  ],
+  "5e6572a5-fb7a-4644-a221-3e533b7ef46e:17": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780390331928_n8r4s2rjo"
+    }
+  ],
+  "3715e539-b9dd-4783-98bb-67e4f5943be2:68": [
+    {
+      "op": "delete",
+      "entry": {
+        "id": "notebook-1780390331928_n8r4s2rjo",
+        "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/core/configSchema.js",
+        "note": "settings.json 同步范围：bootstrap 只同步 SETTINGS_BOOTSTRAP_ALLOWED 中用户指定字段；runtime 只允许 userName 和 userAvatarUrl。runtimeConfigurableAllowed 必须保持 SETTINGS_RUNTIME_DEFAULT_ALLOWED，避免 sync_profile include 扩大 settings runtime 范围。",
+        "createdAt": "2026-06-02T16:52:11.928",
+        "updatedAt": "2026-06-02T16:52:11.928"
+      }
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1780390703455_lcnn8q447"
+    }
   ]
 }

@@ -15,13 +15,24 @@ async function main() {
   );
 
   assert.doesNotThrow(() =>
-    requireAdapterAuth(config, makeReq({ authorization: "Bearer super-secret-key" }))
+    requireAdapterAuth(
+      config,
+      makeReq({ authorization: "Bearer super-secret-key" })
+    )
   );
   assert.doesNotThrow(() =>
-    requireAdapterAuth(config, makeReq({ "x-vchat-sync-key": "super-secret-key" }))
+    requireAdapterAuth(
+      config,
+      makeReq({ "x-vchat-sync-key": "super-secret-key" })
+    )
   );
-  assert.doesNotThrow(() =>
-    requireAdapterAuth(config, makeReq({ "x-vchat-bootstrap-key": "super-secret-key" }))
+  assert.throws(
+    () =>
+      requireAdapterAuth(
+        config,
+        makeReq({ "x-vchat-bootstrap-key": "super-secret-key" })
+      ),
+    /authorization failed/
   );
 
   assert.throws(
@@ -29,11 +40,16 @@ async function main() {
     /authorization failed/
   );
   assert.throws(
-    () => requireAdapterAuth(config, makeReq({ authorization: "Bearer wrong" })),
+    () =>
+      requireAdapterAuth(config, makeReq({ authorization: "Bearer wrong" })),
     /authorization failed/
   );
   assert.throws(
-    () => requireAdapterAuth({ ...config, syncKey: "change-me" }, makeReq({ authorization: "Bearer change-me" })),
+    () =>
+      requireAdapterAuth(
+        { ...config, syncKey: "change-me" },
+        makeReq({ authorization: "Bearer change-me" })
+      ),
     /authorization failed/
   );
 

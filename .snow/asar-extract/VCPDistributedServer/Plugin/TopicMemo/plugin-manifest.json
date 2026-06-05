@@ -1,0 +1,28 @@
+{
+  "name": "TopicMemo",
+  "displayName": "话题回忆插件",
+  "version": "1.0.0",
+  "description": "获取Vchat的话题列表和完整聊天记录，实现AI的话题级回忆功能。",
+  "pluginType": "synchronous",
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 60000
+  },
+  "entryPoint": {
+    "command": "node TopicMemo.js"
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "command": "ListTopics",
+        "description": "获取指定女仆的所有话题列表。\n\n**参数说明:**\n1. `tool_name`:「始」TopicMemo「末」 (必需)\n2. `command`:「始」ListTopics「末」 (必需)\n3. `maid`:「始」[女仆的中文名]「末」 (必需, 例如：小克, 迪欧尼亚)\n\n**返回内容:**\n返回该女仆的所有话题列表，包含话题名称、ID和创建时间。\n\n**使用场景:**\n- 想要回顾过去聊过的话题\n- 需要查找特定话题的ID以获取完整内容",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」TopicMemo「末」\ncommand:「始」ListTopics「末」\nmaid:「始」小克「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "GetTopicContent",
+        "description": "根据话题ID获取完整的聊天记录。\n\n**参数说明:**\n1. `tool_name`:「始」TopicMemo「末」 (必需)\n2. `command`:「始」GetTopicContent「末」 (必需)\n3. `maid`:「始」[女仆的中文名]「末」 (必需)\n4. `topic_id`:「始」[话题ID]「末」 (必需, 格式如：topic_1766100505346，可通过 ListTopics 获取)\n\n**返回内容:**\n返回该话题的完整聊天记录，格式为 Markdown 对话文档。\n\n**使用场景:**\n- 需要完整回顾某个特定话题的对话内容\n- 需要查找话题中的具体信息",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」TopicMemo「末」\ncommand:「始」GetTopicContent「末」\nmaid:「始」小克「末」\ntopic_id:「始」topic_1766100505346「末」\n<<<[END_TOOL_REQUEST]>>>"
+      }
+    ]
+  }
+}

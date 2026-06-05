@@ -55,7 +55,11 @@ function applyEventToHistory(history, event) {
     (message) => String(message && message.id) === identity.id
   );
 
-  if (event.action === "delete" || event.action === "update_rejected_deleted") {
+  if (
+    event.action === "delete" ||
+    event.action === "update_rejected_deleted" ||
+    event.action === "create_rejected_deleted"
+  ) {
     if (targetIndex >= 0) history.splice(targetIndex, 1);
     return { identity, deleted: true };
   }
@@ -80,8 +84,14 @@ function applyEventToHistory(history, event) {
 
   if (targetIndex >= 0) {
     history[targetIndex] = nextMessage;
-  } else {
+  } else if (event.action === "create") {
     history.push(nextMessage);
+  } else {
+    const error = new Error(
+      `message update target missing at seq ${event.seq}`
+    );
+    error.failedSeq = event.seq;
+    throw error;
   }
   return { identity, message: nextMessage };
 }

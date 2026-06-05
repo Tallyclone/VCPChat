@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>高风险桌面能力确认</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: rgba(15, 23, 42, 0.96);
+      --panel: rgba(15, 23, 42, 0.98);
+      --panel-soft: rgba(30, 41, 59, 0.72);
+      --border: rgba(148, 163, 184, 0.24);
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --primary: #38bdf8;
+      --primary-strong: #0ea5e9;
+      --cancel: rgba(148, 163, 184, 0.16);
+      --shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: transparent;
+      font-family: "Microsoft YaHei", "Segoe UI", system-ui, -apple-system, sans-serif;
+      color: var(--text);
+      user-select: none;
+    }
+
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 14px;
+    }
+
+    .shell {
+      width: 100%;
+      height: 100%;
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      background:
+        radial-gradient(circle at top left, rgba(56, 189, 248, 0.18), transparent 34%),
+        radial-gradient(circle at bottom right, rgba(245, 158, 11, 0.18), transparent 30%),
+        var(--panel);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .titlebar {
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 10px 0 18px;
+      -webkit-app-region: drag;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.13);
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: .08em;
+    }
+
+    .close {
+      -webkit-app-region: no-drag;
+      width: 28px;
+      height: 28px;
+      border: 0;
+      border-radius: 9px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 20px;
+      line-height: 26px;
+      cursor: pointer;
+    }
+
+    .close:hover { background: rgba(239, 68, 68, 0.16); color: #fecaca; }
+
+    .content {
+      flex: 1;
+      min-height: 0;
+      padding: 18px 22px 12px;
+      display: grid;
+      grid-template-columns: 54px 1fr;
+      gap: 16px;
+    }
+
+    .icon {
+      width: 54px;
+      height: 54px;
+      border-radius: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(245, 158, 11, 0.14);
+      border: 1px solid rgba(245, 158, 11, 0.28);
+      color: var(--warning);
+      font-size: 28px;
+      box-shadow: 0 12px 34px rgba(245, 158, 11, 0.12);
+    }
+
+    .shell[data-danger="true"] .icon {
+      background: rgba(239, 68, 68, 0.14);
+      border-color: rgba(239, 68, 68, 0.28);
+      color: #f87171;
+      box-shadow: 0 12px 34px rgba(239, 68, 68, 0.12);
+    }
+
+    .main { min-width: 0; display: flex; flex-direction: column; }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 19px;
+      line-height: 1.35;
+      font-weight: 700;
+      color: #f8fafc;
+    }
+
+    .message {
+      margin: 0;
+      color: #cbd5e1;
+      line-height: 1.6;
+      font-size: 14px;
+      white-space: pre-wrap;
+    }
+
+    .details {
+      margin-top: 12px;
+      padding: 10px 12px;
+      max-height: 112px;
+      overflow: auto;
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      border-radius: 14px;
+      background: var(--panel-soft);
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.55;
+      user-select: text;
+    }
+
+    .details:empty { display: none; }
+
+    .details div {
+      overflow-wrap: anywhere;
+      margin: 2px 0;
+    }
+
+    .hint {
+      margin-top: auto;
+      padding-top: 10px;
+      color: rgba(148, 163, 184, 0.78);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      padding: 12px 22px 20px;
+      border-top: 1px solid rgba(148, 163, 184, 0.10);
+    }
+
+    button {
+      min-width: 104px;
+      height: 38px;
+      padding: 0 18px;
+      border: 1px solid transparent;
+      border-radius: 13px;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform .16s ease, background .16s ease, border-color .16s ease;
+    }
+
+    button:active { transform: translateY(1px); }
+
+    .cancel {
+      background: var(--cancel);
+      border-color: rgba(148, 163, 184, 0.18);
+      color: #cbd5e1;
+    }
+
+    .cancel:hover { background: rgba(148, 163, 184, 0.24); }
+
+    .confirm {
+      background: linear-gradient(135deg, var(--primary), var(--primary-strong));
+      color: #04111f;
+      box-shadow: 0 10px 24px rgba(14, 165, 233, 0.22);
+    }
+
+    .shell[data-danger="true"] .confirm {
+      background: linear-gradient(135deg, #fb7185, var(--danger));
+      color: #fff;
+      box-shadow: 0 10px 24px rgba(239, 68, 68, 0.24);
+    }
+
+    .confirm:hover { filter: brightness(1.06); }
+  </style>
+</head>
+<body>
+  <section class="shell" id="shell" data-danger="false">
+    <header class="titlebar">
+      <span>HIGH RISK DESKTOP API</span>
+      <button class="close" id="closeBtn" aria-label="关闭">×</button>
+    </header>
+    <main class="content">
+      <div class="icon" id="icon">⚠</div>
+      <div class="main">
+        <h1 id="title">高风险桌面能力确认</h1>
+        <p class="message" id="message">桌面卡片正在请求执行高风险操作，是否允许？</p>
+        <div class="details" id="details"></div>
+        <div class="hint">请确认来源可信。取消是默认选择；只有你明确允许后，主进程才会继续执行该操作。</div>
+      </div>
+    </main>
+    <footer class="actions">
+      <button class="cancel" id="cancelBtn">取消</button>
+      <button class="confirm" id="confirmBtn">允许</button>
+    </footer>
+  </section>
+
+  <script>
+    const shell = document.getElementById("shell");
+    const icon = document.getElementById("icon");
+    const title = document.getElementById("title");
+    const message = document.getElementById("message");
+    const details = document.getElementById("details");
+    const confirmBtn = document.getElementById("confirmBtn");
+    const cancelBtn = document.getElementById("cancelBtn");
+    const closeBtn = document.getElementById("closeBtn");
+
+    function setText(element, value) {
+      element.textContent = value == null ? "" : String(value);
+    }
+
+    function decide(allowed) {
+      if (window.highRiskConfirm && typeof window.highRiskConfirm.decide === "function") {
+        window.highRiskConfirm.decide(allowed === true);
+      }
+    }
+
+    async function init() {
+      try {
+        const payload = await window.highRiskConfirm.getPayload();
+        if (!payload) return;
+        const detailLines = Array.isArray(payload.detailLines) ? payload.detailLines.filter(Boolean) : [];
+        shell.dataset.danger = payload.danger === true || payload.type === "error" ? "true" : "false";
+        setText(icon, payload.icon || (shell.dataset.danger === "true" ? "!" : "⚠"));
+        setText(title, payload.title || "高风险桌面能力确认");
+        setText(message, payload.message || "桌面卡片正在请求执行高风险操作，是否允许？");
+        setText(confirmBtn, payload.confirmText || "允许");
+        details.innerHTML = "";
+        detailLines.forEach((line) => {
+          const item = document.createElement("div");
+          item.textContent = String(line);
+          details.appendChild(item);
+        });
+      } catch (error) {
+        console.error("[HighRiskConfirm] Failed to load payload:", error);
+      }
+    }
+
+    confirmBtn.addEventListener("click", () => decide(true));
+    cancelBtn.addEventListener("click", () => decide(false));
+    closeBtn.addEventListener("click", () => decide(false));
+    window.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") decide(false);
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") decide(true);
+    });
+
+    init();
+  </script>
+</body>
+</html>

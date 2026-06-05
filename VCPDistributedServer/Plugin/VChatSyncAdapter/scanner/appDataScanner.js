@@ -38,7 +38,7 @@ async function handleFile(
   const relativePath = relativeAppDataPath(appDataPath, filePath);
 
   if (isHistoryPath(relativePath)) {
-    const identity = parseHistoryIdentity(relativePath);
+    const identity = parseHistoryIdentity(relativePath, { appDataPath });
     const read = await readStableJson(filePath);
     const lockChecksum = read.ok
       ? require("../core/hash").checksumJson(read.value)
@@ -93,19 +93,25 @@ async function handleFile(
       profile: context.profile || "runtime",
     });
     const mode = context.mode || "uninitialized";
-    const enqueued = result.changed
-      ? await offlineQueue.enqueueMany([result.operation], { mode })
+    const operations = Array.isArray(result.operations)
+      ? result.operations
+      : result.operation
+      ? [result.operation]
+      : [];
+    const enqueued = operations.length
+      ? await offlineQueue.enqueueMany(operations, { mode })
       : [];
     if (
       shouldAdvanceIndexForLocalObservation(mode) &&
-      result.changed &&
+      operations.length > 0 &&
       enqueued.length > 0
     ) {
       await localIndex.setFile(relativePath, {
         kind: "config",
         checksum: result.checksum,
         last_known_checksum: result.checksum,
-        pending_operation_id: result.operation.operation_id,
+        pending_operation_id: result.operation && result.operation.operation_id,
+        snapshot_json: read.value,
         updated_at: new Date().toISOString(),
       });
     }

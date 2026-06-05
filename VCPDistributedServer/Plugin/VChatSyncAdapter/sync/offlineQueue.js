@@ -87,11 +87,14 @@ function createOfflineQueue(config, centerClient, localIndex, logger) {
   function isMissingUpdateTargetError(error, row) {
     if (!row || !row.operation || row.operation.action !== "update")
       return false;
+    const responseData =
+      error && error.response && error.response.data
+        ? error.response.data
+        : null;
+    const responseCode = responseData && responseData.code;
+    if (responseCode === "MESSAGE_UPDATE_TARGET_MISSING") return true;
     const responseError =
-      error &&
-      error.response &&
-      error.response.data &&
-      (error.response.data.error || error.response.data.message);
+      responseData && (responseData.error || responseData.message);
     const message = String(
       responseError || (error && error.message) || row.last_error || ""
     ).toLowerCase();

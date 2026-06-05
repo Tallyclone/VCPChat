@@ -4,13 +4,25 @@
  * 负责：桌面窗口创建管理、流式推送转发、收藏系统持久化、快捷方式解析及启动、Dock持久化、布局持久化、壁纸文件选择、VChat内部应用启动
  */
 
-const { BrowserWindow, ipcMain, app, screen, shell, dialog, nativeTheme } = require('electron');
-const path = require('path');
-const fs = require('fs-extra');
-const desktopMetrics = require('./desktopMetrics');
-const windowService = require('../services/windowService');
-const WINDOW_APP_IDS = require('../services/windowAppIds');
-const { PRELOAD_ROLES, resolveAppPreload } = require('../services/preloadPaths');
+const {
+  BrowserWindow,
+  ipcMain,
+  app,
+  screen,
+  shell,
+  dialog,
+  nativeTheme,
+} = require("electron");
+const path = require("path");
+const crypto = require("crypto");
+const fs = require("fs-extra");
+const desktopMetrics = require("./desktopMetrics");
+const windowService = require("../services/windowService");
+const WINDOW_APP_IDS = require("../services/windowAppIds");
+const {
+  PRELOAD_ROLES,
+  resolveAppPreload,
+} = require("../services/preloadPaths");
 
 // --- 模块状态 ---
 let desktopWindow = null;
@@ -32,12 +44,79 @@ let vchatThemesWindow = null;
 let vchatTaskWindow = null;
 
 // --- 收藏系统路径 - 使用项目根目录的 AppData ---
-const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
-const DESKTOP_WIDGETS_DIR = path.join(PROJECT_ROOT, 'AppData', 'DesktopWidgets');
-const DESKTOP_DATA_DIR = path.join(PROJECT_ROOT, 'AppData', 'DesktopData');
-const DOCK_CONFIG_PATH = path.join(DESKTOP_DATA_DIR, 'dock.json');
-const LAYOUT_CONFIG_PATH = path.join(DESKTOP_DATA_DIR, 'layout.json');
-const CATALOG_PATH = path.join(DESKTOP_WIDGETS_DIR, 'CATALOG.md');
+const PROJECT_ROOT = path.resolve(__dirname, "..", "..");
+const DESKTOP_WIDGETS_DIR = path.join(
+  PROJECT_ROOT,
+  "AppData",
+  "DesktopWidgets"
+);
+const DESKTOP_DATA_DIR = path.join(PROJECT_ROOT, "AppData", "DesktopData");
+const DOCK_CONFIG_PATH = path.join(DESKTOP_DATA_DIR, "dock.json");
+const LAYOUT_CONFIG_PATH = path.join(DESKTOP_DATA_DIR, "layout.json");
+const CATALOG_PATH = path.join(DESKTOP_WIDGETS_DIR, "CATALOG.md");
+
+function normalizePackageFileName(name) {
+  return String(name || "")
+    .replace(/\\/g, "/")
+    .replace(/^\.\//, "")
+    .trim();
+}
+
+function validatePackageFileName(rawName) {
+  const normalized = normalizePackageFileName(rawName);
+  const safeName = path.normalize(normalized);
+  if (
+    !normalized ||
+    path.isAbsolute(safeName) ||
+    safeName.includes("..") ||
+    safeName.startsWith(".")
+  ) {
+    return {
+      ok: false,
+      name: normalized,
+      error: `不安全的文件名: ${normalized}`,
+    };
+  }
+  return { ok: true, name: normalized, safeName };
+}
+
+function buildVirtualHtmlPackageManifest(
+  id,
+  name,
+  html,
+  existingPackage = null
+) {
+  const mainFile = normalizePackageFileName(
+    existingPackage?.mainFile || existingPackage?.entry || "widget.html"
+  );
+  return {
+    ...(existingPackage && typeof existingPackage === "object"
+      ? existingPackage
+      : {}),
+    schemaVersion: 2,
+    id,
+    name,
+    type: "htmlWidget",
+    sourceFormat: "htmlPackage",
+    mainFile,
+    entry: mainFile,
+    files: [
+      {
+        name: mainFile,
+        role: "entry",
+        encoding: "utf-8",
+        editable: true,
+      },
+    ],
+    migration: existingPackage?.migration || {
+      fromSchemaVersion: 1,
+      virtual: true,
+      reason: "legacy-html-widget",
+    },
+    sourceOrigin: "stored",
+    sourceCompleteness: "full",
+  };
+}
 
 // --- 布局文件写锁/队列 ---
 let layoutOpQueue = Promise.resolve();
@@ -55,94 +134,124 @@ let layoutOpQueue = Promise.resolve();
  *   - 初始化时 (initialize)
  */
 async function generateCatalog() {
-    try {
-        await fs.ensureDir(DESKTOP_WIDGETS_DIR);
-        const entries = await fs.readdir(DESKTOP_WIDGETS_DIR, { withFileTypes: true });
+  try {
+    await fs.ensureDir(DESKTOP_WIDGETS_DIR);
+    const entries = await fs.readdir(DESKTOP_WIDGETS_DIR, {
+      withFileTypes: true,
+    });
 
-        // 收集所有 widget 信息
-        const widgets = [];
-        for (const entry of entries) {
-            if (!entry.isDirectory()) continue;
+    // 收集所有 widget 信息
+    const widgets = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
 
-            const widgetDir = path.join(DESKTOP_WIDGETS_DIR, entry.name);
-            const metaPath = path.join(widgetDir, 'meta.json');
+      const widgetDir = path.join(DESKTOP_WIDGETS_DIR, entry.name);
+      const metaPath = path.join(widgetDir, "meta.json");
 
-            let meta = { id: entry.name, name: entry.name };
-            if (await fs.pathExists(metaPath)) {
-                try {
-                    meta = await fs.readJson(metaPath);
-                } catch (e) { /* ignore */ }
-            }
-
-            // 递归收集文件树
-            const fileTree = await collectFileTree(widgetDir, '');
-
-            widgets.push({
-                dirName: entry.name,
-                name: meta.name || entry.name,
-                id: meta.id || entry.name,
-                createdAt: meta.createdAt,
-                updatedAt: meta.updatedAt,
-                fileTree,
-            });
+      let meta = { id: entry.name, name: entry.name };
+      if (await fs.pathExists(metaPath)) {
+        try {
+          meta = await fs.readJson(metaPath);
+        } catch (e) {
+          /* ignore */
         }
+      }
 
-        // 按名称排序
-        widgets.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-CN'));
+      // 递归收集文件树
+      const fileTree = await collectFileTree(widgetDir, "");
 
-        // 生成 Markdown 内容
-        const lines = [];
-        lines.push('# 📦 桌面挂件收藏目录 (CATALOG)');
-        lines.push('');
-        lines.push('> Auto-generated catalog. Do not edit manually.');
-        lines.push(`> Last updated: ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`);
-        lines.push('');
-        lines.push(`Total **${widgets.length}** widgets.`);
-        lines.push('');
-
-        if (widgets.length > 0) {
-            // 快速索引表
-            lines.push('## Quick Index');
-            lines.push('');
-            lines.push('| # | 收藏名称 | 文件夹 ID | 创建时间 | 更新时间 |');
-            lines.push('|---|---------|----------|---------|---------|');
-            widgets.forEach((w, i) => {
-                const created = w.createdAt ? new Date(w.createdAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '未知';
-                const updated = w.updatedAt ? new Date(w.updatedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '未知';
-                lines.push(`| ${i + 1} | **${w.name}** | \`${w.dirName}\` | ${created} | ${updated} |`);
-            });
-            lines.push('');
-
-            // 详细文件树
-            lines.push('## File Tree');
-            lines.push('');
-            for (const w of widgets) {
-                lines.push(`### ${w.name}`);
-                lines.push('');
-                lines.push(`- **文件夹**: \`${w.dirName}/\``);
-                lines.push(`- **收藏 ID**: \`${w.id}\``);
-                if (w.createdAt) {
-                    lines.push(`- **创建时间**: ${new Date(w.createdAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`);
-                }
-                if (w.updatedAt) {
-                    lines.push(`- **更新时间**: ${new Date(w.updatedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`);
-                }
-                lines.push('');
-                lines.push('```');
-                lines.push(`${w.dirName}/`);
-                for (const file of w.fileTree) {
-                    lines.push(`  ${file}`);
-                }
-                lines.push('```');
-                lines.push('');
-            }
-        }
-
-        await fs.writeFile(CATALOG_PATH, lines.join('\n'), 'utf-8');
-        console.log(`[DesktopHandlers] CATALOG.md updated (${widgets.length} widgets)`);
-    } catch (err) {
-        console.error('[DesktopHandlers] Failed to generate CATALOG.md:', err);
+      widgets.push({
+        dirName: entry.name,
+        name: meta.name || entry.name,
+        id: meta.id || entry.name,
+        createdAt: meta.createdAt,
+        updatedAt: meta.updatedAt,
+        fileTree,
+      });
     }
+
+    // 按名称排序
+    widgets.sort((a, b) => (a.name || "").localeCompare(b.name || "", "zh-CN"));
+
+    // 生成 Markdown 内容
+    const lines = [];
+    lines.push("# 📦 桌面挂件收藏目录 (CATALOG)");
+    lines.push("");
+    lines.push("> Auto-generated catalog. Do not edit manually.");
+    lines.push(
+      `> Last updated: ${new Date().toLocaleString("zh-CN", {
+        timeZone: "Asia/Shanghai",
+      })}`
+    );
+    lines.push("");
+    lines.push(`Total **${widgets.length}** widgets.`);
+    lines.push("");
+
+    if (widgets.length > 0) {
+      // 快速索引表
+      lines.push("## Quick Index");
+      lines.push("");
+      lines.push("| # | 收藏名称 | 文件夹 ID | 创建时间 | 更新时间 |");
+      lines.push("|---|---------|----------|---------|---------|");
+      widgets.forEach((w, i) => {
+        const created = w.createdAt
+          ? new Date(w.createdAt).toLocaleString("zh-CN", {
+              timeZone: "Asia/Shanghai",
+            })
+          : "未知";
+        const updated = w.updatedAt
+          ? new Date(w.updatedAt).toLocaleString("zh-CN", {
+              timeZone: "Asia/Shanghai",
+            })
+          : "未知";
+        lines.push(
+          `| ${i + 1} | **${w.name}** | \`${
+            w.dirName
+          }\` | ${created} | ${updated} |`
+        );
+      });
+      lines.push("");
+
+      // 详细文件树
+      lines.push("## File Tree");
+      lines.push("");
+      for (const w of widgets) {
+        lines.push(`### ${w.name}`);
+        lines.push("");
+        lines.push(`- **文件夹**: \`${w.dirName}/\``);
+        lines.push(`- **收藏 ID**: \`${w.id}\``);
+        if (w.createdAt) {
+          lines.push(
+            `- **创建时间**: ${new Date(w.createdAt).toLocaleString("zh-CN", {
+              timeZone: "Asia/Shanghai",
+            })}`
+          );
+        }
+        if (w.updatedAt) {
+          lines.push(
+            `- **更新时间**: ${new Date(w.updatedAt).toLocaleString("zh-CN", {
+              timeZone: "Asia/Shanghai",
+            })}`
+          );
+        }
+        lines.push("");
+        lines.push("```");
+        lines.push(`${w.dirName}/`);
+        for (const file of w.fileTree) {
+          lines.push(`  ${file}`);
+        }
+        lines.push("```");
+        lines.push("");
+      }
+    }
+
+    await fs.writeFile(CATALOG_PATH, lines.join("\n"), "utf-8");
+    console.log(
+      `[DesktopHandlers] CATALOG.md updated (${widgets.length} widgets)`
+    );
+  } catch (err) {
+    console.error("[DesktopHandlers] Failed to generate CATALOG.md:", err);
+  }
 }
 
 /**
@@ -152,35 +261,40 @@ async function generateCatalog() {
  * @returns {Promise<string[]>} 文件路径列表
  */
 async function collectFileTree(dirPath, prefix) {
-    const result = [];
-    try {
-        const entries = await fs.readdir(dirPath, { withFileTypes: true });
-        // 排序：目录在前，文件在后
-        entries.sort((a, b) => {
-            if (a.isDirectory() && !b.isDirectory()) return -1;
-            if (!a.isDirectory() && b.isDirectory()) return 1;
-            return a.name.localeCompare(b.name);
-        });
+  const result = [];
+  try {
+    const entries = await fs.readdir(dirPath, { withFileTypes: true });
+    // 排序：目录在前，文件在后
+    entries.sort((a, b) => {
+      if (a.isDirectory() && !b.isDirectory()) return -1;
+      if (!a.isDirectory() && b.isDirectory()) return 1;
+      return a.name.localeCompare(b.name);
+    });
 
-        for (const entry of entries) {
-            if (entry.name === 'CATALOG.md') continue; // 跳过自身
-            if (entry.isDirectory()) {
-                result.push(`${prefix}${entry.name}/`);
-                const subFiles = await collectFileTree(path.join(dirPath, entry.name), prefix + '  ');
-                result.push(...subFiles);
-            } else {
-                // 附加文件大小信息
-                try {
-                    const stat = await fs.stat(path.join(dirPath, entry.name));
-                    const sizeStr = formatFileSize(stat.size);
-                    result.push(`${prefix}${entry.name}  (${sizeStr})`);
-                } catch (e) {
-                    result.push(`${prefix}${entry.name}`);
-                }
-            }
+    for (const entry of entries) {
+      if (entry.name === "CATALOG.md") continue; // 跳过自身
+      if (entry.isDirectory()) {
+        result.push(`${prefix}${entry.name}/`);
+        const subFiles = await collectFileTree(
+          path.join(dirPath, entry.name),
+          prefix + "  "
+        );
+        result.push(...subFiles);
+      } else {
+        // 附加文件大小信息
+        try {
+          const stat = await fs.stat(path.join(dirPath, entry.name));
+          const sizeStr = formatFileSize(stat.size);
+          result.push(`${prefix}${entry.name}  (${sizeStr})`);
+        } catch (e) {
+          result.push(`${prefix}${entry.name}`);
         }
-    } catch (e) { /* ignore */ }
-    return result;
+      }
+    }
+  } catch (e) {
+    /* ignore */
+  }
+  return result;
 }
 
 /**
@@ -189,9 +303,9 @@ async function collectFileTree(dirPath, prefix) {
  * @returns {string}
  */
 function formatFileSize(bytes) {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 /**
@@ -202,52 +316,59 @@ function formatFileSize(bytes) {
  * @returns {boolean} 图标是否有意义（有可见内容）
  */
 function isIconValid(nativeImg) {
-    try {
-        const bitmap = nativeImg.toBitmap();
-        const size = nativeImg.getSize();
-        if (!bitmap || bitmap.length === 0 || size.width === 0 || size.height === 0) {
-            return false;
-        }
-
-        const totalPixels = size.width * size.height;
-        let opaquePixels = 0;          // 有不透明度的像素
-        let colorfulPixels = 0;        // 有实际颜色（非纯白、纯黑）的像素
-
-        // RGBA 格式，每像素 4 字节
-        // 采样检测：为了性能，对大图只采样部分像素
-        const step = totalPixels > 1024 ? Math.floor(totalPixels / 512) : 1;
-
-        for (let i = 0; i < totalPixels; i += step) {
-            const offset = i * 4;
-            const r = bitmap[offset];
-            const g = bitmap[offset + 1];
-            const b = bitmap[offset + 2];
-            const a = bitmap[offset + 3];
-
-            if (a > 20) {
-                opaquePixels++;
-                // 检查是否有实际颜色（非接近纯白或纯黑）
-                if (!((r > 240 && g > 240 && b > 240) || (r < 15 && g < 15 && b < 15))) {
-                    colorfulPixels++;
-                }
-            }
-        }
-
-        const sampledPixels = Math.ceil(totalPixels / step);
-        const opaqueRatio = opaquePixels / sampledPixels;
-
-        // 如果不透明像素少于 5%，判定为空白图标
-        if (opaqueRatio < 0.05) {
-            return false;
-        }
-
-        // 图标有足够的不透明内容，视为有效
-        return true;
-    } catch (e) {
-        // 检测失败时保守地认为图标有效
-        console.warn('[DesktopHandlers] isIconValid check failed:', e.message);
-        return true;
+  try {
+    const bitmap = nativeImg.toBitmap();
+    const size = nativeImg.getSize();
+    if (
+      !bitmap ||
+      bitmap.length === 0 ||
+      size.width === 0 ||
+      size.height === 0
+    ) {
+      return false;
     }
+
+    const totalPixels = size.width * size.height;
+    let opaquePixels = 0; // 有不透明度的像素
+    let colorfulPixels = 0; // 有实际颜色（非纯白、纯黑）的像素
+
+    // RGBA 格式，每像素 4 字节
+    // 采样检测：为了性能，对大图只采样部分像素
+    const step = totalPixels > 1024 ? Math.floor(totalPixels / 512) : 1;
+
+    for (let i = 0; i < totalPixels; i += step) {
+      const offset = i * 4;
+      const r = bitmap[offset];
+      const g = bitmap[offset + 1];
+      const b = bitmap[offset + 2];
+      const a = bitmap[offset + 3];
+
+      if (a > 20) {
+        opaquePixels++;
+        // 检查是否有实际颜色（非接近纯白或纯黑）
+        if (
+          !((r > 240 && g > 240 && b > 240) || (r < 15 && g < 15 && b < 15))
+        ) {
+          colorfulPixels++;
+        }
+      }
+    }
+
+    const sampledPixels = Math.ceil(totalPixels / step);
+    const opaqueRatio = opaquePixels / sampledPixels;
+
+    // 如果不透明像素少于 5%，判定为空白图标
+    if (opaqueRatio < 0.05) {
+      return false;
+    }
+
+    // 图标有足够的不透明内容，视为有效
+    return true;
+  } catch (e) {
+    // 检测失败时保守地认为图标有效
+    console.warn("[DesktopHandlers] isIconValid check failed:", e.message);
+    return true;
+  }
 }
 
 /**
@@ -256,16 +377,18 @@ function isIconValid(nativeImg) {
  * @returns {BrowserWindow|null}
  */
 function findWindowByUrl(urlKeyword) {
-    const allWindows = BrowserWindow.getAllWindows();
-    return allWindows.find(win => {
-        if (win.isDestroyed()) return false;
-        try {
-            const url = win.webContents.getURL();
-            return url.includes(urlKeyword);
-        } catch (e) {
-            return false;
-        }
-    }) || null;
+  const allWindows = BrowserWindow.getAllWindows();
+  return (
+    allWindows.find((win) => {
+      if (win.isDestroyed()) return false;
+      try {
+        const url = win.webContents.getURL();
+        return url.includes(urlKeyword);
+      } catch (e) {
+        return false;
+      }
+    }) || null
+  );
 }
 
 /**
@@ -275,301 +398,488 @@ function findWindowByUrl(urlKeyword) {
  * @returns {BrowserWindow} 创建或聚焦后的窗口
  */
 function createOrFocusChildWindow(existingWindow, options) {
-    if (existingWindow && !existingWindow.isDestroyed()) {
-        if (!existingWindow.isVisible()) existingWindow.show();
-        existingWindow.focus();
-        return existingWindow;
+  if (existingWindow && !existingWindow.isDestroyed()) {
+    if (!existingWindow.isVisible()) existingWindow.show();
+    existingWindow.focus();
+    return existingWindow;
+  }
+
+  const win = new BrowserWindow({
+    width: options.width || 1000,
+    height: options.height || 700,
+    minWidth: options.minWidth || 600,
+    minHeight: options.minHeight || 400,
+    title: options.title || "VChat",
+    frame: false,
+    ...(process.platform === "darwin" ? {} : { titleBarStyle: "hidden" }),
+    modal: false,
+    webPreferences: {
+      preload:
+        options.preloadPath ||
+        resolveAppPreload(app.getAppPath(), PRELOAD_ROLES.UTILITY),
+      contextIsolation: true,
+      nodeIntegration: false,
+      devTools: true,
+    },
+    icon: path.join(app.getAppPath(), "assets", "icon.png"),
+    show: false,
+  });
+
+  // 构建 URL
+  let url = `file://${options.htmlPath}`;
+  if (options.queryParams) {
+    url += `?${options.queryParams}`;
+  }
+
+  win.loadURL(url);
+  win.setMenu(null);
+
+  if (openChildWindows) {
+    openChildWindows.push(win);
+  }
+
+  win.once("ready-to-show", () => {
+    win.show();
+  });
+
+  win.on("close", (evt) => {
+    if (process.platform === "darwin" && !app.isQuitting) {
+      evt.preventDefault();
+      win.hide();
     }
+  });
 
-    const win = new BrowserWindow({
-        width: options.width || 1000,
-        height: options.height || 700,
-        minWidth: options.minWidth || 600,
-        minHeight: options.minHeight || 400,
-        title: options.title || 'VChat',
-        frame: false,
-        ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
-        modal: false,
-        webPreferences: {
-            preload: options.preloadPath || resolveAppPreload(app.getAppPath(), PRELOAD_ROLES.UTILITY),
-            contextIsolation: true,
-            nodeIntegration: false,
-            devTools: true,
-        },
-        icon: path.join(app.getAppPath(), 'assets', 'icon.png'),
-        show: false,
-    });
-
-    // 构建 URL
-    let url = `file://${options.htmlPath}`;
-    if (options.queryParams) {
-        url += `?${options.queryParams}`;
-    }
-
-    win.loadURL(url);
-    win.setMenu(null);
-
+  win.on("closed", () => {
     if (openChildWindows) {
-        openChildWindows.push(win);
+      const idx = openChildWindows.indexOf(win);
+      if (idx > -1) openChildWindows.splice(idx, 1);
     }
+    // 清理单例引用
+    if (win === vchatForumWindow) vchatForumWindow = null;
+    if (win === vchatMemoWindow) vchatMemoWindow = null;
+    if (win === vchatTranslatorWindow) vchatTranslatorWindow = null;
+    if (win === vchatThemesWindow) vchatThemesWindow = null;
+  });
 
-    win.once('ready-to-show', () => {
-        win.show();
-    });
-
-    win.on('close', (evt) => {
-        if (process.platform === 'darwin' && !app.isQuitting) {
-            evt.preventDefault();
-            win.hide();
-        }
-    });
-
-    win.on('closed', () => {
-        if (openChildWindows) {
-            const idx = openChildWindows.indexOf(win);
-            if (idx > -1) openChildWindows.splice(idx, 1);
-        }
-        // 清理单例引用
-        if (win === vchatForumWindow) vchatForumWindow = null;
-        if (win === vchatMemoWindow) vchatMemoWindow = null;
-        if (win === vchatTranslatorWindow) vchatTranslatorWindow = null;
-        if (win === vchatThemesWindow) vchatThemesWindow = null;
-    });
-
-    console.log(`[DesktopHandlers] Created child window: ${options.title}`);
-    return win;
+  console.log(`[DesktopHandlers] Created child window: ${options.title}`);
+  return win;
 }
 
 function ensureMainWindowVisible() {
-    let targetMainWindow = mainWindow;
-    if (!targetMainWindow || targetMainWindow.isDestroyed()) {
-        const allWindows = BrowserWindow.getAllWindows();
-        targetMainWindow = allWindows.find(win => {
-            if (win.isDestroyed()) return false;
-            const url = win.webContents.getURL();
-            return url.includes('main.html') && !url.includes('desktop.html');
-        });
-    }
+  let targetMainWindow = mainWindow;
+  if (!targetMainWindow || targetMainWindow.isDestroyed()) {
+    const allWindows = BrowserWindow.getAllWindows();
+    targetMainWindow = allWindows.find((win) => {
+      if (win.isDestroyed()) return false;
+      const url = win.webContents.getURL();
+      return url.includes("main.html") && !url.includes("desktop.html");
+    });
+  }
 
-    if (!targetMainWindow || targetMainWindow.isDestroyed()) {
-        throw new Error('Main window is not available.');
-    }
+  if (!targetMainWindow || targetMainWindow.isDestroyed()) {
+    throw new Error("Main window is not available.");
+  }
 
-    if (!targetMainWindow.isVisible()) targetMainWindow.show();
-    if (targetMainWindow.isMinimized()) targetMainWindow.restore();
-    targetMainWindow.focus();
-    return targetMainWindow;
+  if (!targetMainWindow.isVisible()) targetMainWindow.show();
+  if (targetMainWindow.isMinimized()) targetMainWindow.restore();
+  targetMainWindow.focus();
+  return targetMainWindow;
 }
 
 function registerManagedWindows() {
-    windowService.register(WINDOW_APP_IDS.MAIN, {
-        owner: 'desktopHandlers',
-        getWindow: () => mainWindow,
-        open: async () => ensureMainWindowVisible(),
-    });
+  windowService.register(WINDOW_APP_IDS.MAIN, {
+    owner: "desktopHandlers",
+    getWindow: () => mainWindow,
+    open: async () => ensureMainWindowVisible(),
+  });
 
-    windowService.register(WINDOW_APP_IDS.DESKTOP, {
-        owner: 'desktopHandlers',
-        getWindow: () => desktopWindow,
-        open: async () => openDesktopWindow(),
-    });
+  windowService.register(WINDOW_APP_IDS.DESKTOP, {
+    owner: "desktopHandlers",
+    getWindow: () => desktopWindow,
+    open: async () => openDesktopWindow(),
+  });
 
-    windowService.register(WINDOW_APP_IDS.NOTES, {
-        owner: 'notesHandlers',
-        getWindow: () => {
-            const notesHandlers = require('./notesHandlers');
-            return notesHandlers.getNotesWindow();
-        },
-        open: async () => {
-            const notesHandlers = require('./notesHandlers');
-            return notesHandlers.createOrFocusNotesWindow();
-        },
-        payloadChannel: 'shared-note-data',
-        readyTimeoutMs: 10000,
-    });
+  windowService.register(WINDOW_APP_IDS.NOTES, {
+    owner: "notesHandlers",
+    getWindow: () => {
+      const notesHandlers = require("./notesHandlers");
+      return notesHandlers.getNotesWindow();
+    },
+    open: async () => {
+      const notesHandlers = require("./notesHandlers");
+      return notesHandlers.createOrFocusNotesWindow();
+    },
+    payloadChannel: "shared-note-data",
+    readyTimeoutMs: 10000,
+  });
 
-    windowService.register(WINDOW_APP_IDS.MEMO, {
-        owner: 'desktopHandlers',
-        getWindow: () => vchatMemoWindow || findWindowByUrl('memo.html'),
-        open: async () => {
-            const existingMemo = findWindowByUrl('memo.html');
-            if (existingMemo) {
-                if (!existingMemo.isVisible()) existingMemo.show();
-                existingMemo.focus();
-                vchatMemoWindow = existingMemo;
-                return existingMemo;
-            }
-            vchatMemoWindow = createOrFocusChildWindow(vchatMemoWindow, {
-                width: 1200, height: 800, minWidth: 800, minHeight: 600,
-                title: 'VCP Memo Center',
-                htmlPath: path.join(app.getAppPath(), 'Memomodules', 'memo.html'),
-            });
-            return vchatMemoWindow;
-        },
-    });
+  windowService.register(WINDOW_APP_IDS.MEMO, {
+    owner: "desktopHandlers",
+    getWindow: () => vchatMemoWindow || findWindowByUrl("memo.html"),
+    open: async () => {
+      const existingMemo = findWindowByUrl("memo.html");
+      if (existingMemo) {
+        if (!existingMemo.isVisible()) existingMemo.show();
+        existingMemo.focus();
+        vchatMemoWindow = existingMemo;
+        return existingMemo;
+      }
+      vchatMemoWindow = createOrFocusChildWindow(vchatMemoWindow, {
+        width: 1200,
+        height: 800,
+        minWidth: 800,
+        minHeight: 600,
+        title: "VCP Memo Center",
+        htmlPath: path.join(app.getAppPath(), "Memomodules", "memo.html"),
+      });
+      return vchatMemoWindow;
+    },
+  });
 
-    windowService.register(WINDOW_APP_IDS.FORUM, {
-        owner: 'desktopHandlers',
-        getWindow: () => vchatForumWindow || findWindowByUrl('forum.html'),
-        open: async () => {
-            const existingForum = findWindowByUrl('forum.html');
-            if (existingForum) {
-                if (!existingForum.isVisible()) existingForum.show();
-                existingForum.focus();
-                vchatForumWindow = existingForum;
-                return existingForum;
-            }
-            vchatForumWindow = createOrFocusChildWindow(vchatForumWindow, {
-                width: 1200, height: 800, minWidth: 800, minHeight: 600,
-                title: 'VCP Forum',
-                htmlPath: path.join(app.getAppPath(), 'Forummodules', 'forum.html'),
-            });
-            return vchatForumWindow;
-        },
-    });
+  windowService.register(WINDOW_APP_IDS.FORUM, {
+    owner: "desktopHandlers",
+    getWindow: () => vchatForumWindow || findWindowByUrl("forum.html"),
+    open: async () => {
+      const existingForum = findWindowByUrl("forum.html");
+      if (existingForum) {
+        if (!existingForum.isVisible()) existingForum.show();
+        existingForum.focus();
+        vchatForumWindow = existingForum;
+        return existingForum;
+      }
+      vchatForumWindow = createOrFocusChildWindow(vchatForumWindow, {
+        width: 1200,
+        height: 800,
+        minWidth: 800,
+        minHeight: 600,
+        title: "VCP Forum",
+        htmlPath: path.join(app.getAppPath(), "Forummodules", "forum.html"),
+      });
+      return vchatForumWindow;
+    },
+  });
 
-    windowService.register(WINDOW_APP_IDS.RAG_OBSERVER, {
-        owner: 'ragHandlers',
-        getWindow: () => {
-            const ragHandlers = require('./ragHandlers');
-            return ragHandlers.getRagObserverWindow();
-        },
-        open: async () => {
-            const ragHandlers = require('./ragHandlers');
-            await ragHandlers.openRagObserverWindow();
-            return ragHandlers.getRagObserverWindow();
-        },
-    });
+  windowService.register(WINDOW_APP_IDS.RAG_OBSERVER, {
+    owner: "ragHandlers",
+    getWindow: () => {
+      const ragHandlers = require("./ragHandlers");
+      return ragHandlers.getRagObserverWindow();
+    },
+    open: async () => {
+      const ragHandlers = require("./ragHandlers");
+      await ragHandlers.openRagObserverWindow();
+      return ragHandlers.getRagObserverWindow();
+    },
+  });
 
-    windowService.register(WINDOW_APP_IDS.DICE, {
-        owner: 'diceHandlers',
-        getWindow: () => {
-            const diceHandlers = require('./diceHandlers');
-            return diceHandlers.getDiceWindow();
-        },
-        open: async () => {
-            const diceHandlers = require('./diceHandlers');
-            await diceHandlers.createOrFocusDiceWindow(PROJECT_ROOT);
-            return diceHandlers.getDiceWindow();
-        },
-        readyTimeoutMs: 10000,
-    });
+  windowService.register(WINDOW_APP_IDS.DICE, {
+    owner: "diceHandlers",
+    getWindow: () => {
+      const diceHandlers = require("./diceHandlers");
+      return diceHandlers.getDiceWindow();
+    },
+    open: async () => {
+      const diceHandlers = require("./diceHandlers");
+      await diceHandlers.createOrFocusDiceWindow(PROJECT_ROOT);
+      return diceHandlers.getDiceWindow();
+    },
+    readyTimeoutMs: 10000,
+  });
 
-    windowService.register(WINDOW_APP_IDS.CANVAS, {
-        owner: 'canvasHandlers',
-        getWindow: () => {
-            const canvasHandlers = require('./canvasHandlers');
-            return canvasHandlers.getCanvasWindow();
-        },
-        open: async (options = {}) => {
-            const canvasHandlers = require('./canvasHandlers');
-            await canvasHandlers.createCanvasWindow(options.filePath || null);
-            return canvasHandlers.getCanvasWindow();
-        },
-        readyTimeoutMs: 10000,
-    });
+  windowService.register(WINDOW_APP_IDS.CANVAS, {
+    owner: "canvasHandlers",
+    getWindow: () => {
+      const canvasHandlers = require("./canvasHandlers");
+      return canvasHandlers.getCanvasWindow();
+    },
+    open: async (options = {}) => {
+      const canvasHandlers = require("./canvasHandlers");
+      await canvasHandlers.createCanvasWindow(options.filePath || null);
+      return canvasHandlers.getCanvasWindow();
+    },
+    readyTimeoutMs: 10000,
+  });
 
-    windowService.register(WINDOW_APP_IDS.TRANSLATOR, {
-        owner: 'desktopHandlers',
-        getWindow: () => vchatTranslatorWindow,
-        open: async () => {
-            let settings = {};
-            try {
-                const settingsPath = path.join(PROJECT_ROOT, 'AppData', 'settings.json');
-                if (await fs.pathExists(settingsPath)) {
-                    settings = await fs.readJson(settingsPath);
-                }
-            } catch (e) { /* ignore */ }
+  windowService.register(WINDOW_APP_IDS.TRANSLATOR, {
+    owner: "desktopHandlers",
+    getWindow: () => vchatTranslatorWindow,
+    open: async () => {
+      let settings = {};
+      try {
+        const settingsPath = path.join(
+          PROJECT_ROOT,
+          "AppData",
+          "settings.json"
+        );
+        if (await fs.pathExists(settingsPath)) {
+          settings = await fs.readJson(settingsPath);
+        }
+      } catch (e) {
+        /* ignore */
+      }
 
-            const vcpServerUrl = settings.vcpServerUrl || '';
-            const vcpApiKey = settings.vcpApiKey || '';
+      const vcpServerUrl = settings.vcpServerUrl || "";
+      const vcpApiKey = settings.vcpApiKey || "";
 
-            vchatTranslatorWindow = createOrFocusChildWindow(vchatTranslatorWindow, {
-                width: 1000, height: 700, minWidth: 800, minHeight: 600,
-                title: 'Translator',
-                htmlPath: path.join(app.getAppPath(), 'Translatormodules', 'translator.html'),
-                queryParams: `vcpServerUrl=${encodeURIComponent(vcpServerUrl)}&vcpApiKey=${encodeURIComponent(vcpApiKey)}`,
-            });
-            return vchatTranslatorWindow;
-        },
-    });
+      vchatTranslatorWindow = createOrFocusChildWindow(vchatTranslatorWindow, {
+        width: 1000,
+        height: 700,
+        minWidth: 800,
+        minHeight: 600,
+        title: "Translator",
+        htmlPath: path.join(
+          app.getAppPath(),
+          "Translatormodules",
+          "translator.html"
+        ),
+        queryParams: `vcpServerUrl=${encodeURIComponent(
+          vcpServerUrl
+        )}&vcpApiKey=${encodeURIComponent(vcpApiKey)}`,
+      });
+      return vchatTranslatorWindow;
+    },
+  });
 
-    windowService.register(WINDOW_APP_IDS.MUSIC, {
-        owner: 'musicHandlers',
-        getWindow: () => {
-            const musicHandlers = require('./musicHandlers');
-            return musicHandlers.getMusicWindow();
-        },
-        open: async () => {
-            const musicHandlers = require('./musicHandlers');
-            return musicHandlers.createOrFocusMusicWindow();
-        },
-        readyTimeoutMs: 10000,
-    });
+  windowService.register(WINDOW_APP_IDS.MUSIC, {
+    owner: "musicHandlers",
+    getWindow: () => {
+      const musicHandlers = require("./musicHandlers");
+      return musicHandlers.getMusicWindow();
+    },
+    open: async () => {
+      const musicHandlers = require("./musicHandlers");
+      return musicHandlers.createOrFocusMusicWindow();
+    },
+    readyTimeoutMs: 10000,
+  });
 
-    windowService.register(WINDOW_APP_IDS.THEMES, {
-        owner: 'desktopHandlers',
-        getWindow: () => vchatThemesWindow,
-        open: async () => {
-            vchatThemesWindow = createOrFocusChildWindow(vchatThemesWindow, {
-                width: 850, height: 700,
-                title: 'Theme Picker',
-                htmlPath: path.join(app.getAppPath(), 'Themesmodules', 'themes.html'),
-            });
-            return vchatThemesWindow;
-        },
-    });
+  windowService.register(WINDOW_APP_IDS.THEMES, {
+    owner: "desktopHandlers",
+    getWindow: () => vchatThemesWindow,
+    open: async () => {
+      vchatThemesWindow = createOrFocusChildWindow(vchatThemesWindow, {
+        width: 850,
+        height: 700,
+        title: "Theme Picker",
+        htmlPath: path.join(app.getAppPath(), "Themesmodules", "themes.html"),
+      });
+      return vchatThemesWindow;
+    },
+  });
 
-    windowService.register(WINDOW_APP_IDS.TASK, {
-        owner: 'desktopHandlers',
-        getWindow: () => vchatTaskWindow || findWindowByUrl('task.html'),
-        open: async () => {
-            const existingTask = findWindowByUrl('task.html');
-            if (existingTask) {
-                if (!existingTask.isVisible()) existingTask.show();
-                existingTask.focus();
-                vchatTaskWindow = existingTask;
-                return existingTask;
-            }
-            vchatTaskWindow = createOrFocusChildWindow(vchatTaskWindow, {
-                width: 1200, height: 800, minWidth: 800, minHeight: 600,
-                title: 'VCP 任务助手',
-                htmlPath: path.join(app.getAppPath(), 'Agenttaskmodules', 'task.html'),
-            });
-            return vchatTaskWindow;
-        },
-    });
+  windowService.register(WINDOW_APP_IDS.TASK, {
+    owner: "desktopHandlers",
+    getWindow: () => vchatTaskWindow || findWindowByUrl("task.html"),
+    open: async () => {
+      const existingTask = findWindowByUrl("task.html");
+      if (existingTask) {
+        if (!existingTask.isVisible()) existingTask.show();
+        existingTask.focus();
+        vchatTaskWindow = existingTask;
+        return existingTask;
+      }
+      vchatTaskWindow = createOrFocusChildWindow(vchatTaskWindow, {
+        width: 1200,
+        height: 800,
+        minWidth: 800,
+        minHeight: 600,
+        title: "VCP 任务助手",
+        htmlPath: path.join(app.getAppPath(), "Agenttaskmodules", "task.html"),
+      });
+      return vchatTaskWindow;
+    },
+  });
 }
 
 function resolveAppActionToAppId(appAction) {
-    switch (appAction) {
-        case 'show-main-window':
-            return WINDOW_APP_IDS.MAIN;
-        case 'open-notes-window':
-            return WINDOW_APP_IDS.NOTES;
-        case 'open-memo-window':
-            return WINDOW_APP_IDS.MEMO;
-        case 'open-forum-window':
-            return WINDOW_APP_IDS.FORUM;
-        case 'open-rag-observer-window':
-            return WINDOW_APP_IDS.RAG_OBSERVER;
-        case 'open-dice-window':
-            return WINDOW_APP_IDS.DICE;
-        case 'open-canvas-window':
-            return WINDOW_APP_IDS.CANVAS;
-        case 'open-translator-window':
-            return WINDOW_APP_IDS.TRANSLATOR;
-        case 'open-music-window':
-            return WINDOW_APP_IDS.MUSIC;
-        case 'open-themes-window':
-            return WINDOW_APP_IDS.THEMES;
-        case 'open-task-window':
-            return WINDOW_APP_IDS.TASK;
-        case 'open-desktop-window':
-            return WINDOW_APP_IDS.DESKTOP;
-        default:
-            return null;
+  switch (appAction) {
+    case "show-main-window":
+      return WINDOW_APP_IDS.MAIN;
+    case "open-notes-window":
+      return WINDOW_APP_IDS.NOTES;
+    case "open-memo-window":
+      return WINDOW_APP_IDS.MEMO;
+    case "open-forum-window":
+      return WINDOW_APP_IDS.FORUM;
+    case "open-rag-observer-window":
+      return WINDOW_APP_IDS.RAG_OBSERVER;
+    case "open-dice-window":
+      return WINDOW_APP_IDS.DICE;
+    case "open-canvas-window":
+      return WINDOW_APP_IDS.CANVAS;
+    case "open-translator-window":
+      return WINDOW_APP_IDS.TRANSLATOR;
+    case "open-music-window":
+      return WINDOW_APP_IDS.MUSIC;
+    case "open-themes-window":
+      return WINDOW_APP_IDS.THEMES;
+    case "open-task-window":
+      return WINDOW_APP_IDS.TASK;
+    case "open-desktop-window":
+      return WINDOW_APP_IDS.DESKTOP;
+    default:
+      return null;
+  }
+}
+
+function normalizeHighRiskConfirmOptions(options = {}) {
+  const detailLines = Array.isArray(options.detailLines)
+    ? options.detailLines.filter(Boolean).map((line) => String(line))
+    : [];
+  return {
+    type: options.type || "warning",
+    title: options.title || "高风险桌面能力确认",
+    message: options.message || "桌面卡片正在请求执行高风险操作，是否允许？",
+    confirmText: options.confirmText || "允许",
+    detailLines,
+    danger: options.danger === true || options.type === "error",
+    icon: options.icon || "",
+  };
+}
+
+async function showHighRiskConfirmWindow(parentWindow, options = {}) {
+  return await new Promise((resolve, reject) => {
+    const token = crypto.randomBytes(24).toString("hex");
+    const payload = normalizeHighRiskConfirmOptions(options);
+    const payloadChannel = `high-risk-confirm:get-payload:${token}`;
+    const decisionChannel = `high-risk-confirm:decision:${token}`;
+    let confirmWindow = null;
+    let settled = false;
+
+    const cleanup = () => {
+      try {
+        ipcMain.removeHandler(payloadChannel);
+      } catch (error) {}
+      try {
+        ipcMain.removeAllListeners(decisionChannel);
+      } catch (error) {}
+      if (confirmWindow && !confirmWindow.isDestroyed()) {
+        try {
+          confirmWindow.removeAllListeners("closed");
+          confirmWindow.close();
+        } catch (error) {}
+      }
+    };
+
+    const finish = (allowed) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(allowed === true);
+    };
+
+    try {
+      ipcMain.handle(payloadChannel, () => payload);
+      ipcMain.once(decisionChannel, (_event, allowed) =>
+        finish(allowed === true)
+      );
+
+      confirmWindow = new BrowserWindow({
+        width: 520,
+        height: 340,
+        minWidth: 460,
+        minHeight: 300,
+        parent:
+          parentWindow && !parentWindow.isDestroyed()
+            ? parentWindow
+            : undefined,
+        modal: Boolean(parentWindow && !parentWindow.isDestroyed()),
+        frame: false,
+        resizable: false,
+        maximizable: false,
+        minimizable: false,
+        fullscreenable: false,
+        show: false,
+        alwaysOnTop: true,
+        transparent: true,
+        backgroundColor: "#00000000",
+        skipTaskbar: true,
+        webPreferences: {
+          preload: path.join(
+            app.getAppPath(),
+            "preloads",
+            "highRiskConfirm.js"
+          ),
+          contextIsolation: true,
+          nodeIntegration: false,
+          sandbox: true,
+          devTools: false,
+        },
+      });
+
+      confirmWindow.setMenu(null);
+      confirmWindow.once("ready-to-show", () => {
+        if (!confirmWindow || confirmWindow.isDestroyed() || settled) return;
+        confirmWindow.show();
+        confirmWindow.focus();
+      });
+      confirmWindow.once("closed", () => finish(false));
+      confirmWindow.webContents.once(
+        "did-fail-load",
+        (_event, code, description) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          reject(new Error(`高风险确认窗口加载失败(${code}): ${description}`));
+        }
+      );
+
+      const confirmUrl = `file://${path.join(
+        app.getAppPath(),
+        "modules",
+        "high-risk-confirm.html"
+      )}?token=${encodeURIComponent(token)}`;
+      confirmWindow.loadURL(confirmUrl).catch((error) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(error);
+      });
+    } catch (error) {
+      if (!settled) {
+        settled = true;
+        cleanup();
+        reject(error);
+      }
     }
+  });
+}
+
+async function showNativeHighRiskConfirmDialog(parentWindow, options = {}) {
+  const payload = normalizeHighRiskConfirmOptions(options);
+  const result = await dialog.showMessageBox(parentWindow || undefined, {
+    type: payload.type,
+    buttons: [payload.confirmText, "取消"],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true,
+    title: payload.title,
+    message: payload.message,
+    detail: payload.detailLines.join("\n"),
+  });
+  return result.response === 0;
+}
+
+async function confirmHighRiskDesktopApi(event, options = {}) {
+  const parentWindow = event?.sender
+    ? BrowserWindow.fromWebContents(event.sender)
+    : desktopWindow && !desktopWindow.isDestroyed()
+    ? desktopWindow
+    : mainWindow;
+
+  try {
+    return await showHighRiskConfirmWindow(parentWindow, options);
+  } catch (error) {
+    console.warn(
+      "[DesktopHandlers] Custom high-risk confirm failed, falling back to native dialog:",
+      error?.message || error
+    );
+    return await showNativeHighRiskConfirmDialog(parentWindow, options);
+  }
+}
+
+function createHighRiskDeniedResult(message = "用户已取消高风险操作") {
+  return { success: false, error: "ERR_USER_DENIED_HIGH_RISK", message };
 }
 
 /**
@@ -584,44 +894,52 @@ function resolveAppActionToAppId(appAction) {
  * @returns {Promise<{success: boolean, error?: string}>}
  */
 async function launchSystemTool(cmd) {
-    try {
-        if (!cmd) {
-            return { success: false, error: '缺少命令参数' };
-        }
-
-        console.log(`[DesktopHandlers] Launching system tool: ${cmd}`);
-
-        if (cmd.startsWith('ms-settings:')) {
-            // Windows 设置 URI - 使用 shell.openExternal
-            await shell.openExternal(cmd);
-            return { success: true };
-        }
-
-        if (cmd === 'control') {
-            // 控制面板 - 使用 shell.openPath
-            const { exec } = require('child_process');
-            exec('control.exe', (err) => {
-                if (err) console.warn('[DesktopHandlers] control.exe launch warning:', err.message);
-            });
-            return { success: true };
-        }
-
-        if (cmd.startsWith('shell:')) {
-            // Windows Shell 文件夹 - 使用 explorer.exe
-            const { exec } = require('child_process');
-            exec(`explorer.exe ${cmd}`, (err) => {
-                if (err) console.warn('[DesktopHandlers] explorer.exe launch warning:', err.message);
-            });
-            return { success: true };
-        }
-
-        // 通用方案：尝试直接打开
-        await shell.openPath(cmd);
-        return { success: true };
-    } catch (err) {
-        console.error(`[DesktopHandlers] System tool launch error (${cmd}):`, err);
-        return { success: false, error: err.message };
+  try {
+    if (!cmd) {
+      return { success: false, error: "缺少命令参数" };
     }
+
+    console.log(`[DesktopHandlers] Launching system tool: ${cmd}`);
+
+    if (cmd.startsWith("ms-settings:")) {
+      // Windows 设置 URI - 使用 shell.openExternal
+      await shell.openExternal(cmd);
+      return { success: true };
+    }
+
+    if (cmd === "control") {
+      // 控制面板 - 使用 shell.openPath
+      const { exec } = require("child_process");
+      exec("control.exe", (err) => {
+        if (err)
+          console.warn(
+            "[DesktopHandlers] control.exe launch warning:",
+            err.message
+          );
+      });
+      return { success: true };
+    }
+
+    if (cmd.startsWith("shell:")) {
+      // Windows Shell 文件夹 - 使用 explorer.exe
+      const { exec } = require("child_process");
+      exec(`explorer.exe ${cmd}`, (err) => {
+        if (err)
+          console.warn(
+            "[DesktopHandlers] explorer.exe launch warning:",
+            err.message
+          );
+      });
+      return { success: true };
+    }
+
+    // 通用方案：尝试直接打开
+    await shell.openPath(cmd);
+    return { success: true };
+  } catch (err) {
+    console.error(`[DesktopHandlers] System tool launch error (${cmd}):`, err);
+    return { success: false, error: err.message };
+  }
 }
 
 /**
@@ -634,1400 +952,1968 @@ async function launchSystemTool(cmd) {
  * @returns {Promise<{success: boolean, error?: string}>}
  */
 async function launchStandaloneElectronApp(appDir, displayName) {
-    try {
-        const appPath = path.join(PROJECT_ROOT, appDir);
-        const mainJsPath = path.join(appPath, 'main.js');
+  try {
+    const appPath = path.join(PROJECT_ROOT, appDir);
+    const mainJsPath = path.join(appPath, "main.js");
 
-        // 检查目录和入口文件是否存在
-        if (!await fs.pathExists(mainJsPath)) {
-            console.error(`[DesktopHandlers] Standalone app not found: ${mainJsPath}`);
-            return { success: false, error: `${displayName} 入口文件不存在: ${appDir}/main.js` };
-        }
-
-        // 检查是否已有该应用的进程在运行
-        const existingProcess = standaloneAppProcesses.get(appDir);
-        if (existingProcess && !existingProcess.killed) {
-            // 进程存在，检查是否还活着
-            try {
-                process.kill(existingProcess.pid, 0); // 发送信号 0 检测进程是否存活
-                console.log(`[DesktopHandlers] ${displayName} already running (PID: ${existingProcess.pid})`);
-                return { success: true, alreadyRunning: true };
-            } catch (e) {
-                // 进程已退出，清理引用
-                standaloneAppProcesses.delete(appDir);
-            }
-        }
-
-        // 获取当前 Electron 可执行文件路径
-        const electronExe = process.execPath;
-
-        console.log(`[DesktopHandlers] Launching standalone app: ${displayName}`);
-        console.log(`[DesktopHandlers]   Electron: ${electronExe}`);
-        console.log(`[DesktopHandlers]   App path: ${appPath}`);
-
-        // 使用 spawn 启动独立的 electron 进程
-        const { spawn } = require('child_process');
-        const child = spawn(electronExe, [mainJsPath], {
-            cwd: appPath,
-            detached: true,       // 独立进程，不随父进程退出
-            stdio: 'ignore',      // 不继承标准 IO
-            env: {
-                ...process.env,
-                // 确保子进程知道项目根目录
-                VCP_PROJECT_ROOT: PROJECT_ROOT,
-            },
-        });
-
-        // 解除父进程对子进程的引用，允许子进程独立运行
-        child.unref();
-
-        // 记录进程引用（用于防止重复启动）
-        standaloneAppProcesses.set(appDir, child);
-
-        child.on('exit', (code) => {
-            console.log(`[DesktopHandlers] ${displayName} exited with code ${code}`);
-            standaloneAppProcesses.delete(appDir);
-        });
-
-        child.on('error', (err) => {
-            console.error(`[DesktopHandlers] ${displayName} process error:`, err.message);
-            standaloneAppProcesses.delete(appDir);
-        });
-
-        console.log(`[DesktopHandlers] ${displayName} launched successfully (PID: ${child.pid})`);
-        return { success: true };
-    } catch (err) {
-        console.error(`[DesktopHandlers] Failed to launch ${displayName}:`, err);
-        return { success: false, error: err.message };
+    // 检查目录和入口文件是否存在
+    if (!(await fs.pathExists(mainJsPath))) {
+      console.error(
+        `[DesktopHandlers] Standalone app not found: ${mainJsPath}`
+      );
+      return {
+        success: false,
+        error: `${displayName} 入口文件不存在: ${appDir}/main.js`,
+      };
     }
+
+    // 检查是否已有该应用的进程在运行
+    const existingProcess = standaloneAppProcesses.get(appDir);
+    if (existingProcess && !existingProcess.killed) {
+      // 进程存在，检查是否还活着
+      try {
+        process.kill(existingProcess.pid, 0); // 发送信号 0 检测进程是否存活
+        console.log(
+          `[DesktopHandlers] ${displayName} already running (PID: ${existingProcess.pid})`
+        );
+        return { success: true, alreadyRunning: true };
+      } catch (e) {
+        // 进程已退出，清理引用
+        standaloneAppProcesses.delete(appDir);
+      }
+    }
+
+    // 获取当前 Electron 可执行文件路径
+    const electronExe = process.execPath;
+
+    console.log(`[DesktopHandlers] Launching standalone app: ${displayName}`);
+    console.log(`[DesktopHandlers]   Electron: ${electronExe}`);
+    console.log(`[DesktopHandlers]   App path: ${appPath}`);
+
+    // 使用 spawn 启动独立的 electron 进程
+    const { spawn } = require("child_process");
+    const child = spawn(electronExe, [mainJsPath], {
+      cwd: appPath,
+      detached: true, // 独立进程，不随父进程退出
+      stdio: "ignore", // 不继承标准 IO
+      env: {
+        ...process.env,
+        // 确保子进程知道项目根目录
+        VCP_PROJECT_ROOT: PROJECT_ROOT,
+      },
+    });
+
+    // 解除父进程对子进程的引用，允许子进程独立运行
+    child.unref();
+
+    // 记录进程引用（用于防止重复启动）
+    standaloneAppProcesses.set(appDir, child);
+
+    child.on("exit", (code) => {
+      console.log(`[DesktopHandlers] ${displayName} exited with code ${code}`);
+      standaloneAppProcesses.delete(appDir);
+    });
+
+    child.on("error", (err) => {
+      console.error(
+        `[DesktopHandlers] ${displayName} process error:`,
+        err.message
+      );
+      standaloneAppProcesses.delete(appDir);
+    });
+
+    console.log(
+      `[DesktopHandlers] ${displayName} launched successfully (PID: ${child.pid})`
+    );
+    return { success: true };
+  } catch (err) {
+    console.error(`[DesktopHandlers] Failed to launch ${displayName}:`, err);
+    return { success: false, error: err.message };
+  }
 }
 
 /**
  * 初始化桌面处理模块
  */
 function initialize(params) {
-    mainWindow = params.mainWindow;
-    openChildWindows = params.openChildWindows;
-    appSettingsManager = params.settingsManager;
-    registerManagedWindows();
-
-
-    // 确保目录存在
-    fs.ensureDirSync(DESKTOP_WIDGETS_DIR);
-    fs.ensureDirSync(DESKTOP_DATA_DIR);
-
-    // 启动时生成/更新 CATALOG.md
-    generateCatalog().catch(err => {
-        console.warn('[DesktopHandlers] Initial CATALOG.md generation failed:', err.message);
-    });
-
-    // --- IPC: 打开桌面窗口 ---
-    ipcMain.handle('open-desktop-window', async () => {
-        await openDesktopWindow();
-    });
-
-    // --- IPC: 窗口始终置底控制 ---
-    ipcMain.handle('desktop-set-always-on-bottom', (event, enabled) => {
-        setAlwaysOnBottom(enabled);
-        return { success: true };
-    });
-
-    // --- IPC: 主窗口 -> 桌面画布的流式推送 ---
-    ipcMain.on('desktop-push', (event, data) => {
-        if (desktopWindow && !desktopWindow.isDestroyed()) {
-            desktopWindow.webContents.send('desktop-push-to-canvas', data);
-        }
-    });
-
-    // --- IPC: 收藏系统 ---
-
-    // 保存/更新收藏
-    ipcMain.handle('desktop-save-widget', async (event, data) => {
-        try {
-            const { id, name, html, thumbnail } = data;
-            console.log(`[DesktopHandlers] desktop-save-widget called: id=${id}, name=${name}, html length=${html?.length}, has thumbnail=${!!thumbnail}`);
-            if (!id || !name || !html) {
-                console.error('[DesktopHandlers] Missing required params:', { id: !!id, name: !!name, html: !!html });
-                return { success: false, error: '缺少必要参数' };
-            }
-
-            const widgetDir = path.join(DESKTOP_WIDGETS_DIR, id);
-            await fs.ensureDir(widgetDir);
-
-            // 保存 HTML 内容
-            await fs.writeFile(path.join(widgetDir, 'widget.html'), html, 'utf-8');
-
-            // 保存元数据
-            const meta = {
-                id,
-                name,
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-            };
-
-            // 读取已有元数据保留 createdAt
-            const metaPath = path.join(widgetDir, 'meta.json');
-            if (await fs.pathExists(metaPath)) {
-                try {
-                    const existingMeta = await fs.readJson(metaPath);
-                    meta.createdAt = existingMeta.createdAt || meta.createdAt;
-                } catch (e) { /* ignore */ }
-            }
-
-            await fs.writeJson(metaPath, meta, { spaces: 2 });
-
-            // 保存缩略图（Base64 Data URL -> PNG 文件）
-            if (thumbnail && thumbnail.startsWith('data:image/')) {
-                const base64Data = thumbnail.replace(/^data:image\/\w+;base64,/, '');
-                const thumbBuffer = Buffer.from(base64Data, 'base64');
-                await fs.writeFile(path.join(widgetDir, 'thumbnail.png'), thumbBuffer);
-            }
-
-            console.log(`[DesktopHandlers] Widget saved: ${name} (${id}) to ${widgetDir}`);
-
-            // 保存成功后异步更新 CATALOG.md（不阻塞返回）
-            generateCatalog().catch(err => {
-                console.warn('[DesktopHandlers] CATALOG.md update after save failed:', err.message);
-            });
-
-            return { success: true, id };
-        } catch (err) {
-            console.error('[DesktopHandlers] Save widget error:', err);
-            return { success: false, error: err.message };
-        }
-    });
-
-    /**
-     * 保存额外文件到收藏目录（用于 AI 生成的多文件 widget）：
-     * 允许 AI 将外部 JS/CSS/资源文件保存到 widget 收藏目录中。
-     * 参数：{ widgetId, fileName, content, encoding }
-     * - widgetId: 收藏 ID（目录名）
-     * - fileName: 文件名（如 'app.js', 'style.css'，不允许路径穿越）
-     * - content: 文件内容（字符串）
-     * - encoding: 编码方式，默认 'utf-8'，也支持 'base64'
-     */
-    ipcMain.handle('desktop-save-widget-file', async (event, data) => {
-        try {
-            const { widgetId, fileName, content, encoding } = data;
-            if (!widgetId || !fileName || content === undefined) {
-                return { success: false, error: '缺少必要参数 (widgetId, fileName, content)' };
-            }
-
-            // 安全检查：防止路径穿越
-            const safeName = path.basename(fileName);
-            if (safeName !== fileName || fileName.includes('..')) {
-                return { success: false, error: `不安全的文件名: ${fileName}` };
-            }
-
-            // 禁止覆盖核心文件
-            const protectedFiles = ['meta.json', 'widget.html', 'thumbnail.png'];
-            if (protectedFiles.includes(safeName.toLowerCase())) {
-                return { success: false, error: `不允许覆盖核心文件: ${safeName}` };
-            }
-
-            const widgetDir = path.join(DESKTOP_WIDGETS_DIR, widgetId);
-            await fs.ensureDir(widgetDir);
-
-            const filePath = path.join(widgetDir, safeName);
-            const enc = encoding === 'base64' ? 'base64' : 'utf-8';
-            await fs.writeFile(filePath, content, enc);
-
-            console.log(`[DesktopHandlers] Widget file saved: ${widgetId}/${safeName} (${enc})`);
-            return { success: true, filePath: `${widgetId}/${safeName}` };
-        } catch (err) {
-            console.error('[DesktopHandlers] Save widget file error:', err);
-            return { success: false, error: err.message };
-        }
-    });
-
-    /**
-     * 读取收藏目录中的额外文件
-     * 参数：{ widgetId, fileName }
-     * 返回：{ success, content, encoding }
-     */
-    ipcMain.handle('desktop-load-widget-file', async (event, data) => {
-        try {
-            const { widgetId, fileName } = data;
-            if (!widgetId || !fileName) {
-                return { success: false, error: '缺少必要参数' };
-            }
-
-            // 安全检查
-            const safeName = path.basename(fileName);
-            if (safeName !== fileName || fileName.includes('..')) {
-                return { success: false, error: `不安全的文件名: ${fileName}` };
-            }
-
-            const filePath = path.join(DESKTOP_WIDGETS_DIR, widgetId, safeName);
-            if (!await fs.pathExists(filePath)) {
-                return { success: false, error: 'File not found.' };
-            }
-
-            // 根据扩展名判断是否为文本文件
-            const ext = path.extname(safeName).toLowerCase();
-            const textExts = ['.js', '.css', '.html', '.htm', '.json', '.txt', '.md', '.svg', '.xml'];
-            if (textExts.includes(ext)) {
-                const content = await fs.readFile(filePath, 'utf-8');
-                return { success: true, content, encoding: 'utf-8' };
-            } else {
-                // 二进制文件返回 base64
-                const buffer = await fs.readFile(filePath);
-                return { success: true, content: buffer.toString('base64'), encoding: 'base64' };
-            }
-        } catch (err) {
-            console.error('[DesktopHandlers] Load widget file error:', err);
-            return { success: false, error: err.message };
-        }
-    });
-
-    /**
-     * 列出收藏目录中的所有文件
-     * 参数：widgetId
-     * 返回：{ success, files: [{ name, size, isText }] }
-     */
-    ipcMain.handle('desktop-list-widget-files', async (event, widgetId) => {
-        try {
-            if (!widgetId) {
-                return { success: false, error: '缺少 widgetId' };
-            }
-
-            const widgetDir = path.join(DESKTOP_WIDGETS_DIR, widgetId);
-            if (!await fs.pathExists(widgetDir)) {
-                return { success: true, files: [] };
-            }
-
-            const entries = await fs.readdir(widgetDir, { withFileTypes: true });
-            const files = [];
-            const textExts = ['.js', '.css', '.html', '.htm', '.json', '.txt', '.md', '.svg', '.xml'];
-
-            for (const entry of entries) {
-                if (!entry.isFile()) continue;
-                const ext = path.extname(entry.name).toLowerCase();
-                try {
-                    const stat = await fs.stat(path.join(widgetDir, entry.name));
-                    files.push({
-                        name: entry.name,
-                        size: stat.size,
-                        isText: textExts.includes(ext),
-                    });
-                } catch (e) {
-                    files.push({ name: entry.name, size: 0, isText: textExts.includes(ext) });
-                }
-            }
-
-            return { success: true, files };
-        } catch (err) {
-            console.error('[DesktopHandlers] List widget files error:', err);
-            return { success: false, error: err.message };
-        }
-    });
-
-    // 加载收藏（读取 HTML 内容）
-    ipcMain.handle('desktop-load-widget', async (event, id) => {
-        try {
-            const widgetDir = path.join(DESKTOP_WIDGETS_DIR, id);
-            const htmlPath = path.join(widgetDir, 'widget.html');
-            const metaPath = path.join(widgetDir, 'meta.json');
-
-            if (!(await fs.pathExists(htmlPath))) {
-                return { success: false, error: 'Widget not found.' };
-            }
-
-            const html = await fs.readFile(htmlPath, 'utf-8');
-            let name = id;
-            if (await fs.pathExists(metaPath)) {
-                try {
-                    const meta = await fs.readJson(metaPath);
-                    name = meta.name || id;
-                } catch (e) { /* ignore */ }
-            }
-
-            return { success: true, html, name, id };
-        } catch (err) {
-            console.error('[DesktopHandlers] Load widget error:', err);
-            return { success: false, error: err.message };
-        }
-    });
-
-    // 删除收藏
-    ipcMain.handle('desktop-delete-widget', async (event, id) => {
-        try {
-            const widgetDir = path.join(DESKTOP_WIDGETS_DIR, id);
-            if (await fs.pathExists(widgetDir)) {
-                await fs.remove(widgetDir);
-                console.log(`[DesktopHandlers] Widget deleted: ${id}`);
-            }
-
-            // 删除成功后异步更新 CATALOG.md（不阻塞返回）
-            generateCatalog().catch(err => {
-                console.warn('[DesktopHandlers] CATALOG.md update after delete failed:', err.message);
-            });
-
-            return { success: true };
-        } catch (err) {
-            console.error('[DesktopHandlers] Delete widget error:', err);
-            return { success: false, error: err.message };
-        }
-    });
-
-    // 列出所有收藏（返回 id、name、thumbnail 的 Data URL）
-    ipcMain.handle('desktop-list-widgets', async () => {
-        try {
-            console.log(`[DesktopHandlers] desktop-list-widgets called, dir: ${DESKTOP_WIDGETS_DIR}`);
-            await fs.ensureDir(DESKTOP_WIDGETS_DIR);
-            const entries = await fs.readdir(DESKTOP_WIDGETS_DIR, { withFileTypes: true });
-            console.log(`[DesktopHandlers] Found ${entries.length} entries in DesktopWidgets dir`);
-            const widgets = [];
-
-            for (const entry of entries) {
-                if (!entry.isDirectory()) continue;
-
-                const widgetDir = path.join(DESKTOP_WIDGETS_DIR, entry.name);
-                const metaPath = path.join(widgetDir, 'meta.json');
-                const thumbPath = path.join(widgetDir, 'thumbnail.png');
-
-                let meta = { id: entry.name, name: entry.name };
-                if (await fs.pathExists(metaPath)) {
-                    try {
-                        meta = await fs.readJson(metaPath);
-                    } catch (e) { /* ignore */ }
-                }
-
-                // 读取缩略图为 Data URL
-                let thumbnail = '';
-                if (await fs.pathExists(thumbPath)) {
-                    try {
-                        const thumbBuffer = await fs.readFile(thumbPath);
-                        thumbnail = `data:image/png;base64,${thumbBuffer.toString('base64')}`;
-                    } catch (e) { /* ignore */ }
-                }
-
-                widgets.push({
-                    id: meta.id || entry.name,
-                    name: meta.name || entry.name,
-                    thumbnail,
-                    createdAt: meta.createdAt,
-                    updatedAt: meta.updatedAt,
-                });
-            }
-
-            // 按更新时间倒序排列
-            widgets.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-
-            return { success: true, widgets };
-        } catch (err) {
-            console.error('[DesktopHandlers] List widgets error:', err);
-            return { success: false, error: err.message, widgets: [] };
-        }
-    });
-
-    // 截取桌面窗口指定矩形区域的截图
-    ipcMain.handle('desktop-capture-widget', async (event, rect) => {
-        try {
-            if (!desktopWindow || desktopWindow.isDestroyed()) {
-                return { success: false, error: 'Desktop window not found.' };
-            }
-
-            const { x, y, width, height } = rect;
-            // capturePage 需要整数坐标
-            const captureRect = {
-                x: Math.round(x),
-                y: Math.round(y),
-                width: Math.round(width),
-                height: Math.round(height),
-            };
-
-            console.log(`[DesktopHandlers] Capturing widget area:`, captureRect);
-            const image = await desktopWindow.webContents.capturePage(captureRect);
-            
-            // 缩放到合理的缩略图尺寸
-            const MAX_THUMB = 300;
-            const scale = Math.min(MAX_THUMB / captureRect.width, MAX_THUMB / captureRect.height, 1);
-            const thumbWidth = Math.round(captureRect.width * scale);
-            const thumbHeight = Math.round(captureRect.height * scale);
-            
-            const resized = image.resize({ width: thumbWidth, height: thumbHeight, quality: 'good' });
-            const dataUrl = `data:image/png;base64,${resized.toPNG().toString('base64')}`;
-            
-            console.log(`[DesktopHandlers] Widget captured: ${thumbWidth}x${thumbHeight}, data length: ${dataUrl.length}`);
-            return { success: true, thumbnail: dataUrl };
-        } catch (err) {
-            console.error('[DesktopHandlers] Capture widget error:', err);
-            return { success: false, error: err.message };
-        }
-    });
-
-    // 获取 VCP 后端凭据（供桌面 widget 的 vcpAPI 使用）：
-    ipcMain.handle('desktop-get-credentials', async () => {
-        try {
-            const settingsPath = path.join(PROJECT_ROOT, 'AppData', 'settings.json');
-            const forumConfigPath = path.join(PROJECT_ROOT, 'AppData', 'UserData', 'forum.config.json');
-
-            let vcpServerUrl = '';
-            let vcpApiKey = '';
-            let username = '';
-            let password = '';
-
-            if (await fs.pathExists(settingsPath)) {
-                try {
-                    const settings = await fs.readJson(settingsPath);
-                    vcpServerUrl = settings.vcpServerUrl || '';
-                    vcpApiKey = settings.vcpApiKey || '';
-                } catch (e) { /* ignore */ }
-            }
-
-            if (await fs.pathExists(forumConfigPath)) {
-                try {
-                    const config = await fs.readJson(forumConfigPath);
-                    username = config.username || '';
-                    password = config.password || '';
-                } catch (e) { /* ignore */ }
-            }
-
-            // 从 vcpServerUrl 推导出 admin API base URL
-            let apiBaseUrl = '';
-            if (vcpServerUrl) {
-                try {
-                    const urlObj = new URL(vcpServerUrl);
-                    apiBaseUrl = `${urlObj.protocol}//${urlObj.host}`;
-                } catch (e) { /* ignore */ }
-            }
-
-            return {
-                success: true,
-                apiBaseUrl,
-                vcpServerUrl,
-                vcpApiKey,
-                username,
-                password,
-            };
-        } catch (err) {
-            console.error('[DesktopHandlers] Get credentials error:', err);
-            return { success: false, error: err.message };
-        }
-    });
-
-    ipcMain.removeHandler('desktop-launch-vchat-app');
-    ipcMain.handle('desktop-launch-vchat-app', async (event, appAction) => {
-        try {
-            console.log(`[DesktopHandlers] Launching VChat app via WindowService: ${appAction}`);
-
-            const appId = resolveAppActionToAppId(appAction);
-            if (appId) {
-                await windowService.open(appId);
-                return { success: true, appId };
-            }
-
-            if (appAction === 'launch-human-toolbox') {
-                return await launchStandaloneElectronApp('VCPHumanToolBox', 'Human Toolbox');
-            }
-
-            if (appAction === 'launch-vchat-manager') {
-                return await launchStandaloneElectronApp('VchatManager', 'VchatManager');
-            }
-
-            if (appAction && appAction.startsWith('open-system-tool:')) {
-                const cmd = appAction.substring('open-system-tool:'.length);
-                return await launchSystemTool(cmd);
-            }
-
-            console.warn(`[DesktopHandlers] Unknown VChat app action: ${appAction}`);
-            return { success: false, error: `Unknown app action: ${appAction}` };
-        } catch (err) {
-            console.error(`[DesktopHandlers] VChat app launch error (${appAction}):`, err);
-            return { success: false, error: err.message };
-        }
-    });
-
-    // ============================================================
-    // --- IPC: 快捷方式解析 & 启动 ---
-    // ============================================================
-
-    /**
-     * 解析 Windows .url 快捷方式文件（Internet Shortcut）：
-     * 支持 Steam 等使用自定义协议的应用（如 steam://rungameid/570）
-     * @param {string} filePath - .url 文件路径
-     * @returns {object|null} 解析后的快捷方式信息
-     */
-    /**
-     * 带超时的 Promise 包装器
-     */
-    function withTimeout(promise, ms, fallback) {
-        return Promise.race([
-            promise,
-            new Promise(resolve => setTimeout(() => resolve(fallback), ms)),
-        ]);
+  mainWindow = params.mainWindow;
+  openChildWindows = params.openChildWindows;
+  appSettingsManager = params.settingsManager;
+  registerManagedWindows();
+
+  // 确保目录存在
+  fs.ensureDirSync(DESKTOP_WIDGETS_DIR);
+  fs.ensureDirSync(DESKTOP_DATA_DIR);
+
+  // 启动时生成/更新 CATALOG.md
+  generateCatalog().catch((err) => {
+    console.warn(
+      "[DesktopHandlers] Initial CATALOG.md generation failed:",
+      err.message
+    );
+  });
+
+  // --- IPC: 打开桌面窗口 ---
+  ipcMain.handle("open-desktop-window", async () => {
+    await openDesktopWindow();
+  });
+
+  // --- IPC: 窗口始终置底控制 ---
+  ipcMain.handle("desktop-set-always-on-bottom", (event, enabled) => {
+    setAlwaysOnBottom(enabled);
+    return { success: true };
+  });
+
+  // --- IPC: 主窗口 -> 桌面画布的流式推送 ---
+  ipcMain.on("desktop-push", (event, data) => {
+    if (desktopWindow && !desktopWindow.isDestroyed()) {
+      desktopWindow.webContents.send("desktop-push-to-canvas", data);
+    } else if (mainWindow && !mainWindow.isDestroyed() && data?.requestId) {
+      mainWindow.webContents.send("desktop-operation-result", {
+        event: "WidgetOperationResult",
+        requestId: data.requestId,
+        operation:
+          data.action === "editWidget"
+            ? "edit"
+            : data.action === "createBuiltinWidget" || data.action === "create"
+            ? "create"
+            : data.action || "desktopPush",
+        ok: false,
+        status: "failed",
+        error: "ERR_DESKTOP_WINDOW_UNAVAILABLE",
+        message: "桌面窗口不可用，操作未发送",
+      });
     }
+  });
 
-    async function parseUrlShortcut(filePath) {
+  // --- IPC: 桌面画布 -> 主窗口的卡片操作回执 ---
+  ipcMain.on("desktop-operation-result", (event, data) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("desktop-operation-result", data);
+    }
+  });
+
+  // --- IPC: 收藏系统 ---
+
+  // 保存/更新收藏
+  ipcMain.handle("desktop-save-widget", async (event, data) => {
+    try {
+      const {
+        id,
+        name,
+        html,
+        thumbnail,
+        package: packageManifest,
+        sourceFormat,
+        source,
+        files,
+      } = data;
+      console.log(
+        `[DesktopHandlers] desktop-save-widget called: id=${id}, name=${name}, html length=${
+          html?.length
+        }, sourceFormat=${
+          sourceFormat || packageManifest?.sourceFormat || "legacy"
+        }, has thumbnail=${!!thumbnail}`
+      );
+      if (
+        !id ||
+        !name ||
+        (html == null && source == null && !Array.isArray(files))
+      ) {
+        console.error("[DesktopHandlers] Missing required params:", {
+          id: !!id,
+          name: !!name,
+          html: !!html,
+          files: Array.isArray(files),
+        });
+        return { success: false, error: "缺少必要参数" };
+      }
+
+      const widgetDir = path.join(DESKTOP_WIDGETS_DIR, id);
+      await fs.ensureDir(widgetDir);
+
+      // 保存 HTML 内容 / v2 源文件
+      if (html != null) {
+        await fs.writeFile(path.join(widgetDir, "widget.html"), html, "utf-8");
+      }
+      if (
+        sourceFormat === "desktopBuiltin" ||
+        packageManifest?.sourceFormat === "desktopBuiltin"
+      ) {
+        await fs.writeFile(
+          path.join(widgetDir, "source.desktopbuiltin"),
+          String(source || ""),
+          "utf-8"
+        );
+      }
+      if (
+        (sourceFormat === "htmlPackage" ||
+          packageManifest?.sourceFormat === "htmlPackage") &&
+        Array.isArray(files)
+      ) {
+        for (const file of files) {
+          const validation = validatePackageFileName(file?.name);
+          if (!validation.ok) {
+            return { success: false, error: validation.error };
+          }
+          const rawName = validation.name;
+          const safeName = validation.safeName;
+          const filePath = path.join(widgetDir, safeName);
+          const resolvedPath = path.resolve(filePath);
+          const resolvedRoot = path.resolve(widgetDir);
+          if (!resolvedPath.startsWith(resolvedRoot + path.sep)) {
+            return { success: false, error: `不安全的文件名: ${rawName}` };
+          }
+          await fs.ensureDir(path.dirname(filePath));
+          const enc = file.encoding === "base64" ? "base64" : "utf-8";
+          await fs.writeFile(filePath, String(file.content || ""), enc);
+        }
+      }
+
+      // 保存元数据
+      const meta = {
+        id,
+        name,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+
+      // 读取已有元数据保留 createdAt
+      const metaPath = path.join(widgetDir, "meta.json");
+      if (await fs.pathExists(metaPath)) {
         try {
-            const content = await fs.readFile(filePath, 'utf-8');
-            const lines = content.split(/\r?\n/);
-
-            let url = '';
-            let iconFile = '';
-            let iconIndex = 0;
-
-            for (const line of lines) {
-                const trimmed = line.trim();
-                if (trimmed.toLowerCase().startsWith('url=')) {
-                    url = trimmed.substring(4);
-                } else if (trimmed.toLowerCase().startsWith('iconfile=')) {
-                    iconFile = trimmed.substring(9);
-                } else if (trimmed.toLowerCase().startsWith('iconindex=')) {
-                    iconIndex = parseInt(trimmed.substring(10), 10) || 0;
-                }
-            }
-
-            if (!url) return null;
-
-            const name = path.basename(filePath, '.url');
-
-            // 提取图标（带超时保护，防止 getFileIcon 挂起）
-            let iconDataUrl = '';
-            try {
-                // 优先以 IconFile 指定的文件提取图标
-                if (iconFile && await fs.pathExists(iconFile)) {
-                    const nativeImage = await withTimeout(
-                        app.getFileIcon(iconFile, { size: 'large' }),
-                        3000, // 3秒超时
-                        null
-                    );
-                    if (nativeImage && !nativeImage.isEmpty() && isIconValid(nativeImage)) {
-                        iconDataUrl = nativeImage.toDataURL();
-                    }
-                }
-                // 如果没有有效图标，尝试从 .url 文件本身提取
-                if (!iconDataUrl) {
-                    const nativeImage = await withTimeout(
-                        app.getFileIcon(filePath, { size: 'large' }),
-                        3000,
-                        null
-                    );
-                    if (nativeImage && !nativeImage.isEmpty() && isIconValid(nativeImage)) {
-                        iconDataUrl = nativeImage.toDataURL();
-                    }
-                }
-            } catch (e) {
-                console.warn('[DesktopHandlers] URL shortcut icon extraction failed:', e.message);
-            }
-
-            return {
-                name,
-                targetPath: url,      // 对于 .url 文件，targetPath 存储的是 URL（如 steam://rungameid/570）：
-                args: '',
-                workingDir: '',
-                description: url,
-                icon: iconDataUrl,
-                originalPath: filePath,
-                isUrlShortcut: true,   // 标记为 URL 快捷方式，启动时使用 shell.openExternal
-            };
+          const existingMeta = await fs.readJson(metaPath);
+          meta.createdAt = existingMeta.createdAt || meta.createdAt;
         } catch (e) {
-            console.warn(`[DesktopHandlers] Failed to parse .url file: ${filePath}`, e.message);
-            return null;
+          /* ignore */
         }
+      }
+
+      await fs.writeJson(metaPath, meta, { spaces: 2 });
+
+      if (packageManifest && typeof packageManifest === "object") {
+        const packagePath = path.join(widgetDir, "package.json");
+        let existingPackage = {};
+        if (await fs.pathExists(packagePath)) {
+          try {
+            existingPackage = await fs.readJson(packagePath);
+          } catch (e) {
+            existingPackage = {};
+          }
+        }
+        await fs.writeJson(
+          packagePath,
+          {
+            ...packageManifest,
+            id,
+            name,
+            createdAt:
+              packageManifest.createdAt ||
+              existingPackage.createdAt ||
+              meta.createdAt,
+            updatedAt: Date.now(),
+          },
+          { spaces: 2 }
+        );
+      }
+
+      // 保存缩略图（Base64 Data URL -> PNG 文件）
+      if (thumbnail && thumbnail.startsWith("data:image/")) {
+        const base64Data = thumbnail.replace(/^data:image\/\w+;base64,/, "");
+        const thumbBuffer = Buffer.from(base64Data, "base64");
+        await fs.writeFile(path.join(widgetDir, "thumbnail.png"), thumbBuffer);
+      }
+
+      console.log(
+        `[DesktopHandlers] Widget saved: ${name} (${id}) to ${widgetDir}`
+      );
+
+      // 保存成功后异步更新 CATALOG.md（不阻塞返回）
+      generateCatalog().catch((err) => {
+        console.warn(
+          "[DesktopHandlers] CATALOG.md update after save failed:",
+          err.message
+        );
+      });
+
+      return { success: true, id };
+    } catch (err) {
+      console.error("[DesktopHandlers] Save widget error:", err);
+      return { success: false, error: err.message };
     }
+  });
 
-    /**
-     * 解析 Windows 快捷方式 (.lnk) 文件
-     * 返回：{ name, targetPath, args, icon (DataURL), workingDir }
-     */
-    ipcMain.handle('desktop-shortcut-parse', async (event, filePath) => {
+  /**
+   * 保存额外文件到收藏目录（用于 AI 生成的多文件 widget）：
+   * 允许 AI 将外部 JS/CSS/资源文件保存到 widget 收藏目录中。
+   * 参数：{ widgetId, fileName, content, encoding }
+   * - widgetId: 收藏 ID（目录名）
+   * - fileName: 文件名（如 'app.js', 'style.css'，不允许路径穿越）
+   * - content: 文件内容（字符串）
+   * - encoding: 编码方式，默认 'utf-8'，也支持 'base64'
+   */
+  ipcMain.handle("desktop-save-widget-file", async (event, data) => {
+    try {
+      const { widgetId, fileName, content, encoding } = data;
+      if (!widgetId || !fileName || content === undefined) {
+        return {
+          success: false,
+          error: "缺少必要参数 (widgetId, fileName, content)",
+        };
+      }
+
+      // 安全检查：防止路径穿越
+      const safeName = path.basename(fileName);
+      if (safeName !== fileName || fileName.includes("..")) {
+        return { success: false, error: `不安全的文件名: ${fileName}` };
+      }
+
+      // 禁止覆盖核心文件
+      const protectedFiles = ["meta.json", "widget.html", "thumbnail.png"];
+      if (protectedFiles.includes(safeName.toLowerCase())) {
+        return { success: false, error: `不允许覆盖核心文件: ${safeName}` };
+      }
+
+      const widgetDir = path.join(DESKTOP_WIDGETS_DIR, widgetId);
+      await fs.ensureDir(widgetDir);
+
+      const filePath = path.join(widgetDir, safeName);
+      const enc = encoding === "base64" ? "base64" : "utf-8";
+      await fs.writeFile(filePath, content, enc);
+
+      console.log(
+        `[DesktopHandlers] Widget file saved: ${widgetId}/${safeName} (${enc})`
+      );
+      return { success: true, filePath: `${widgetId}/${safeName}` };
+    } catch (err) {
+      console.error("[DesktopHandlers] Save widget file error:", err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  /**
+   * 读取收藏目录中的额外文件
+   * 参数：{ widgetId, fileName }
+   * 返回：{ success, content, encoding }
+   */
+  ipcMain.handle("desktop-load-widget-file", async (event, data) => {
+    try {
+      const { widgetId, fileName } = data;
+      if (!widgetId || !fileName) {
+        return { success: false, error: "缺少必要参数" };
+      }
+
+      // 安全检查
+      const safeName = path.basename(fileName);
+      if (safeName !== fileName || fileName.includes("..")) {
+        return { success: false, error: `不安全的文件名: ${fileName}` };
+      }
+
+      const filePath = path.join(DESKTOP_WIDGETS_DIR, widgetId, safeName);
+      if (!(await fs.pathExists(filePath))) {
+        return { success: false, error: "File not found." };
+      }
+
+      // 根据扩展名判断是否为文本文件
+      const ext = path.extname(safeName).toLowerCase();
+      const textExts = [
+        ".js",
+        ".css",
+        ".html",
+        ".htm",
+        ".json",
+        ".txt",
+        ".md",
+        ".svg",
+        ".xml",
+      ];
+      if (textExts.includes(ext)) {
+        const content = await fs.readFile(filePath, "utf-8");
+        return { success: true, content, encoding: "utf-8" };
+      } else {
+        // 二进制文件返回 base64
+        const buffer = await fs.readFile(filePath);
+        return {
+          success: true,
+          content: buffer.toString("base64"),
+          encoding: "base64",
+        };
+      }
+    } catch (err) {
+      console.error("[DesktopHandlers] Load widget file error:", err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  /**
+   * 列出收藏目录中的所有文件
+   * 参数：widgetId
+   * 返回：{ success, files: [{ name, size, isText }] }
+   */
+  ipcMain.handle("desktop-list-widget-files", async (event, widgetId) => {
+    try {
+      if (!widgetId) {
+        return { success: false, error: "缺少 widgetId" };
+      }
+
+      const widgetDir = path.join(DESKTOP_WIDGETS_DIR, widgetId);
+      if (!(await fs.pathExists(widgetDir))) {
+        return { success: true, files: [] };
+      }
+
+      const entries = await fs.readdir(widgetDir, { withFileTypes: true });
+      const files = [];
+      const textExts = [
+        ".js",
+        ".css",
+        ".html",
+        ".htm",
+        ".json",
+        ".txt",
+        ".md",
+        ".svg",
+        ".xml",
+      ];
+
+      for (const entry of entries) {
+        if (!entry.isFile()) continue;
+        const ext = path.extname(entry.name).toLowerCase();
         try {
-            if (!filePath) {
-                return { success: false, error: 'Invalid shortcut file.' };
-            }
+          const stat = await fs.stat(path.join(widgetDir, entry.name));
+          files.push({
+            name: entry.name,
+            size: stat.size,
+            isText: textExts.includes(ext),
+          });
+        } catch (e) {
+          files.push({
+            name: entry.name,
+            size: 0,
+            isText: textExts.includes(ext),
+          });
+        }
+      }
 
-            // 支持 .url 文件
-            if (filePath.toLowerCase().endsWith('.url')) {
-                const result = await parseUrlShortcut(filePath);
-                if (result) {
-                    return { success: true, shortcut: result };
+      return { success: true, files };
+    } catch (err) {
+      console.error("[DesktopHandlers] List widget files error:", err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  // 加载收藏（兼容 v1 HTML 与 v2 package/source）
+  ipcMain.handle("desktop-load-widget", async (event, id) => {
+    try {
+      const widgetDir = path.join(DESKTOP_WIDGETS_DIR, id);
+      const htmlPath = path.join(widgetDir, "widget.html");
+      const metaPath = path.join(widgetDir, "meta.json");
+      const packagePath = path.join(widgetDir, "package.json");
+
+      if (!(await fs.pathExists(widgetDir))) {
+        return { success: false, error: "Widget not found." };
+      }
+
+      let meta = { id, name: id };
+      if (await fs.pathExists(metaPath)) {
+        try {
+          meta = { ...meta, ...(await fs.readJson(metaPath)) };
+        } catch (e) {
+          /* ignore */
+        }
+      }
+
+      let packageManifest = null;
+      if (await fs.pathExists(packagePath)) {
+        try {
+          packageManifest = await fs.readJson(packagePath);
+        } catch (e) {
+          console.warn(
+            `[DesktopHandlers] Failed to read package.json for ${id}:`,
+            e.message
+          );
+          return {
+            success: false,
+            error: "ERR_PACKAGE_MIGRATION_FAILED",
+          };
+        }
+      }
+
+      let html = "";
+      if (await fs.pathExists(htmlPath)) {
+        html = await fs.readFile(htmlPath, "utf-8");
+      }
+
+      if (!packageManifest && html) {
+        packageManifest = buildVirtualHtmlPackageManifest(
+          id,
+          meta.name || id,
+          html
+        );
+      }
+
+      let source = undefined;
+      const sourceFormat = packageManifest?.sourceFormat || null;
+      const entry = packageManifest?.entry || null;
+      let packageFiles = [];
+      if (sourceFormat === "desktopBuiltin") {
+        const sourcePath = path.join(
+          widgetDir,
+          entry || "source.desktopbuiltin"
+        );
+        if (!(await fs.pathExists(sourcePath))) {
+          return {
+            success: false,
+            error: "ERR_LOAD_PACKAGE_FAILED",
+            message: "source.desktopbuiltin not found.",
+          };
+        }
+        source = await fs.readFile(sourcePath, "utf-8");
+      } else if (sourceFormat === "htmlPackage") {
+        const manifestFiles = Array.isArray(packageManifest?.files)
+          ? packageManifest.files
+          : [];
+        const mainFile = packageManifest?.mainFile || entry || "widget.html";
+        const names = Array.from(
+          new Set([
+            mainFile,
+            ...manifestFiles.map((file) => file?.name).filter(Boolean),
+          ])
+        );
+        for (const name of names) {
+          const validation = validatePackageFileName(name);
+          const fileMeta =
+            manifestFiles.find((file) => file?.name === name) || {};
+          if (!validation.ok) {
+            return { success: false, error: "ERR_LOAD_PACKAGE_FAILED" };
+          }
+          const rawName = validation.name;
+          const safeName = validation.safeName;
+          const filePath = path.join(widgetDir, safeName);
+          const fallbackHtmlPath = rawName === mainFile ? htmlPath : null;
+          const readablePath = (await fs.pathExists(filePath))
+            ? filePath
+            : fallbackHtmlPath && (await fs.pathExists(fallbackHtmlPath))
+            ? fallbackHtmlPath
+            : null;
+          if (!readablePath) continue;
+          const encoding = fileMeta.encoding === "base64" ? "base64" : "utf-8";
+          const content = await fs.readFile(readablePath, encoding);
+          packageFiles.push({
+            name: rawName,
+            role: fileMeta.role || (rawName === mainFile ? "entry" : "asset"),
+            encoding,
+            editable: fileMeta.editable !== false && encoding !== "base64",
+            content,
+          });
+        }
+        const main = packageFiles.find((file) => file.name === mainFile);
+        if (main) html = main.content || html;
+      }
+
+      if (!html && source == null) {
+        return { success: false, error: "Widget not found." };
+      }
+
+      return {
+        success: true,
+        html,
+        name: packageManifest?.name || meta.name || id,
+        id,
+        schemaVersion: packageManifest?.schemaVersion || 1,
+        package: packageManifest,
+        files: packageFiles,
+        sourceFormat: sourceFormat || (html ? "inlineHtml" : "none"),
+        sourceOrigin:
+          packageManifest?.sourceOrigin ||
+          (packageManifest ? "stored" : "snapshot"),
+        sourceCompleteness:
+          packageManifest?.sourceCompleteness ||
+          (packageManifest ? "full" : "partial"),
+        migratedFromSchemaVersion:
+          packageManifest?.migration?.fromSchemaVersion || null,
+        packageVirtual: !!packageManifest?.migration?.virtual,
+        source,
+      };
+    } catch (err) {
+      console.error("[DesktopHandlers] Load widget error:", err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  // 删除收藏
+  ipcMain.handle("desktop-delete-widget", async (event, id) => {
+    try {
+      const widgetDir = path.join(DESKTOP_WIDGETS_DIR, id);
+      if (await fs.pathExists(widgetDir)) {
+        await fs.remove(widgetDir);
+        console.log(`[DesktopHandlers] Widget deleted: ${id}`);
+      }
+
+      // 删除成功后异步更新 CATALOG.md（不阻塞返回）
+      generateCatalog().catch((err) => {
+        console.warn(
+          "[DesktopHandlers] CATALOG.md update after delete failed:",
+          err.message
+        );
+      });
+
+      return { success: true };
+    } catch (err) {
+      console.error("[DesktopHandlers] Delete widget error:", err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  // 列出所有收藏（返回 id、name、thumbnail 的 Data URL）
+  ipcMain.handle("desktop-list-widgets", async () => {
+    try {
+      console.log(
+        `[DesktopHandlers] desktop-list-widgets called, dir: ${DESKTOP_WIDGETS_DIR}`
+      );
+      await fs.ensureDir(DESKTOP_WIDGETS_DIR);
+      const entries = await fs.readdir(DESKTOP_WIDGETS_DIR, {
+        withFileTypes: true,
+      });
+      console.log(
+        `[DesktopHandlers] Found ${entries.length} entries in DesktopWidgets dir`
+      );
+      const widgets = [];
+
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+
+        const widgetDir = path.join(DESKTOP_WIDGETS_DIR, entry.name);
+        const metaPath = path.join(widgetDir, "meta.json");
+        const packagePath = path.join(widgetDir, "package.json");
+        const thumbPath = path.join(widgetDir, "thumbnail.png");
+
+        let meta = { id: entry.name, name: entry.name };
+        if (await fs.pathExists(metaPath)) {
+          try {
+            meta = { ...meta, ...(await fs.readJson(metaPath)) };
+          } catch (e) {
+            /* ignore */
+          }
+        }
+
+        let packageManifest = null;
+        if (await fs.pathExists(packagePath)) {
+          try {
+            packageManifest = await fs.readJson(packagePath);
+          } catch (e) {
+            console.warn(
+              `[DesktopHandlers] Failed to read package.json for ${entry.name}:`,
+              e.message
+            );
+          }
+        }
+
+        // 读取缩略图为 Data URL
+        let thumbnail = "";
+        if (await fs.pathExists(thumbPath)) {
+          try {
+            const thumbBuffer = await fs.readFile(thumbPath);
+            thumbnail = `data:image/png;base64,${thumbBuffer.toString(
+              "base64"
+            )}`;
+          } catch (e) {
+            /* ignore */
+          }
+        }
+
+        if (
+          !packageManifest &&
+          (await fs.pathExists(path.join(widgetDir, "widget.html")))
+        ) {
+          packageManifest = buildVirtualHtmlPackageManifest(
+            meta.id || entry.name,
+            meta.name || entry.name,
+            ""
+          );
+        }
+
+        widgets.push({
+          id: packageManifest?.id || meta.id || entry.name,
+          name: packageManifest?.name || meta.name || entry.name,
+          thumbnail,
+          createdAt: packageManifest?.createdAt || meta.createdAt,
+          updatedAt: packageManifest?.updatedAt || meta.updatedAt,
+          schemaVersion: packageManifest?.schemaVersion || 1,
+          type: packageManifest?.type || "htmlWidget",
+          sourceFormat: packageManifest?.sourceFormat || "inlineHtml",
+          sourceOrigin:
+            packageManifest?.sourceOrigin ||
+            (packageManifest ? "stored" : "snapshot"),
+          sourceCompleteness:
+            packageManifest?.sourceCompleteness ||
+            (packageManifest ? "full" : "partial"),
+          migratedFromSchemaVersion:
+            packageManifest?.migration?.fromSchemaVersion || null,
+          packageVirtual: !!packageManifest?.migration?.virtual,
+          package: packageManifest,
+        });
+      }
+
+      // 按更新时间倒序排列
+      widgets.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+
+      return { success: true, widgets };
+    } catch (err) {
+      console.error("[DesktopHandlers] List widgets error:", err);
+      return { success: false, error: err.message, widgets: [] };
+    }
+  });
+
+  // 截取桌面窗口指定矩形区域的截图
+  ipcMain.handle("desktop-capture-widget", async (event, rect) => {
+    try {
+      if (!desktopWindow || desktopWindow.isDestroyed()) {
+        return { success: false, error: "Desktop window not found." };
+      }
+
+      const { x, y, width, height } = rect;
+      // capturePage 需要整数坐标
+      const captureRect = {
+        x: Math.round(x),
+        y: Math.round(y),
+        width: Math.round(width),
+        height: Math.round(height),
+      };
+
+      console.log(`[DesktopHandlers] Capturing widget area:`, captureRect);
+      const image = await desktopWindow.webContents.capturePage(captureRect);
+
+      // 缩放到合理的缩略图尺寸
+      const MAX_THUMB = 300;
+      const scale = Math.min(
+        MAX_THUMB / captureRect.width,
+        MAX_THUMB / captureRect.height,
+        1
+      );
+      const thumbWidth = Math.round(captureRect.width * scale);
+      const thumbHeight = Math.round(captureRect.height * scale);
+
+      const resized = image.resize({
+        width: thumbWidth,
+        height: thumbHeight,
+        quality: "good",
+      });
+      const dataUrl = `data:image/png;base64,${resized
+        .toPNG()
+        .toString("base64")}`;
+
+      console.log(
+        `[DesktopHandlers] Widget captured: ${thumbWidth}x${thumbHeight}, data length: ${dataUrl.length}`
+      );
+      return { success: true, thumbnail: dataUrl };
+    } catch (err) {
+      console.error("[DesktopHandlers] Capture widget error:", err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  // 获取 VCP 后端凭据（供桌面 widget 的 vcpAPI 使用）：
+  ipcMain.handle("desktop-get-credentials", async (event) => {
+    try {
+      const allowed = await confirmHighRiskDesktopApi(event, {
+        title: "确认读取敏感凭据",
+        message: "桌面卡片正在请求读取 VCP/API 与论坛登录凭据，是否允许？",
+        confirmText: "允许读取",
+        detailLines: [
+          "该操作可能返回 vcpServerUrl、vcpApiKey、论坛用户名和密码。",
+          "仅在你信任当前桌面卡片/customUI 来源时允许。",
+        ],
+      });
+      if (!allowed) return createHighRiskDeniedResult("用户已取消读取桌面凭据");
+
+      const settingsPath = path.join(PROJECT_ROOT, "AppData", "settings.json");
+      const forumConfigPath = path.join(
+        PROJECT_ROOT,
+        "AppData",
+        "UserData",
+        "forum.config.json"
+      );
+
+      let vcpServerUrl = "";
+      let vcpApiKey = "";
+      let username = "";
+      let password = "";
+
+      if (await fs.pathExists(settingsPath)) {
+        try {
+          const settings = await fs.readJson(settingsPath);
+          vcpServerUrl = settings.vcpServerUrl || "";
+          vcpApiKey = settings.vcpApiKey || "";
+        } catch (e) {
+          /* ignore */
+        }
+      }
+
+      if (await fs.pathExists(forumConfigPath)) {
+        try {
+          const config = await fs.readJson(forumConfigPath);
+          username = config.username || "";
+          password = config.password || "";
+        } catch (e) {
+          /* ignore */
+        }
+      }
+
+      // 从 vcpServerUrl 推导出 admin API base URL
+      let apiBaseUrl = "";
+      if (vcpServerUrl) {
+        try {
+          const urlObj = new URL(vcpServerUrl);
+          apiBaseUrl = `${urlObj.protocol}//${urlObj.host}`;
+        } catch (e) {
+          /* ignore */
+        }
+      }
+
+      return {
+        success: true,
+        apiBaseUrl,
+        vcpServerUrl,
+        vcpApiKey,
+        username,
+        password,
+      };
+    } catch (err) {
+      console.error("[DesktopHandlers] Get credentials error:", err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.removeHandler("desktop-launch-vchat-app");
+  ipcMain.handle("desktop-launch-vchat-app", async (event, appAction) => {
+    try {
+      console.log(
+        `[DesktopHandlers] Launching VChat app via WindowService: ${appAction}`
+      );
+
+      const appId = resolveAppActionToAppId(appAction);
+      if (appId) {
+        await windowService.open(appId);
+        return { success: true, appId };
+      }
+
+      if (appAction === "launch-human-toolbox") {
+        return await launchStandaloneElectronApp(
+          "VCPHumanToolBox",
+          "Human Toolbox"
+        );
+      }
+
+      if (appAction === "launch-vchat-manager") {
+        return await launchStandaloneElectronApp(
+          "VchatManager",
+          "VchatManager"
+        );
+      }
+
+      if (appAction && appAction.startsWith("open-system-tool:")) {
+        const cmd = appAction.substring("open-system-tool:".length);
+        return await launchSystemTool(cmd);
+      }
+
+      console.warn(`[DesktopHandlers] Unknown VChat app action: ${appAction}`);
+      return { success: false, error: `Unknown app action: ${appAction}` };
+    } catch (err) {
+      console.error(
+        `[DesktopHandlers] VChat app launch error (${appAction}):`,
+        err
+      );
+      return { success: false, error: err.message };
+    }
+  });
+
+  // ============================================================
+  // --- IPC: 快捷方式解析 & 启动 ---
+  // ============================================================
+
+  /**
+   * 解析 Windows .url 快捷方式文件（Internet Shortcut）：
+   * 支持 Steam 等使用自定义协议的应用（如 steam://rungameid/570）
+   * @param {string} filePath - .url 文件路径
+   * @returns {object|null} 解析后的快捷方式信息
+   */
+  /**
+   * 带超时的 Promise 包装器
+   */
+  function withTimeout(promise, ms, fallback) {
+    return Promise.race([
+      promise,
+      new Promise((resolve) => setTimeout(() => resolve(fallback), ms)),
+    ]);
+  }
+
+  async function parseUrlShortcut(filePath) {
+    try {
+      const content = await fs.readFile(filePath, "utf-8");
+      const lines = content.split(/\r?\n/);
+
+      let url = "";
+      let iconFile = "";
+      let iconIndex = 0;
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.toLowerCase().startsWith("url=")) {
+          url = trimmed.substring(4);
+        } else if (trimmed.toLowerCase().startsWith("iconfile=")) {
+          iconFile = trimmed.substring(9);
+        } else if (trimmed.toLowerCase().startsWith("iconindex=")) {
+          iconIndex = parseInt(trimmed.substring(10), 10) || 0;
+        }
+      }
+
+      if (!url) return null;
+
+      const name = path.basename(filePath, ".url");
+
+      // 提取图标（带超时保护，防止 getFileIcon 挂起）
+      let iconDataUrl = "";
+      try {
+        // 优先以 IconFile 指定的文件提取图标
+        if (iconFile && (await fs.pathExists(iconFile))) {
+          const nativeImage = await withTimeout(
+            app.getFileIcon(iconFile, { size: "large" }),
+            3000, // 3秒超时
+            null
+          );
+          if (
+            nativeImage &&
+            !nativeImage.isEmpty() &&
+            isIconValid(nativeImage)
+          ) {
+            iconDataUrl = nativeImage.toDataURL();
+          }
+        }
+        // 如果没有有效图标，尝试从 .url 文件本身提取
+        if (!iconDataUrl) {
+          const nativeImage = await withTimeout(
+            app.getFileIcon(filePath, { size: "large" }),
+            3000,
+            null
+          );
+          if (
+            nativeImage &&
+            !nativeImage.isEmpty() &&
+            isIconValid(nativeImage)
+          ) {
+            iconDataUrl = nativeImage.toDataURL();
+          }
+        }
+      } catch (e) {
+        console.warn(
+          "[DesktopHandlers] URL shortcut icon extraction failed:",
+          e.message
+        );
+      }
+
+      return {
+        name,
+        targetPath: url, // 对于 .url 文件，targetPath 存储的是 URL（如 steam://rungameid/570）：
+        args: "",
+        workingDir: "",
+        description: url,
+        icon: iconDataUrl,
+        originalPath: filePath,
+        isUrlShortcut: true, // 标记为 URL 快捷方式，启动时使用 shell.openExternal
+      };
+    } catch (e) {
+      console.warn(
+        `[DesktopHandlers] Failed to parse .url file: ${filePath}`,
+        e.message
+      );
+      return null;
+    }
+  }
+
+  /**
+   * 解析 Windows 快捷方式 (.lnk) 文件
+   * 返回：{ name, targetPath, args, icon (DataURL), workingDir }
+   */
+  ipcMain.handle("desktop-shortcut-parse", async (event, filePath) => {
+    try {
+      if (!filePath) {
+        return { success: false, error: "Invalid shortcut file." };
+      }
+
+      // 支持 .url 文件
+      if (filePath.toLowerCase().endsWith(".url")) {
+        const result = await parseUrlShortcut(filePath);
+        if (result) {
+          return { success: true, shortcut: result };
+        }
+        return { success: false, error: "无法解析 .url 快捷方式" };
+      }
+
+      if (!filePath.toLowerCase().endsWith(".lnk")) {
+        return { success: false, error: "Invalid shortcut file." };
+      }
+
+      // 使用 Electron 原生 API 解析 .lnk
+      let shortcutDetails;
+      try {
+        shortcutDetails = shell.readShortcutLink(filePath);
+      } catch (e) {
+        return { success: false, error: `解析快捷方式失败: ${e.message}` };
+      }
+
+      const targetPath = shortcutDetails.target || "";
+      const args = shortcutDetails.args || "";
+      const workingDir = shortcutDetails.cwd || "";
+      const description = shortcutDetails.description || "";
+
+      // 从文件名提取显示名称
+      const name = path.basename(filePath, ".lnk");
+
+      try {
+        // 优先从目标可执行文件提取图标
+        const iconTarget = targetPath || filePath;
+        const nativeImage = await withTimeout(
+          app.getFileIcon(iconTarget, { size: "large" }),
+          3000,
+          null
+        );
+        if (nativeImage && !nativeImage.isEmpty() && isIconValid(nativeImage)) {
+          iconDataUrl = nativeImage.toDataURL();
+        }
+      } catch (iconErr) {
+        console.warn(
+          "[DesktopHandlers] Icon extraction failed:",
+          iconErr.message
+        );
+        // 尝试从 .lnk 文件本身提取图标
+        try {
+          const nativeImage = await withTimeout(
+            app.getFileIcon(filePath, { size: "large" }),
+            3000,
+            null
+          );
+          if (
+            nativeImage &&
+            !nativeImage.isEmpty() &&
+            isIconValid(nativeImage)
+          ) {
+            iconDataUrl = nativeImage.toDataURL();
+          }
+        } catch (e) {
+          /* ignore */
+        }
+      }
+
+      console.log(
+        `[DesktopHandlers] Shortcut parsed: ${name} -> ${targetPath}`
+      );
+      return {
+        success: true,
+        shortcut: {
+          name,
+          targetPath,
+          args,
+          workingDir,
+          description,
+          icon: iconDataUrl,
+          originalPath: filePath,
+        },
+      };
+    } catch (err) {
+      console.error("[DesktopHandlers] Shortcut parse error:", err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  /**
+   * 批量解析多个快捷方式文件
+   */
+  ipcMain.handle("desktop-shortcut-parse-batch", async (event, filePaths) => {
+    try {
+      if (!Array.isArray(filePaths)) {
+        return { success: false, error: "Expected an array of file paths." };
+      }
+
+      const results = [];
+      for (const filePath of filePaths) {
+        try {
+          const lowerPath = filePath.toLowerCase();
+
+          // 支持 .url 文件（Steam 等应用的快捷方式）：
+          if (lowerPath.endsWith(".url")) {
+            const urlResult = await parseUrlShortcut(filePath);
+            if (urlResult) {
+              results.push(urlResult);
+            }
+            continue;
+          }
+
+          if (!lowerPath.endsWith(".lnk")) continue;
+
+          let shortcutDetails;
+          try {
+            shortcutDetails = shell.readShortcutLink(filePath);
+          } catch (e) {
+            continue;
+          }
+
+          const targetPath = shortcutDetails.target || "";
+          const name = path.basename(filePath, ".lnk");
+
+          let iconDataUrl = "";
+          try {
+            const iconTarget = targetPath || filePath;
+            const nativeImage = await withTimeout(
+              app.getFileIcon(iconTarget, { size: "large" }),
+              3000,
+              null
+            );
+            if (
+              nativeImage &&
+              !nativeImage.isEmpty() &&
+              isIconValid(nativeImage)
+            ) {
+              iconDataUrl = nativeImage.toDataURL();
+            }
+          } catch (e) {
+            try {
+              const nativeImage = await withTimeout(
+                app.getFileIcon(filePath, { size: "large" }),
+                3000,
+                null
+              );
+              if (
+                nativeImage &&
+                !nativeImage.isEmpty() &&
+                isIconValid(nativeImage)
+              ) {
+                iconDataUrl = nativeImage.toDataURL();
+              }
+            } catch (e2) {
+              /* ignore */
+            }
+          }
+
+          results.push({
+            name,
+            targetPath,
+            args: shortcutDetails.args || "",
+            workingDir: shortcutDetails.cwd || "",
+            description: shortcutDetails.description || "",
+            icon: iconDataUrl,
+            originalPath: filePath,
+          });
+        } catch (e) {
+          console.warn(
+            `[DesktopHandlers] Failed to parse shortcut: ${filePath}`,
+            e.message
+          );
+        }
+      }
+
+      console.log(
+        `[DesktopHandlers] Batch parsed ${results.length} shortcuts from ${filePaths.length} files`
+      );
+      return { success: true, shortcuts: results };
+    } catch (err) {
+      console.error("[DesktopHandlers] Batch parse error:", err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  /**
+   * 启动快捷方式目标程序
+   */
+  ipcMain.handle("desktop-shortcut-launch", async (event, shortcutData) => {
+    try {
+      const { targetPath, args, workingDir, originalPath, isUrlShortcut } =
+        shortcutData;
+
+      if (!targetPath && !originalPath) {
+        return { success: false, error: "缺少目标路径" };
+      }
+
+      const allowed = await confirmHighRiskDesktopApi(event, {
+        title: "确认启动快捷方式或程序",
+        message: "桌面卡片正在请求启动本地程序、快捷方式或 URL，是否允许？",
+        confirmText: "允许启动",
+        detailLines: [
+          originalPath ? `快捷方式：${originalPath}` : "",
+          targetPath ? `目标：${targetPath}` : "",
+          args ? `参数：${args}` : "",
+          workingDir ? `工作目录：${workingDir}` : "",
+        ],
+      });
+      if (!allowed)
+        return createHighRiskDeniedResult("用户已取消启动快捷方式或程序");
+
+      // URL 蹇嵎鏂瑰紡锛堝 steam://rungameid/570锛夛細浣跨敤 shell.openExternal 鎵撳紑
+      if (
+        isUrlShortcut ||
+        (targetPath && /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(targetPath))
+      ) {
+        console.log(`[DesktopHandlers] Launching URL shortcut: ${targetPath}`);
+        await shell.openExternal(targetPath);
+        return { success: true };
+      }
+
+      // 浼樺厛浣跨敤 shell.openPath 鎵撳紑鍘熷 .lnk/.url 鏂囦欢锛堜繚鐣欏畬鏁寸殑蹇嵎鏂瑰紡閰嶇疆濡傜鐞嗗憳鏉冮檺绛夛級
+      if (originalPath && (await fs.pathExists(originalPath))) {
+        console.log(
+          `[DesktopHandlers] Launching shortcut via original file: ${originalPath}`
+        );
+        const errorMsg = await shell.openPath(originalPath);
+        if (errorMsg) {
+          return { success: false, error: errorMsg };
+        }
+        return { success: true };
+      }
+
+      // 澶囬€夋柟妗堬細鐩存帴鎵撳紑鐩爣璺緞
+      if (targetPath && (await fs.pathExists(targetPath))) {
+        console.log(`[DesktopHandlers] Launching target: ${targetPath}`);
+        const errorMsg = await shell.openPath(targetPath);
+        if (errorMsg) {
+          return { success: false, error: errorMsg };
+        }
+        return { success: true };
+      }
+
+      return { success: false, error: "Target file not found." };
+    } catch (err) {
+      console.error("[DesktopHandlers] Shortcut launch error:", err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  /**
+   * 扫描 Windows 桌面上的快捷方式
+   * 自动扫描公共桌面和用户桌面
+   */
+  ipcMain.handle("desktop-scan-shortcuts", async () => {
+    try {
+      if (process.platform !== "win32") {
+        return { success: false, error: "此功能仅支持 Windows 平台" };
+      }
+
+      const shortcuts = [];
+      const desktopPaths = [
+        app.getPath("desktop"), // 用户桌面
+        path.join(process.env.PUBLIC || "C:\\Users\\Public", "Desktop"), // 公共桌面
+      ];
+
+      for (const desktopPath of desktopPaths) {
+        try {
+          if (!(await fs.pathExists(desktopPath))) continue;
+          const files = await fs.readdir(desktopPath);
+
+          for (const file of files) {
+            const lowerFile = file.toLowerCase();
+            const filePath = path.join(desktopPath, file);
+
+            // 处理 .url 文件（Steam 等应用的快捷方式）：
+            if (lowerFile.endsWith(".url")) {
+              try {
+                const urlResult = await parseUrlShortcut(filePath);
+                if (urlResult) {
+                  shortcuts.push(urlResult);
                 }
-                return { success: false, error: '无法解析 .url 快捷方式' };
+              } catch (e) {
+                console.warn(
+                  `[DesktopHandlers] Cannot parse .url: ${file}`,
+                  e.message
+                );
+              }
+              continue;
             }
 
-            if (!filePath.toLowerCase().endsWith('.lnk')) {
-                return { success: false, error: 'Invalid shortcut file.' };
-            }
-
-            // 使用 Electron 原生 API 解析 .lnk
-            let shortcutDetails;
-            try {
-                shortcutDetails = shell.readShortcutLink(filePath);
-            } catch (e) {
-                return { success: false, error: `解析快捷方式失败: ${e.message}` };
-            }
-
-            const targetPath = shortcutDetails.target || '';
-            const args = shortcutDetails.args || '';
-            const workingDir = shortcutDetails.cwd || '';
-            const description = shortcutDetails.description || '';
-
-            // 从文件名提取显示名称
-            const name = path.basename(filePath, '.lnk');
+            // 处理 .lnk 文件
+            if (!lowerFile.endsWith(".lnk")) continue;
 
             try {
-                // 优先从目标可执行文件提取图标
+              const shortcutDetails = shell.readShortcutLink(filePath);
+              const targetPath = shortcutDetails.target || "";
+              const name = path.basename(file, ".lnk");
+
+              let iconDataUrl = "";
+              try {
                 const iconTarget = targetPath || filePath;
                 const nativeImage = await withTimeout(
-                    app.getFileIcon(iconTarget, { size: 'large' }),
-                    3000,
-                    null
+                  app.getFileIcon(iconTarget, { size: "large" }),
+                  3000,
+                  null
                 );
-                if (nativeImage && !nativeImage.isEmpty() && isIconValid(nativeImage)) {
-                    iconDataUrl = nativeImage.toDataURL();
+                if (
+                  nativeImage &&
+                  !nativeImage.isEmpty() &&
+                  isIconValid(nativeImage)
+                ) {
+                  iconDataUrl = nativeImage.toDataURL();
                 }
-            } catch (iconErr) {
-                console.warn('[DesktopHandlers] Icon extraction failed:', iconErr.message);
-                // 尝试从 .lnk 文件本身提取图标
-                try {
-                    const nativeImage = await withTimeout(
-                        app.getFileIcon(filePath, { size: 'large' }),
-                        3000,
-                        null
-                    );
-                    if (nativeImage && !nativeImage.isEmpty() && isIconValid(nativeImage)) {
-                        iconDataUrl = nativeImage.toDataURL();
-                    }
-                } catch (e) { /* ignore */ }
+              } catch (e) {
+                /* ignore */
+              }
+
+              shortcuts.push({
+                name,
+                targetPath,
+                args: shortcutDetails.args || "",
+                workingDir: shortcutDetails.cwd || "",
+                description: shortcutDetails.description || "",
+                icon: iconDataUrl,
+                originalPath: filePath,
+              });
+            } catch (e) {
+              // 跳过无法解析的快捷方式
+              console.warn(
+                `[DesktopHandlers] Cannot parse: ${file}`,
+                e.message
+              );
             }
-
-            console.log(`[DesktopHandlers] Shortcut parsed: ${name} -> ${targetPath}`);
-            return {
-                success: true,
-                shortcut: {
-                    name,
-                    targetPath,
-                    args,
-                    workingDir,
-                    description,
-                    icon: iconDataUrl,
-                    originalPath: filePath,
-                },
-            };
-        } catch (err) {
-            console.error('[DesktopHandlers] Shortcut parse error:', err);
-            return { success: false, error: err.message };
+          }
+        } catch (e) {
+          console.warn(
+            `[DesktopHandlers] Cannot read desktop dir: ${desktopPath}`,
+            e.message
+          );
         }
-    });
+      }
 
-    /**
-     * 批量解析多个快捷方式文件
-     */
-    ipcMain.handle('desktop-shortcut-parse-batch', async (event, filePaths) => {
+      // 按名称排序
+      shortcuts.sort((a, b) => a.name.localeCompare(b.name, "zh-CN"));
+
+      console.log(
+        `[DesktopHandlers] Scanned ${shortcuts.length} shortcuts from Windows desktop (including .url)`
+      );
+      return { success: true, shortcuts };
+    } catch (err) {
+      console.error("[DesktopHandlers] Scan shortcuts error:", err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  // ============================================================
+  // --- IPC: Dock 持久化 ---
+  // ============================================================
+
+  /**
+   * 保存 Dock 配置
+   */
+  ipcMain.handle("desktop-save-dock", async (event, dockData) => {
+    try {
+      await fs.writeJson(DOCK_CONFIG_PATH, dockData, { spaces: 2 });
+      console.log(
+        `[DesktopHandlers] Dock config saved (${
+          dockData.items?.length || 0
+        } items)`
+      );
+      return { success: true };
+    } catch (err) {
+      console.error("[DesktopHandlers] Save dock error:", err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  /**
+   * 加载 Dock 配置
+   */
+  ipcMain.handle("desktop-load-dock", async () => {
+    try {
+      if (await fs.pathExists(DOCK_CONFIG_PATH)) {
+        const data = await fs.readJson(DOCK_CONFIG_PATH);
+        return { success: true, data };
+      }
+      return { success: true, data: { items: [], maxVisible: 8 } };
+    } catch (err) {
+      console.error("[DesktopHandlers] Load dock error:", err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  // ============================================================
+  // --- IPC: 布局持久化 ---
+  // ============================================================
+
+  /**
+   * 保存桌面布局（全量覆盖，带队列保护）
+   */
+  ipcMain.handle("desktop-save-layout", async (event, layoutData) => {
+    layoutOpQueue = layoutOpQueue
+      .then(async () => {
         try {
-            if (!Array.isArray(filePaths)) {
-                return { success: false, error: 'Expected an array of file paths.' };
-            }
-
-            const results = [];
-            for (const filePath of filePaths) {
-                try {
-                    const lowerPath = filePath.toLowerCase();
-
-                    // 支持 .url 文件（Steam 等应用的快捷方式）：
-                    if (lowerPath.endsWith('.url')) {
-                        const urlResult = await parseUrlShortcut(filePath);
-                        if (urlResult) {
-                            results.push(urlResult);
-                        }
-                        continue;
-                    }
-
-                    if (!lowerPath.endsWith('.lnk')) continue;
-
-                    let shortcutDetails;
-                    try {
-                        shortcutDetails = shell.readShortcutLink(filePath);
-                    } catch (e) {
-                        continue;
-                    }
-
-                    const targetPath = shortcutDetails.target || '';
-                    const name = path.basename(filePath, '.lnk');
-
-                    let iconDataUrl = '';
-                    try {
-                        const iconTarget = targetPath || filePath;
-                        const nativeImage = await withTimeout(
-                            app.getFileIcon(iconTarget, { size: 'large' }),
-                            3000,
-                            null
-                        );
-                        if (nativeImage && !nativeImage.isEmpty() && isIconValid(nativeImage)) {
-                            iconDataUrl = nativeImage.toDataURL();
-                        }
-                    } catch (e) {
-                        try {
-                            const nativeImage = await withTimeout(
-                                app.getFileIcon(filePath, { size: 'large' }),
-                                3000,
-                                null
-                            );
-                            if (nativeImage && !nativeImage.isEmpty() && isIconValid(nativeImage)) {
-                                iconDataUrl = nativeImage.toDataURL();
-                            }
-                        } catch (e2) { /* ignore */ }
-                    }
-
-                    results.push({
-                        name,
-                        targetPath,
-                        args: shortcutDetails.args || '',
-                        workingDir: shortcutDetails.cwd || '',
-                        description: shortcutDetails.description || '',
-                        icon: iconDataUrl,
-                        originalPath: filePath,
-                    });
-                } catch (e) {
-                    console.warn(`[DesktopHandlers] Failed to parse shortcut: ${filePath}`, e.message);
-                }
-            }
-
-            console.log(`[DesktopHandlers] Batch parsed ${results.length} shortcuts from ${filePaths.length} files`);
-            return { success: true, shortcuts: results };
+          await fs.writeJson(LAYOUT_CONFIG_PATH, layoutData, { spaces: 2 });
+          console.log(`[DesktopHandlers] Layout saved (full)`);
+          return { success: true };
         } catch (err) {
-            console.error('[DesktopHandlers] Batch parse error:', err);
-            return { success: false, error: err.message };
+          console.error("[DesktopHandlers] Save layout error:", err);
+          return { success: false, error: err.message };
         }
-    });
+      })
+      .catch((err) => ({ success: false, error: err.message }));
+    return layoutOpQueue;
+  });
 
-    /**
-     * 启动快捷方式目标程序
-     */
-    ipcMain.handle('desktop-shortcut-launch', async (event, shortcutData) => {
+  /**
+   * 增量更新桌面布局（推荐，防止竞态丢失数据）
+   * 参数 patch: { presets?: Array, globalSettings?: Object, desktopIcons?: Array }
+   */
+  ipcMain.handle("desktop-patch-layout", async (event, patch) => {
+    layoutOpQueue = layoutOpQueue
+      .then(async () => {
         try {
-            const { targetPath, args, workingDir, originalPath, isUrlShortcut } = shortcutData;
+          let current = {};
+          if (await fs.pathExists(LAYOUT_CONFIG_PATH)) {
+            current = await fs.readJson(LAYOUT_CONFIG_PATH);
+          }
 
-            if (!targetPath && !originalPath) {
-                return { success: false, error: '缺少目标路径' };
-            }
+          // 合并补丁
+          const updated = {
+            ...current,
+            ...patch,
+            // 对于对象类型的字段进行深度合并（可选，目前 globalSettings 结构较扁平，直接覆盖即可）
+            globalSettings: patch.globalSettings
+              ? { ...(current.globalSettings || {}), ...patch.globalSettings }
+              : current.globalSettings,
+          };
 
-            // URL 蹇嵎鏂瑰紡锛堝 steam://rungameid/570锛夛細浣跨敤 shell.openExternal 鎵撳紑
-            if (isUrlShortcut || (targetPath && /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(targetPath))) {
-                console.log(`[DesktopHandlers] Launching URL shortcut: ${targetPath}`);
-                await shell.openExternal(targetPath);
-                return { success: true };
-            }
-
-            // 浼樺厛浣跨敤 shell.openPath 鎵撳紑鍘熷 .lnk/.url 鏂囦欢锛堜繚鐣欏畬鏁寸殑蹇嵎鏂瑰紡閰嶇疆濡傜鐞嗗憳鏉冮檺绛夛級
-            if (originalPath && await fs.pathExists(originalPath)) {
-                console.log(`[DesktopHandlers] Launching shortcut via original file: ${originalPath}`);
-                const errorMsg = await shell.openPath(originalPath);
-                if (errorMsg) {
-                    return { success: false, error: errorMsg };
-                }
-                return { success: true };
-            }
-
-            // 澶囬€夋柟妗堬細鐩存帴鎵撳紑鐩爣璺緞
-            if (targetPath && await fs.pathExists(targetPath)) {
-                console.log(`[DesktopHandlers] Launching target: ${targetPath}`);
-                const errorMsg = await shell.openPath(targetPath);
-                if (errorMsg) {
-                    return { success: false, error: errorMsg };
-                }
-                return { success: true };
-            }
-
-            return { success: false, error: 'Target file not found.' };
+          await fs.writeJson(LAYOUT_CONFIG_PATH, updated, { spaces: 2 });
+          console.log(
+            `[DesktopHandlers] Layout patched: keys=[${Object.keys(patch).join(
+              ", "
+            )}]`
+          );
+          return { success: true, data: updated };
         } catch (err) {
-            console.error('[DesktopHandlers] Shortcut launch error:', err);
-            return { success: false, error: err.message };
+          console.error("[DesktopHandlers] Patch layout error:", err);
+          return { success: false, error: err.message };
         }
-    });
+      })
+      .catch((err) => ({ success: false, error: err.message }));
+    return layoutOpQueue;
+  });
 
-    /**
-     * 扫描 Windows 桌面上的快捷方式
-     * 自动扫描公共桌面和用户桌面
-     */
-    ipcMain.handle('desktop-scan-shortcuts', async () => {
-        try {
-            if (process.platform !== 'win32') {
-                return { success: false, error: '此功能仅支持 Windows 平台' };
-            }
+  /**
+   * 加载桌面布局
+   */
+  ipcMain.handle("desktop-load-layout", async () => {
+    try {
+      if (await fs.pathExists(LAYOUT_CONFIG_PATH)) {
+        const data = await fs.readJson(LAYOUT_CONFIG_PATH);
+        return { success: true, data };
+      }
+      return { success: true, data: null };
+    } catch (err) {
+      console.error("[DesktopHandlers] Load layout error:", err);
+      return { success: false, error: err.message };
+    }
+  });
 
-            const shortcuts = [];
-            const desktopPaths = [
-                app.getPath('desktop'),  // 用户桌面
-                path.join(process.env.PUBLIC || 'C:\\Users\\Public', 'Desktop'),  // 公共桌面
-            ];
+  // ============================================================
+  // --- IPC: 图标集系统（iconset）： ---
+  // ============================================================
 
-            for (const desktopPath of desktopPaths) {
-                try {
-                    if (!await fs.pathExists(desktopPath)) continue;
-                    const files = await fs.readdir(desktopPath);
+  const ICONSET_DIR = path.join(PROJECT_ROOT, "assets", "iconset");
 
-                    for (const file of files) {
-                        const lowerFile = file.toLowerCase();
-                        const filePath = path.join(desktopPath, file);
+  /**
+   * 获取所有图标预设文件夹列表
+   * 返回：{ success, presets: [{ name, iconCount }] }
+   */
+  ipcMain.handle("desktop-iconset-list-presets", async () => {
+    try {
+      if (!(await fs.pathExists(ICONSET_DIR))) {
+        return { success: true, presets: [] };
+      }
+      const entries = await fs.readdir(ICONSET_DIR, { withFileTypes: true });
+      const presets = [];
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const presetDir = path.join(ICONSET_DIR, entry.name);
+        const files = await fs.readdir(presetDir);
+        const iconFiles = files.filter((f) =>
+          /\.(png|jpg|jpeg|svg|ico|webp|gif|html|htm)$/i.test(f)
+        );
+        presets.push({
+          name: entry.name,
+          iconCount: iconFiles.length,
+        });
+      }
+      presets.sort((a, b) => a.name.localeCompare(b.name));
+      return { success: true, presets };
+    } catch (err) {
+      console.error("[DesktopHandlers] List iconset presets error:", err);
+      return { success: false, error: err.message, presets: [] };
+    }
+  });
 
-                        // 处理 .url 文件（Steam 等应用的快捷方式）：
-                        if (lowerFile.endsWith('.url')) {
-                            try {
-                                const urlResult = await parseUrlShortcut(filePath);
-                                if (urlResult) {
-                                    shortcuts.push(urlResult);
-                                }
-                            } catch (e) {
-                                console.warn(`[DesktopHandlers] Cannot parse .url: ${file}`, e.message);
-                            }
-                            continue;
-                        }
+  /**
+   * 获取指定预设文件夹中的图标列表
+   * 参数：{ presetName, page, pageSize, search }
+   * 返回：{ success, icons: [{ name, relativePath }], total, page, pageSize }
+   */
+  ipcMain.handle("desktop-iconset-list-icons", async (event, params) => {
+    try {
+      const { presetName, page = 1, pageSize = 50, search = "" } = params;
+      const presetDir = path.join(ICONSET_DIR, presetName);
 
-                        // 处理 .lnk 文件
-                        if (!lowerFile.endsWith('.lnk')) continue;
+      if (!(await fs.pathExists(presetDir))) {
+        return {
+          success: false,
+          error: "预设文件夹不存在",
+          icons: [],
+          total: 0,
+        };
+      }
 
-                        try {
-                            const shortcutDetails = shell.readShortcutLink(filePath);
-                            const targetPath = shortcutDetails.target || '';
-                            const name = path.basename(file, '.lnk');
+      const files = await fs.readdir(presetDir);
+      let iconFiles = files.filter((f) =>
+        /\.(png|jpg|jpeg|svg|ico|webp|gif|html|htm)$/i.test(f)
+      );
 
-                            let iconDataUrl = '';
-                            try {
-                                const iconTarget = targetPath || filePath;
-                                const nativeImage = await withTimeout(
-                                    app.getFileIcon(iconTarget, { size: 'large' }),
-                                    3000,
-                                    null
-                                );
-                                if (nativeImage && !nativeImage.isEmpty() && isIconValid(nativeImage)) {
-                                    iconDataUrl = nativeImage.toDataURL();
-                                }
-                            } catch (e) { /* ignore */ }
+      // 搜索过滤
+      if (search) {
+        const searchLower = search.toLowerCase();
+        iconFiles = iconFiles.filter((f) =>
+          f.toLowerCase().includes(searchLower)
+        );
+      }
 
-                            shortcuts.push({
-                                name,
-                                targetPath,
-                                args: shortcutDetails.args || '',
-                                workingDir: shortcutDetails.cwd || '',
-                                description: shortcutDetails.description || '',
-                                icon: iconDataUrl,
-                                originalPath: filePath,
-                            });
-                        } catch (e) {
-                            // 跳过无法解析的快捷方式
-                            console.warn(`[DesktopHandlers] Cannot parse: ${file}`, e.message);
-                        }
-                    }
-                } catch (e) {
-                    console.warn(`[DesktopHandlers] Cannot read desktop dir: ${desktopPath}`, e.message);
-                }
-            }
+      iconFiles.sort((a, b) => a.localeCompare(b));
 
-            // 按名称排序
-            shortcuts.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+      const total = iconFiles.length;
+      const startIndex = (page - 1) * pageSize;
+      const pagedFiles = iconFiles.slice(startIndex, startIndex + pageSize);
 
-            console.log(`[DesktopHandlers] Scanned ${shortcuts.length} shortcuts from Windows desktop (including .url)`);
-            return { success: true, shortcuts };
-        } catch (err) {
-            console.error('[DesktopHandlers] Scan shortcuts error:', err);
-            return { success: false, error: err.message };
+      const icons = pagedFiles.map((f) => {
+        const ext = path.extname(f).toLowerCase();
+        // 判断图标类型
+        let iconType = "image"; // 默认为图片（png/jpg/svg/ico/webp）：
+        if (ext === ".gif") iconType = "gif";
+        else if (ext === ".html" || ext === ".htm") iconType = "html";
+        else if (ext === ".svg") iconType = "svg";
+
+        return {
+          name: path.basename(f, ext),
+          fileName: f,
+          iconType,
+          // 相对于项目根目录的路径，前端使用 ../assets/iconset/... 访问
+          relativePath: `assets/iconset/${presetName}/${f}`,
+        };
+      });
+
+      return { success: true, icons, total, page, pageSize };
+    } catch (err) {
+      console.error("[DesktopHandlers] List iconset icons error:", err);
+      return { success: false, error: err.message, icons: [], total: 0 };
+    }
+  });
+
+  /**
+   * 将图标文件读取为 Data URL（用于高质量显示或持久化）：
+   * 参数：relativePath - 相对于项目根目录的路径
+   * 返回：{ success, dataUrl }
+   */
+  ipcMain.handle(
+    "desktop-iconset-get-icon-data",
+    async (event, relativePath) => {
+      try {
+        const fullPath = path.join(PROJECT_ROOT, relativePath);
+        if (!(await fs.pathExists(fullPath))) {
+          return { success: false, error: "Icon file not found." };
         }
-    });
 
-    // ============================================================
-    // --- IPC: Dock 持久化 ---
-    // ============================================================
+        const ext = path.extname(fullPath).toLowerCase();
 
-    /**
-     * 保存 Dock 配置
-     */
-    ipcMain.handle('desktop-save-dock', async (event, dockData) => {
-        try {
-            await fs.writeJson(DOCK_CONFIG_PATH, dockData, { spaces: 2 });
-            console.log(`[DesktopHandlers] Dock config saved (${dockData.items?.length || 0} items)`);
-            return { success: true };
-        } catch (err) {
-            console.error('[DesktopHandlers] Save dock error:', err);
-            return { success: false, error: err.message };
+        // HTML 图标：返回 HTML 内容字符串（用于 Shadow DOM 渲染）：
+        if (ext === ".html" || ext === ".htm") {
+          const htmlContent = await fs.readFile(fullPath, "utf-8");
+          return {
+            success: true,
+            dataUrl: null,
+            htmlContent,
+            iconType: "html",
+          };
         }
-    });
 
-    /**
-     * 加载 Dock 配置
-     */
-    ipcMain.handle('desktop-load-dock', async () => {
-        try {
-            if (await fs.pathExists(DOCK_CONFIG_PATH)) {
-                const data = await fs.readJson(DOCK_CONFIG_PATH);
-                return { success: true, data };
-            }
-            return { success: true, data: { items: [], maxVisible: 8 } };
-        } catch (err) {
-            console.error('[DesktopHandlers] Load dock error:', err);
-            return { success: false, error: err.message };
+        // GIF 图标：返回 Data URL
+        if (ext === ".gif") {
+          const buffer = await fs.readFile(fullPath);
+          const dataUrl = `data:image/gif;base64,${buffer.toString("base64")}`;
+          return { success: true, dataUrl, iconType: "gif" };
         }
-    });
 
-    // ============================================================
-    // --- IPC: 布局持久化 ---
-    // ============================================================
-
-    /**
-     * 保存桌面布局（全量覆盖，带队列保护）
-     */
-    ipcMain.handle('desktop-save-layout', async (event, layoutData) => {
-        layoutOpQueue = layoutOpQueue.then(async () => {
-            try {
-                await fs.writeJson(LAYOUT_CONFIG_PATH, layoutData, { spaces: 2 });
-                console.log(`[DesktopHandlers] Layout saved (full)`);
-                return { success: true };
-            } catch (err) {
-                console.error('[DesktopHandlers] Save layout error:', err);
-                return { success: false, error: err.message };
-            }
-        }).catch(err => ({ success: false, error: err.message }));
-        return layoutOpQueue;
-    });
-
-    /**
-     * 增量更新桌面布局（推荐，防止竞态丢失数据）
-     * 参数 patch: { presets?: Array, globalSettings?: Object, desktopIcons?: Array }
-     */
-    ipcMain.handle('desktop-patch-layout', async (event, patch) => {
-        layoutOpQueue = layoutOpQueue.then(async () => {
-            try {
-                let current = {};
-                if (await fs.pathExists(LAYOUT_CONFIG_PATH)) {
-                    current = await fs.readJson(LAYOUT_CONFIG_PATH);
-                }
-                
-                // 合并补丁
-                const updated = {
-                    ...current,
-                    ...patch,
-                    // 对于对象类型的字段进行深度合并（可选，目前 globalSettings 结构较扁平，直接覆盖即可）
-                    globalSettings: patch.globalSettings
-                        ? { ...(current.globalSettings || {}), ...patch.globalSettings }
-                        : current.globalSettings
-                };
-
-                await fs.writeJson(LAYOUT_CONFIG_PATH, updated, { spaces: 2 });
-                console.log(`[DesktopHandlers] Layout patched: keys=[${Object.keys(patch).join(', ')}]`);
-                return { success: true, data: updated };
-            } catch (err) {
-                console.error('[DesktopHandlers] Patch layout error:', err);
-                return { success: false, error: err.message };
-            }
-        }).catch(err => ({ success: false, error: err.message }));
-        return layoutOpQueue;
-    });
-
-    /**
-     * 加载桌面布局
-     */
-    ipcMain.handle('desktop-load-layout', async () => {
-        try {
-            if (await fs.pathExists(LAYOUT_CONFIG_PATH)) {
-                const data = await fs.readJson(LAYOUT_CONFIG_PATH);
-                return { success: true, data };
-            }
-            return { success: true, data: null };
-        } catch (err) {
-            console.error('[DesktopHandlers] Load layout error:', err);
-            return { success: false, error: err.message };
+        // SVG 图标：返回 Data URL + 原始 SVG 文本（供内联使用）：
+        if (ext === ".svg") {
+          const buffer = await fs.readFile(fullPath);
+          const svgContent = buffer.toString("utf-8");
+          const dataUrl = `data:image/svg+xml;base64,${buffer.toString(
+            "base64"
+          )}`;
+          return { success: true, dataUrl, svgContent, iconType: "svg" };
         }
-    });
 
-    // ============================================================
-    // --- IPC: 图标集系统（iconset）： ---
-    // ============================================================
+        // 其他图片格式：返回 Data URL
+        const buffer = await fs.readFile(fullPath);
+        const mimeTypes = {
+          ".png": "image/png",
+          ".jpg": "image/jpeg",
+          ".jpeg": "image/jpeg",
+          ".ico": "image/x-icon",
+          ".webp": "image/webp",
+        };
+        const mime = mimeTypes[ext] || "image/png";
+        const dataUrl = `data:${mime};base64,${buffer.toString("base64")}`;
 
-    const ICONSET_DIR = path.join(PROJECT_ROOT, 'assets', 'iconset');
+        return { success: true, dataUrl, iconType: "image" };
+      } catch (err) {
+        console.error("[DesktopHandlers] Get icon data error:", err);
+        return { success: false, error: err.message };
+      }
+    }
+  );
 
-    /**
-     * 获取所有图标预设文件夹列表
-     * 返回：{ success, presets: [{ name, iconCount }] }
-     */
-    ipcMain.handle('desktop-iconset-list-presets', async () => {
-        try {
-            if (!await fs.pathExists(ICONSET_DIR)) {
-                return { success: true, presets: [] };
-            }
-            const entries = await fs.readdir(ICONSET_DIR, { withFileTypes: true });
-            const presets = [];
-            for (const entry of entries) {
-                if (!entry.isDirectory()) continue;
-                const presetDir = path.join(ICONSET_DIR, entry.name);
-                const files = await fs.readdir(presetDir);
-                const iconFiles = files.filter(f => /\.(png|jpg|jpeg|svg|ico|webp|gif|html|htm)$/i.test(f));
-                presets.push({
-                    name: entry.name,
-                    iconCount: iconFiles.length,
-                });
-            }
-            presets.sort((a, b) => a.name.localeCompare(b.name));
-            return { success: true, presets };
-        } catch (err) {
-            console.error('[DesktopHandlers] List iconset presets error:', err);
-            return { success: false, error: err.message, presets: [] };
+  // ============================================================
+  // --- IPC: 壁纸文件选择 ---
+  // ============================================================
+
+  /**
+   * 打开文件选择对话框，选择壁纸文件
+   * 支持图片、视频 (mp4)、HTML 文件
+   * 返回：{ success, filePath, fileUrl, type }
+   */
+  ipcMain.handle("desktop-select-wallpaper", async () => {
+    try {
+      const targetWindow =
+        desktopWindow && !desktopWindow.isDestroyed()
+          ? desktopWindow
+          : mainWindow;
+      const result = await dialog.showOpenDialog(targetWindow, {
+        title: "选择壁纸文件",
+        properties: ["openFile"],
+        filters: [
+          {
+            name: "All supported wallpapers",
+            extensions: [
+              "jpg",
+              "jpeg",
+              "png",
+              "gif",
+              "webp",
+              "bmp",
+              "svg",
+              "avif",
+              "mp4",
+              "webm",
+              "html",
+              "htm",
+            ],
+          },
+          {
+            name: "图片",
+            extensions: [
+              "jpg",
+              "jpeg",
+              "png",
+              "gif",
+              "webp",
+              "bmp",
+              "svg",
+              "avif",
+            ],
+          },
+          { name: "视频", extensions: ["mp4", "webm"] },
+          { name: "HTML wallpapers", extensions: ["html", "htm"] },
+        ],
+      });
+
+      if (
+        result.canceled ||
+        !result.filePaths ||
+        result.filePaths.length === 0
+      ) {
+        return { success: false, canceled: true };
+      }
+
+      const filePath = result.filePaths[0];
+      const ext = path.extname(filePath).toLowerCase().replace(".", "");
+
+      // 检测文件类型
+      const imageExts = [
+        "jpg",
+        "jpeg",
+        "png",
+        "gif",
+        "webp",
+        "bmp",
+        "svg",
+        "avif",
+      ];
+      const videoExts = ["mp4", "webm"];
+      const htmlExts = ["html", "htm"];
+
+      let type = "unknown";
+      if (imageExts.includes(ext)) type = "image";
+      else if (videoExts.includes(ext)) type = "video";
+      else if (htmlExts.includes(ext)) type = "html";
+
+      // 将文件路径转为 file:// URL（Electron 渲染进程可以安全加载）：
+      const fileUrl = `file:///${filePath.replace(/\\/g, "/")}`;
+
+      console.log(
+        `[DesktopHandlers] Wallpaper selected: ${type} - ${filePath}`
+      );
+      return { success: true, filePath, fileUrl, type };
+    } catch (err) {
+      console.error("[DesktopHandlers] Select wallpaper error:", err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  /**
+   * 读取壁纸文件并返回 Data URL（用于图片壁纸预览或嵌入）：
+   * 对于大文件使用 file:// URL 更合适，此 API 主要用于缩略图预览
+   */
+  ipcMain.handle(
+    "desktop-read-wallpaper-thumbnail",
+    async (event, filePath) => {
+      try {
+        if (!filePath || !(await fs.pathExists(filePath))) {
+          return { success: false, error: "File not found." };
         }
-    });
 
-    /**
-     * 获取指定预设文件夹中的图标列表
-     * 参数：{ presetName, page, pageSize, search }
-     * 返回：{ success, icons: [{ name, relativePath }], total, page, pageSize }
-     */
-    ipcMain.handle('desktop-iconset-list-icons', async (event, params) => {
-        try {
-            const { presetName, page = 1, pageSize = 50, search = '' } = params;
-            const presetDir = path.join(ICONSET_DIR, presetName);
+        const ext = path.extname(filePath).toLowerCase();
+        const imageExts = [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".gif",
+          ".webp",
+          ".bmp",
+          ".svg",
+          ".avif",
+        ];
 
-            if (!await fs.pathExists(presetDir)) {
-                return { success: false, error: '预设文件夹不存在', icons: [], total: 0 };
-            }
-
-            const files = await fs.readdir(presetDir);
-            let iconFiles = files.filter(f => /\.(png|jpg|jpeg|svg|ico|webp|gif|html|htm)$/i.test(f));
-
-            // 搜索过滤
-            if (search) {
-                const searchLower = search.toLowerCase();
-                iconFiles = iconFiles.filter(f => f.toLowerCase().includes(searchLower));
-            }
-
-            iconFiles.sort((a, b) => a.localeCompare(b));
-
-            const total = iconFiles.length;
-            const startIndex = (page - 1) * pageSize;
-            const pagedFiles = iconFiles.slice(startIndex, startIndex + pageSize);
-
-            const icons = pagedFiles.map(f => {
-                const ext = path.extname(f).toLowerCase();
-                // 判断图标类型
-                let iconType = 'image'; // 默认为图片（png/jpg/svg/ico/webp）：
-                if (ext === '.gif') iconType = 'gif';
-                else if (ext === '.html' || ext === '.htm') iconType = 'html';
-                else if (ext === '.svg') iconType = 'svg';
-
-                return {
-                    name: path.basename(f, ext),
-                    fileName: f,
-                    iconType,
-                    // 相对于项目根目录的路径，前端使用 ../assets/iconset/... 访问
-                    relativePath: `assets/iconset/${presetName}/${f}`,
-                };
-            });
-
-            return { success: true, icons, total, page, pageSize };
-        } catch (err) {
-            console.error('[DesktopHandlers] List iconset icons error:', err);
-            return { success: false, error: err.message, icons: [], total: 0 };
+        if (!imageExts.includes(ext)) {
+          // 非图片类型返回空缩略图
+          return { success: true, thumbnail: "", type: ext.replace(".", "") };
         }
+
+        // 读取并缩放为缩略图
+        const buffer = await fs.readFile(filePath);
+        const mimeTypes = {
+          ".jpg": "image/jpeg",
+          ".jpeg": "image/jpeg",
+          ".png": "image/png",
+          ".gif": "image/gif",
+          ".webp": "image/webp",
+          ".bmp": "image/bmp",
+          ".svg": "image/svg+xml",
+          ".avif": "image/avif",
+        };
+        const mime = mimeTypes[ext] || "image/png";
+        const dataUrl = `data:${mime};base64,${buffer.toString("base64")}`;
+
+        return { success: true, thumbnail: dataUrl };
+      } catch (err) {
+        console.error("[DesktopHandlers] Read wallpaper thumbnail error:", err);
+        return { success: false, error: err.message };
+      }
+    }
+  );
+
+  // ============================================================
+  // --- IPC: 打开 Windows 系统工具 ---
+  // ============================================================
+  ipcMain.handle("desktop-open-system-tool", async (event, cmd) => {
+    const allowed = await confirmHighRiskDesktopApi(event, {
+      title: "确认打开系统工具",
+      message: "桌面卡片正在请求打开系统工具或本地路径，是否允许？",
+      confirmText: "允许打开",
+      detailLines: [
+        `请求命令：${String(cmd || "")}`,
+        "该操作可能打开 Windows 设置、系统文件夹、控制面板或本机路径。",
+      ],
     });
+    if (!allowed) return createHighRiskDeniedResult("用户已取消打开系统工具");
+    return await launchSystemTool(cmd);
+  });
 
-    /**
-     * 将图标文件读取为 Data URL（用于高质量显示或持久化）：
-     * 参数：relativePath - 相对于项目根目录的路径
-     * 返回：{ success, dataUrl }
-     */
-    ipcMain.handle('desktop-iconset-get-icon-data', async (event, relativePath) => {
-        try {
-            const fullPath = path.join(PROJECT_ROOT, relativePath);
-            if (!await fs.pathExists(fullPath)) {
-                return { success: false, error: 'Icon file not found.' };
-            }
+  desktopMetrics.initialize({ ipcMain });
 
-            const ext = path.extname(fullPath).toLowerCase();
-
-            // HTML 图标：返回 HTML 内容字符串（用于 Shadow DOM 渲染）：
-            if (ext === '.html' || ext === '.htm') {
-                const htmlContent = await fs.readFile(fullPath, 'utf-8');
-                return { success: true, dataUrl: null, htmlContent, iconType: 'html' };
-            }
-
-            // GIF 图标：返回 Data URL
-            if (ext === '.gif') {
-                const buffer = await fs.readFile(fullPath);
-                const dataUrl = `data:image/gif;base64,${buffer.toString('base64')}`;
-                return { success: true, dataUrl, iconType: 'gif' };
-            }
-
-            // SVG 图标：返回 Data URL + 原始 SVG 文本（供内联使用）：
-            if (ext === '.svg') {
-                const buffer = await fs.readFile(fullPath);
-                const svgContent = buffer.toString('utf-8');
-                const dataUrl = `data:image/svg+xml;base64,${buffer.toString('base64')}`;
-                return { success: true, dataUrl, svgContent, iconType: 'svg' };
-            }
-
-            // 其他图片格式：返回 Data URL
-            const buffer = await fs.readFile(fullPath);
-            const mimeTypes = {
-                '.png': 'image/png',
-                '.jpg': 'image/jpeg',
-                '.jpeg': 'image/jpeg',
-                '.ico': 'image/x-icon',
-                '.webp': 'image/webp',
-            };
-            const mime = mimeTypes[ext] || 'image/png';
-            const dataUrl = `data:${mime};base64,${buffer.toString('base64')}`;
-
-            return { success: true, dataUrl, iconType: 'image' };
-        } catch (err) {
-            console.error('[DesktopHandlers] Get icon data error:', err);
-            return { success: false, error: err.message };
-        }
-    });
-
-    // ============================================================
-    // --- IPC: 壁纸文件选择 ---
-    // ============================================================
-
-    /**
-     * 打开文件选择对话框，选择壁纸文件
-     * 支持图片、视频 (mp4)、HTML 文件
-     * 返回：{ success, filePath, fileUrl, type }
-     */
-    ipcMain.handle('desktop-select-wallpaper', async () => {
-        try {
-            const targetWindow = desktopWindow && !desktopWindow.isDestroyed() ? desktopWindow : mainWindow;
-            const result = await dialog.showOpenDialog(targetWindow, {
-                title: '选择壁纸文件',
-                properties: ['openFile'],
-                filters: [
-                    { name: 'All supported wallpapers', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif', 'mp4', 'webm', 'html', 'htm'] },
-                    { name: '图片', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif'] },
-                    { name: '视频', extensions: ['mp4', 'webm'] },
-                    { name: 'HTML wallpapers', extensions: ['html', 'htm'] },
-                ],
-            });
-
-            if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
-                return { success: false, canceled: true };
-            }
-
-            const filePath = result.filePaths[0];
-            const ext = path.extname(filePath).toLowerCase().replace('.', '');
-
-            // 检测文件类型
-            const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif'];
-            const videoExts = ['mp4', 'webm'];
-            const htmlExts = ['html', 'htm'];
-
-            let type = 'unknown';
-            if (imageExts.includes(ext)) type = 'image';
-            else if (videoExts.includes(ext)) type = 'video';
-            else if (htmlExts.includes(ext)) type = 'html';
-
-            // 将文件路径转为 file:// URL（Electron 渲染进程可以安全加载）：
-            const fileUrl = `file:///${filePath.replace(/\\/g, '/')}`;
-
-            console.log(`[DesktopHandlers] Wallpaper selected: ${type} - ${filePath}`);
-            return { success: true, filePath, fileUrl, type };
-        } catch (err) {
-            console.error('[DesktopHandlers] Select wallpaper error:', err);
-            return { success: false, error: err.message };
-        }
-    });
-
-    /**
-     * 读取壁纸文件并返回 Data URL（用于图片壁纸预览或嵌入）：
-     * 对于大文件使用 file:// URL 更合适，此 API 主要用于缩略图预览
-     */
-    ipcMain.handle('desktop-read-wallpaper-thumbnail', async (event, filePath) => {
-        try {
-            if (!filePath || !await fs.pathExists(filePath)) {
-                return { success: false, error: 'File not found.' };
-            }
-
-            const ext = path.extname(filePath).toLowerCase();
-            const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.avif'];
-
-            if (!imageExts.includes(ext)) {
-                // 非图片类型返回空缩略图
-                return { success: true, thumbnail: '', type: ext.replace('.', '') };
-            }
-
-            // 读取并缩放为缩略图
-            const buffer = await fs.readFile(filePath);
-            const mimeTypes = {
-                '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
-                '.png': 'image/png', '.gif': 'image/gif',
-                '.webp': 'image/webp', '.bmp': 'image/bmp',
-                '.svg': 'image/svg+xml', '.avif': 'image/avif',
-            };
-            const mime = mimeTypes[ext] || 'image/png';
-            const dataUrl = `data:${mime};base64,${buffer.toString('base64')}`;
-
-            return { success: true, thumbnail: dataUrl };
-        } catch (err) {
-            console.error('[DesktopHandlers] Read wallpaper thumbnail error:', err);
-            return { success: false, error: err.message };
-        }
-    });
-
-    // ============================================================
-    // --- IPC: 打开 Windows 系统工具 ---
-    // ============================================================
-
-    ipcMain.handle('desktop-open-system-tool', async (event, cmd) => {
-        return await launchSystemTool(cmd);
-    });
-
-    desktopMetrics.initialize({ ipcMain });
-
-    console.log('[DesktopHandlers] Initialized (with favorites, vcpAPI, shortcuts, dock, layout, iconset, wallpaper, vchat-apps, system-tools & desktop-metrics).');
+  console.log(
+    "[DesktopHandlers] Initialized (with favorites, vcpAPI, shortcuts, dock, layout, iconset, wallpaper, vchat-apps, system-tools & desktop-metrics)."
+  );
 }
 
 /**
  * 打开或聚焦桌面画布窗口
  */
 async function openDesktopWindow() {
-    if (desktopWindow && !desktopWindow.isDestroyed()) {
-        if (!desktopWindow.isVisible()) desktopWindow.show();
-        desktopWindow.focus();
-        return desktopWindow;
+  if (desktopWindow && !desktopWindow.isDestroyed()) {
+    if (!desktopWindow.isVisible()) desktopWindow.show();
+    desktopWindow.focus();
+    return desktopWindow;
+  }
+
+  // 读取设置获取主题模式
+  let currentThemeMode = "dark";
+  try {
+    if (appSettingsManager) {
+      const settings = await appSettingsManager.readSettings();
+      currentThemeMode = settings.currentThemeMode || "dark";
     }
+  } catch (e) {
+    console.error("[Desktop] Failed to read theme settings:", e);
+  }
 
-    // 读取设置获取主题模式
-    let currentThemeMode = 'dark';
-    try {
-        if (appSettingsManager) {
-            const settings = await appSettingsManager.readSettings();
-            currentThemeMode = settings.currentThemeMode || 'dark';
-        }
-    } catch (e) {
-        console.error('[Desktop] Failed to read theme settings:', e);
+  desktopWindow = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    minWidth: 600,
+    minHeight: 400,
+    title: "VCPdesktop",
+    frame: false,
+    ...(process.platform === "darwin" ? {} : { titleBarStyle: "hidden" }),
+    webPreferences: {
+      preload: resolveAppPreload(app.getAppPath(), PRELOAD_ROLES.DESKTOP),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+    icon: path.join(app.getAppPath(), "assets", "icon.png"),
+    show: false,
+  });
+
+  const desktopUrl = `file://${path.join(
+    app.getAppPath(),
+    "Desktopmodules",
+    "desktop.html"
+  )}?currentThemeMode=${encodeURIComponent(currentThemeMode)}`;
+  desktopWindow.loadURL(desktopUrl);
+  windowService.attachWindow(WINDOW_APP_IDS.DESKTOP, desktopWindow);
+  desktopWindow.setMenu(null);
+
+  // 读取全局设置（自动最大化、窗口置底等）：
+  let desktopGlobalSettings = {};
+  try {
+    if (fs.pathExistsSync(LAYOUT_CONFIG_PATH)) {
+      const layoutData = fs.readJsonSync(LAYOUT_CONFIG_PATH);
+      desktopGlobalSettings = layoutData.globalSettings || {};
     }
+  } catch (e) {
+    console.warn("[Desktop] Failed to read global settings:", e.message);
+  }
 
-    desktopWindow = new BrowserWindow({
-        width: 1200,
-        height: 800,
-        minWidth: 600,
-        minHeight: 400,
-        title: 'VCPdesktop',
-        frame: false,
-        ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
-        webPreferences: {
-            preload: resolveAppPreload(app.getAppPath(), PRELOAD_ROLES.DESKTOP),
-            contextIsolation: true,
-            nodeIntegration: false,
-        },
-        icon: path.join(app.getAppPath(), 'assets', 'icon.png'),
-        show: false,
-    });
-
-    const desktopUrl = `file://${path.join(app.getAppPath(), 'Desktopmodules', 'desktop.html')}?currentThemeMode=${encodeURIComponent(currentThemeMode)}`;
-    desktopWindow.loadURL(desktopUrl);
-    windowService.attachWindow(WINDOW_APP_IDS.DESKTOP, desktopWindow);
-    desktopWindow.setMenu(null);
-
-    // 读取全局设置（自动最大化、窗口置底等）：
-    let desktopGlobalSettings = {};
-    try {
-        if (fs.pathExistsSync(LAYOUT_CONFIG_PATH)) {
-            const layoutData = fs.readJsonSync(LAYOUT_CONFIG_PATH);
-            desktopGlobalSettings = layoutData.globalSettings || {};
-        }
-    } catch (e) {
-        console.warn('[Desktop] Failed to read global settings:', e.message);
-    }
-
-    desktopWindow.once('ready-to-show', () => {
-        // 启动时自动最大化
-        if (desktopGlobalSettings.autoMaximize) {
-            desktopWindow.maximize();
-            console.log('[Desktop] Auto-maximized on startup');
-        }
-
-        // 使用 showInactive() 避免抢占主窗口焦点
-        desktopWindow.showInactive();
-
-        // 窗口自动置底
-        if (desktopGlobalSettings.alwaysOnBottom) {
-            // 延迟一小段时间再启用，确保窗口已完全显示
-            setTimeout(() => {
-                setAlwaysOnBottom(true);
-            }, 500);
-        }
-
-        // 通知桌面窗口自身连接状态
-        if (desktopWindow && !desktopWindow.isDestroyed()) {
-            desktopWindow.webContents.send('desktop-status', { connected: true, message: 'Connected.' });
-        }
-        // 关键：通知主窗口桌面画布已就绪，让主窗口的 streamManager 知道可以推送了
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('desktop-status', { connected: true, message: 'Desktop window is ready.' });
-        }
-    });
-
-    // 锁定最大化状态：如果开启了自动最大化，阻止用户手动还原
+  desktopWindow.once("ready-to-show", () => {
+    // 启动时自动最大化
     if (desktopGlobalSettings.autoMaximize) {
-        desktopWindow.on('unmaximize', () => {
-            // 在下一个事件循环中重新最大化，实现锁定效果
-            setImmediate(() => {
-                if (desktopWindow && !desktopWindow.isDestroyed()) {
-                    desktopWindow.maximize();
-                }
-            });
-        });
+      desktopWindow.maximize();
+      console.log("[Desktop] Auto-maximized on startup");
     }
+
+    // 使用 showInactive() 避免抢占主窗口焦点
+    desktopWindow.showInactive();
+
+    // 窗口自动置底
+    if (desktopGlobalSettings.alwaysOnBottom) {
+      // 延迟一小段时间再启用，确保窗口已完全显示
+      setTimeout(() => {
+        setAlwaysOnBottom(true);
+      }, 500);
+    }
+
+    // 通知桌面窗口自身连接状态
+    if (desktopWindow && !desktopWindow.isDestroyed()) {
+      desktopWindow.webContents.send("desktop-status", {
+        connected: true,
+        message: "Connected.",
+      });
+    }
+    // 关键：通知主窗口桌面画布已就绪，让主窗口的 streamManager 知道可以推送了
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("desktop-status", {
+        connected: true,
+        message: "Desktop window is ready.",
+      });
+    }
+  });
+
+  // 锁定最大化状态：如果开启了自动最大化，阻止用户手动还原
+  if (desktopGlobalSettings.autoMaximize) {
+    desktopWindow.on("unmaximize", () => {
+      // 在下一个事件循环中重新最大化，实现锁定效果
+      setImmediate(() => {
+        if (desktopWindow && !desktopWindow.isDestroyed()) {
+          desktopWindow.maximize();
+        }
+      });
+    });
+  }
+
+  if (openChildWindows) {
+    openChildWindows.push(desktopWindow);
+  }
+
+  desktopWindow.on("close", (event) => {
+    if (process.platform === "darwin" && !app.isQuitting) {
+      event.preventDefault();
+      desktopWindow.hide();
+    }
+  });
+
+  desktopWindow.on("closed", () => {
+    // 清理置底相关资源
+    alwaysOnBottomEnabled = false;
+    if (alwaysOnBottomInterval) {
+      clearInterval(alwaysOnBottomInterval);
+      alwaysOnBottomInterval = null;
+    }
+    stopBottomHelper();
 
     if (openChildWindows) {
-        openChildWindows.push(desktopWindow);
+      const index = openChildWindows.indexOf(desktopWindow);
+      if (index > -1) openChildWindows.splice(index, 1);
     }
+    desktopWindow = null;
+    console.log("[Desktop] Desktop window closed.");
+    // 通知主窗口桌面画布已关闭
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("desktop-status", {
+        connected: false,
+        message: "Desktop window closed.",
+      });
+    }
+  });
 
-    desktopWindow.on('close', (event) => {
-        if (process.platform === 'darwin' && !app.isQuitting) {
-            event.preventDefault();
-            desktopWindow.hide();
-        }
-    });
-
-    desktopWindow.on('closed', () => {
-        // 清理置底相关资源
-        alwaysOnBottomEnabled = false;
-        if (alwaysOnBottomInterval) {
-            clearInterval(alwaysOnBottomInterval);
-            alwaysOnBottomInterval = null;
-        }
-        stopBottomHelper();
-
-        if (openChildWindows) {
-            const index = openChildWindows.indexOf(desktopWindow);
-            if (index > -1) openChildWindows.splice(index, 1);
-        }
-        desktopWindow = null;
-        console.log('[Desktop] Desktop window closed.');
-        // 通知主窗口桌面画布已关闭
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('desktop-status', { connected: false, message: 'Desktop window closed.' });
-        }
-    });
-
-    return desktopWindow;
+  return desktopWindow;
 }
 
 // --- 窗口置底 Win32 原生实现 ---
-let bottomHelperProcess = null;  // 持久化的 PowerShell 进程
-let bottomHwnd = 0;             // 缓存的窗口句柄
+let bottomHelperProcess = null; // 持久化的 PowerShell 进程
+let bottomHwnd = 0; // 缓存的窗口句柄
 
 /**
  * 启动一个持久化的 PowerShell 进程用于窗口置底操作
  * 避免每次调用都创建新进程
  */
 function startBottomHelper(hwnd) {
-    if (process.platform !== 'win32') return;
-    if (bottomHelperProcess) return; // 已启动
+  if (process.platform !== "win32") return;
+  if (bottomHelperProcess) return; // 已启动
 
-    bottomHwnd = hwnd;
+  bottomHwnd = hwnd;
 
-    try {
-        // 创建一个持久化的 PowerShell 进程，通过 stdin 接收命令
-        const { spawn } = require('child_process');
-        bottomHelperProcess = spawn('powershell.exe', [
-            '-NoProfile', '-NoLogo', '-NonInteractive', '-Command', '-'
-        ], {
-            windowsHide: true,
-            stdio: ['pipe', 'pipe', 'pipe'],
-        });
+  try {
+    // 创建一个持久化的 PowerShell 进程，通过 stdin 接收命令
+    const { spawn } = require("child_process");
+    bottomHelperProcess = spawn(
+      "powershell.exe",
+      ["-NoProfile", "-NoLogo", "-NonInteractive", "-Command", "-"],
+      {
+        windowsHide: true,
+        stdio: ["pipe", "pipe", "pipe"],
+      }
+    );
 
-        // 发送初始化脚本：定义 Win32 API
-        const initScript = `
+    // 发送初始化脚本：定义 Win32 API
+    const initScript = `
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
@@ -2045,63 +2931,66 @@ public class VCPWinAPI {
 "@
 Write-Host "VCPREADY"
 `;
-        bottomHelperProcess.stdin.write(initScript + '\n');
+    bottomHelperProcess.stdin.write(initScript + "\n");
 
-        bottomHelperProcess.stdout.on('data', (data) => {
-            const msg = data.toString().trim();
-            if (msg.includes('VCPREADY')) {
-                console.log('[Desktop] Bottom helper PowerShell process ready');
-            }
-        });
+    bottomHelperProcess.stdout.on("data", (data) => {
+      const msg = data.toString().trim();
+      if (msg.includes("VCPREADY")) {
+        console.log("[Desktop] Bottom helper PowerShell process ready");
+      }
+    });
 
-        bottomHelperProcess.stderr.on('data', (data) => {
-            // 忽略警告，只记录错误
-            const msg = data.toString().trim();
-            if (msg && !msg.includes('WARNING')) {
-                console.warn('[Desktop] Bottom helper stderr:', msg);
-            }
-        });
+    bottomHelperProcess.stderr.on("data", (data) => {
+      // 忽略警告，只记录错误
+      const msg = data.toString().trim();
+      if (msg && !msg.includes("WARNING")) {
+        console.warn("[Desktop] Bottom helper stderr:", msg);
+      }
+    });
 
-        bottomHelperProcess.on('exit', (code) => {
-            console.log(`[Desktop] Bottom helper process exited with code ${code}`);
-            bottomHelperProcess = null;
-        });
+    bottomHelperProcess.on("exit", (code) => {
+      console.log(`[Desktop] Bottom helper process exited with code ${code}`);
+      bottomHelperProcess = null;
+    });
 
-        bottomHelperProcess.on('error', (err) => {
-            console.error('[Desktop] Bottom helper process error:', err.message);
-            bottomHelperProcess = null;
-        });
-
-    } catch (e) {
-        console.error('[Desktop] Failed to start bottom helper:', e.message);
-        bottomHelperProcess = null;
-    }
+    bottomHelperProcess.on("error", (err) => {
+      console.error("[Desktop] Bottom helper process error:", err.message);
+      bottomHelperProcess = null;
+    });
+  } catch (e) {
+    console.error("[Desktop] Failed to start bottom helper:", e.message);
+    bottomHelperProcess = null;
+  }
 }
 
 /**
  * 停止持久化的 PowerShell 进程
  */
 function stopBottomHelper() {
-    if (bottomHelperProcess) {
-        try {
-            bottomHelperProcess.stdin.write('exit\n');
-            bottomHelperProcess.stdin.end();
-        } catch (e) { /* ignore */ }
-        bottomHelperProcess = null;
+  if (bottomHelperProcess) {
+    try {
+      bottomHelperProcess.stdin.write("exit\n");
+      bottomHelperProcess.stdin.end();
+    } catch (e) {
+      /* ignore */
     }
-    bottomHwnd = 0;
+    bottomHelperProcess = null;
+  }
+  bottomHwnd = 0;
 }
 
 /**
  * 使用持久化的 PowerShell 进程调用 Win32 API 将窗口推到底层
  */
 function nativePushToBottom() {
-    if (!bottomHelperProcess || !bottomHwnd) return;
-    try {
-        bottomHelperProcess.stdin.write(`[VCPWinAPI]::PushToBottom([IntPtr]${bottomHwnd})\n`);
-    } catch (e) {
-        console.warn('[Desktop] nativePushToBottom write error:', e.message);
-    }
+  if (!bottomHelperProcess || !bottomHwnd) return;
+  try {
+    bottomHelperProcess.stdin.write(
+      `[VCPWinAPI]::PushToBottom([IntPtr]${bottomHwnd})\n`
+    );
+  } catch (e) {
+    console.warn("[Desktop] nativePushToBottom write error:", e.message);
+  }
 }
 
 /**
@@ -2111,80 +3000,92 @@ function nativePushToBottom() {
  * @param {boolean} enabled - 是否启用置底
  */
 function setAlwaysOnBottom(enabled) {
-    alwaysOnBottomEnabled = enabled;
+  alwaysOnBottomEnabled = enabled;
 
-    if (!desktopWindow || desktopWindow.isDestroyed()) return;
+  if (!desktopWindow || desktopWindow.isDestroyed()) return;
 
-    // 清除之前的定时器
-    if (alwaysOnBottomInterval) {
+  // 清除之前的定时器
+  if (alwaysOnBottomInterval) {
+    clearInterval(alwaysOnBottomInterval);
+    alwaysOnBottomInterval = null;
+  }
+
+  // 移除之前的 focus 事件监听器
+  desktopWindow.removeAllListeners("focus");
+  // 重新注册必要的 focus 监听（如果有其他模块需要的话可以在这里恢复）：
+
+  if (enabled) {
+    console.log("[Desktop] Enabling always-on-bottom mode");
+
+    // Windows: 启动持久化的 PowerShell 进程
+    if (process.platform === "win32") {
+      try {
+        const handle = desktopWindow.getNativeWindowHandle();
+        const hwnd = handle.readInt32LE(0);
+        startBottomHelper(hwnd);
+      } catch (e) {
+        console.warn("[Desktop] Failed to get native handle:", e.message);
+      }
+    }
+
+    const pushToBottom = () => {
+      if (
+        !desktopWindow ||
+        desktopWindow.isDestroyed() ||
+        !alwaysOnBottomEnabled
+      )
+        return;
+
+      if (process.platform === "win32") {
+        // Windows: 通过持久化 PowerShell 调用 Win32 SetWindowPos(HWND_BOTTOM)
+        nativePushToBottom();
+      } else {
+        // 其他平台: 使用 Electron API 近似
+        try {
+          desktopWindow.setAlwaysOnTop(true, "screen-saver", -1);
+          desktopWindow.setAlwaysOnTop(false);
+        } catch (e) {
+          /* ignore */
+        }
+      }
+    };
+
+    // 当窗口获得焦点时，立即将其推到底部
+    desktopWindow.on("focus", () => {
+      if (!alwaysOnBottomEnabled) return;
+      // 短暂延迟后下沉
+      setTimeout(() => {
+        pushToBottom();
+      }, 50);
+    });
+
+    // 定时强制置底（每 1.5 秒执行一次，确保持续在底层）
+    alwaysOnBottomInterval = setInterval(() => {
+      if (
+        !desktopWindow ||
+        desktopWindow.isDestroyed() ||
+        !alwaysOnBottomEnabled
+      ) {
         clearInterval(alwaysOnBottomInterval);
         alwaysOnBottomInterval = null;
+        return;
+      }
+      pushToBottom();
+    }, 1500);
+
+    // 初始下沉（延迟 200ms 确保 PowerShell 进程已初始化）：
+    setTimeout(() => pushToBottom(), 200);
+  } else {
+    console.log("[Desktop] Disabling always-on-bottom mode");
+    // 停止 PowerShell 进程
+    stopBottomHelper();
+    // 恢复正常窗口行为
+    try {
+      desktopWindow.setAlwaysOnTop(false);
+    } catch (e) {
+      /* ignore */
     }
-
-    // 移除之前的 focus 事件监听器
-    desktopWindow.removeAllListeners('focus');
-    // 重新注册必要的 focus 监听（如果有其他模块需要的话可以在这里恢复）：
-
-    if (enabled) {
-        console.log('[Desktop] Enabling always-on-bottom mode');
-
-        // Windows: 启动持久化的 PowerShell 进程
-        if (process.platform === 'win32') {
-            try {
-                const handle = desktopWindow.getNativeWindowHandle();
-                const hwnd = handle.readInt32LE(0);
-                startBottomHelper(hwnd);
-            } catch (e) {
-                console.warn('[Desktop] Failed to get native handle:', e.message);
-            }
-        }
-
-        const pushToBottom = () => {
-            if (!desktopWindow || desktopWindow.isDestroyed() || !alwaysOnBottomEnabled) return;
-
-            if (process.platform === 'win32') {
-                // Windows: 通过持久化 PowerShell 调用 Win32 SetWindowPos(HWND_BOTTOM)
-                nativePushToBottom();
-            } else {
-                // 其他平台: 使用 Electron API 近似
-                try {
-                    desktopWindow.setAlwaysOnTop(true, 'screen-saver', -1);
-                    desktopWindow.setAlwaysOnTop(false);
-                } catch (e) { /* ignore */ }
-            }
-        };
-
-        // 当窗口获得焦点时，立即将其推到底部
-        desktopWindow.on('focus', () => {
-            if (!alwaysOnBottomEnabled) return;
-            // 短暂延迟后下沉
-            setTimeout(() => {
-                pushToBottom();
-            }, 50);
-        });
-
-        // 定时强制置底（每 1.5 秒执行一次，确保持续在底层）
-        alwaysOnBottomInterval = setInterval(() => {
-            if (!desktopWindow || desktopWindow.isDestroyed() || !alwaysOnBottomEnabled) {
-                clearInterval(alwaysOnBottomInterval);
-                alwaysOnBottomInterval = null;
-                return;
-            }
-            pushToBottom();
-        }, 1500);
-
-        // 初始下沉（延迟 200ms 确保 PowerShell 进程已初始化）：
-        setTimeout(() => pushToBottom(), 200);
-
-    } else {
-        console.log('[Desktop] Disabling always-on-bottom mode');
-        // 停止 PowerShell 进程
-        stopBottomHelper();
-        // 恢复正常窗口行为
-        try {
-            desktopWindow.setAlwaysOnTop(false);
-        } catch (e) { /* ignore */ }
-    }
+  }
 }
 
 /**
@@ -2192,24 +3093,24 @@ function setAlwaysOnBottom(enabled) {
  * 可被其他模块直接调用（不经过 IPC）：
  */
 function pushToDesktop(data) {
-    if (desktopWindow && !desktopWindow.isDestroyed()) {
-        desktopWindow.webContents.send('desktop-push-to-canvas', data);
-        return true;
-    }
-    return false;
+  if (desktopWindow && !desktopWindow.isDestroyed()) {
+    desktopWindow.webContents.send("desktop-push-to-canvas", data);
+    return true;
+  }
+  return false;
 }
 
 /**
  * 获取桌面窗口实例
  */
 function getDesktopWindow() {
-    return desktopWindow;
+  return desktopWindow;
 }
 
 module.exports = {
-    initialize,
-    openDesktopWindow,
-    pushToDesktop,
-    getDesktopWindow,
-    generateCatalog,
+  initialize,
+  openDesktopWindow,
+  pushToDesktop,
+  getDesktopWindow,
+  generateCatalog,
 };

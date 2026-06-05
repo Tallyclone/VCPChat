@@ -92,6 +92,7 @@
       "style.css",
       "assets/",
       "modules/**/*",
+      "Desktopmodules/**/*",
       "vendor/**/*",
       "VCPDistributedServer/**/*",
       "node_modules/**/*"

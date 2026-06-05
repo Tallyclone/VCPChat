@@ -1,0 +1,55 @@
+{
+  "name": "DesktopRemote",
+  "displayName": "桌面远程控制器",
+  "pluginType": "synchronous",
+  "version": "1.4.0",
+  "description": "远程控制VCPdesktop桌面画布，支持推送壁纸、感知查询桌面状态、查询Dock应用列表、查看挂件源码、创建新挂件，以及指标驱动全局样式自动化。",
+  "author": "VCPToolBox",
+  "license": "MIT",
+  "entryPoint": {
+    "command": "node desktop-remote.js"
+  },
+  "communication": {
+    "protocol": "stdio"
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "command": "SetWallpaper",
+        "description": "功能: 推送壁纸到用户的VCPdesktop桌面。支持多种壁纸来源：\n1. 直接URL（http/https）：推送网络图片或视频作为壁纸。\n2. 本地文件URL（file:///...）：推送本地图片、视频或HTML文件作为壁纸。\n3. HTML内容：直接传入一段HTML代码，系统会将其保存为HTML文件并作为动态壁纸加载（适合粒子效果、shader动画等）。\n\n壁纸类型会根据文件扩展名或内容自动检测：图片(jpg/png/gif/webp/svg)、视频(mp4/webm)、HTML动态壁纸(html/htm)。\n\n参数:\n- wallpaperSource (字符串, 必需): 壁纸来源。可以是：\n  - HTTP/HTTPS URL (如 https://example.com/bg.jpg)\n  - 本地文件 file:// URL (如 file:///C:/wallpapers/bg.png)\n  - 完整的HTML代码（以 <!DOCTYPE 或 <html 开头时会被识别为HTML内容）\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」DesktopRemote「末」,\ncommand:「始」SetWallpaper「末」,\nwallpaperSource:「始」https://example.com/beautiful-landscape.jpg「末」\n<<<[END_TOOL_REQUEST]>>>\n\n创建HTML动态壁纸示例:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」DesktopRemote「末」,\ncommand:「始」SetWallpaper「末」,\nwallpaperSource:「始」<!DOCTYPE html><html><head><style>body{margin:0;overflow:hidden;background:#000}canvas{display:block}</style></head><body><canvas id=\"c\"></canvas><script>/* 粒子动画代码 */</script></body></html>「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "QueryDesktop",
+        "description": "功能: 感知查询当前VCPdesktop桌面上的所有挂件(widget)和图标(shortcut icon)信息。\n返回内容包括：\n- widgets: 桌面上所有活跃挂件的ID列表。如果挂件已被收藏，还会显示收藏名称和对应的持久化目录路径（可配合FileOperator插件读写维护收藏的HTML内容）。\n- icons: 桌面上所有快捷方式图标的名称列表。\n\n此命令无需额外参数。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」DesktopRemote「末」,\ncommand:「始」QueryDesktop「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "QueryDock",
+        "description": "功能: 查询VCPdesktop的Dock栏完整应用列表，了解所有可用的应用、工具和启动方式。\n返回内容包括：\n- Dock快捷方式: 用户导入的Windows桌面快捷方式列表（名称、类型、可见性、启动代码）\n- VChat内部应用: 12个硬编码的VChat核心应用（如音乐播放器、笔记、翻译等），始终可用\n- Windows系统工具: 5个系统工具快捷入口（显示设置、控制面板等），始终可用\n- 内置桌面挂件: 天气挂件、音乐播放条、应用托盘等内置组件\n\n每个应用都附带对应的启动代码示例，可在Widget脚本中直接使用 `window.VCPDesktop.dock.launch(item)` 调用。\n\n此命令无需额外参数。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」DesktopRemote「末」,\ncommand:「始」QueryDock「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "ViewWidgetSource",
+        "description": "功能: 查看桌面上指定挂件(widget)的HTML源码内容。通过提供挂件ID，可以获取该挂件当前正在渲染的完整HTML代码。这对于理解挂件的结构、调试问题或基于现有挂件进行修改非常有用。\n\n建议先调用 QueryDesktop 获取挂件ID列表，再使用此命令查看特定挂件的源码。\n\n参数:\n- widgetId (字符串, 必需): 要查看源码的挂件ID。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」DesktopRemote「末」,\ncommand:「始」ViewWidgetSource「末」,\nwidgetId:「始」widget-abc123「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "CreateWidget",
+        "description": "功能: 在用户的VCPdesktop桌面上创建一个新的挂件(widget)。你可以传入完整的HTML代码，系统会在桌面画布上渲染该挂件。支持指定初始位置、尺寸，并可选择是否自动收藏。\n\n这是最灵活的桌面交互方式，适合创建：天气挂件、时钟、待办事项、数据可视化面板、小游戏、动画效果等任何基于HTML的交互式内容。\n\n挂件运行在Shadow DOM沙箱中，脚本通过安全包装执行。挂件内可以使用以下API：\n- `document.querySelector/getElementById` 等 DOM 操作（作用域限定在挂件内部）\n- `vcpAPI.fetch(endpoint, opts)` - 调用VCP后端API\n- `vcpAPI.weather()` - 获取天气数据\n- `musicAPI.play/pause/getState/setVolume/seek` - 控制音乐播放\n\n参数:\n- htmlContent (字符串, 必需): 挂件的完整HTML代码。可以包含 <style> 和 <script> 标签。\n- x (数字, 可选): 挂件左上角的X坐标（像素），默认100。\n- y (数字, 可选): 挂件左上角的Y坐标（像素），默认100。\n- width (数字, 可选): 挂件初始宽度（像素），默认320。挂件会根据内容自动调整。\n- height (数字, 可选): 挂件初始高度（像素），默认200。挂件会根据内容自动调整。\n- widgetId (字符串, 可选): 自定义挂件ID。默认自动生成。\n- autoSave (布尔, 可选): 是否自动将挂件收藏到侧栏，默认false。\n- saveName (字符串, 可选): 收藏名称（仅当autoSave为true时有效）。\n- scriptFiles (字符串, 可选): 外部JS脚本源码。当挂件的JavaScript逻辑较复杂时，可以将JS代码写在这个参数里，系统会自动将其保存为 app.js 文件。htmlContent中应通过 <script src=\"app.js\"></script> 来引用它（如果你忘了加这个标签，系统也会自动追加）。使用此参数时会自动启用autoSave（因为外部文件需要持久化存储）。这样可以避免把大段JS内联在HTML中，使代码结构更清晰。\n\n调用示例 - 创建一个简单时钟挂件（内联JS）:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」DesktopRemote「末」,\ncommand:「始」CreateWidget「末」,\nhtmlContent:「始」<div style=\"font-family:monospace;font-size:48px;color:#0ff;text-align:center;padding:20px;background:#111;border-radius:12px\"><span id=\"clock\">00:00:00</span></div><script>setInterval(()=>{const d=new Date();document.getElementById('clock').textContent=d.toLocaleTimeString()},1000)</script>「末」,\nx:「始」200「末」,\ny:「始」150「末」\n<<<[END_TOOL_REQUEST]>>>\n\n调用示例 - 创建并自动收藏:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」DesktopRemote「末」,\ncommand:「始」CreateWidget「末」,\nhtmlContent:「始」<div style=\"padding:16px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border-radius:12px;font-size:18px\">Hello Desktop!</div>「末」,\nautoSave:「始」true「末」,\nsaveName:「始」问候挂件「末」\n<<<[END_TOOL_REQUEST]>>>\n\n调用示例 - 使用外部app.js创建复杂挂件（推荐用于复杂JS逻辑）:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」DesktopRemote「末」,\ncommand:「始」CreateWidget「末」,\nhtmlContent:「始」<div id=\"app\"><canvas id=\"canvas\" width=\"300\" height=\"200\"></canvas></div><style>#canvas{border:1px solid #333;border-radius:8px}</style><script src=\"app.js\"></script>「末」,\nscriptFiles:「始」const canvas = document.getElementById('canvas');\nconst ctx = canvas.getContext('2d');\nctx.fillStyle = '#0ff';\nctx.fillRect(10, 10, 100, 100);\nctx.fillStyle = '#f0f';\nctx.fillRect(50, 50, 100, 100);「末」,\nsaveName:「始」画布挂件「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "SetStyleAutomation",
+        "description": "功能: 启用/更新 VCPdesktop 的“指标驱动全局样式自动化”。桌面窗口会按 intervalMs 轮询系统指标快照，并按 rules 将数值映射到全局 CSS 变量与壁纸滤镜(blur/brightness/opacity)。\n\n参数:\n- enabled (布尔, 可选): 是否启用自动化（true=启动，false=停止并回滚运行时样式覆盖）\n- intervalMs (数字, 可选): 轮询间隔(毫秒)，建议 >= 500\n- metricsOptions (对象, 可选): 透传给 desktopMetricsGetSnapshot 的采样选项（includeProcesses/includeDocker/forceRefresh）\n- rules (数组, 可选): 规则列表（建议字段：id/sourcePath/map/target）\n- persist (布尔, 可选): 是否持久化配置到 layout.json 的 globalSettings（默认 false）"
+      },
+      {
+        "command": "GetStyleAutomationStatus",
+        "description": "功能: 查询 VCPdesktop 全局样式自动化的运行状态与当前配置摘要。"
+      },
+      {
+        "command": "NativeFileMountAction",
+        "description": "功能: 向指定 NativeFileMount 文件映射卡片提交 Agent 文件操作计划。Agent 在卡片内协助用户整理文件，操作实时可见。\n\n⚠️ 安全约束：\n- Agent 不得直接调用 desktopAPI.nativeFsAction\n- Agent 不得持有或获取 capabilityToken\n- 只提交操作计划，不直接执行\n- 所有操作必须经用户确认\n- operations 中不允许包含 openWith 操作\n- 不得在 operations 中指定 appPath\n\n参数：\n- widgetId (字符串, 必需): NativeFileMount 卡片的 widgetId\n- mountId (字符串, 必需): 挂载点 ID\n- source (字符串, 必需): 固定为 \"agent\"\n- intent (字符串, 必需): 操作意图描述（如 \"organizeByDate\"）\n- summary (字符串, 必需): 操作摘要（如 \"按月份整理 126 张图片到子文件夹\"）\n- operations (数组, 必需): 操作列表，每个操作包含：\n  - id (字符串): 操作唯一标识（如 \"op_001\"）\n  - action (字符串): 操作类型，支持：\n    - newFolder: 新建文件夹（需 parentDir, name）\n    - move: 移动文件（需 from, to）\n    - rename: 重命名（需 from, to）\n    - copy: 复制文件（需 from, to）\n    - trash: 删除到回收站（需 targetPath）\n  - 其他字段根据 action 类型而定\n- risk (对象, 可选): 风险统计\n  - creates (数字): 新建文件夹数量\n  - moves (数字): 移动文件数量\n  - renames (数字): 重命名数量\n  - overwrites (数字): 覆盖文件数量\n  - trashes (数字): 删除文件数量\n\n返回结构：\n- 成功: { ok: true, data: { status: \"completed\", completed: 数量, failed: 0, summary: \"摘要\" } }\n- 部分失败: { ok: true, data: { status: \"partial_failed\", completed: 数量, failed: 数量, stoppedAtOp: \"op_id\", error: \"错误信息\" } }\n- 用户拒绝: { ok: true, data: { status: \"rejected\", reason: \"user_denied\" } }\n- 超时: { ok: true, data: { status: \"timed_out\" } }\n- 用户取消: { ok: true, data: { status: \"cancelled\", completed: 数量, remaining: 数量 } }\n\n调用示例 - 按月份整理照片：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」DesktopRemote「末」,\ncommand:「始」NativeFileMountAction「末」,\nwidgetId:「始」nfm-abc123「末」,\nmountId:「始」mount-xyz「末」,\nsource:「始」agent「末」,\nintent:「始」organizeByDate「末」,\nsummary:「始」按月份整理 126 张图片到子文件夹「末」,\noperations:「始」[{\"id\":\"op_001\",\"action\":\"newFolder\",\"parentDir\":\"D:\\\\\\\\Photos\",\"name\":\"2026-05\"},{\"id\":\"op_002\",\"action\":\"move\",\"from\":\"D:\\\\\\\\Photos\\\\\\\\a.jpg\",\"to\":\"D:\\\\\\\\Photos\\\\\\\\2026-05\\\\\\\\a.jpg\"}]「末」,\nrisk:「始」{\"creates\":5,\"moves\":126,\"renames\":0,\"overwrites\":0,\"trashes\":0}「末」\n<<<[END_TOOL_REQUEST]>>>\n\n调用示例 - 批量重命名文件：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」DesktopRemote「末」,\ncommand:「始」NativeFileMountAction「末」,\nwidgetId:「始」nfm-abc123「末」,\nmountId:「始」mount-xyz「末」,\nsource:「始」agent「末」,\nintent:「始」renameWithPrefix「末」,\nsummary:「始」为 50 个文件添加日期前缀「末」,\noperations:「始」[{\"id\":\"op_001\",\"action\":\"rename\",\"from\":\"D:\\\\\\\\Docs\\\\\\\\report.pdf\",\"to\":\"D:\\\\\\\\Docs\\\\\\\\20260524_report.pdf\"},{\"id\":\"op_002\",\"action\":\"rename\",\"from\":\"D:\\\\\\\\Docs\\\\\\\\data.xlsx\",\"to\":\"D:\\\\\\\\Docs\\\\\\\\20260524_data.xlsx\"}]「末」,\nrisk:「始」{\"creates\":0,\"moves\":0,\"renames\":50,\"overwrites\":0,\"trashes\":0}「末」\n<<<[END_TOOL_REQUEST]>>>\n\n注意事项：\n- 操作按 operations 数组顺序逐个执行，不并行\n- 某个操作失败会停止后续操作\n- 已完成的操作不回滚\n- 高风险操作（trash/overwrite）需要用户额外确认\n- 超时时间为 120 秒，可配置到 300 秒"
+      },
+      {
+        "command": "QueryNativeFileMounts",
+        "description": "功能: 查询当前活跃的 NativeFileMount 文件映射卡片列表。用于获取 widgetId 和 mountId，以便后续调用 NativeFileMountAction。\n\n返回内容：\n- 活跃卡片列表，每个卡片包含：\n  - widgetId (字符串): 卡片的唯一标识\n  - mountId (字符串): 挂载点 ID\n  - title (字符串): 卡片标题\n  - rootPath (字符串): 挂载的根目录路径\n  - mode (字符串): 访问模式（\"readonly\" 或 \"readwrite\"）\n\n⚠️ 安全说明：\n- 不会返回 capabilityToken（安全令牌仅主进程和卡片实例持有）\n- Agent 只能查询卡片信息，不能直接操作文件\n\n此命令无需额外参数。\n\n调用格式：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」DesktopRemote「末」,\ncommand:「始」QueryNativeFileMounts「末」\n<<<[END_TOOL_REQUEST]>>>\n\n返回示例：\n[\n  {\n    \"widgetId\": \"nfm-abc123\",\n    \"mountId\": \"mount-xyz789\",\n    \"title\": \"项目目录\",\n    \"rootPath\": \"D:\\\\Projects\\\\MyApp\",\n    \"mode\": \"readwrite\"\n  },\n  {\n    \"widgetId\": \"nfm-def456\",\n    \"mountId\": \"mount-uvw012\",\n    \"title\": \"照片文件夹\",\n    \"rootPath\": \"C:\\\\Users\\\\Username\\\\Pictures\",\n    \"mode\": \"readonly\"\n  }\n]\n\n使用场景：\n1. 在执行 NativeFileMountAction 前，先调用此命令获取可用的卡片列表\n2. 向用户展示当前打开的文件映射卡片\n3. 确认目标卡片的访问模式（readonly 卡片不能执行写操作）"
+      }
+    ]
+  }
+}

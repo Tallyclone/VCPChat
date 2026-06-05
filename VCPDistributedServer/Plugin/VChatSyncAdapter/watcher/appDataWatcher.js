@@ -8,6 +8,7 @@ const {
   isAttachmentLikePath,
 } = require("../utils/pathRules");
 const { handleFile } = require("../scanner/appDataScanner");
+const { handleDeletedPaths } = require("../scanner/deleteEventHandler");
 
 function createWatcher(
   config,
@@ -20,6 +21,17 @@ function createWatcher(
   let watcher = null;
   const pendingHandlers = new Map();
 
+  function buildEventContext() {
+    return {
+      mode: context.modeProvider ? context.modeProvider() : context.mode,
+      profile: "runtime",
+      deviceId: context.deviceId,
+      centerClient: context.centerClient,
+      config,
+      syncProfileConfig: context.syncProfileConfig,
+    };
+  }
+
   async function processFile(filePath) {
     const relativePath = relativeAppDataPath(config.appDataPath, filePath);
     if (relativePath.startsWith("sync/")) return;
@@ -29,7 +41,6 @@ function createWatcher(
       !isAttachmentLikePath(relativePath)
     )
       return;
-    const mode = context.modeProvider ? context.modeProvider() : context.mode;
     try {
       await handleFile(
         config.appDataPath,
@@ -38,12 +49,7 @@ function createWatcher(
         offlineQueue,
         writeIntentLock,
         logger,
-        {
-          mode,
-          profile: "runtime",
-          deviceId: context.deviceId,
-          syncProfileConfig: context.syncProfileConfig,
-        }
+        buildEventContext()
       );
     } catch (error) {
       logger.warn("watch event handling failed", {
@@ -51,6 +57,49 @@ function createWatcher(
         error: error.message,
       });
     }
+  }
+
+  const deleteBuffer = new Map();
+  let deleteFlushTimer = null;
+
+  function flushDeleteBuffer() {
+    if (deleteFlushTimer) {
+      clearTimeout(deleteFlushTimer);
+      deleteFlushTimer = null;
+    }
+    const entries = Array.from(deleteBuffer.values());
+    deleteBuffer.clear();
+    return handleDeletedPaths(
+      config.appDataPath,
+      entries,
+      localIndex,
+      offlineQueue,
+      logger,
+      buildEventContext()
+    );
+  }
+
+  function scheduleDeleteFlush() {
+    if (deleteFlushTimer) return;
+    deleteFlushTimer = setTimeout(() => {
+      flushDeleteBuffer().catch((error) => {
+        logger.warn("watch delete batch handling failed", {
+          error: error.message,
+        });
+      });
+    }, config.watchDebounceMs || 250);
+  }
+
+  async function processDelete(filePath, isDirectory) {
+    const relativePath = relativeAppDataPath(config.appDataPath, filePath);
+    if (relativePath.startsWith("sync/")) return;
+    deleteBuffer.set(filePath, {
+      deletedPath: filePath,
+      isDirectory,
+      relativePath,
+      timestamp: Date.now(),
+    });
+    scheduleDeleteFlush();
   }
 
   return {
@@ -77,15 +126,29 @@ function createWatcher(
           );
         pendingHandlers.get(filePath)(filePath);
       });
+      watcher.on("unlink", (filePath) => {
+        processDelete(filePath, false);
+      });
+      watcher.on("unlinkDir", (dirPath) => {
+        processDelete(dirPath, true);
+      });
       watcher.on("error", (error) =>
         logger.error("watcher error", { error: error.message })
       );
       logger.info("watcher started", { appDataPath: config.appDataPath });
     },
     async stop() {
+      if (deleteFlushTimer) {
+        await flushDeleteBuffer().catch((error) =>
+          logger.warn("watch delete final flush failed", {
+            error: error.message,
+          })
+        );
+      }
       if (watcher) await watcher.close();
       watcher = null;
       pendingHandlers.clear();
+      deleteBuffer.clear();
     },
   };
 }

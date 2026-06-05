@@ -119,6 +119,41 @@ function createCenterClient(config, logger) {
         headers: response.headers || {},
       };
     },
+    async upsertThemePackage(themePackage) {
+      if (!isConfigured(config)) {
+        throw new Error("sync center is not configured");
+      }
+      const response = await http.post("/themes", themePackage);
+      return response.data;
+    },
+    async uploadThemeAsset(asset) {
+      if (!isConfigured(config)) {
+        throw new Error("sync center is not configured");
+      }
+      const { buffer, ...metadata } = asset || {};
+      if (!buffer) {
+        throw new Error("theme asset buffer is required");
+      }
+      const response = await http.post("/themes/assets", {
+        ...metadata,
+        content_base64: Buffer.from(buffer).toString("base64"),
+      });
+      return response.data;
+    },
+    async downloadThemeAsset(hash) {
+      if (!isConfigured(config)) {
+        throw new Error("sync center is not configured");
+      }
+      const response = await withRetry(() =>
+        http.get(`/themes/assets/${encodeURIComponent(hash)}`, {
+          responseType: "arraybuffer",
+        })
+      );
+      return {
+        buffer: Buffer.from(response.data),
+        headers: response.headers || {},
+      };
+    },
     async importBootstrap(manifest) {
       if (!isConfigured(config)) {
         throw new Error("sync center is not configured");
@@ -138,9 +173,9 @@ function createCenterClient(config, logger) {
       return response.data;
     },
     connectLatestSeq(onLatestSeq) {
-      if (!isConfigured(config) || !config.enableWebSocket) return null;
-      const wsUrl = config.centerUrl.replace(/^http/i, "ws");
-      const ws = new WebSocket(`${wsUrl}/vchat-sync/latest-seq`, {
+      if (!isConfigured(config) || !config.enableWebSocket || !config.wsUrl)
+        return null;
+      const ws = new WebSocket(config.wsUrl, {
         headers: {
           Authorization: `Bearer ${config.syncKey}`,
         },

@@ -5,7 +5,12 @@ const { atomicWriteJson } = require("../projector/atomicWriter");
 const { projectEvents } = require("../projector/appDataProjector");
 const { checksumJson, checksumBuffer } = require("../core/hash");
 const { safeConfigDto } = require("../core/safeConfigDto");
-const { uploadLocalAttachment } = require("./attachmentSync");
+const {
+  collectAttachmentRefs,
+  uploadLocalAttachment,
+} = require("./attachmentSync");
+const { scanThemePackages } = require("./themePackageSync");
+const { uploadThemeAsset } = require("../diff/themeDiffEngine");
 const { scanAppData } = require("../scanner/appDataScanner");
 const { messageKey } = require("../core/identity");
 const {
@@ -14,12 +19,141 @@ const {
   parseHistoryIdentity,
   isConfigPath,
   isAttachmentLikePath,
+  isAvatarPath,
+  isSafeUserAvatarUrlPath,
+  parseAvatarIdentity,
+  safeJoinAppData,
 } = require("../utils/pathRules");
 
 function normalizeId(value) {
   return String(value || "")
     .trim()
     .toLocaleLowerCase();
+}
+
+function normalizeUserAvatarRelativePath(value) {
+  const relativePath = String(value || "")
+    .trim()
+    .replace(/\\/g, "/");
+  if (!relativePath || !isSafeUserAvatarUrlPath(relativePath)) return null;
+  return relativePath;
+}
+
+function addBootstrapAttachment(attachmentsByHash, attachment) {
+  const hash = attachment && attachment.hash ? String(attachment.hash) : "";
+  if (!hash) return false;
+  if (!attachmentsByHash.has(hash)) {
+    attachmentsByHash.set(hash, attachment);
+    return true;
+  }
+  const existing = attachmentsByHash.get(hash) || {};
+  if (attachment && attachment.relative_path) {
+    const paths = new Set(existing.relative_paths || []);
+    if (existing.relative_path) paths.add(existing.relative_path);
+    paths.add(attachment.relative_path);
+    existing.relative_paths = [...paths];
+  }
+  if (attachment && attachment.settings_user_avatar) {
+    existing.settings_user_avatar = true;
+    existing.settings_user_avatar_relative_path =
+      attachment.settings_user_avatar_relative_path || attachment.relative_path;
+  }
+  attachmentsByHash.set(hash, existing);
+  return false;
+}
+
+function mimeFromAvatarFile(buffer, filePath) {
+  if (buffer && buffer.length >= 8 && buffer.readUInt32BE(0) === 0x89504e47) {
+    return "image/png";
+  }
+  if (
+    buffer &&
+    buffer.length >= 3 &&
+    buffer[0] === 0xff &&
+    buffer[1] === 0xd8 &&
+    buffer[2] === 0xff
+  ) {
+    return "image/jpeg";
+  }
+  if (
+    buffer &&
+    buffer.length >= 12 &&
+    buffer.toString("ascii", 0, 4) === "RIFF" &&
+    buffer.toString("ascii", 8, 12) === "WEBP"
+  ) {
+    return "image/webp";
+  }
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === ".png") return "image/png";
+  if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
+  if (ext === ".webp") return "image/webp";
+  if (ext === ".gif") return "image/gif";
+  return null;
+}
+
+function addBootstrapAvatar(avatarsByOwner, avatar) {
+  if (!avatar || !avatar.owner_type || !avatar.owner_id) return false;
+  const key = `${avatar.owner_type}:${avatar.owner_id}`;
+  avatarsByOwner.set(key, avatar);
+  return true;
+}
+
+async function addLocalAvatarEntity(
+  config,
+  relativePath,
+  ownerIdentity,
+  attachmentsByHash,
+  avatarsByOwner,
+  metadata = {}
+) {
+  if (!relativePath || !ownerIdentity) return;
+  const filePath = safeJoinAppData(config.appDataPath, relativePath);
+  const buffer = await fs.readFile(filePath).catch(() => null);
+  if (!buffer) return;
+  const hash = checksumBuffer(buffer);
+  const ext = path.extname(filePath);
+  const attachment = {
+    hash,
+    ext,
+    filename: path.basename(filePath),
+    size_bytes: buffer.length,
+    relative_path: relativePath,
+  };
+  if (metadata.source === "settings.userAvatarUrl") {
+    attachment.settings_user_avatar = true;
+    attachment.settings_user_avatar_relative_path = relativePath;
+  }
+  addBootstrapAttachment(attachmentsByHash, attachment);
+  addBootstrapAvatar(avatarsByOwner, {
+    owner_type: ownerIdentity.owner_type,
+    owner_id: ownerIdentity.owner_id,
+    hash,
+    mime_type: mimeFromAvatarFile(buffer, filePath),
+    ext,
+    relative_path: relativePath,
+    metadata,
+    operation_id: `bootstrap.avatar.${config.deviceId}.${ownerIdentity.owner_type}:${ownerIdentity.owner_id}`,
+  });
+}
+
+async function addSettingsUserAvatarAttachment(
+  config,
+  parsedSettings,
+  attachmentsByHash,
+  avatarsByOwner
+) {
+  const relativePath = normalizeUserAvatarRelativePath(
+    parsedSettings && parsedSettings.userAvatarUrl
+  );
+  if (!relativePath) return;
+  await addLocalAvatarEntity(
+    config,
+    relativePath,
+    { owner_type: "user", owner_id: "local_user" },
+    attachmentsByHash,
+    avatarsByOwner,
+    { source: "settings.userAvatarUrl" }
+  );
 }
 
 function stableMessageId(identity, message, index) {
@@ -183,18 +317,31 @@ async function backupAppData(config, label, logger) {
 async function buildLocalManifest(config, options = {}) {
   const messages = [];
   const configs = [];
-  const attachments = [];
+  const attachmentsByHash = new Map();
+  const avatarsByOwner = new Map();
+  const themes = [];
   const rewritten = [];
   const conflicts = await scanNormalizedIdConflicts(config.appDataPath);
   if (conflicts.length > 0 && !options.allowConflicts) {
-    return { ok: false, conflicts, messages, configs, attachments, rewritten };
+    return {
+      ok: false,
+      conflicts,
+      messages,
+      configs,
+      attachments: [...attachmentsByHash.values()],
+      avatars: [...avatarsByOwner.values()],
+      themes,
+      rewritten,
+    };
   }
 
   await walk(config.appDataPath, async (filePath) => {
     const relativePath = relativeAppDataPath(config.appDataPath, filePath);
     if (relativePath.startsWith("sync/")) return;
     if (isHistoryPath(relativePath)) {
-      const identity = parseHistoryIdentity(relativePath);
+      const identity = parseHistoryIdentity(relativePath, {
+        appDataPath: config.appDataPath,
+      });
       const history = await fs.readJson(filePath).catch(() => null);
       if (!Array.isArray(history)) return;
       let changed = false;
@@ -246,13 +393,35 @@ async function buildLocalManifest(config, options = {}) {
           checksum,
         },
       });
+      if (dto.schema === "settings" && dto.safe_projection_json.userAvatarUrl) {
+        await addSettingsUserAvatarAttachment(
+          config,
+          parsed,
+          attachmentsByHash,
+          avatarsByOwner
+        );
+      }
       return;
     }
 
     if (isAttachmentLikePath(relativePath)) {
+      const avatarIdentity = isAvatarPath(relativePath)
+        ? parseAvatarIdentity(relativePath)
+        : null;
+      if (avatarIdentity) {
+        await addLocalAvatarEntity(
+          config,
+          relativePath,
+          avatarIdentity,
+          attachmentsByHash,
+          avatarsByOwner,
+          { source: "appData.avatar" }
+        );
+        return;
+      }
       const buffer = await fs.readFile(filePath).catch(() => null);
       if (!buffer) return;
-      attachments.push({
+      addBootstrapAttachment(attachmentsByHash, {
         hash: checksumBuffer(buffer),
         ext: path.extname(filePath),
         filename: path.basename(filePath),
@@ -262,13 +431,23 @@ async function buildLocalManifest(config, options = {}) {
     }
   });
 
+  for (const themePackage of await scanThemePackages(config)) {
+    themes.push({
+      ...themePackage.payload,
+      assets: themePackage.payload.assets || [],
+      operation_id: `bootstrap.theme_package.${config.deviceId}.${themePackage.theme_id}`,
+    });
+  }
+
   return {
     ok: true,
     device_id: config.deviceId,
     generated_at: new Date().toISOString(),
     messages,
     configs,
-    attachments,
+    attachments: [...attachmentsByHash.values()],
+    avatars: [...avatarsByOwner.values()],
+    themes,
     conflicts,
     rewritten,
   };
@@ -282,12 +461,16 @@ async function recordBootstrapPrimaryBaseline(
   localIndex,
   manifest,
   response,
-  logger
+  logger,
+  config
 ) {
   const latestSeq = response.latest_seq || 0;
   const now = new Date().toISOString();
   let messages = 0;
   let configs = 0;
+  let avatars = 0;
+  let themes = 0;
+  let themeAssets = 0;
 
   await localIndex.batchUpdate(async () => {
     for (const row of manifest.messages || []) {
@@ -323,10 +506,83 @@ async function recordBootstrapPrimaryBaseline(
         last_applied_seq: latestSeq,
         pending_operation_id: null,
         pending_status: null,
+        snapshot_json:
+          cfg.safe_projection_json ||
+          (cfg.payload && cfg.payload.safe_projection_json) ||
+          null,
         bootstrap_baseline: true,
         updated_at: now,
       });
       configs += 1;
+    }
+
+    for (const avatar of manifest.avatars || []) {
+      const relativePath = avatar.relative_path;
+      if (!relativePath) continue;
+      await localIndex.setFile(relativePath, {
+        kind: "avatar",
+        owner_type: avatar.owner_type,
+        owner_id: avatar.owner_id,
+        hash: avatar.hash,
+        ext: avatar.ext,
+        size: avatar.size_bytes || avatar.sizeBytes || undefined,
+        local_path: path.join(config.appDataPath, relativePath),
+        uploaded: true,
+        avatar_operation_submitted: true,
+        avatar_operation_hash: avatar.hash,
+        avatar_operation_id:
+          avatar.operation_id ||
+          `bootstrap.avatar.${config.deviceId}.${avatar.owner_type}:${avatar.owner_id}`,
+        checksum_status: "verified",
+        bootstrap_baseline: true,
+        last_applied_seq: latestSeq,
+        updated_at: now,
+      });
+      avatars += 1;
+    }
+
+    for (const theme of manifest.themes || []) {
+      const themeId = theme.theme_id || theme.themeId;
+      if (!themeId) continue;
+      const manifestJson = theme.manifest || theme.manifest_json || {};
+      const cssRelativePath =
+        (manifestJson.css && manifestJson.css.relative_path) ||
+        `styles/themes/${themeId}.css`;
+      await localIndex.setFile(cssRelativePath, {
+        kind: "theme_package",
+        theme_id: themeId,
+        checksum: theme.checksum,
+        css_path: cssRelativePath,
+        relative_path: cssRelativePath,
+        asset_hashes: (theme.assets || [])
+          .map((asset) => asset.asset_hash || asset.hash)
+          .filter(Boolean),
+        uploaded: true,
+        bootstrap_baseline: true,
+        last_applied_seq: latestSeq,
+        updated_at: now,
+      });
+      themes += 1;
+      for (const asset of theme.assets || []) {
+        const assetHash = asset.asset_hash || asset.hash;
+        if (!assetHash) continue;
+        await localIndex.setFile(`theme_asset:${assetHash}`, {
+          kind: "theme_asset",
+          theme_id: themeId,
+          asset_hash: assetHash,
+          asset_type: asset.asset_type || asset.assetType || "wallpaper",
+          slot: asset.slot || "default",
+          filename: asset.filename,
+          mime_type: asset.mime_type || asset.mime || null,
+          size_bytes: asset.size_bytes || asset.sizeBytes || 0,
+          relative_path: asset.relative_path || asset.relativePath || null,
+          uploaded: true,
+          bootstrap_baseline: true,
+          last_applied_seq: latestSeq,
+          updated_at: now,
+        });
+        themeAssets += 1;
+      }
     }
   });
 
@@ -334,11 +590,14 @@ async function recordBootstrapPrimaryBaseline(
     logger.info("bootstrap primary local index baseline recorded", {
       messages,
       configs,
+      avatars,
+      themes,
+      themeAssets,
       latestSeq,
     });
   }
 
-  return { messages, configs, latest_seq: latestSeq };
+  return { messages, configs, avatars, latest_seq: latestSeq };
 }
 
 async function bootstrapPrimary(runtime, options = {}) {
@@ -376,7 +635,14 @@ async function bootstrapPrimary(runtime, options = {}) {
         absolutePath,
         localIndex,
         centerClient,
-        config
+        config,
+        attachment.settings_user_avatar
+          ? {
+              avatarIdentity: { owner_type: "user", owner_id: "local_user" },
+              avatarOperationRelativePath: attachment.relative_path,
+              avatarOperationMetadata: { source: "settings.userAvatarUrl" },
+            }
+          : {}
       );
     } catch (error) {
       attachmentUploadErrors.push({
@@ -395,11 +661,41 @@ async function bootstrapPrimary(runtime, options = {}) {
     }
   }
 
+  const themeUploadErrors = [];
+  for (const themePackage of await scanThemePackages(config)) {
+    for (const asset of themePackage.assets || []) {
+      if (!asset.absolute_path || !(await fs.pathExists(asset.absolute_path)))
+        continue;
+      try {
+        await uploadThemeAsset(centerClient, themePackage, asset, config);
+      } catch (error) {
+        themeUploadErrors.push({
+          theme_id: themePackage.theme_id,
+          asset_hash: asset.asset_hash,
+          relative_path: asset.relative_path,
+          error: error.message,
+        });
+        if (logger && logger.warn) {
+          logger.warn(
+            "bootstrap theme asset upload failed after baseline import",
+            {
+              theme_id: themePackage.theme_id,
+              asset_hash: asset.asset_hash,
+              relativePath: asset.relative_path,
+              error: error.message,
+            }
+          );
+        }
+      }
+    }
+  }
+
   const baselineIndex = await recordBootstrapPrimaryBaseline(
     localIndex,
     manifest,
     response,
-    logger
+    logger,
+    config
   );
 
   const state = runtime.state;
@@ -425,12 +721,15 @@ async function bootstrapPrimary(runtime, options = {}) {
     mode: "active",
     import: response,
     attachment_upload_errors: attachmentUploadErrors,
+    theme_upload_errors: themeUploadErrors,
     baseline_index: baselineIndex,
     post_bootstrap_scan: postBootstrapScan.summary,
     manifest_summary: {
       messages: manifest.messages.length,
       configs: manifest.configs.length,
       attachments: manifest.attachments.length,
+      avatars: (manifest.avatars || []).length,
+      themes: manifest.themes.length,
       rewritten: manifest.rewritten.length,
     },
   };
@@ -455,6 +754,44 @@ function buildBaselineEvents(baseline = {}) {
       action: "baseline",
       payload: att,
     })),
+    ...(baseline.avatars || []).map((avatar) => ({
+      seq: seq++,
+      baseline_seq: true,
+      entity_type: "avatar",
+      entity_id: `${avatar.owner_type}:${avatar.owner_id}`,
+      action: avatar.deleted ? "delete" : "baseline",
+      payload: avatar,
+    })),
+    ...(baseline.themes || []).flatMap((theme) => {
+      const themeId = theme.theme_id || theme.themeId;
+      const assets = Array.isArray(theme.assets) ? theme.assets : [];
+      return [
+        {
+          seq: seq++,
+          baseline_seq: true,
+          entity_type: "theme_package",
+          entity_id: themeId,
+          action: theme.deleted ? "delete" : "baseline",
+          version: theme.version || 1,
+          payload: theme,
+        },
+        ...assets.map((asset) => ({
+          seq: seq++,
+          baseline_seq: true,
+          entity_type: "theme_asset",
+          entity_id: asset.asset_hash || asset.hash,
+          action: "baseline",
+          version: 1,
+          payload: {
+            ...asset,
+            theme_id: asset.theme_id || themeId,
+            binary_available: asset.binary_available === true,
+            binary_strategy:
+              asset.binary_available === true ? "local" : "download_by_hash",
+          },
+        })),
+      ];
+    }),
     ...(baseline.messages || []).map((msg) => ({
       seq: seq++,
       baseline_seq: true,
@@ -503,6 +840,214 @@ function diffByKey(localRows, centerRows, keyFn, checksumFn) {
   };
 }
 
+function agentIdFromConfigEntityId(entityId) {
+  const match = /^Agents\/([^/]+)\/config\.json$/i.exec(String(entityId || ""));
+  return match ? match[1] : null;
+}
+
+function configDisplayName(configRow) {
+  const payload =
+    configRow && (configRow.safe_projection_json || configRow.payload || {});
+  const dto = payload.safe_projection_json || payload;
+  return dto && typeof dto.name === "string" ? dto.name.trim() : "";
+}
+
+function buildSameNameAgentMerge(local, center) {
+  const centerByName = new Map();
+  for (const cfg of center.configs || []) {
+    if (cfg.schema !== "agent_config") continue;
+    const name = configDisplayName(cfg);
+    const agentId = agentIdFromConfigEntityId(
+      cfg.entity_id || cfg.relative_path
+    );
+    if (name && agentId && !centerByName.has(name))
+      centerByName.set(name, { cfg, agentId });
+  }
+
+  const centerMessageKeys = new Set(
+    (center.messages || []).map(
+      (msg) => `${msg.item_type}:${msg.item_id}:${msg.topic_id}:${msg.id}`
+    )
+  );
+  const centerAttachmentHashes = new Set(
+    (center.attachments || []).map((att) => String(att.hash || ""))
+  );
+  const localAttachmentsByHash = new Map(
+    (local.attachments || []).map((att) => [String(att.hash || ""), att])
+  );
+  const remaps = [];
+  const remapEvents = [];
+  let seq = 1000000000;
+  for (const cfg of local.configs || []) {
+    if (cfg.schema !== "agent_config") continue;
+    const name = configDisplayName(cfg);
+    const localAgentId = agentIdFromConfigEntityId(
+      cfg.entity_id || cfg.relative_path
+    );
+    const centerMatch = centerByName.get(name);
+    if (!name || !localAgentId || !centerMatch) continue;
+    if (localAgentId === centerMatch.agentId) continue;
+
+    const messages = (local.messages || []).filter(
+      (msg) => msg.item_id === localAgentId
+    );
+    const attachments = new Map();
+    const skippedMessages = [];
+    for (const msg of messages) {
+      const targetMessageKey = `${msg.item_type}:${centerMatch.agentId}:${msg.topic_id}:${msg.id}`;
+      if (centerMessageKeys.has(targetMessageKey)) {
+        skippedMessages.push({
+          id: msg.id,
+          topic_id: msg.topic_id,
+          reason: "center_message_id_exists",
+        });
+        continue;
+      }
+      for (const ref of collectAttachmentRefs(msg.message || {})) {
+        const attachment = localAttachmentsByHash.get(ref.hash);
+        attachments.set(ref.hash, {
+          hash: ref.hash,
+          ext: (attachment && attachment.ext) || ref.ext || "",
+          filename: (attachment && attachment.filename) || ref.filename || null,
+          size_bytes: attachment ? attachment.size_bytes : undefined,
+          relative_path: attachment ? attachment.relative_path : undefined,
+          already_in_center: centerAttachmentHashes.has(ref.hash),
+        });
+      }
+      remapEvents.push({
+        seq: seq++,
+        baseline_seq: true,
+        entity_type: "message",
+        item_type: msg.item_type,
+        item_id: centerMatch.agentId,
+        topic_id: msg.topic_id,
+        entity_id: msg.id,
+        action: "create",
+        version: msg.version,
+        payload: {
+          message: { ...(msg.message || {}), item_id: centerMatch.agentId },
+          local_order: msg.local_order,
+        },
+      });
+      centerMessageKeys.add(targetMessageKey);
+    }
+    const localAttachmentRows = [...attachments.values()];
+    remaps.push({
+      name,
+      local_agent_id: localAgentId,
+      center_agent_id: centerMatch.agentId,
+      local_messages_inserted: messages.length - skippedMessages.length,
+      local_messages_skipped: skippedMessages.length,
+      local_attachments_referenced: localAttachmentRows.length,
+      local_attachment_hashes: localAttachmentRows.map((att) => att.hash),
+      local_attachments: localAttachmentRows,
+      skipped_messages: skippedMessages,
+      policy:
+        "center_config_as_base_local_history_and_attachments_remapped_uploaded",
+    });
+  }
+  return { remaps, events: remapEvents };
+}
+
+async function uploadSameNameAgentMergeAttachments(
+  sameNameAgentMerge,
+  runtimeContext
+) {
+  const { config, centerClient, localIndex, logger } = runtimeContext;
+  const uploaded = [];
+  const skipped = [];
+  const failed = [];
+  const seen = new Set();
+
+  for (const remap of sameNameAgentMerge.remaps || []) {
+    for (const attachment of remap.local_attachments || []) {
+      const hash = String(attachment.hash || "");
+      if (!hash || seen.has(hash)) continue;
+      seen.add(hash);
+      if (attachment.already_in_center) {
+        skipped.push({
+          hash,
+          relative_path: attachment.relative_path,
+          reason: "already_in_center_baseline",
+        });
+        continue;
+      }
+      if (!attachment.relative_path) {
+        failed.push({ hash, reason: "missing_local_relative_path" });
+        continue;
+      }
+      const absolutePath = path.join(
+        config.appDataPath,
+        attachment.relative_path
+      );
+      if (!(await fs.pathExists(absolutePath))) {
+        failed.push({
+          hash,
+          relative_path: attachment.relative_path,
+          reason: "local_attachment_file_missing",
+        });
+        continue;
+      }
+      try {
+        const result = await uploadLocalAttachment(
+          attachment.relative_path,
+          absolutePath,
+          localIndex,
+          centerClient,
+          config,
+          { force: true }
+        );
+        if (result.hash !== hash) {
+          failed.push({
+            hash,
+            actual_hash: result.hash,
+            relative_path: attachment.relative_path,
+            reason: "local_attachment_hash_mismatch",
+          });
+          continue;
+        }
+        if (result.uploaded) {
+          uploaded.push({
+            hash: result.hash,
+            relative_path: attachment.relative_path,
+            size: result.size,
+            uploaded: true,
+          });
+        } else {
+          failed.push({
+            hash,
+            relative_path: attachment.relative_path,
+            reason: "center_client_upload_unavailable",
+          });
+        }
+      } catch (error) {
+        failed.push({
+          hash,
+          relative_path: attachment.relative_path,
+          reason: error.message,
+        });
+        if (logger && logger.warn) {
+          logger.warn("same-name agent merge attachment upload failed", {
+            hash,
+            relativePath: attachment.relative_path,
+            error: error.message,
+          });
+        }
+      }
+    }
+  }
+
+  return {
+    referenced: uploaded.length + skipped.length + failed.length,
+    uploaded: uploaded.length,
+    skipped: skipped.length,
+    failed: failed.length,
+    uploaded_items: uploaded,
+    skipped_items: skipped,
+    failed_items: failed,
+  };
+}
+
 async function joinExisting(runtime) {
   const { config, centerClient, localIndex, writeIntentLock, logger } = runtime;
   await backupAppData(config, "join-existing", logger);
@@ -536,11 +1081,13 @@ async function joinExisting(runtime) {
 }
 
 async function mergeExisting(runtime) {
-  const local = await buildLocalManifest(runtime.config, {
-    logger: runtime.logger,
+  const { config, centerClient, localIndex, writeIntentLock, logger } = runtime;
+  await backupAppData(config, "merge-existing", logger);
+  const local = await buildLocalManifest(config, {
+    logger,
     allowConflicts: true,
   });
-  const exported = await runtime.centerClient.exportBootstrap();
+  const exported = await centerClient.exportBootstrap();
   const center = exported.baseline || {};
   const messageDiff = diffByKey(
     local.messages,
@@ -562,10 +1109,40 @@ async function mergeExisting(runtime) {
     (row) => row.hash,
     (row) => row.hash
   );
+  const sameNameAgentMerge = buildSameNameAgentMerge(local, center);
+  const sameNameAttachmentUpload = await uploadSameNameAgentMergeAttachments(
+    sameNameAgentMerge,
+    { config, centerClient, localIndex, logger }
+  );
+  const projectionEvents = [
+    ...buildBaselineEvents(center),
+    ...sameNameAgentMerge.events,
+  ];
+  const projection = await projectEvents(projectionEvents, {
+    config,
+    localIndex,
+    writeIntentLock,
+    logger,
+    centerClient,
+  });
+  if (projection.failedSeq) {
+    throw new Error(
+      `merge_existing projection failed at seq ${projection.failedSeq}`
+    );
+  }
+
+  runtime.state.mode = "active";
+  runtime.state.last_applied_seq = exported.latest_seq || 0;
+  runtime.state.bootstrap_completed_at = new Date().toISOString();
+  runtime.state.merge_completed_at = new Date().toISOString();
+  await runtime.writeState(runtime.state);
+
   const report = {
     ok: true,
-    mode: "merge_existing_report",
+    mode: "active",
+    merge_mode: "merge_existing_center_baseline_applied",
     generated_at: new Date().toISOString(),
+    latest_seq: runtime.state.last_applied_seq,
     local_counts: {
       messages: local.messages.length,
       configs: local.configs.length,
@@ -576,20 +1153,22 @@ async function mergeExisting(runtime) {
       configs: (center.configs || []).length,
       attachments: (center.attachments || []).length,
     },
+    projection,
     diffs: {
       messages: messageDiff,
       configs: configDiff,
       attachments: attachmentDiff,
     },
     normalized_id_conflicts: local.conflicts,
-    default_action: "report_only_no_delete",
+    same_name_agent_merge: sameNameAgentMerge.remaps,
+    same_name_agent_attachment_upload: sameNameAttachmentUpload,
+    default_action:
+      "center_baseline_then_local_same_name_history_attachment_remap",
   };
-  await fs.ensureDir(runtime.config.syncDir);
-  await fs.writeJson(
-    path.join(runtime.config.syncDir, "merge_report.json"),
-    report,
-    { spaces: 2 }
-  );
+  await fs.ensureDir(config.syncDir);
+  await fs.writeJson(path.join(config.syncDir, "merge_report.json"), report, {
+    spaces: 2,
+  });
   return report;
 }
 

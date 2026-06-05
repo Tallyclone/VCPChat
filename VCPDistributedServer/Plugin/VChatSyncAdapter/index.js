@@ -8,11 +8,13 @@ const { ensureAdapterState, readState, writeState } = require("./sync/state");
 const { createLocalIndex } = require("./core/localIndex");
 const { scanAppData } = require("./scanner/appDataScanner");
 const { createWatcher } = require("./watcher/appDataWatcher");
+const { createThemeWatcher } = require("./watcher/themeWatcher");
 const { createOfflineQueue } = require("./sync/offlineQueue");
 const { createCenterClient } = require("./sync/centerClient");
 const { createWriteIntentLock } = require("./sync/writeIntentLock");
 const { createPullLoop } = require("./sync/pullLoop");
 const { canUploadInMode } = require("./sync/modePolicy");
+const { syncLocalThemes } = require("./diff/themeDiffEngine");
 const {
   bootstrapPrimary,
   joinExisting,
@@ -40,14 +42,12 @@ function requireAdapterAuth(config, req) {
   const configured = config.syncKey || "";
   const header = String(
     (req.headers &&
-      (req.headers["x-vchat-sync-key"] ||
-        req.headers["x-vchat-bootstrap-key"] ||
-        req.headers.authorization)) ||
+      (req.headers["x-vchat-sync-key"] || req.headers.authorization)) ||
       ""
   );
   const token = header.replace(/^Bearer\s+/i, "");
   if (!configured || configured === "change-me" || token !== configured) {
-    const error = new Error("adapter bootstrap authorization failed");
+    const error = new Error("authorization failed");
     error.statusCode = 401;
     throw error;
   }
@@ -76,6 +76,80 @@ function pickConfigValue(hostValue, envValue, fallback = "") {
   if (hostValue !== undefined && hostValue !== null && hostValue !== "")
     return hostValue;
   return fallback;
+}
+
+const CENTER_REST_PATH = "/api/plugins/VChatSyncCenter";
+const LATEST_SEQ_WS_PATH = "/vchat-sync/latest-seq";
+
+function normalizeUrlPath(inputUrl, requiredPath, options = {}) {
+  const raw = String(inputUrl || "").trim();
+  if (!raw) return "";
+  const normalizedRequired = `/${String(requiredPath || "").replace(
+    /^\/+/,
+    ""
+  )}`;
+  try {
+    const url = new URL(raw);
+    const currentPath = (url.pathname || "/").replace(/\/+$/, "") || "/";
+    const currentLower = currentPath.toLowerCase();
+    const requiredLower = normalizedRequired.toLowerCase();
+    const replacePathLower = options.replacePath
+      ? `/${String(options.replacePath).replace(/^\/+/, "")}`.toLowerCase()
+      : "";
+    if (currentLower === "/") {
+      url.pathname = normalizedRequired;
+    } else if (
+      currentLower === requiredLower ||
+      currentLower.endsWith(requiredLower)
+    ) {
+      url.pathname = currentPath;
+    } else if (replacePathLower && currentLower.endsWith(replacePathLower)) {
+      url.pathname = normalizedRequired;
+    } else {
+      url.pathname = `${currentPath}/${normalizedRequired.replace(/^\/+/, "")}`;
+    }
+    return url.toString().replace(/\/+$/, "");
+  } catch (error) {
+    const trimmed = raw.replace(/\/+$/, "");
+    return trimmed.endsWith(normalizedRequired)
+      ? trimmed
+      : `${trimmed}${normalizedRequired}`;
+  }
+}
+
+function normalizeCenterUrl(inputUrl) {
+  return normalizeUrlPath(inputUrl, CENTER_REST_PATH);
+}
+
+function deriveLatestSeqWsUrl(centerUrl) {
+  const raw = String(centerUrl || "").trim();
+  if (!raw) return "";
+  try {
+    const url = new URL(raw);
+    url.protocol = url.protocol.replace(/^http/i, "ws");
+    url.pathname = LATEST_SEQ_WS_PATH;
+    url.search = "";
+    url.hash = "";
+    return url.toString().replace(/\/+$/, "");
+  } catch (error) {
+    return normalizeUrlPath(raw.replace(/^http/i, "ws"), LATEST_SEQ_WS_PATH, {
+      replacePath: CENTER_REST_PATH,
+    });
+  }
+}
+
+function normalizeLatestSeqWsUrl(inputUrl, centerUrl) {
+  const explicit = String(inputUrl || "").trim();
+  if (explicit) {
+    return normalizeUrlPath(
+      explicit.replace(/^http/i, "ws"),
+      LATEST_SEQ_WS_PATH,
+      {
+        replacePath: CENTER_REST_PATH,
+      }
+    );
+  }
+  return deriveLatestSeqWsUrl(centerUrl);
 }
 
 async function loadSyncProfileConfig(adapterDir = __dirname, logger = null) {
@@ -163,6 +237,16 @@ function buildConfig(pluginConfig = {}, projectBasePath = process.cwd()) {
   const adapterEnv = pluginConfig.__adapterEnv || {};
   const appDataPath = resolveAppDataPath(pluginConfig, projectBasePath);
   const syncDir = path.join(appDataPath, "sync");
+  const rawCenterUrl = pickConfigValue(
+    pluginConfig.VCHAT_SYNC_CENTER_URL,
+    adapterEnv.VCHAT_SYNC_CENTER_URL
+  );
+  const centerUrl = normalizeCenterUrl(rawCenterUrl);
+  const rawWsUrl = pickConfigValue(
+    pluginConfig.VCHAT_SYNC_WS_URL,
+    adapterEnv.VCHAT_SYNC_WS_URL
+  );
+  const wsUrl = normalizeLatestSeqWsUrl(rawWsUrl, centerUrl);
   const deviceId = pickConfigValue(
     pluginConfig.VCHAT_DEVICE_ID,
     adapterEnv.VCHAT_DEVICE_ID,
@@ -195,12 +279,8 @@ function buildConfig(pluginConfig = {}, projectBasePath = process.cwd()) {
     queuePath: path.join(syncDir, "offline_queue.jsonl"),
     lockPath: path.join(syncDir, "write_intents.jsonl"),
     attachmentDir: path.join(appDataPath, "UserData", "attachments"),
-    centerUrl: String(
-      pickConfigValue(
-        pluginConfig.VCHAT_SYNC_CENTER_URL,
-        adapterEnv.VCHAT_SYNC_CENTER_URL
-      )
-    ).replace(/\/+$/, ""),
+    centerUrl,
+    wsUrl,
     syncKey: pickConfigValue(
       pluginConfig.VCHAT_SYNC_KEY,
       adapterEnv.VCHAT_SYNC_KEY
@@ -231,6 +311,20 @@ function buildConfig(pluginConfig = {}, projectBasePath = process.cwd()) {
         adapterEnv.VCHAT_PULL_INTERVAL_MS
       ),
       15000
+    ),
+    topicActivityOrderIntervalMs: intValue(
+      pickConfigValue(
+        pluginConfig.VCHAT_TOPIC_ACTIVITY_ORDER_INTERVAL_MS,
+        adapterEnv.VCHAT_TOPIC_ACTIVITY_ORDER_INTERVAL_MS
+      ),
+      5 * 60 * 1000
+    ),
+    topicActivityOrderMaxOwnersPerRun: intValue(
+      pickConfigValue(
+        pluginConfig.VCHAT_TOPIC_ACTIVITY_ORDER_MAX_OWNERS_PER_RUN,
+        adapterEnv.VCHAT_TOPIC_ACTIVITY_ORDER_MAX_OWNERS_PER_RUN
+      ),
+      3
     ),
     multipartAttachmentThresholdBytes: intValue(
       pickConfigValue(
@@ -281,6 +375,7 @@ async function startAdapter(app, pluginConfig, projectBasePath) {
     adapterEnvPath: adapterEnvState.envPath,
     adapterEnvLoaded: adapterEnvState.loaded,
     centerUrl: config.centerUrl,
+    wsUrl: config.wsUrl,
     deviceId: config.deviceId,
     appDataPath: config.appDataPath,
   });
@@ -288,6 +383,7 @@ async function startAdapter(app, pluginConfig, projectBasePath) {
   const state = await readState(config, logger);
 
   state.mode = state.mode || config.mode || "uninitialized";
+
   state.enabled = config.enabled;
   state.device_id = config.deviceId;
 
@@ -317,6 +413,21 @@ async function startAdapter(app, pluginConfig, projectBasePath) {
     writeIntentLock,
     logger
   );
+  const themeWatcher = createThemeWatcher(
+    {
+      ...config,
+      themeStylesDir: path.resolve(projectBasePath, "styles", "themes"),
+      wallpaperDir: path.resolve(projectBasePath, "assets", "wallpaper"),
+      appRootPath: projectBasePath,
+    },
+    localIndex,
+    centerClient,
+    logger,
+    {
+      mode: state.mode || "uninitialized",
+      deviceId: config.deviceId,
+    }
+  );
 
   runtime = {
     config,
@@ -327,6 +438,7 @@ async function startAdapter(app, pluginConfig, projectBasePath) {
     offlineQueue,
     writeIntentLock,
     pullLoop,
+    themeWatcher,
     writeState: async (nextState) => writeState(config, nextState, logger),
     watcher: null,
     startedAt: new Date().toISOString(),
@@ -374,7 +486,9 @@ async function startAdapter(app, pluginConfig, projectBasePath) {
       return res.json(result);
     } catch (error) {
       logger.error("bootstrap action failed", { error: error.message });
-      return res.status(400).json({ ok: false, error: error.message });
+      return res
+        .status(error.statusCode || 400)
+        .json({ ok: false, error: error.message });
     }
   });
 
@@ -389,7 +503,9 @@ async function startAdapter(app, pluginConfig, projectBasePath) {
       });
       return res.json(manifest);
     } catch (error) {
-      return res.status(400).json({ ok: false, error: error.message });
+      return res
+        .status(error.statusCode || 400)
+        .json({ ok: false, error: error.message });
     }
   });
 
@@ -399,7 +515,9 @@ async function startAdapter(app, pluginConfig, projectBasePath) {
       const conflicts = await scanNormalizedIdConflicts(config.appDataPath);
       return res.json({ ok: true, conflicts });
     } catch (error) {
-      return res.status(400).json({ ok: false, error: error.message });
+      return res
+        .status(error.statusCode || 400)
+        .json({ ok: false, error: error.message });
     }
   });
 
@@ -446,13 +564,32 @@ async function startAdapter(app, pluginConfig, projectBasePath) {
       profile: "runtime",
       deviceId: config.deviceId,
       centerClient,
+      config,
       syncProfileConfig,
+    }
+  );
+  const themeScanResult = await syncLocalThemes(
+    {
+      ...config,
+      themeStylesDir: path.resolve(projectBasePath, "styles", "themes"),
+      wallpaperDir: path.resolve(projectBasePath, "assets", "wallpaper"),
+      appRootPath: projectBasePath,
+    },
+    localIndex,
+    centerClient,
+    logger,
+    {
+      mode: state.mode || "uninitialized",
+      deviceId: config.deviceId,
     }
   );
 
   state.last_scan_at = new Date().toISOString();
 
-  state.last_scan_result = scanResult.summary;
+  state.last_scan_result = {
+    ...scanResult.summary,
+    themes: themeScanResult.summary,
+  };
   await writeState(config, state, logger);
 
   await offlineQueue.start({
@@ -475,6 +612,7 @@ async function startAdapter(app, pluginConfig, projectBasePath) {
     }
   );
   await runtime.watcher.start();
+  await runtime.themeWatcher.start();
 
   logger.info("adapter started", {
     appDataPath: config.appDataPath,
@@ -497,6 +635,7 @@ function registerRoutes(app, pluginConfig = {}, projectBasePath) {
 
 async function shutdown() {
   if (runtime && runtime.watcher) await runtime.watcher.stop();
+  if (runtime && runtime.themeWatcher) await runtime.themeWatcher.stop();
   if (runtime && runtime.pullLoop) await runtime.pullLoop.stop();
   if (runtime && runtime.offlineQueue) await runtime.offlineQueue.stop();
   runtime = null;

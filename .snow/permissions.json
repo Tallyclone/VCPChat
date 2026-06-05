@@ -16,6 +16,9 @@
     "filesystem-readfilesystem-read",
     "subagent-agent_explore",
     "ide-get_diagnostics",
-    "ace-search"
+    "ace-search",
+    "todo_manage",
+    "subagent_agent_explore",
+    "ace_search"
   ]
 }

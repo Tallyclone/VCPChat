@@ -2,8 +2,8 @@
   "name": "DesktopRemote",
   "displayName": "桌面远程控制器",
   "pluginType": "synchronous",
-  "version": "1.4.0",
-  "description": "远程控制VCPdesktop桌面画布，支持推送壁纸、感知查询桌面状态、查询Dock应用列表、查看挂件源码、创建新挂件，以及指标驱动全局样式自动化。",
+  "version": "1.5.0",
+  "description": "远程控制VCPdesktop桌面画布，支持推送壁纸、感知查询桌面状态、按级别查询/源码级编辑挂件、查询Dock应用列表、查看挂件源码、创建新挂件、NativeFileMount Agent 操作，以及指标驱动全局样式自动化。",
   "author": "VCPToolBox",
   "license": "MIT",
   "entryPoint": {
@@ -27,6 +27,14 @@
         "description": "功能: 查询VCPdesktop的Dock栏完整应用列表，了解所有可用的应用、工具和启动方式。\n返回内容包括：\n- Dock快捷方式: 用户导入的Windows桌面快捷方式列表（名称、类型、可见性、启动代码）\n- VChat内部应用: 12个硬编码的VChat核心应用（如音乐播放器、笔记、翻译等），始终可用\n- Windows系统工具: 5个系统工具快捷入口（显示设置、控制面板等），始终可用\n- 内置桌面挂件: 天气挂件、音乐播放条、应用托盘等内置组件\n\n每个应用都附带对应的启动代码示例，可在Widget脚本中直接使用 `window.VCPDesktop.dock.launch(item)` 调用。\n\n此命令无需额外参数。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」DesktopRemote「末」,\ncommand:「始」QueryDock「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
+        "command": "QueryWidget",
+        "description": "功能: 按级别查询桌面上指定挂件(widget)的信息。用于在编辑前获取卡片摘要、可编辑源码或完整可恢复源码包。\\n\\n参数:\\n- widgetId (字符串, 必需): 要查询的挂件ID。\\n- level (字符串, 可选): 查询级别，支持 summary、editable、source，默认 summary。\\n  - summary: 返回卡片类型、标题、收藏状态、版本和摘要。\\n  - editable: 返回适合 Agent 修改的主 source，同时省略多文件内容正文。\\n  - source: 返回完整 source/config/files/layout 等可恢复信息。\\n\\n调用格式:\\n<<<[TOOL_REQUEST]>>>\\ntool_name:「始」DesktopRemote「末」,\\ncommand:「始」QueryWidget「末」,\\nwidgetId:「始」widget-abc123「末」,\\nlevel:「始」source「末」\\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "EditWidget",
+        "description": "功能: 对桌面上指定挂件(widget)执行源码级编辑。支持整体替换 source，也支持严格 target/replace 局部替换；系统应用后会整体重载卡片。建议先调用 QueryWidget level=source 获取 sourceVersion，并在编辑时传入 baseSourceVersion 防止覆盖并发修改。\\n\\n参数:\\n- widgetId (字符串, 必需): 要编辑的挂件ID。\\n- mode (字符串, 可选): replace 或 targetReplace，默认 targetReplace。\\n- sourceFormat (字符串, 可选): desktopBuiltin、htmlPackage 或 inlineHtml。\\n- source (字符串, replace 模式必需): 新的完整源码。\\n- targetFile (字符串, 可选): htmlPackage 非主文件编辑目标。\\n- target / replace (字符串, targetReplace 模式必需): 要精确替换的旧文本和新文本。\\n- replacements (数组, 可选): 多处替换数组；也可只传单组 target/replace。\\n- baseSourceVersion (数字, 推荐): QueryWidget 返回的 sourceVersion。\\n- persist (字符串, 可选): runtime、ask、silent；silent 当前会被安全策略拒绝，默认 runtime。\\n\\n调用示例 - 局部替换:\\n<<<[TOOL_REQUEST]>>>\\ntool_name:「始」DesktopRemote「末」,\\ncommand:「始」EditWidget「末」,\\nwidgetId:「始」widget-abc123「末」,\\nmode:「始」targetReplace「末」,\\nsourceFormat:「始」htmlPackage「末」,\\ntarget:「始」color: #fff;「末」,\\nreplace:「始」color: #38bdf8;「末」,\\nbaseSourceVersion:「始」3「末」,\\npersist:「始」runtime「末」\\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
         "command": "ViewWidgetSource",
         "description": "功能: 查看桌面上指定挂件(widget)的HTML源码内容。通过提供挂件ID，可以获取该挂件当前正在渲染的完整HTML代码。这对于理解挂件的结构、调试问题或基于现有挂件进行修改非常有用。\n\n建议先调用 QueryDesktop 获取挂件ID列表，再使用此命令查看特定挂件的源码。\n\n参数:\n- widgetId (字符串, 必需): 要查看源码的挂件ID。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」DesktopRemote「末」,\ncommand:「始」ViewWidgetSource「末」,\nwidgetId:「始」widget-abc123「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
@@ -41,6 +49,14 @@
       {
         "command": "GetStyleAutomationStatus",
         "description": "功能: 查询 VCPdesktop 全局样式自动化的运行状态与当前配置摘要。"
+      },
+      {
+        "command": "NativeFileMountAction",
+        "description": "功能: 向指定 NativeFileMount 文件映射卡片提交 Agent 文件操作计划。Agent 在卡片内协助用户整理文件，操作实时可见。\n\n⚠️ 安全约束：\n- Agent 不得直接调用 desktopAPI.nativeFsAction\n- Agent 不得持有或获取 capabilityToken\n- 只提交操作计划，不直接执行\n- 所有操作必须经用户确认\n- operations 中不允许包含 openWith 操作\n- 不得在 operations 中指定 appPath\n\n参数：\n- widgetId (字符串, 必需): NativeFileMount 卡片的 widgetId\n- mountId (字符串, 必需): 挂载点 ID\n- source (字符串, 必需): 固定为 \"agent\"\n- intent (字符串, 必需): 操作意图描述（如 \"organizeByDate\"）\n- summary (字符串, 必需): 操作摘要（如 \"按月份整理 126 张图片到子文件夹\"）\n- operations (数组, 必需): 操作列表，每个操作包含：\n  - id (字符串): 操作唯一标识（如 \"op_001\"）\n  - action (字符串): 操作类型，支持：\n    - newFolder: 新建文件夹（需 parentDir, name）\n    - move: 移动文件（需 from, to）\n    - rename: 重命名（需 from, to）\n    - copy: 复制文件（需 from, to）\n    - trash: 删除到回收站（需 targetPath）\n  - 其他字段根据 action 类型而定\n- risk (对象, 可选): 风险统计\n  - creates (数字): 新建文件夹数量\n  - moves (数字): 移动文件数量\n  - renames (数字): 重命名数量\n  - overwrites (数字): 覆盖文件数量\n  - trashes (数字): 删除文件数量\n\n返回结构：\n- 成功: { ok: true, data: { status: \"completed\", completed: 数量, failed: 0, summary: \"摘要\" } }\n- 部分失败: { ok: true, data: { status: \"partial_failed\", completed: 数量, failed: 数量, stoppedAtOp: \"op_id\", error: \"错误信息\" } }\n- 用户拒绝: { ok: true, data: { status: \"rejected\", reason: \"user_denied\" } }\n- 超时: { ok: true, data: { status: \"timed_out\" } }\n- 用户取消: { ok: true, data: { status: \"cancelled\", completed: 数量, remaining: 数量 } }\n\n调用示例 - 按月份整理照片：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」DesktopRemote「末」,\ncommand:「始」NativeFileMountAction「末」,\nwidgetId:「始」nfm-abc123「末」,\nmountId:「始」mount-xyz「末」,\nsource:「始」agent「末」,\nintent:「始」organizeByDate「末」,\nsummary:「始」按月份整理 126 张图片到子文件夹「末」,\noperations:「始」[{\"id\":\"op_001\",\"action\":\"newFolder\",\"parentDir\":\"D:\\\\\\\\Photos\",\"name\":\"2026-05\"},{\"id\":\"op_002\",\"action\":\"move\",\"from\":\"D:\\\\\\\\Photos\\\\\\\\a.jpg\",\"to\":\"D:\\\\\\\\Photos\\\\\\\\2026-05\\\\\\\\a.jpg\"}]「末」,\nrisk:「始」{\"creates\":5,\"moves\":126,\"renames\":0,\"overwrites\":0,\"trashes\":0}「末」\n<<<[END_TOOL_REQUEST]>>>\n\n调用示例 - 批量重命名文件：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」DesktopRemote「末」,\ncommand:「始」NativeFileMountAction「末」,\nwidgetId:「始」nfm-abc123「末」,\nmountId:「始」mount-xyz「末」,\nsource:「始」agent「末」,\nintent:「始」renameWithPrefix「末」,\nsummary:「始」为 50 个文件添加日期前缀「末」,\noperations:「始」[{\"id\":\"op_001\",\"action\":\"rename\",\"from\":\"D:\\\\\\\\Docs\\\\\\\\report.pdf\",\"to\":\"D:\\\\\\\\Docs\\\\\\\\20260524_report.pdf\"},{\"id\":\"op_002\",\"action\":\"rename\",\"from\":\"D:\\\\\\\\Docs\\\\\\\\data.xlsx\",\"to\":\"D:\\\\\\\\Docs\\\\\\\\20260524_data.xlsx\"}]「末」,\nrisk:「始」{\"creates\":0,\"moves\":0,\"renames\":50,\"overwrites\":0,\"trashes\":0}「末」\n<<<[END_TOOL_REQUEST]>>>\n\n注意事项：\n- 操作按 operations 数组顺序逐个执行，不并行\n- 某个操作失败会停止后续操作\n- 已完成的操作不回滚\n- 高风险操作（trash/overwrite）需要用户额外确认\n- 超时时间为 120 秒，可配置到 300 秒"
+      },
+      {
+        "command": "QueryNativeFileMounts",
+        "description": "功能: 查询当前活跃的 NativeFileMount 文件映射卡片列表。用于获取 widgetId 和 mountId，以便后续调用 NativeFileMountAction。\n\n返回内容：\n- 活跃卡片列表，每个卡片包含：\n  - widgetId (字符串): 卡片的唯一标识\n  - mountId (字符串): 挂载点 ID\n  - title (字符串): 卡片标题\n  - rootPath (字符串): 挂载的根目录路径\n  - mode (字符串): 访问模式（\"readonly\" 或 \"readwrite\"）\n\n⚠️ 安全说明：\n- 不会返回 capabilityToken（安全令牌仅主进程和卡片实例持有）\n- Agent 只能查询卡片信息，不能直接操作文件\n\n此命令无需额外参数。\n\n调用格式：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」DesktopRemote「末」,\ncommand:「始」QueryNativeFileMounts「末」\n<<<[END_TOOL_REQUEST]>>>\n\n返回示例：\n[\n  {\n    \"widgetId\": \"nfm-abc123\",\n    \"mountId\": \"mount-xyz789\",\n    \"title\": \"项目目录\",\n    \"rootPath\": \"D:\\\\Projects\\\\MyApp\",\n    \"mode\": \"readwrite\"\n  },\n  {\n    \"widgetId\": \"nfm-def456\",\n    \"mountId\": \"mount-uvw012\",\n    \"title\": \"照片文件夹\",\n    \"rootPath\": \"C:\\\\Users\\\\Username\\\\Pictures\",\n    \"mode\": \"readonly\"\n  }\n]\n\n使用场景：\n1. 在执行 NativeFileMountAction 前，先调用此命令获取可用的卡片列表\n2. 向用户展示当前打开的文件映射卡片\n3. 确认目标卡片的访问模式（readonly 卡片不能执行写操作）"
       }
     ]
   }

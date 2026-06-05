@@ -1,5 +1,7 @@
 // modules/renderer/contentPipeline.js
 
+import { getDesktopBuiltinLabel } from "./desktopBuiltinParser.js";
+
 /**
  * 统一内容预处理流水线
  *
@@ -14,232 +16,428 @@
  */
 
 const PIPELINE_MODES = {
-    FULL_RENDER: 'full-render',
-    STREAM_FAST: 'stream-fast'
+  FULL_RENDER: "full-render",
+  STREAM_FAST: "stream-fast",
 };
 
 function noop(value) {
-    return value;
+  return value;
 }
 
 function createMapPlaceholderReplacer(map) {
-    if (!map || map.size === 0) {
-        return noop;
-    }
+  if (!map || map.size === 0) {
+    return noop;
+  }
 
-    return (text) => {
-        let result = text;
-        for (const [placeholder, original] of map.entries()) {
-            if (result.includes(placeholder)) {
-                result = result.replace(placeholder, () => original);
-            }
-        }
-        return result;
-    };
+  return (text) => {
+    let result = text;
+    for (const [placeholder, original] of map.entries()) {
+      if (result.includes(placeholder)) {
+        result = result.replace(placeholder, () => original);
+      }
+    }
+    return result;
+  };
 }
 
 function createContentPipeline(deps = {}) {
-    const {
-        escapeHtml = (text) => text,
-        processStartEndMarkers = (text) => text,
-        fixEmoticonUrlsInMarkdown = (text) => text,
-        deIndentMisinterpretedCodeBlocks = (text) => text,
-        deIndentHtml = (text) => text,
-        deIndentToolRequestBlocks = (text) => text,
-        applyContentProcessors = (text) => text,
-        transformSpecialBlocks = (text) => text,
-        ensureHtmlFenced = (text) => text,
-        transformMermaidPlaceholders = (text) => text,
-        getToolResultRegex = null,
-        getCodeFenceRegex = null,
-        getDesktopPushRegex = null,
-        getDesktopPushPartialRegex = null,
-    } = deps;
+  const {
+    escapeHtml = (text) => text,
+    processStartEndMarkers = (text) => text,
+    fixEmoticonUrlsInMarkdown = (text) => text,
+    deIndentMisinterpretedCodeBlocks = (text) => text,
+    deIndentHtml = (text) => text,
+    deIndentToolRequestBlocks = (text) => text,
+    applyContentProcessors = (text) => text,
+    transformSpecialBlocks = (text) => text,
+    ensureHtmlFenced = (text) => text,
+    transformMermaidPlaceholders = (text) => text,
+    getToolResultRegex = null,
+    getCodeFenceRegex = null,
+    getDesktopPushRegex = null,
+    getDesktopPushPartialRegex = null,
+    getDesktopWidgetRegex = null,
+    getDesktopWidgetPartialRegex = null,
+    getDesktopBuiltinRegex = null,
+    getDesktopBuiltinPartialRegex = null,
+    getDesktopWidgetEditRegex = null,
+    getDesktopWidgetEditPartialRegex = null,
+  } = deps;
 
-    function createContext(inputText, options = {}) {
-        return {
-            mode: options.mode || PIPELINE_MODES.FULL_RENDER,
-            text: typeof inputText === 'string' ? inputText : '',
-            options,
-            meta: {
-                stepsApplied: []
-            },
-            state: {
-                toolResultMap: null,
-                codeBlockMap: null,
-                toolResultPlaceholderId: 0,
-                codeBlockPlaceholderId: 0
-            }
-        };
+  function createContext(inputText, options = {}) {
+    return {
+      mode: options.mode || PIPELINE_MODES.FULL_RENDER,
+      text: typeof inputText === "string" ? inputText : "",
+      options,
+      meta: {
+        stepsApplied: [],
+      },
+      state: {
+        toolResultMap: null,
+        codeBlockMap: null,
+        toolResultPlaceholderId: 0,
+        codeBlockPlaceholderId: 0,
+      },
+    };
+  }
+
+  function step(ctx, name, handler) {
+    ctx.text = handler(ctx.text, ctx) ?? ctx.text;
+    ctx.meta.stepsApplied.push(name);
+    return ctx;
+  }
+
+  function protectToolResults(text, ctx) {
+    const toolResultRegex =
+      typeof getToolResultRegex === "function" ? getToolResultRegex() : null;
+    if (!toolResultRegex) return text;
+
+    toolResultRegex.lastIndex = 0;
+    const hasToolResults = toolResultRegex.test(text);
+    toolResultRegex.lastIndex = 0;
+
+    if (!hasToolResults) return text;
+
+    ctx.state.toolResultMap = new Map();
+    const result = text.replace(toolResultRegex, (match) => {
+      // 🟢 架构级修复：工具结果块保持原始内容不做任何转义
+      // 占位符将贯穿整个 Markdown 解析过程，在 parse() 之后才恢复为渲染好的 HTML
+      // 🔴 关键：使用 HTML 注释格式，避免 __ 被 Markdown 解释为粗体
+      const placeholder = `<!--VCP_TOOL_RESULT_${ctx.state.toolResultPlaceholderId}-->`;
+      ctx.state.toolResultMap.set(placeholder, match);
+      ctx.state.toolResultPlaceholderId += 1;
+      return placeholder;
+    });
+    toolResultRegex.lastIndex = 0;
+    return result;
+  }
+
+  function protectCodeBlocks(text, ctx) {
+    const codeFenceRegex =
+      typeof getCodeFenceRegex === "function" ? getCodeFenceRegex() : null;
+    if (!codeFenceRegex || !/```/.test(text)) return text;
+
+    ctx.state.codeBlockMap = new Map();
+    return text.replace(codeFenceRegex, (match) => {
+      const placeholder = `__VCP_CODE_BLOCK_PLACEHOLDER_${ctx.state.codeBlockPlaceholderId}__`;
+      ctx.state.codeBlockMap.set(placeholder, match);
+      ctx.state.codeBlockPlaceholderId += 1;
+      return placeholder;
+    });
+  }
+
+  function restoreCodeBlocks(text, ctx) {
+    return createMapPlaceholderReplacer(ctx.state.codeBlockMap)(text);
+  }
+
+  function transformDesktopPush(text, ctx) {
+    const desktopPushRegex =
+      typeof getDesktopPushRegex === "function" ? getDesktopPushRegex() : null;
+    const desktopPushPartialRegex =
+      typeof getDesktopPushPartialRegex === "function"
+        ? getDesktopPushPartialRegex()
+        : null;
+    const desktopWidgetRegex =
+      typeof getDesktopWidgetRegex === "function"
+        ? getDesktopWidgetRegex()
+        : null;
+    const desktopWidgetPartialRegex =
+      typeof getDesktopWidgetPartialRegex === "function"
+        ? getDesktopWidgetPartialRegex()
+        : null;
+    const desktopBuiltinRegex =
+      typeof getDesktopBuiltinRegex === "function"
+        ? getDesktopBuiltinRegex()
+        : null;
+    const desktopBuiltinPartialRegex =
+      typeof getDesktopBuiltinPartialRegex === "function"
+        ? getDesktopBuiltinPartialRegex()
+        : null;
+    const desktopWidgetEditRegex =
+      typeof getDesktopWidgetEditRegex === "function"
+        ? getDesktopWidgetEditRegex()
+        : null;
+    const desktopWidgetEditPartialRegex =
+      typeof getDesktopWidgetEditPartialRegex === "function"
+        ? getDesktopWidgetEditPartialRegex()
+        : null;
+
+    if (
+      !desktopPushRegex &&
+      !desktopPushPartialRegex &&
+      !desktopWidgetRegex &&
+      !desktopWidgetPartialRegex &&
+      !desktopBuiltinRegex &&
+      !desktopBuiltinPartialRegex &&
+      !desktopWidgetEditRegex &&
+      !desktopWidgetEditPartialRegex
+    ) {
+      return text;
     }
 
-    function step(ctx, name, handler) {
-        ctx.text = handler(ctx.text, ctx) ?? ctx.text;
-        ctx.meta.stepsApplied.push(name);
-        return ctx;
+    if (desktopPushRegex) desktopPushRegex.lastIndex = 0;
+    if (desktopPushPartialRegex) desktopPushPartialRegex.lastIndex = 0;
+    if (desktopWidgetRegex) desktopWidgetRegex.lastIndex = 0;
+    if (desktopWidgetPartialRegex) desktopWidgetPartialRegex.lastIndex = 0;
+    if (desktopBuiltinRegex) desktopBuiltinRegex.lastIndex = 0;
+    if (desktopBuiltinPartialRegex) desktopBuiltinPartialRegex.lastIndex = 0;
+
+    let result = text;
+
+    if (desktopPushRegex) {
+      result = result.replace(desktopPushRegex, (match, rawContent) => {
+        const content = rawContent.trim();
+        const escapedPreview = escapeHtml(
+          content.length > 120 ? content.substring(0, 120) + "..." : content
+        );
+        return (
+          `<div class="vcp-desktop-push-placeholder">` +
+          `<div class="vcp-desktop-push-header">` +
+          `<span class="vcp-desktop-push-icon">🖥️</span>` +
+          `<span class="vcp-desktop-push-label">已推送到桌面画布</span>` +
+          `</div>` +
+          `<div class="vcp-desktop-push-preview"><pre>${escapedPreview}</pre></div>` +
+          `</div>`
+        );
+      });
     }
 
-    function protectToolResults(text, ctx) {
-        const toolResultRegex = typeof getToolResultRegex === 'function' ? getToolResultRegex() : null;
-        if (!toolResultRegex) return text;
-
-        toolResultRegex.lastIndex = 0;
-        const hasToolResults = toolResultRegex.test(text);
-        toolResultRegex.lastIndex = 0;
-
-        if (!hasToolResults) return text;
-
-        ctx.state.toolResultMap = new Map();
-        const result = text.replace(toolResultRegex, (match) => {
-            // 🟢 架构级修复：工具结果块保持原始内容不做任何转义
-            // 占位符将贯穿整个 Markdown 解析过程，在 parse() 之后才恢复为渲染好的 HTML
-            // 🔴 关键：使用 HTML 注释格式，避免 __ 被 Markdown 解释为粗体
-            const placeholder = `<!--VCP_TOOL_RESULT_${ctx.state.toolResultPlaceholderId}-->`;
-            ctx.state.toolResultMap.set(placeholder, match);
-            ctx.state.toolResultPlaceholderId += 1;
-            return placeholder;
-        });
-        toolResultRegex.lastIndex = 0;
-        return result;
+    if (desktopWidgetRegex) {
+      result = result.replace(desktopWidgetRegex, (match, rawContent) => {
+        let label = "桌面内置挂件创建请求已发送";
+        try {
+          const payload = JSON.parse(rawContent.trim());
+          if (payload?.type === "nativeFileMount") {
+            label = `NativeFileMount 创建请求已发送：${escapeHtml(
+              payload.title || payload.config?.mountPath || "本机文件夹"
+            )}`;
+          }
+        } catch (error) {}
+        return (
+          `<div class="vcp-desktop-push-placeholder">` +
+          `<div class="vcp-desktop-push-header">` +
+          `<span class="vcp-desktop-push-icon">📁</span>` +
+          `<span class="vcp-desktop-push-label">${label}</span>` +
+          `</div>` +
+          `</div>`
+        );
+      });
     }
 
-    function protectCodeBlocks(text, ctx) {
-        const codeFenceRegex = typeof getCodeFenceRegex === 'function' ? getCodeFenceRegex() : null;
-        if (!codeFenceRegex || !/```/.test(text)) return text;
-
-        ctx.state.codeBlockMap = new Map();
-        return text.replace(codeFenceRegex, (match) => {
-            const placeholder = `__VCP_CODE_BLOCK_PLACEHOLDER_${ctx.state.codeBlockPlaceholderId}__`;
-            ctx.state.codeBlockMap.set(placeholder, match);
-            ctx.state.codeBlockPlaceholderId += 1;
-            return placeholder;
-        });
+    if (desktopBuiltinRegex) {
+      result = result.replace(desktopBuiltinRegex, (match, rawContent) => {
+        const label = getDesktopBuiltinLabel(rawContent, escapeHtml);
+        return (
+          `<div class="vcp-desktop-push-placeholder">` +
+          `<div class="vcp-desktop-push-header">` +
+          `<span class="vcp-desktop-push-icon">🧩</span>` +
+          `<span class="vcp-desktop-push-label">${label}</span>` +
+          `</div>` +
+          `</div>`
+        );
+      });
     }
 
-    function restoreCodeBlocks(text, ctx) {
-        return createMapPlaceholderReplacer(ctx.state.codeBlockMap)(text);
+    if (desktopWidgetEditRegex) {
+      result = result.replace(desktopWidgetEditRegex, (match, rawContent) => {
+        return (
+          `<div class="vcp-desktop-push-placeholder constructing">` +
+          `<div class="vcp-desktop-push-header">` +
+          `<span class="vcp-desktop-push-icon">✏️</span>` +
+          `<span class="vcp-desktop-push-label">桌面卡片编辑请求已发送</span>` +
+          `</div>` +
+          `<div class="vcp-desktop-push-preview"><pre>${escapeHtml(
+            rawContent.trim().slice(0, 120)
+          )}</pre></div>` +
+          `</div>`
+        );
+      });
     }
 
-    function transformDesktopPush(text, ctx) {
-        const desktopPushRegex = typeof getDesktopPushRegex === 'function' ? getDesktopPushRegex() : null;
-        const desktopPushPartialRegex = typeof getDesktopPushPartialRegex === 'function' ? getDesktopPushPartialRegex() : null;
-        if (!desktopPushRegex || !desktopPushPartialRegex) return text;
-
-        desktopPushRegex.lastIndex = 0;
-        desktopPushPartialRegex.lastIndex = 0;
-
-        let result = text.replace(desktopPushRegex, (match, rawContent) => {
-            const content = rawContent.trim();
-            const escapedPreview = escapeHtml(content.length > 120 ? content.substring(0, 120) + '...' : content);
-            return `<div class="vcp-desktop-push-placeholder">` +
-                `<div class="vcp-desktop-push-header">` +
-                `<span class="vcp-desktop-push-icon">🖥️</span>` +
-                `<span class="vcp-desktop-push-label">已推送到桌面画布</span>` +
-                `</div>` +
-                `<div class="vcp-desktop-push-preview"><pre>${escapedPreview}</pre></div>` +
-                `</div>`;
-        });
-
-        result = result.replace(desktopPushPartialRegex, (match, partialContent) => {
-            const content = partialContent.trim();
-            const lines = content.split('\n');
-            const totalLines = lines.length;
-            const tailLines = lines.slice(-3).join('\n');
-            const escapedPreview = escapeHtml(tailLines.length > 120 ? tailLines.substring(tailLines.length - 120) : tailLines);
-            const lineCountInfo = totalLines > 3 ? `(${totalLines} 行)` : '';
-            return `<div class="vcp-desktop-push-placeholder constructing">` +
-                `<div class="vcp-desktop-push-header">` +
-                `<span class="vcp-desktop-push-icon">🖥️</span>` +
-                `<span class="vcp-desktop-push-label">正在向桌面推送 ${escapeHtml(lineCountInfo)}<span class="thinking-indicator-dots">...</span></span>` +
-                `</div>` +
-                `<div class="vcp-desktop-push-preview"><pre>${escapedPreview}</pre></div>` +
-                `</div>`;
-        });
-
-        desktopPushRegex.lastIndex = 0;
-        desktopPushPartialRegex.lastIndex = 0;
-
-        return result;
-    }
-
-    function runFullRenderPipeline(inputText, options = {}) {
-        const ctx = createContext(inputText, { ...options, mode: PIPELINE_MODES.FULL_RENDER });
-
-        step(ctx, 'normalize-emoticon-urls', (text) => fixEmoticonUrlsInMarkdown(text));
-
-        // 顺序协议：
-        // 🔴 关键修复：工具结果必须在「始」/「末」标记转义之前被保护
-        // 否则 processStartEndMarkers 会错误地转义工具结果内部的标记，
-        // 导致后续 transformSpecialBlocks 处理时产生双重转义和内容泄漏
-        // 1. 最先做工具结果保护（它们可能包含任意内容，包括代码块、标记等）
-        step(ctx, 'protect-tool-results', protectToolResults);
-
-        // 2. 然后安全地处理标记转义（此时只处理工具结果外部的标记）
-        step(ctx, 'escape-start-end-markers', (text) => processStartEndMarkers(text));
-        step(ctx, 'transform-mermaid-placeholders', (text) => transformMermaidPlaceholders(text));
-
-        // 3. 保护代码块
-        step(ctx, 'protect-code-blocks', protectCodeBlocks);
-
-        // 4. 再做会改变行首语义/结构边界的修正
-        step(ctx, 'deindent-misinterpreted-code-blocks', (text) => deIndentMisinterpretedCodeBlocks(text));
-        step(ctx, 'deindent-html', (text) => deIndentHtml(text));
-        step(ctx, 'deindent-tool-request-blocks', (text) => deIndentToolRequestBlocks(text));
-
-        // 5. 再做结构转换
-        step(ctx, 'transform-desktop-push', transformDesktopPush);
-
-        // 6. 🟢 架构级修复：不再恢复工具结果
-        // 工具结果占位符将贯穿 Markdown 解析，在 parse() 之后才由调用方替换为渲染好的 HTML
-        // 这彻底避免了工具结果内部的 Markdown 语法（表格、代码围栏等）干扰外部解析
-
-        // 7. 特殊块转换（此时工具结果仍为占位符，transformSpecialBlocks 中的 TOOL_RESULT_REGEX 不会匹配到任何内容）
-        step(ctx, 'transform-special-blocks', (text) => transformSpecialBlocks(text, ctx.state.codeBlockMap));
-        step(ctx, 'ensure-html-fenced', (text) => ensureHtmlFenced(text));
-        step(ctx, 'apply-common-content-processors', (text) => applyContentProcessors(text));
-
-        // 8. 最后恢复代码块
-        step(ctx, 'restore-code-blocks', restoreCodeBlocks);
-
-        return {
-            text: ctx.text,
-            meta: ctx.meta,
-            state: ctx.state
-        };
-    }
-
-    function runStreamFastPipeline(inputText, options = {}) {
-        const ctx = createContext(inputText, { ...options, mode: PIPELINE_MODES.STREAM_FAST });
-
-        // 流式快路径只保留轻量、幂等、低风险修正
-        step(ctx, 'normalize-emoticon-urls', (text) => fixEmoticonUrlsInMarkdown(text));
-        step(ctx, 'deindent-misinterpreted-code-blocks', (text) => deIndentMisinterpretedCodeBlocks(text));
-        step(ctx, 'escape-start-end-markers', (text) => processStartEndMarkers(text));
-        step(ctx, 'apply-common-content-processors', (text) => applyContentProcessors(text));
-
-        return {
-            text: ctx.text,
-            meta: ctx.meta,
-            state: ctx.state
-        };
-    }
-
-    function process(inputText, options = {}) {
-        const mode = options.mode || PIPELINE_MODES.FULL_RENDER;
-        if (mode === PIPELINE_MODES.STREAM_FAST) {
-            return runStreamFastPipeline(inputText, options);
+    if (desktopPushPartialRegex) {
+      result = result.replace(
+        desktopPushPartialRegex,
+        (match, partialContent) => {
+          const content = partialContent.trim();
+          const lines = content.split("\n");
+          const totalLines = lines.length;
+          const tailLines = lines.slice(-3).join("\n");
+          const escapedPreview = escapeHtml(
+            tailLines.length > 120
+              ? tailLines.substring(tailLines.length - 120)
+              : tailLines
+          );
+          const lineCountInfo = totalLines > 3 ? `(${totalLines} 行)` : "";
+          return (
+            `<div class="vcp-desktop-push-placeholder constructing">` +
+            `<div class="vcp-desktop-push-header">` +
+            `<span class="vcp-desktop-push-icon">🖥️</span>` +
+            `<span class="vcp-desktop-push-label">正在向桌面推送 ${escapeHtml(
+              lineCountInfo
+            )}<span class="thinking-indicator-dots">...</span></span>` +
+            `</div>` +
+            `<div class="vcp-desktop-push-preview"><pre>${escapedPreview}</pre></div>` +
+            `</div>`
+          );
         }
-        return runFullRenderPipeline(inputText, options);
+      );
     }
+
+    if (desktopWidgetPartialRegex) {
+      result = result.replace(desktopWidgetPartialRegex, () => {
+        return (
+          `<div class="vcp-desktop-push-placeholder constructing">` +
+          `<div class="vcp-desktop-push-header">` +
+          `<span class="vcp-desktop-push-icon">📁</span>` +
+          `<span class="vcp-desktop-push-label">正在发送桌面内置挂件创建请求<span class="thinking-indicator-dots">...</span></span>` +
+          `</div>` +
+          `</div>`
+        );
+      });
+    }
+
+    if (desktopBuiltinPartialRegex) {
+      result = result.replace(desktopBuiltinPartialRegex, () => {
+        return (
+          `<div class="vcp-desktop-push-placeholder constructing">` +
+          `<div class="vcp-desktop-push-header">` +
+          `<span class="vcp-desktop-push-icon">🧩</span>` +
+          `<span class="vcp-desktop-push-label">正在发送 DESKTOP_BUILTIN 创建请求<span class="thinking-indicator-dots">...</span></span>` +
+          `</div>` +
+          `</div>`
+        );
+      });
+    }
+
+    if (desktopWidgetEditPartialRegex) {
+      result = result.replace(desktopWidgetEditPartialRegex, () => {
+        return (
+          `<div class="vcp-desktop-push-placeholder constructing">` +
+          `<div class="vcp-desktop-push-header">` +
+          `<span class="vcp-desktop-push-icon">✏️</span>` +
+          `<span class="vcp-desktop-push-label">正在发送桌面卡片编辑请求<span class="thinking-indicator-dots">...</span></span>` +
+          `</div>` +
+          `</div>`
+        );
+      });
+    }
+
+    if (desktopPushRegex) desktopPushRegex.lastIndex = 0;
+    if (desktopPushPartialRegex) desktopPushPartialRegex.lastIndex = 0;
+    if (desktopWidgetRegex) desktopWidgetRegex.lastIndex = 0;
+    if (desktopWidgetPartialRegex) desktopWidgetPartialRegex.lastIndex = 0;
+    if (desktopBuiltinRegex) desktopBuiltinRegex.lastIndex = 0;
+    if (desktopBuiltinPartialRegex) desktopBuiltinPartialRegex.lastIndex = 0;
+    if (desktopWidgetEditRegex) desktopWidgetEditRegex.lastIndex = 0;
+    if (desktopWidgetEditPartialRegex)
+      desktopWidgetEditPartialRegex.lastIndex = 0;
+
+    return result;
+  }
+
+  function runFullRenderPipeline(inputText, options = {}) {
+    const ctx = createContext(inputText, {
+      ...options,
+      mode: PIPELINE_MODES.FULL_RENDER,
+    });
+
+    step(ctx, "normalize-emoticon-urls", (text) =>
+      fixEmoticonUrlsInMarkdown(text)
+    );
+
+    // 顺序协议：
+    // 🔴 关键修复：工具结果必须在「始」/「末」标记转义之前被保护
+    // 否则 processStartEndMarkers 会错误地转义工具结果内部的标记，
+    // 导致后续 transformSpecialBlocks 处理时产生双重转义和内容泄漏
+    // 1. 最先做工具结果保护（它们可能包含任意内容，包括代码块、标记等）
+    step(ctx, "protect-tool-results", protectToolResults);
+
+    // 2. 然后安全地处理标记转义（此时只处理工具结果外部的标记）
+    step(ctx, "escape-start-end-markers", (text) =>
+      processStartEndMarkers(text)
+    );
+    step(ctx, "transform-mermaid-placeholders", (text) =>
+      transformMermaidPlaceholders(text)
+    );
+
+    // 3. 保护代码块
+    step(ctx, "protect-code-blocks", protectCodeBlocks);
+
+    // 4. 再做会改变行首语义/结构边界的修正
+    step(ctx, "deindent-misinterpreted-code-blocks", (text) =>
+      deIndentMisinterpretedCodeBlocks(text)
+    );
+    step(ctx, "deindent-html", (text) => deIndentHtml(text));
+    step(ctx, "deindent-tool-request-blocks", (text) =>
+      deIndentToolRequestBlocks(text)
+    );
+
+    // 5. 再做结构转换
+    step(ctx, "transform-desktop-push", transformDesktopPush);
+
+    // 6. 🟢 架构级修复：不再恢复工具结果
+    // 工具结果占位符将贯穿 Markdown 解析，在 parse() 之后才由调用方替换为渲染好的 HTML
+    // 这彻底避免了工具结果内部的 Markdown 语法（表格、代码围栏等）干扰外部解析
+
+    // 7. 特殊块转换（此时工具结果仍为占位符，transformSpecialBlocks 中的 TOOL_RESULT_REGEX 不会匹配到任何内容）
+    step(ctx, "transform-special-blocks", (text) =>
+      transformSpecialBlocks(text, ctx.state.codeBlockMap)
+    );
+    step(ctx, "ensure-html-fenced", (text) => ensureHtmlFenced(text));
+    step(ctx, "apply-common-content-processors", (text) =>
+      applyContentProcessors(text)
+    );
+
+    // 8. 最后恢复代码块
+    step(ctx, "restore-code-blocks", restoreCodeBlocks);
 
     return {
-        process,
-        runFullRenderPipeline,
-        runStreamFastPipeline
+      text: ctx.text,
+      meta: ctx.meta,
+      state: ctx.state,
     };
+  }
+
+  function runStreamFastPipeline(inputText, options = {}) {
+    const ctx = createContext(inputText, {
+      ...options,
+      mode: PIPELINE_MODES.STREAM_FAST,
+    });
+
+    // 流式快路径只保留轻量、幂等、低风险修正
+    step(ctx, "normalize-emoticon-urls", (text) =>
+      fixEmoticonUrlsInMarkdown(text)
+    );
+    step(ctx, "deindent-misinterpreted-code-blocks", (text) =>
+      deIndentMisinterpretedCodeBlocks(text)
+    );
+    step(ctx, "escape-start-end-markers", (text) =>
+      processStartEndMarkers(text)
+    );
+    step(ctx, "apply-common-content-processors", (text) =>
+      applyContentProcessors(text)
+    );
+
+    return {
+      text: ctx.text,
+      meta: ctx.meta,
+      state: ctx.state,
+    };
+  }
+
+  function process(inputText, options = {}) {
+    const mode = options.mode || PIPELINE_MODES.FULL_RENDER;
+    if (mode === PIPELINE_MODES.STREAM_FAST) {
+      return runStreamFastPipeline(inputText, options);
+    }
+    return runFullRenderPipeline(inputText, options);
+  }
+
+  return {
+    process,
+    runFullRenderPipeline,
+    runStreamFastPipeline,
+  };
 }
 
-export {
-    PIPELINE_MODES,
-    createContentPipeline
-};
+export { PIPELINE_MODES, createContentPipeline };
