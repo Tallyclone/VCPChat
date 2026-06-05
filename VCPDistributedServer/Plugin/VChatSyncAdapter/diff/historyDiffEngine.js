@@ -231,7 +231,9 @@ async function diffHistory(
     }
   }
 
+  const previousTopicSnapshot = localIndex.getTopicSnapshot(tKey) || {};
   await localIndex.setTopicSnapshot(tKey, {
+    ...previousTopicSnapshot,
     topic_key: tKey,
     message_count: current.size,
     scanned_at: new Date().toISOString(),

@@ -243,6 +243,88 @@ function itemParentDirForConfig(appDataPath, entry) {
   return path.join(appDataPath, base, encodeURIComponent(identity.item_id));
 }
 
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function absolutePathForEntry(appDataPath, entry) {
+  if (!entry || !entry.relativePath) return null;
+  return path.join(appDataPath, entry.relativePath.replace(/\//g, path.sep));
+}
+
+function deleteConfirmDelayForEntry(entry, context = {}) {
+  const configured = context.deleteConfirmDelaysMs || {};
+  const legacyDefault =
+    context.deleteConfirmDelayMs === undefined
+      ? undefined
+      : Number(context.deleteConfirmDelayMs);
+  const fallback = Number.isFinite(legacyDefault) ? legacyDefault : 1200;
+  const readDelay = (name, defaultValue) => {
+    const value = Number(configured[name]);
+    return Number.isFinite(value) ? value : defaultValue;
+  };
+
+  if (!entry) return readDelay("default", fallback);
+  if (entry.type === "item") return readDelay("itemDir", 7000);
+  if (entry.type === "topic") return readDelay("topicDir", 3000);
+  if (
+    entry.type === "config" &&
+    entry.identity &&
+    (entry.identity.schema === "agent_config" ||
+      entry.identity.schema === "group_config")
+  ) {
+    return readDelay("highRiskConfig", 5000);
+  }
+  if (entry.type === "config") return readDelay("config", 2000);
+  if (entry.type === "history") return readDelay("history", fallback);
+  return readDelay("default", fallback);
+}
+
+async function confirmStillDeletedEntries(
+  entries,
+  appDataPath,
+  logger,
+  context = {}
+) {
+  const confirmed = [];
+  const restored = [];
+  const groups = new Map();
+  for (const entry of entries) {
+    const delayMs = Math.max(0, deleteConfirmDelayForEntry(entry, context));
+    if (!groups.has(delayMs)) groups.set(delayMs, []);
+    groups.get(delayMs).push(entry);
+  }
+
+  const startedAt = Date.now();
+  const sortedGroups = [...groups.entries()].sort(
+    (left, right) => left[0] - right[0]
+  );
+  for (const [delayMs, groupEntries] of sortedGroups) {
+    const remainingDelay = delayMs - (Date.now() - startedAt);
+    if (remainingDelay > 0) await wait(remainingDelay);
+    for (const entry of groupEntries) {
+      const absolutePath = absolutePathForEntry(appDataPath, entry);
+      if (absolutePath && (await fs.pathExists(absolutePath))) {
+        restored.push({ ...entry, confirm_delay_ms: delayMs });
+      } else {
+        confirmed.push(entry);
+      }
+    }
+  }
+
+  if (restored.length > 0 && logger && logger.warn) {
+    logger.warn(
+      "delete event ignored because path reappeared during confirmation window",
+      {
+        count: restored.length,
+        relative_paths: restored.map((entry) => entry.relativePath),
+        delays_ms: restored.map((entry) => entry.confirm_delay_ms),
+      }
+    );
+  }
+  return confirmed;
+}
+
 async function promoteConfigDeletes(classifiedEntries, appDataPath) {
   const result = [];
   const itemKeys = new Set(
@@ -318,8 +400,19 @@ function buildOperations(classifiedEntries, localIndex, context) {
 
     if (entry.type === "config") {
       if (itemDeletes.has(itemKey)) continue;
-      if (!localIndex.getFile(entry.relativePath)) {
+      const indexedFile = localIndex.getFile(entry.relativePath);
+      if (!indexedFile) {
         return { operations: [], reason: "unknown_config" };
+      }
+      if (
+        (entry.identity.schema === "agent_config" ||
+          entry.identity.schema === "group_config") &&
+        indexedFile.pending_operation_id
+      ) {
+        return {
+          operations: [],
+          reason: "config_delete_pending_operation_guard",
+        };
       }
       operations.push(
         configDeleteOperation(entry.relativePath, entry.identity, context)
@@ -428,13 +521,19 @@ async function handleDeletedPaths(
       );
     })
     .filter(Boolean);
-  const classifiedEntries = await promoteConfigDeletes(
+  const confirmedEntries = await confirmStillDeletedEntries(
     rawClassifiedEntries,
+    appDataPath,
+    logger,
+    context
+  );
+  const classifiedEntries = await promoteConfigDeletes(
+    confirmedEntries,
     appDataPath
   );
 
   if (classifiedEntries.length === 0) {
-    return { skipped: true, reason: "out_of_scope" };
+    return { skipped: true, reason: "out_of_scope_or_transient" };
   }
 
   const mode = context.mode || "uninitialized";
@@ -455,7 +554,10 @@ async function handleDeletedPaths(
     localIndex,
     context
   );
-  if (reason === "unknown_config") {
+  if (
+    reason === "unknown_config" ||
+    reason === "config_delete_pending_operation_guard"
+  ) {
     return {
       skipped: true,
       reason,

@@ -152,15 +152,25 @@ async function scanAppData(
     operations: 0,
     skipped: 0,
   };
+  const configFiles = [];
+  const historyFiles = [];
+  const attachmentFiles = [];
+
   await walk(appDataPath, async (filePath) => {
     const relativePath = relativeAppDataPath(appDataPath, filePath);
     if (relativePath.startsWith("sync/")) return;
-    if (
-      !isHistoryPath(relativePath) &&
-      !isConfigPath(relativePath) &&
-      !isAttachmentLikePath(relativePath)
-    )
-      return;
+    if (isConfigPath(relativePath)) {
+      configFiles.push(filePath);
+    } else if (isHistoryPath(relativePath)) {
+      historyFiles.push(filePath);
+    } else if (isAttachmentLikePath(relativePath)) {
+      attachmentFiles.push(filePath);
+    }
+  });
+
+  const orderedFiles = [...configFiles, ...historyFiles, ...attachmentFiles];
+  for (const filePath of orderedFiles) {
+    const relativePath = relativeAppDataPath(appDataPath, filePath);
     summary.files += 1;
     try {
       const result = await handleFile(
@@ -181,8 +191,11 @@ async function scanAppData(
       summary.skipped += 1;
       logger.warn("scan file failed", { relativePath, error: error.message });
     }
+  }
+  logger.info("startup scan completed", {
+    ...summary,
+    scan_order: "config_history_attachment",
   });
-  logger.info("startup scan completed", summary);
   return { summary };
 }
 

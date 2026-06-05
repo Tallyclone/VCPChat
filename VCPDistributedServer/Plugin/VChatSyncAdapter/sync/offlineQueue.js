@@ -1,5 +1,6 @@
 const fs = require("fs-extra");
 const path = require("path");
+const { checksumJson } = require("../core/hash");
 const { messageKey } = require("../core/identity");
 const { canUploadInMode } = require("./modePolicy");
 
@@ -139,6 +140,184 @@ function createOfflineQueue(config, centerClient, localIndex, logger) {
     return null;
   }
 
+  function isMessageOperation(operation) {
+    return !!(operation && operation.entity_type === "message");
+  }
+
+  function isMessageCreateOrUpdate(operation) {
+    return (
+      isMessageOperation(operation) &&
+      (operation.action === "create" || operation.action === "update")
+    );
+  }
+
+  function topicKeyForOperation(operation) {
+    if (!operation) return null;
+    const payload = operation.payload || {};
+    const itemType = operation.item_type || payload.item_type;
+    const itemId = operation.item_id || payload.item_id;
+    const topicId = operation.topic_id || payload.topic_id || payload.topicId;
+    if (!itemType || !itemId || !topicId) return null;
+    return `${itemType}:${itemId}:${topicId}`;
+  }
+
+  function hasPendingTopicUpsert(rows, topicKey) {
+    if (!topicKey) return false;
+    return rows.some((row) => {
+      const operation = row && row.operation;
+      return (
+        row.status !== "submitted" &&
+        operation &&
+        operation.entity_type === "topic" &&
+        operation.action === "upsert" &&
+        topicKeyForOperation(operation) === topicKey
+      );
+    });
+  }
+
+  function submitPriority(row) {
+    const operation = row && row.operation;
+    if (!operation) return 50;
+    if (operation.entity_type === "topic" && operation.action === "upsert") {
+      return 0;
+    }
+    if (operation.entity_type === "topic_order") return 1;
+    if (
+      operation.entity_type === "agent_config" ||
+      operation.entity_type === "group_config"
+    ) {
+      return 2;
+    }
+    if (isMessageCreateOrUpdate(operation)) return 3;
+    return 10;
+  }
+
+  function orderedRowsForSubmit(rows) {
+    return rows
+      .map((row, index) => ({ row, index }))
+      .sort((left, right) => {
+        const byPriority = submitPriority(left.row) - submitPriority(right.row);
+        if (byPriority !== 0) return byPriority;
+        return left.index - right.index;
+      })
+      .map((entry) => entry.row);
+  }
+
+  function topicChecksumForOperation(operation) {
+    const payload = (operation && operation.payload) || {};
+    const topic = payload.topic || payload;
+    try {
+      return checksumJson(topic);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  async function markTopicPending(operation) {
+    if (
+      !operation ||
+      operation.entity_type !== "topic" ||
+      operation.action !== "upsert"
+    ) {
+      return;
+    }
+    const topicKey = topicKeyForOperation(operation);
+    if (!topicKey) return;
+    const previous = localIndex.getTopicSnapshot(topicKey) || {};
+    await localIndex.setTopicSnapshot(topicKey, {
+      ...previous,
+      topic_key: topicKey,
+      item_type: operation.item_type || previous.item_type,
+      item_id: operation.item_id || previous.item_id,
+      topic_id: operation.topic_id || operation.entity_id || previous.topic_id,
+      local_checksum:
+        topicChecksumForOperation(operation) || previous.local_checksum,
+      pending_operation_id: operation.operation_id,
+      pending_action: operation.action,
+      pending_status: "pending_upsert",
+      updated_at: new Date().toISOString(),
+    });
+  }
+
+  function shouldDelayMessageForTopic(row, rows) {
+    if (!row || !isMessageCreateOrUpdate(row.operation)) {
+      return { delay: false };
+    }
+    const topicKey = topicKeyForOperation(row.operation);
+    if (!topicKey) return { delay: false };
+
+    const snapshot = localIndex.getTopicSnapshot(topicKey);
+    if (
+      snapshot &&
+      (snapshot.last_known_server_version != null ||
+        snapshot.last_applied_seq ||
+        snapshot.confirmed_at ||
+        snapshot.bootstrap_baseline)
+    ) {
+      return { delay: false };
+    }
+
+    if (snapshot && snapshot.pending_operation_id) {
+      return {
+        delay: true,
+        reason: "waiting_for_parent_topic_confirmation",
+        delayMs: 1500,
+      };
+    }
+
+    if (hasPendingTopicUpsert(rows, topicKey)) {
+      return {
+        delay: true,
+        reason: "waiting_for_pending_parent_topic_upsert",
+        delayMs: 1500,
+      };
+    }
+
+    if (!snapshot || !snapshot.local_checksum) {
+      const startedAt = Date.parse(row.topic_wait_started_at || 0);
+      const now = Date.now();
+      if (!Number.isFinite(startedAt) || startedAt <= 0) {
+        row.topic_wait_started_at = new Date(now).toISOString();
+        row.topic_wait_attempts = 1;
+        return {
+          delay: true,
+          reason: "waiting_for_config_topic_observation",
+          delayMs: 1500,
+        };
+      }
+      if (now - startedAt < 10000) {
+        row.topic_wait_attempts = Number(row.topic_wait_attempts || 0) + 1;
+        return {
+          delay: true,
+          reason: "waiting_for_config_topic_observation",
+          delayMs: 1500,
+        };
+      }
+
+      if (!row.real_topic_operation_missing_logged_at) {
+        row.real_topic_operation_missing_logged_at = new Date(
+          now
+        ).toISOString();
+        logger.warn(
+          "message parent topic has no observed real topic operation before submit",
+          {
+            operation_id: row.operation && row.operation.operation_id,
+            topic_key: topicKey,
+            wait_ms: now - startedAt,
+            topic_wait_attempts: row.topic_wait_attempts || 0,
+            snapshot_exists: !!snapshot,
+            snapshot_has_local_checksum: !!(
+              snapshot && snapshot.local_checksum
+            ),
+            hint: "real topic upsert must be generated from config.topics[] before this message; adapter will submit without synthetic topic and Center may reject with MESSAGE_TOPIC_MISSING",
+          }
+        );
+      }
+    }
+
+    return { delay: false };
+  }
+
   function mergePendingCreate(rows, operation, key) {
     const existing = rows.find(
       (row) =>
@@ -170,6 +349,28 @@ function createOfflineQueue(config, centerClient, localIndex, logger) {
       rows.map((row) => row.operation && row.operation.operation_id)
     );
     const enqueued = [];
+    const addRow = (operation, key, metadata = {}) => {
+      if (!operation || knownIds.has(operation.operation_id)) return false;
+      rows.push({
+        operation,
+        status: "pending",
+        attempts: 0,
+        next_attempt_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        key,
+        ...metadata,
+      });
+      knownIds.add(operation.operation_id);
+      enqueued.push({
+        operation_id: operation.operation_id,
+        key,
+        action: operation.action,
+        entity_type: operation.entity_type,
+        ...metadata,
+      });
+      return true;
+    };
+
     for (const operation of operations) {
       const key = operationKey(operation);
       if (
@@ -181,30 +382,53 @@ function createOfflineQueue(config, centerClient, localIndex, logger) {
           operation_id: operation.operation_id,
           key,
           action: operation.action,
+          entity_type: operation.entity_type,
           merged: true,
         });
         continue;
       }
-      if (knownIds.has(operation.operation_id)) continue;
-      rows.push({
-        operation,
-        status: "pending",
-        attempts: 0,
-        next_attempt_at: new Date().toISOString(),
-        created_at: new Date().toISOString(),
-        key,
-      });
-      enqueued.push({
-        operation_id: operation.operation_id,
-        key,
-        action: operation.action,
-      });
+      if (addRow(operation, key)) {
+        await markTopicPending(operation);
+      }
     }
     await writeQueueRows(config.queuePath, rows, logger);
     return enqueued;
   }
 
   async function markSubmitted(row, response) {
+    if (!row.operation) return;
+    if (
+      row.operation.entity_type === "topic" &&
+      row.operation.action === "upsert"
+    ) {
+      const topicKey = topicKeyForOperation(row.operation);
+      if (topicKey) {
+        const previous = localIndex.getTopicSnapshot(topicKey) || {};
+        await localIndex.setTopicSnapshot(topicKey, {
+          ...previous,
+          topic_key: topicKey,
+          item_type: row.operation.item_type || previous.item_type,
+          item_id: row.operation.item_id || previous.item_id,
+          topic_id:
+            row.operation.topic_id ||
+            row.operation.entity_id ||
+            previous.topic_id,
+          local_checksum:
+            topicChecksumForOperation(row.operation) || previous.local_checksum,
+          last_known_server_version:
+            response.version === undefined
+              ? previous.last_known_server_version
+              : response.version,
+          last_applied_seq: response.seq || previous.last_applied_seq,
+          pending_operation_id: null,
+          pending_action: null,
+          pending_status: null,
+          confirmed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+      }
+      return;
+    }
     if (!row.key) return;
     if (row.operation && row.operation.action === "delete") {
       await localIndex.deleteMessage(row.key);
@@ -256,13 +480,30 @@ function createOfflineQueue(config, centerClient, localIndex, logger) {
       return;
     }
     const rows = await readQueueLines(config.queuePath, logger);
+    const orderedRows = orderedRowsForSubmit(rows);
     const now = Date.now();
     const remaining = [];
-    for (const row of rows) {
+    for (const row of orderedRows) {
       if (row.status === "submitted") continue;
       const next = Date.parse(row.next_attempt_at || 0);
       if (Number.isFinite(next) && next > now) {
         remaining.push(row);
+        continue;
+      }
+      const topicGate = shouldDelayMessageForTopic(row, rows);
+      if (topicGate.delay) {
+        row.status = "pending";
+        row.last_error = topicGate.reason;
+        row.next_attempt_at = new Date(
+          Date.now() + topicGate.delayMs
+        ).toISOString();
+        remaining.push(row);
+        logger.warn("message submit delayed until parent topic is confirmed", {
+          operation_id: row.operation && row.operation.operation_id,
+          topic_key: topicKeyForOperation(row.operation),
+          reason: topicGate.reason,
+          delay_ms: topicGate.delayMs,
+        });
         continue;
       }
       try {
