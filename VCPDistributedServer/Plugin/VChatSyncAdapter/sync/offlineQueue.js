@@ -1,7 +1,7 @@
 const fs = require("fs-extra");
 const path = require("path");
 const { checksumJson } = require("../core/hash");
-const { messageKey } = require("../core/identity");
+const { messageKey, operationId } = require("../core/identity");
 const { canUploadInMode } = require("./modePolicy");
 
 function wait(ms) {
@@ -84,6 +84,112 @@ function createOfflineQueue(config, centerClient, localIndex, logger) {
   let stopped = true;
   let retryMs = config.queueIntervalMs;
   let modeProvider = () => "uninitialized";
+
+  function topicIdOf(topic) {
+    return topic && (topic.id || topic.topic_id || topic.topicId);
+  }
+
+  function normalizeTopicForTopicOperation(topic, topicId) {
+    const source =
+      topic && typeof topic === "object" && !Array.isArray(topic) ? topic : {};
+    const id = topicId || topicIdOf(source);
+    if (!id) return null;
+    const normalized = { ...source, id: String(id) };
+    if (
+      !normalized.name &&
+      (source.title || source.topic_title || source.topicTitle)
+    ) {
+      normalized.name = source.title || source.topic_title || source.topicTitle;
+    }
+    if (!normalized.createdAt && (source.created_at || source.timestamp)) {
+      normalized.createdAt = source.created_at || source.timestamp;
+    }
+    return normalized;
+  }
+
+  function configPathForTopicOwner(itemType, itemId) {
+    if (!config.appDataPath || !itemId) return null;
+    if (itemType === "group") {
+      return path.join(
+        config.appDataPath,
+        "AgentGroups",
+        String(itemId),
+        "config.json"
+      );
+    }
+    if (itemType === "agent") {
+      return path.join(
+        config.appDataPath,
+        "Agents",
+        String(itemId),
+        "config.json"
+      );
+    }
+    return null;
+  }
+
+  async function buildRealTopicUpsertFromConfig(operation) {
+    const topicKey = topicKeyForOperation(operation);
+    if (!topicKey) return null;
+    const payload = operation.payload || {};
+    const itemType = operation.item_type || payload.item_type;
+    const itemId = operation.item_id || payload.item_id;
+    const topicId = operation.topic_id || payload.topic_id || payload.topicId;
+    const configPath = configPathForTopicOwner(itemType, itemId);
+    if (!configPath || !(await fs.pathExists(configPath))) {
+      return null;
+    }
+
+    let parsed;
+    try {
+      parsed = await fs.readJson(configPath);
+    } catch (error) {
+      logger.warn(
+        "failed to read owner config while repairing missing topic upsert",
+        {
+          topic_key: topicKey,
+          configPath,
+          error: error.message,
+        }
+      );
+      return null;
+    }
+
+    const topicSource = (
+      Array.isArray(parsed && parsed.topics) ? parsed.topics : []
+    ).find((topic) => String(topicIdOf(topic) || "") === String(topicId));
+    const topic = normalizeTopicForTopicOperation(topicSource, topicId);
+    if (!topic) return null;
+
+    const checksum = checksumJson(topic);
+    return {
+      operation_id: operationId(
+        config.deviceId || operation.device_id || "unknown_device",
+        "topic.upsert",
+        {
+          item_type: itemType,
+          item_id: itemId,
+          topic_id: topic.id,
+          id: topic.id,
+        },
+        checksum
+      ),
+      device_id: config.deviceId || operation.device_id,
+      entity_type: "topic",
+      action: "upsert",
+      item_type: itemType,
+      item_id: itemId,
+      topic_id: topic.id,
+      entity_id: topic.id,
+      payload: {
+        item_type: itemType,
+        item_id: itemId,
+        topic_id: topic.id,
+        topic,
+        source: "local_config_topics_parent_repair",
+      },
+    };
+  }
 
   function isMissingUpdateTargetError(error, row) {
     if (!row || !row.operation || row.operation.action !== "update")
@@ -483,6 +589,10 @@ function createOfflineQueue(config, centerClient, localIndex, logger) {
     const orderedRows = orderedRowsForSubmit(rows);
     const now = Date.now();
     const remaining = [];
+    const knownIds = new Set(
+      rows.map((row) => row.operation && row.operation.operation_id)
+    );
+
     for (const row of orderedRows) {
       if (row.status === "submitted") continue;
       const next = Date.parse(row.next_attempt_at || 0);
@@ -490,6 +600,56 @@ function createOfflineQueue(config, centerClient, localIndex, logger) {
         remaining.push(row);
         continue;
       }
+
+      const topicKey = topicKeyForOperation(row.operation);
+      const snapshot = topicKey ? localIndex.getTopicSnapshot(topicKey) : null;
+      const needsRealTopicRepair =
+        isMessageCreateOrUpdate(row.operation) &&
+        topicKey &&
+        !hasPendingTopicUpsert(rows, topicKey) &&
+        (!snapshot || !snapshot.local_checksum) &&
+        !(
+          snapshot &&
+          (snapshot.last_known_server_version != null ||
+            snapshot.last_applied_seq ||
+            snapshot.confirmed_at ||
+            snapshot.bootstrap_baseline)
+        );
+
+      if (needsRealTopicRepair) {
+        const repairOperation = await buildRealTopicUpsertFromConfig(
+          row.operation
+        );
+        if (repairOperation && !knownIds.has(repairOperation.operation_id)) {
+          const repairRow = {
+            operation: repairOperation,
+            status: "pending",
+            attempts: 0,
+            next_attempt_at: new Date(0).toISOString(),
+            created_at: new Date().toISOString(),
+            key: topicKey,
+            repair_reason:
+              "missing_real_parent_topic_upsert_from_config_topics",
+          };
+          remaining.push(repairRow);
+          knownIds.add(repairOperation.operation_id);
+          await markTopicPending(repairOperation);
+          row.status = "pending";
+          row.last_error = "waiting_for_repaired_parent_topic_upsert";
+          row.next_attempt_at = new Date(Date.now() + 1500).toISOString();
+          remaining.push(row);
+          logger.warn(
+            "enqueued real parent topic upsert from config.topics[] before message submit",
+            {
+              operation_id: row.operation && row.operation.operation_id,
+              repair_operation_id: repairOperation.operation_id,
+              topic_key: topicKey,
+            }
+          );
+          continue;
+        }
+      }
+
       const topicGate = shouldDelayMessageForTopic(row, rows);
       if (topicGate.delay) {
         row.status = "pending";
