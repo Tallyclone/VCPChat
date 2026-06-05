@@ -429,11 +429,7 @@ function pickAllowed(source, allowed, definition = null) {
 }
 function safeTopics(topics) {
   if (!Array.isArray(topics)) return undefined;
-  return topics
-    .filter(
-      (topic) => topic && typeof topic === "object" && !Array.isArray(topic)
-    )
-    .map((topic) => cloneSafeValue(topic, "topics") || {});
+  return topics.map((topic) => normalizeTopicForConfig(topic)).filter(Boolean);
 }
 
 function buildSafeConfigDto(relativePath, parsedJson, options = {}) {
@@ -634,13 +630,31 @@ function topicCreatedAt(topic) {
 }
 
 function normalizeTopicForConfig(topic) {
-  const safe = cloneSafeValue(topic || {}, "topics") || {};
-  if (!safe.id && topicIdOf(topic)) safe.id = String(topicIdOf(topic));
-  if (!safe.name && (topic.title || topic.topic_title || topic.topicTitle)) {
-    safe.name = topic.title || topic.topic_title || topic.topicTitle;
+  const source =
+    topic && typeof topic === "object" && !Array.isArray(topic) ? topic : {};
+  const id = topicIdOf(source);
+  if (!id) return null;
+  const safe = { id: String(id) };
+  if (source.name !== undefined && source.name !== null) {
+    safe.name = cloneSafeValue(source.name, "topics.name");
+  } else if (source.title || source.topic_title || source.topicTitle) {
+    safe.name = cloneSafeValue(
+      source.title || source.topic_title || source.topicTitle,
+      "topics.name"
+    );
   }
-  if (!safe.createdAt && (topic.created_at || topic.timestamp)) {
-    safe.createdAt = topic.created_at || topic.timestamp;
+  if (source.createdAt !== undefined && source.createdAt !== null) {
+    safe.createdAt = cloneSafeValue(source.createdAt, "topics.createdAt");
+  } else if (source.created_at || source.timestamp) {
+    safe.createdAt = cloneSafeValue(
+      source.created_at || source.timestamp,
+      "topics.createdAt"
+    );
+  }
+  for (const key of ["locked", "unread", "creatorSource"]) {
+    if (Object.prototype.hasOwnProperty.call(source, key)) {
+      safe[key] = cloneSafeValue(source[key], `topics.${key}`);
+    }
   }
   return safe;
 }

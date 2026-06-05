@@ -107,7 +107,7 @@ function topicIdOf(topic) {
   return topic && (topic.id || topic.topic_id || topic.topicId);
 }
 
-function normalizeTopicForOperation(topic) {
+function normalizeTopicForTopicOperation(topic) {
   const source =
     topic && typeof topic === "object" && !Array.isArray(topic) ? topic : {};
   const id = topicIdOf(source);
@@ -168,13 +168,14 @@ function buildTopicRuntimeOperations(
 
   const operations = [];
   for (const topic of currentTopics) {
-    const normalized = normalizeTopicForOperation(topic);
+    const normalized = normalizeTopicForTopicOperation(topic);
     if (!normalized) continue;
     const topicChecksum = checksumJson(normalized);
     const previous = previousById.get(normalized.id);
     if (
       previous &&
-      checksumJson(normalizeTopicForOperation(previous) || {}) === topicChecksum
+      checksumJson(normalizeTopicForTopicOperation(previous) || {}) ===
+        topicChecksum
     ) {
       continue;
     }
