@@ -1,4 +1,5 @@
 const path = require("path");
+const crypto = require("crypto");
 const fs = require("fs-extra");
 const { checksumBuffer, checksumJson } = require("../core/hash");
 const { normalizeSlashes } = require("../utils/pathRules");
@@ -14,17 +15,25 @@ const THEME_VARIABLE_PATTERN = /(--[a-zA-Z0-9_-]+)\s*:\s*([^;]+);/g;
 const WALLPAPER_PATTERN =
   /--chat-wallpaper-(dark|light)\s*:\s*url\((['"]?)([^)'";]+)\2\)\s*;/gi;
 
+function hashThemeId(raw) {
+  return crypto
+    .createHash("sha256")
+    .update(String(raw || "theme"), "utf8")
+    .digest("hex")
+    .slice(0, 16);
+}
+
 function safeThemeIdFromFilename(filename) {
   const basename = path.basename(filename, path.extname(filename));
   const withoutPrefix = basename.replace(/^themes/i, "").trim();
   const raw = withoutPrefix || basename || "theme";
-  return (
-    raw
-      .replace(/[\\/]+/g, "-")
-      .replace(/[^\w.\-\u4e00-\u9fa5]+/gu, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 120) || "theme"
-  );
+  const asciiSlug = raw
+    .replace(/[\\/]+/g, "-")
+    .replace(/[^A-Za-z0-9_.-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+  const hash = hashThemeId(raw);
+  return asciiSlug ? `${asciiSlug}-${hash}` : `theme-${hash}`;
 }
 
 function displayNameFromFilename(filename) {

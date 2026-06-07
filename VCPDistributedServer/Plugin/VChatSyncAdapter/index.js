@@ -7,6 +7,8 @@ const { createLogger } = require("./utils/logger");
 const { ensureAdapterState, readState, writeState } = require("./sync/state");
 const { createLocalIndex } = require("./core/localIndex");
 const { scanAppData } = require("./scanner/appDataScanner");
+const { repairTopic } = require("./scanner/repairTopic");
+const { createReconciler } = require("./scanner/reconciler");
 const { createWatcher } = require("./watcher/appDataWatcher");
 const { createThemeWatcher } = require("./watcher/themeWatcher");
 const { createOfflineQueue } = require("./sync/offlineQueue");
@@ -340,6 +342,62 @@ function buildConfig(pluginConfig = {}, projectBasePath = process.cwd()) {
       ),
       false
     ),
+    reconcileEnabled: boolValue(
+      pickConfigValue(
+        pluginConfig.VCHAT_RECONCILE_ENABLED,
+        adapterEnv.VCHAT_RECONCILE_ENABLED
+      ),
+      true
+    ),
+    reconcileIntervalMs: intValue(
+      pickConfigValue(
+        pluginConfig.VCHAT_RECONCILE_INTERVAL_MS,
+        adapterEnv.VCHAT_RECONCILE_INTERVAL_MS
+      ),
+      300000
+    ),
+    reconcileMaxFilesPerRun: intValue(
+      pickConfigValue(
+        pluginConfig.VCHAT_RECONCILE_MAX_FILES_PER_RUN,
+        adapterEnv.VCHAT_RECONCILE_MAX_FILES_PER_RUN
+      ),
+      5
+    ),
+    reconcileMaxOpsPerRun: intValue(
+      pickConfigValue(
+        pluginConfig.VCHAT_RECONCILE_MAX_OPS_PER_RUN,
+        adapterEnv.VCHAT_RECONCILE_MAX_OPS_PER_RUN
+      ),
+      50
+    ),
+    reconcileMaxRuntimeMs: intValue(
+      pickConfigValue(
+        pluginConfig.VCHAT_RECONCILE_MAX_RUNTIME_MS,
+        adapterEnv.VCHAT_RECONCILE_MAX_RUNTIME_MS
+      ),
+      3000
+    ),
+    reconcileIdleDelayMs: intValue(
+      pickConfigValue(
+        pluginConfig.VCHAT_RECONCILE_IDLE_DELAY_MS,
+        adapterEnv.VCHAT_RECONCILE_IDLE_DELAY_MS
+      ),
+      200
+    ),
+    reconcileDiscoveryIntervalMs: intValue(
+      pickConfigValue(
+        pluginConfig.VCHAT_RECONCILE_DISCOVERY_INTERVAL_MS,
+        adapterEnv.VCHAT_RECONCILE_DISCOVERY_INTERVAL_MS
+      ),
+      1800000
+    ),
+    reconcileDiscoveryMaxFilesPerRun: intValue(
+      pickConfigValue(
+        pluginConfig.VCHAT_RECONCILE_DISCOVERY_MAX_FILES_PER_RUN,
+        adapterEnv.VCHAT_RECONCILE_DISCOVERY_MAX_FILES_PER_RUN
+      ),
+      100
+    ),
     autoBootstrapMode: pickConfigValue(
       pluginConfig.VCHAT_BOOTSTRAP_MODE,
       adapterEnv.VCHAT_BOOTSTRAP_MODE,
@@ -428,6 +486,15 @@ async function startAdapter(app, pluginConfig, projectBasePath) {
       deviceId: config.deviceId,
     }
   );
+  const reconciler = createReconciler({
+    config,
+    logger,
+    state,
+    localIndex,
+    centerClient,
+    offlineQueue,
+    writeIntentLock,
+  });
 
   runtime = {
     config,
@@ -439,6 +506,7 @@ async function startAdapter(app, pluginConfig, projectBasePath) {
     writeIntentLock,
     pullLoop,
     themeWatcher,
+    reconciler,
     writeState: async (nextState) => writeState(config, nextState, logger),
     watcher: null,
     runtimeServicesStarted: false,
@@ -492,6 +560,9 @@ async function startAdapter(app, pluginConfig, projectBasePath) {
         name: "themeWatcher",
         service: runtime.themeWatcher,
       });
+
+      await runtime.reconciler.start();
+      startedServices.push({ name: "reconciler", service: runtime.reconciler });
 
       runtime.runtimeServicesStarted = true;
       logger.info("adapter runtime services started", { mode });
@@ -591,6 +662,21 @@ async function startAdapter(app, pluginConfig, projectBasePath) {
       requireAdapterAuth(config, req);
       const conflicts = await scanNormalizedIdConflicts(config.appDataPath);
       return res.json({ ok: true, conflicts });
+    } catch (error) {
+      return res
+        .status(error.statusCode || 400)
+        .json({ ok: false, error: error.message });
+    }
+  });
+
+  app.post("/api/vchat-sync-adapter/repair/topic", async (req, res) => {
+    try {
+      requireAdapterAuth(config, req);
+      const latestState = await readState(config, logger);
+      runtime.state.mode =
+        latestState.mode || runtime.state.mode || "uninitialized";
+      const result = await repairTopic(runtime, req.body || {});
+      return res.json(result);
     } catch (error) {
       return res
         .status(error.statusCode || 400)
@@ -709,6 +795,7 @@ function registerRoutes(app, pluginConfig = {}, projectBasePath) {
 async function shutdown() {
   if (runtime && runtime.watcher) await runtime.watcher.stop();
   if (runtime && runtime.themeWatcher) await runtime.themeWatcher.stop();
+  if (runtime && runtime.reconciler) await runtime.reconciler.stop();
   if (runtime && runtime.pullLoop) await runtime.pullLoop.stop();
   if (runtime && runtime.offlineQueue) await runtime.offlineQueue.stop();
   runtime = null;

@@ -809,6 +809,13 @@
   ],
   "VCPDistributedServer/Plugin/VChatSyncAdapter/sync/themePackageSync.js": [
     {
+      "id": "notebook-1780834386549_9sbghv6do",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/sync/themePackageSync.js",
+      "note": "主题 theme_id 生成已改为中心兼容的 ASCII+SHA256短哈希策略：保留英文 slug 时为 <slug>-<16hex>，纯中文等非 ASCII 文件名为 theme-<16hex>；display_name 和 manifest.css.relative_path 仍保留原始中文文件名/路径，不修改 VChatSyncCenter。",
+      "createdAt": "2026-06-07T20:13:06.549",
+      "updatedAt": "2026-06-07T20:13:06.549"
+    },
+    {
       "id": "notebook-1779941484468_lefwyn4u8",
       "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/sync/themePackageSync.js",
       "note": "Adapter 主题资源库同步基础能力：启动时扫描项目根 styles/themes/*.css，解析 CSS 变量与 --chat-wallpaper-dark/light url，按文件名生成 theme_id，通过 POST /themes 上传 theme_package，通过 POST /themes/assets 上传壁纸资产；监听 styles/themes 与 assets/wallpaper 变化后重新同步。注意桌面 CSS 中 '../assets/wallpaper/...' 会从项目根兜底解析为 assets/wallpaper/...。",
@@ -1040,6 +1047,79 @@
       "note": "同步修复：config delete 和级联 config delete change payload 现在补齐 relative_path。agent_config/group_config 的纯 entity_id 会映射到 Agents/<id>/config.json / AgentGroups/<id>/config.json；已有相对路径或 .json 路径保持不变。",
       "createdAt": "2026-06-02T16:10:53.235",
       "updatedAt": "2026-06-02T16:10:53.235"
+    }
+  ],
+  "../../VCPMobile/src-tauri/src/vcp_modules/sync/center_sync.rs": [
+    {
+      "id": "notebook-1780849910505_hi2oezu08",
+      "filePath": "../../VCPMobile/src-tauri/src/vcp_modules/sync/center_sync.rs",
+      "note": "移动端失败队列新增 center_sync_list_failed_operations，查询 vchat_sync_operations status='failed' 的 operation_id/entity_key/entity_type/action/retry_count/last_error/updated_at；前端 Sync 面板展示 failed 队列并复用 center_sync_retry_failed_operations 重试。",
+      "createdAt": "2026-06-08T00:31:50.505",
+      "updatedAt": "2026-06-08T00:31:50.505"
+    },
+    {
+      "id": "notebook-1780849910505_bjplh0bv9",
+      "filePath": "../../VCPMobile/src-tauri/src/vcp_modules/sync/center_sync.rs",
+      "note": "移动端新增低负载 SQLite reconciliation：runtime_loop 启动 reconcile_worker，每 600000ms 读取 vchat_sync_state.reconcile_last_message_rowid 后最多扫描 200 条 messages，单轮最多 enqueue 20 条、最多约 1000ms；仅当本地 operation 和 entity_index 都缺失时 enqueue_message_create，并推进 reconcile_last_message_rowid。",
+      "createdAt": "2026-06-08T00:31:50.505",
+      "updatedAt": "2026-06-08T00:31:50.505"
+    },
+    {
+      "id": "notebook-1780849910505_7n5obibfy",
+      "filePath": "../../VCPMobile/src-tauri/src/vcp_modules/sync/center_sync.rs",
+      "note": "center_sync_repair_topic_messages 已接入 Center /messages/check：按 topic 扫本地 messages，先查本地 vchat_sync_operations/vchat_sync_entity_index，再按 500 分批调用只读 /messages/check；dryRun=false 仅对本地元数据缺失或 Center 缺失的消息调用 enqueue_message_create。",
+      "createdAt": "2026-06-08T00:31:50.505",
+      "updatedAt": "2026-06-08T00:31:50.505"
+    },
+    {
+      "id": "notebook-1780836310471_ip7ur88xj",
+      "filePath": "../../VCPMobile/src-tauri/src/vcp_modules/sync/center_sync.rs",
+      "note": "修复 Center join_existing baseline 主题壁纸缺失：build_baseline_events 现在在处理 baseline.themes/baseline.theme_packages 的 theme_package 事件后，会遍历 theme.assets[] 额外生成 theme_asset baseline 事件，并在 asset payload 缺失 theme_id/themeId 时补入父主题 theme_id；entity_id 使用 asset_hash/hash/entity_id。这样初次 Join Existing 会触发 apply_theme_asset 下载 /themes/assets/<hash> 到 app_config_dir/theme_library/<theme_id>/assets/<hash>.*。",
+      "createdAt": "2026-06-07T20:45:10.471",
+      "updatedAt": "2026-06-07T20:45:10.471"
+    }
+  ],
+  "../../VCPMobile/src-tauri/src/vcp_modules/group/group_chat_application_service.rs": [
+    {
+      "id": "notebook-1780845975981_kd85jidg1",
+      "filePath": "../../VCPMobile/src-tauri/src/vcp_modules/group/group_chat_application_service.rs",
+      "note": "2026-06-07 同步缺失修复：群聊用户消息和群聊 AI 回复在本地 append_single_message 成功后必须调用 enqueue_message_create；失败只 warn，不阻断聊天主流程，保持与单 Agent 路径一致。",
+      "createdAt": "2026-06-07T23:26:15.981",
+      "updatedAt": "2026-06-07T23:26:15.981"
+    }
+  ],
+  "VCPDistributedServer/Plugin/VChatSyncAdapter/scanner/repairTopic.js": [
+    {
+      "id": "notebook-1780852908898_jb0o0efiy",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/scanner/repairTopic.js",
+      "note": "2026-06-08 修复 repairTopic 补发策略：Center /messages/check 明确返回消息已存在且 checksum 不冲突时，不再仅因为 local_index 缺失 enqueue message.create.repair；只有 Center 缺失，或 Center check 被跳过且本地索引缺失的保守兜底场景才入队。",
+      "createdAt": "2026-06-08T01:21:48.898",
+      "updatedAt": "2026-06-08T01:21:48.898"
+    },
+    {
+      "id": "notebook-1780847818864_g4otiaxzu",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/scanner/repairTopic.js",
+      "note": "repairTopic(runtime, options) 用于按 item_type/item_id/topic_id 扫描本地 history.json，对比 local_index、offline_queue 与 Center /messages/check；dryRun=true 仅报告，dryRun=false 通过 offlineQueue.enqueueMany 追加修复操作，不直接写 Center 数据库。后续增强已加入 Center /topics/check：当父 topic 缺失时会先 enqueue topic.upsert.repair，再 enqueue message.create.repair。",
+      "createdAt": "2026-06-07T23:56:58.864",
+      "updatedAt": "2026-06-08T00:32:15.950"
+    }
+  ],
+  "VCPDistributedServer/Plugin/VChatSyncAdapter/watcher/stableFileReader.js": [
+    {
+      "id": "notebook-1780852909503_inq7cybyr",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/watcher/stableFileReader.js",
+      "note": "2026-06-08 stableFileReader 默认 stableDelayMs 已统一为 500ms，用于 watcher、scanner、repairTopic 等未显式传 stableDelayMs 的 readStableJson 调用，匹配最终同步修复方案参数。",
+      "createdAt": "2026-06-08T01:21:49.503",
+      "updatedAt": "2026-06-08T01:21:49.503"
+    }
+  ],
+  "../../VCPMobile/src/core/stores/syncSession.ts": [
+    {
+      "id": "notebook-1780852909724_u7tva6c55",
+      "filePath": "../../VCPMobile/src/core/stores/syncSession.ts",
+      "note": "2026-06-08 failed queue 刷新按钮 loading 修复：refreshFailedOperations(withBusy=true) 会设置 busyAction='refreshFailed' 并在 finally 清理；内部 refreshAll/runAction 仍可默认 withBusy=false 复用，避免嵌套刷新覆盖外层 busyAction。",
+      "createdAt": "2026-06-08T01:21:49.724",
+      "updatedAt": "2026-06-08T01:21:49.724"
     }
   ]
 }

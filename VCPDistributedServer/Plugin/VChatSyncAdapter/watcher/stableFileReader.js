@@ -1,4 +1,4 @@
-const fs = require('fs-extra');
+const fs = require("fs-extra");
 
 async function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -10,7 +10,7 @@ async function statSignature(filePath) {
 }
 
 async function readStableJson(filePath, options = {}) {
-  const stableDelayMs = options.stableDelayMs || 200;
+  const stableDelayMs = options.stableDelayMs || 500;
   const timeoutMs = options.timeoutMs || 5000;
   const maxParseRetries = options.maxParseRetries || 4;
   const started = Date.now();
@@ -26,15 +26,18 @@ async function readStableJson(filePath, options = {}) {
   let lastError = null;
   for (let attempt = 0; attempt <= maxParseRetries; attempt += 1) {
     try {
-      const raw = await fs.readFile(filePath, 'utf8');
+      const raw = await fs.readFile(filePath, "utf8");
       return { ok: true, value: JSON.parse(raw), raw };
     } catch (error) {
       lastError = error;
-      await wait(Math.min(1000, 100 * (2 ** attempt)));
+      await wait(Math.min(1000, 100 * 2 ** attempt));
     }
   }
 
-  return { ok: false, error: lastError ? lastError.message : 'unknown read error' };
+  return {
+    ok: false,
+    error: lastError ? lastError.message : "unknown read error",
+  };
 }
 
 module.exports = { readStableJson };

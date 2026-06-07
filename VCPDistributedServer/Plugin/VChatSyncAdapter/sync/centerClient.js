@@ -76,6 +76,34 @@ function createCenterClient(config, logger) {
       );
       return response.data;
     },
+    async checkMessages(messages = []) {
+      if (!isConfigured(config)) {
+        return {
+          ok: false,
+          skipped: true,
+          reason: "center_not_configured",
+          results: [],
+        };
+      }
+      const response = await withRetry(() =>
+        http.post("/messages/check", { messages })
+      );
+      return response.data;
+    },
+    async checkTopics(topics = []) {
+      if (!isConfigured(config)) {
+        return {
+          ok: false,
+          skipped: true,
+          reason: "center_not_configured",
+          results: [],
+        };
+      }
+      const response = await withRetry(() =>
+        http.post("/topics/check", { topics })
+      );
+      return response.data;
+    },
     async uploadAttachment(attachment) {
       if (!isConfigured(config)) {
         throw new Error("sync center is not configured");

@@ -842,5 +842,62 @@
       "op": "add",
       "notebookId": "notebook-1780390703455_lcnn8q447"
     }
+  ],
+  "50d29a7e-11a7-4406-b135-018a23baffc3:38": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780834386549_9sbghv6do"
+    }
+  ],
+  "50d29a7e-11a7-4406-b135-018a23baffc3:114": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780836310471_ip7ur88xj"
+    }
+  ],
+  "5fe2f6f3-05f6-48dd-8f8d-4465604d3fb5:2": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780845975981_kd85jidg1"
+    }
+  ],
+  "5fe2f6f3-05f6-48dd-8f8d-4465604d3fb5:90": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780847818864_g4otiaxzu"
+    }
+  ],
+  "48fc090b-9244-45a3-b00d-8642714e55c1:12": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780849910505_7n5obibfy"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1780849910505_bjplh0bv9"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1780849910505_hi2oezu08"
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1780847818864_g4otiaxzu",
+      "previousNote": "新增 repairTopic(runtime, options) 用于按 item_type/item_id/topic_id 扫描本地 history.json，对比 local_index、offline_queue 与 Center /messages/check；dryRun=true 仅报告，dryRun=false 通过 offlineQueue.enqueueMany 追加 message.create.repair 操作，不直接写 Center 数据库。"
+    }
+  ],
+  "1cdb3708-9664-4de9-a8b0-67e51e67fa45:19": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1780852908898_jb0o0efiy"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1780852909503_inq7cybyr"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1780852909724_u7tva6c55"
+    }
   ]
 }
