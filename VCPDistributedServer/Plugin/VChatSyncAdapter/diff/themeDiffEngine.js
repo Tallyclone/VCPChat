@@ -41,10 +41,18 @@ async function syncThemePackage(
   for (const asset of themePackage.assets) {
     const assetKey = `theme_asset:${asset.asset_hash}`;
     const previousAsset = localIndex.getFile(assetKey);
-    const shouldUploadAsset =
-      !previousAsset ||
-      previousAsset.uploaded !== true ||
-      previousAsset.relative_path !== asset.relative_path;
+    const uploadReason = !previousAsset
+      ? "missing_local_index"
+      : previousAsset.binary_uploaded !== true
+      ? "binary_not_confirmed"
+      : previousAsset.uploaded !== true
+      ? "not_uploaded"
+      : previousAsset.bootstrap_baseline === true
+      ? "bootstrap_metadata_only"
+      : previousAsset.relative_path !== asset.relative_path
+      ? "relative_path_changed"
+      : null;
+    const shouldUploadAsset = !!uploadReason;
     if (shouldUploadAsset) {
       await uploadThemeAsset(centerClient, themePackage, asset, config);
     }
@@ -60,11 +68,17 @@ async function syncThemePackage(
       relative_path: asset.relative_path,
       local_path: asset.absolute_path,
       uploaded: true,
+      binary_uploaded: true,
+      metadata_baseline: previousAsset
+        ? previousAsset.metadata_baseline === true
+        : false,
+      bootstrap_baseline: false,
       updated_at: new Date().toISOString(),
     });
     assetResults.push({
       asset_hash: asset.asset_hash,
       uploaded: shouldUploadAsset,
+      reason: uploadReason,
     });
   }
 

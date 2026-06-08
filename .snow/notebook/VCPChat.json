@@ -216,6 +216,13 @@
   ],
   "VCPDistributedServer/Plugin/VChatSyncAdapter/sync/bootstrapManager.js": [
     {
+      "id": "notebook-1780878480062_v9m3n4np6",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/sync/bootstrapManager.js",
+      "note": "2026-06-08 recordBootstrapPrimaryBaseline 写 theme_asset localIndex 时改为 uploaded:false、binary_uploaded:false、metadata_baseline:true、bootstrap_baseline:true，避免 bootstrap metadata-only 资产被长期误判为二进制已上传。",
+      "createdAt": "2026-06-08T08:28:00.062",
+      "updatedAt": "2026-06-08T08:28:00.062"
+    },
+    {
       "id": "notebook-1778605187819_mhq8rbft9",
       "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/sync/bootstrapManager.js",
       "note": "bootstrapPrimary 在 importBootstrap 成功后必须先 recordBootstrapPrimaryBaseline 写入 messages/configs localIndex，再切 active 并 scanAppData；否则 bootstrap 基线会被 active scan 误判为本地新变更并入队 /operations。",
@@ -261,6 +268,13 @@
     }
   ],
   "VCPDistributedServer/Plugin/VChatSyncAdapter/index.js": [
+    {
+      "id": "notebook-1780880732238_09ch4ldpy",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/index.js",
+      "note": "2026-06-08 修复主题同步补传未触发：index.js 之前用 projectBasePath 拼 styles/themes 和 assets/wallpaper；插件宿主传入的 projectBasePath 实际可能是 VCPDistributedServer，导致扫描到 0 个主题包。现统一用 path.resolve(config.appDataPath, '..') 得到 VChat 根目录，再拼 styles/themes 与 assets/wallpaper。验证 scanThemePackages 可发现 16 个主题包、22 个资产。",
+      "createdAt": "2026-06-08T09:05:32.238",
+      "updatedAt": "2026-06-08T09:05:32.238"
+    },
     {
       "id": "notebook-1778514914157_o7340dmda",
       "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/index.js",
@@ -1120,6 +1134,33 @@
       "note": "2026-06-08 failed queue 刷新按钮 loading 修复：refreshFailedOperations(withBusy=true) 会设置 busyAction='refreshFailed' 并在 finally 清理；内部 refreshAll/runAction 仍可默认 withBusy=false 复用，避免嵌套刷新覆盖外层 busyAction。",
       "createdAt": "2026-06-08T01:21:49.724",
       "updatedAt": "2026-06-08T01:21:49.724"
+    }
+  ],
+  "VCPDistributedServer/Plugin/VChatSyncAdapter/使用说明.md": [
+    {
+      "id": "notebook-1780873637474_zhqg4hdyr",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/使用说明.md",
+      "note": "2026-06-08 使用说明已在“常用命令”补充桌面端 /repair/topic 通俗用法：说明 dryRun=true 先检查、dryRun=false 入队修复；参数 item_type/item_id/topic_id 可从 AppData/UserData/<item_id>/topics/<topic_id>/history.json 路径识别；修复只写 offline_queue.jsonl，不直接写中心数据库。",
+      "createdAt": "2026-06-08T07:07:17.474",
+      "updatedAt": "2026-06-08T07:07:17.474"
+    }
+  ],
+  "VCPDistributedServer/Plugin/VChatSyncAdapter/diff/themeDiffEngine.js": [
+    {
+      "id": "notebook-1780878479469_gjmz4bqqk",
+      "filePath": "VCPDistributedServer/Plugin/VChatSyncAdapter/diff/themeDiffEngine.js",
+      "note": "2026-06-08 P0/P1 主题资源修复：bootstrap baseline 的 theme_asset 只代表 Center 已有元数据，不代表二进制已上传。syncThemePackage 现在在 previousAsset.binary_uploaded !== true、uploaded !== true、bootstrap_baseline === true 或 relative_path 变化时强制 POST /themes/assets；上传成功后写入 binary_uploaded:true、bootstrap_baseline:false。",
+      "createdAt": "2026-06-08T08:27:59.469",
+      "updatedAt": "2026-06-08T08:27:59.469"
+    }
+  ],
+  "../VCPToolBox/Plugin/VChatSyncCenter/data/attachments/theme_assets": [
+    {
+      "id": "notebook-1780882049147_263lk0s16",
+      "filePath": "../VCPToolBox/Plugin/VChatSyncCenter/data/attachments/theme_assets",
+      "note": "2026-06-08 P0 主题资源补传止血：Center theme_assets 22 条 metadata 对应文件全缺失；从 G:\\VCP\\VCPChat\\assets\\wallpaper 按 SHA256 匹配复制到 DB storage_path 指定位置后 integrity 为 total=22, ok=22, missing_file=0。注意不能只按本地扩展名写目标路径，必须按 theme_assets.storage_path 写入，否则 code-dark/code-light/月影/春信 等 DB 记录扩展名与源文件名扩展名不一致时仍会 missing_file。",
+      "createdAt": "2026-06-08T09:27:29.147",
+      "updatedAt": "2026-06-08T09:27:29.147"
     }
   ]
 }

@@ -616,7 +616,11 @@ async function recordBootstrapPrimaryBaseline(
           mime_type: asset.mime_type || asset.mime || null,
           size_bytes: asset.size_bytes || asset.sizeBytes || 0,
           relative_path: asset.relative_path || asset.relativePath || null,
-          uploaded: true,
+          // Bootstrap import only records theme asset metadata in Center.
+          // The actual binary must still be uploaded later via /themes/assets.
+          uploaded: false,
+          binary_uploaded: false,
+          metadata_baseline: true,
           bootstrap_baseline: true,
           last_applied_seq: latestSeq,
           updated_at: now,

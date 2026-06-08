@@ -471,12 +471,13 @@ async function startAdapter(app, pluginConfig, projectBasePath) {
     writeIntentLock,
     logger
   );
+  const vchatRootPath = path.resolve(config.appDataPath, "..");
   const themeWatcher = createThemeWatcher(
     {
       ...config,
-      themeStylesDir: path.resolve(projectBasePath, "styles", "themes"),
-      wallpaperDir: path.resolve(projectBasePath, "assets", "wallpaper"),
-      appRootPath: projectBasePath,
+      themeStylesDir: path.join(vchatRootPath, "styles", "themes"),
+      wallpaperDir: path.join(vchatRootPath, "assets", "wallpaper"),
+      appRootPath: vchatRootPath,
     },
     localIndex,
     centerClient,
@@ -741,9 +742,9 @@ async function startAdapter(app, pluginConfig, projectBasePath) {
     themeScanResult = await syncLocalThemes(
       {
         ...config,
-        themeStylesDir: path.resolve(projectBasePath, "styles", "themes"),
-        wallpaperDir: path.resolve(projectBasePath, "assets", "wallpaper"),
-        appRootPath: projectBasePath,
+        themeStylesDir: path.join(vchatRootPath, "styles", "themes"),
+        wallpaperDir: path.join(vchatRootPath, "assets", "wallpaper"),
+        appRootPath: vchatRootPath,
       },
       localIndex,
       centerClient,
