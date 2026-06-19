@@ -217,6 +217,18 @@ const DESKTOP_KEYS = [
   "nativeFsOpen",
   "nativeFsReveal",
   "onNativeFsChange",
+  // Phase 2
+  "nativeFsCopy",
+  "nativeFsCut",
+  "nativeFsRename",
+  "nativeFsTrash",
+  "nativeFsNewFolder",
+  "nativeFsNewFile",
+  "nativeFsCopyToClipboard",
+  "nativeFsPasteFromClipboard",
+  "nativeFsUnwatch",
+  "nativeFsRequestOperations",
+  "nativeFsConfirm",
 ];
 
 const UTILITY_KEYS = [

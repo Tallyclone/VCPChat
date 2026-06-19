@@ -1155,6 +1155,12 @@ if (!gotTheLock) {
     });
     nativeFsHandlers.initialize();
 
+    // Phase 2: 初始化 NativeFsWatcher 并绑定桌面窗口获取函数
+    const NativeFsWatcher = require("./modules/ipc/NativeFsWatcher");
+    NativeFsWatcher.setDesktopWindowGetter(() =>
+      desktopHandlers.getDesktopWindow()
+    );
+
     ipcMain.on("minimize-to-tray", () => {
       if (mainWindow) {
         mainWindow.hide();

@@ -851,6 +851,25 @@ function createCatalog(ops) {
     onNativeFsChange: subscription(
       ops.subscribe("nativeFs:change", (_event, data) => data)
     ),
+
+    // Phase 2: 文件操作 API
+    nativeFsCopy: query((args) => ops.invoke("nativeFs:copy", args)),
+    nativeFsCut: query((args) => ops.invoke("nativeFs:cut", args)),
+    nativeFsRename: query((args) => ops.invoke("nativeFs:rename", args)),
+    nativeFsTrash: query((args) => ops.invoke("nativeFs:trash", args)),
+    nativeFsNewFolder: query((args) => ops.invoke("nativeFs:newFolder", args)),
+    nativeFsNewFile: query((args) => ops.invoke("nativeFs:newFile", args)),
+    nativeFsCopyToClipboard: query((args) =>
+      ops.invoke("nativeFs:copyToClipboard", args)
+    ),
+    nativeFsPasteFromClipboard: query((args) =>
+      ops.invoke("nativeFs:pasteFromClipboard", args)
+    ),
+    nativeFsUnwatch: query((args) => ops.invoke("nativeFs:unwatch", args)),
+    nativeFsRequestOperations: query((args) =>
+      ops.invoke("nativeFs:requestOperations", args)
+    ),
+    nativeFsConfirm: query((args) => ops.invoke("nativeFs:confirm", args)),
   };
 }
 
@@ -922,6 +941,18 @@ const ALLOWED_KEYS = [
   "nativeFsOpen",
   "nativeFsReveal",
   "onNativeFsChange",
+  // Phase 2
+  "nativeFsCopy",
+  "nativeFsCut",
+  "nativeFsRename",
+  "nativeFsTrash",
+  "nativeFsNewFolder",
+  "nativeFsNewFile",
+  "nativeFsCopyToClipboard",
+  "nativeFsPasteFromClipboard",
+  "nativeFsUnwatch",
+  "nativeFsRequestOperations",
+  "nativeFsConfirm",
 ];
 
 const ops = createOps();

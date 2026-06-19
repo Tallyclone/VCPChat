@@ -6,7 +6,8 @@
  * 职责：
  * - Mount 管理（注册/卸载）
  * - 文件浏览（list/stat）
- * - 文件操作（open/reveal）
+ * - 文件操作（open/reveal/copy/cut/rename/trash/newFolder/newFile）
+ * - 剪贴板互通（Windows Explorer ↔ 挂件）
  * - 安全校验（capabilityToken 验证、路径逃逸检测、mode 权限检查）
  */
 
@@ -15,6 +16,7 @@ const fsSync = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { shell } = require("electron");
+const fse = require("fs-extra");
 
 class NativeFsService {
   constructor() {
@@ -92,6 +94,11 @@ class NativeFsService {
   unmount({ mountId, capabilityToken }) {
     this._validateToken(mountId, capabilityToken);
     this.mounts.delete(mountId);
+
+    // Phase 2: 清理该 mount 下的所有 watcher
+    const NativeFsWatcher = require("./NativeFsWatcher");
+    NativeFsWatcher.unwatchMount(mountId);
+
     console.log(`[NativeFsService] Mount unregistered: ${mountId}`);
     return { success: true };
   }
@@ -109,6 +116,401 @@ class NativeFsService {
       ownerWidgetId: mount.ownerWidgetId,
       createdAt: mount.createdAt,
     };
+  }
+
+  // ============================================================
+  // Phase 2: 文件操作（copy/cut/rename/trash/newFolder/newFile）
+  // ============================================================
+
+  /**
+   * 复制文件/文件夹
+   * @param {object} args
+   * @param {string} args.mountId
+   * @param {string} args.capabilityToken
+   * @param {string[]} args.sourcePaths - 源相对路径数组
+   * @param {string} args.destDir - 目标目录相对路径
+   * @param {string} [args.strategy='rename'] - 冲突策略: skip|overwrite|rename
+   */
+  async copy({
+    mountId,
+    capabilityToken,
+    sourcePaths,
+    destDir,
+    strategy = "rename",
+  }) {
+    this._validateToken(mountId, capabilityToken);
+    this._validateWriteAccess(mountId);
+    const mount = this.mounts.get(mountId);
+
+    const destDirFull = this._resolvePath(mount, destDir);
+    this._validatePathContainment(mount.rootRealPath, destDirFull);
+
+    const results = [];
+    for (const srcRel of sourcePaths) {
+      const srcFull = this._resolvePath(mount, srcRel);
+      this._validatePathContainment(mount.rootRealPath, srcFull);
+
+      const baseName = path.basename(srcFull);
+      let destFull = path.join(destDirFull, baseName);
+      this._validatePathContainment(mount.rootRealPath, destFull);
+
+      destFull = await this._resolveConflict(destFull, strategy);
+      if (destFull === null) {
+        results.push({ source: srcRel, skipped: true });
+        continue;
+      }
+
+      await fse.copy(srcFull, destFull, {
+        overwrite: strategy === "overwrite",
+      });
+      results.push({
+        source: srcRel,
+        dest: path.relative(mount.rootRealPath, destFull),
+      });
+    }
+
+    return { results };
+  }
+
+  /**
+   * 剪切（移动）文件/文件夹
+   * @param {object} args
+   * @param {string} args.mountId
+   * @param {string} args.capabilityToken
+   * @param {string[]} args.sourcePaths - 源相对路径数组
+   * @param {string} args.destDir - 目标目录相对路径
+   * @param {string} [args.strategy='rename'] - 冲突策略: skip|overwrite|rename
+   */
+  async cut({
+    mountId,
+    capabilityToken,
+    sourcePaths,
+    destDir,
+    strategy = "rename",
+  }) {
+    this._validateToken(mountId, capabilityToken);
+    this._validateWriteAccess(mountId);
+    const mount = this.mounts.get(mountId);
+
+    const destDirFull = this._resolvePath(mount, destDir);
+    this._validatePathContainment(mount.rootRealPath, destDirFull);
+
+    const results = [];
+    for (const srcRel of sourcePaths) {
+      const srcFull = this._resolvePath(mount, srcRel);
+      this._validatePathContainment(mount.rootRealPath, srcFull);
+
+      const baseName = path.basename(srcFull);
+      let destFull = path.join(destDirFull, baseName);
+      this._validatePathContainment(mount.rootRealPath, destFull);
+
+      destFull = await this._resolveConflict(destFull, strategy);
+      if (destFull === null) {
+        results.push({ source: srcRel, skipped: true });
+        continue;
+      }
+
+      await fse.move(srcFull, destFull, {
+        overwrite: strategy === "overwrite",
+      });
+      results.push({
+        source: srcRel,
+        dest: path.relative(mount.rootRealPath, destFull),
+      });
+    }
+
+    return { results };
+  }
+
+  /**
+   * 重命名文件/文件夹
+   * @param {object} args
+   * @param {string} args.mountId
+   * @param {string} args.capabilityToken
+   * @param {string} args.oldPath - 原相对路径
+   * @param {string} args.newName - 新文件名（不含路径）
+   */
+  async rename({ mountId, capabilityToken, oldPath, newName }) {
+    this._validateToken(mountId, capabilityToken);
+    this._validateWriteAccess(mountId);
+    const mount = this.mounts.get(mountId);
+
+    if (!newName || newName.includes("/") || newName.includes("\\")) {
+      throw new Error("Invalid new name");
+    }
+
+    const oldFull = this._resolvePath(mount, oldPath);
+    this._validatePathContainment(mount.rootRealPath, oldFull);
+
+    const parentDir = path.dirname(oldFull);
+    const newFull = path.join(parentDir, newName);
+    this._validatePathContainment(mount.rootRealPath, newFull);
+
+    // 检查目标是否已存在
+    if (fsSync.existsSync(newFull)) {
+      throw new Error(`Name already exists: ${newName}`);
+    }
+
+    await fs.rename(oldFull, newFull);
+    return { newPath: path.relative(mount.rootRealPath, newFull) };
+  }
+
+  /**
+   * 删除到回收站
+   * @param {object} args
+   * @param {string} args.mountId
+   * @param {string} args.capabilityToken
+   * @param {string[]} args.paths - 相对路径数组
+   */
+  async trash({ mountId, capabilityToken, paths }) {
+    this._validateToken(mountId, capabilityToken);
+    this._validateWriteAccess(mountId);
+    const mount = this.mounts.get(mountId);
+
+    // trash v9 is ESM-only, must use dynamic import
+    const { default: trashFn } = await import("trash");
+
+    const fullPaths = [];
+    for (const relPath of paths) {
+      const fullPath = this._resolvePath(mount, relPath);
+      this._validatePathContainment(mount.rootRealPath, fullPath);
+      fullPaths.push(fullPath);
+    }
+
+    await trashFn(fullPaths);
+    return { trashed: paths };
+  }
+
+  /**
+   * 新建文件夹
+   * @param {object} args
+   * @param {string} args.mountId
+   * @param {string} args.capabilityToken
+   * @param {string} args.parentPath - 父目录相对路径
+   * @param {string} args.folderName - 新文件夹名
+   */
+  async newFolder({ mountId, capabilityToken, parentPath, folderName }) {
+    this._validateToken(mountId, capabilityToken);
+    this._validateWriteAccess(mountId);
+    const mount = this.mounts.get(mountId);
+
+    if (!folderName || folderName.includes("/") || folderName.includes("\\")) {
+      throw new Error("Invalid folder name");
+    }
+
+    const parentFull = this._resolvePath(mount, parentPath);
+    this._validatePathContainment(mount.rootRealPath, parentFull);
+
+    const newFolderFull = path.join(parentFull, folderName);
+    this._validatePathContainment(mount.rootRealPath, newFolderFull);
+
+    if (fsSync.existsSync(newFolderFull)) {
+      throw new Error(`Folder already exists: ${folderName}`);
+    }
+
+    await fs.mkdir(newFolderFull, { recursive: true });
+    return { createdPath: path.relative(mount.rootRealPath, newFolderFull) };
+  }
+
+  /**
+   * 新建文件
+   * @param {object} args
+   * @param {string} args.mountId
+   * @param {string} args.capabilityToken
+   * @param {string} args.parentPath - 父目录相对路径
+   * @param {string} args.fileName - 新文件名
+   * @param {string} [args.content=''] - 文件内容
+   */
+  async newFile({
+    mountId,
+    capabilityToken,
+    parentPath,
+    fileName,
+    content = "",
+  }) {
+    this._validateToken(mountId, capabilityToken);
+    this._validateWriteAccess(mountId);
+    const mount = this.mounts.get(mountId);
+
+    if (!fileName || fileName.includes("/") || fileName.includes("\\")) {
+      throw new Error("Invalid file name");
+    }
+
+    const parentFull = this._resolvePath(mount, parentPath);
+    this._validatePathContainment(mount.rootRealPath, parentFull);
+
+    const newFileFull = path.join(parentFull, fileName);
+    this._validatePathContainment(mount.rootRealPath, newFileFull);
+
+    if (fsSync.existsSync(newFileFull)) {
+      throw new Error(`File already exists: ${fileName}`);
+    }
+
+    await fs.writeFile(newFileFull, content, "utf-8");
+    return { createdPath: path.relative(mount.rootRealPath, newFileFull) };
+  }
+
+  // ============================================================
+  // Phase 2: 剪贴板互通（Windows Explorer ↔ 挂件）
+  // ============================================================
+
+  /**
+   * 将文件路径写入 Windows 系统剪贴板（CF_HDROP 格式）
+   * @param {object} args
+   * @param {string} args.mountId
+   * @param {string} args.capabilityToken
+   * @param {string[]} args.paths - 相对路径数组
+   */
+  async copyToClipboard({ mountId, capabilityToken, paths }) {
+    this._validateToken(mountId, capabilityToken);
+    const mount = this.mounts.get(mountId);
+
+    const fullPaths = [];
+    for (const relPath of paths) {
+      const fullPath = this._resolvePath(mount, relPath);
+      this._validatePathContainment(mount.rootRealPath, fullPath);
+      fullPaths.push(fullPath);
+    }
+
+    // 使用 PowerShell 设置 CF_HDROP 剪贴板
+    const { execSync } = require("child_process");
+    const addLines = fullPaths
+      .map((p) => `$col.Add('${p.replace(/'/g, "''")}')`)
+      .join("; ");
+    const psScript = `Add-Type -AssemblyName System.Windows.Forms; $col = New-Object System.Collections.Specialized.StringCollection; ${addLines}; [System.Windows.Forms.Clipboard]::SetFileDropList($col)`;
+
+    execSync(
+      `powershell -NoProfile -Command "${psScript.replace(/"/g, '\\"')}"`,
+      {
+        windowsHide: true,
+        timeout: 5000,
+      }
+    );
+
+    return { copied: paths };
+  }
+
+  /**
+   * 从 Windows 系统剪贴板读取文件列表并粘贴到目标目录
+   * @param {object} args
+   * @param {string} args.mountId
+   * @param {string} args.capabilityToken
+   * @param {string} args.destDir - 目标目录相对路径
+   * @param {string} [args.strategy='rename'] - 冲突策略: skip|overwrite|rename
+   */
+  async pasteFromClipboard({
+    mountId,
+    capabilityToken,
+    destDir,
+    strategy = "rename",
+  }) {
+    this._validateToken(mountId, capabilityToken);
+    this._validateWriteAccess(mountId);
+    const mount = this.mounts.get(mountId);
+
+    const destDirFull = this._resolvePath(mount, destDir);
+    this._validatePathContainment(mount.rootRealPath, destDirFull);
+
+    // 从 Windows 剪贴板读取文件列表
+    const { execSync } = require("child_process");
+    const psRead = `Add-Type -AssemblyName System.Windows.Forms; $files = [System.Windows.Forms.Clipboard]::GetFileDropList(); foreach ($f in $files) { Write-Output $f }`;
+
+    let output;
+    try {
+      output = execSync(
+        `powershell -NoProfile -Command "${psRead.replace(/"/g, '\\"')}"`,
+        {
+          windowsHide: true,
+          timeout: 5000,
+          encoding: "utf-8",
+        }
+      );
+    } catch (err) {
+      throw new Error("Failed to read clipboard: " + err.message);
+    }
+
+    const clipPaths = output.trim().split(/\r?\n/).filter(Boolean);
+    if (clipPaths.length === 0) {
+      throw new Error("No files in clipboard");
+    }
+
+    const results = [];
+    for (const srcFull of clipPaths) {
+      if (!fsSync.existsSync(srcFull)) {
+        results.push({ source: srcFull, error: "File not found" });
+        continue;
+      }
+
+      const baseName = path.basename(srcFull);
+      let destFull = path.join(destDirFull, baseName);
+      this._validatePathContainment(mount.rootRealPath, destFull);
+
+      destFull = await this._resolveConflict(destFull, strategy);
+      if (destFull === null) {
+        results.push({ source: srcFull, skipped: true });
+        continue;
+      }
+
+      await fse.copy(srcFull, destFull, {
+        overwrite: strategy === "overwrite",
+      });
+      results.push({
+        source: srcFull,
+        dest: path.relative(mount.rootRealPath, destFull),
+      });
+    }
+
+    return { results };
+  }
+
+  // ============================================================
+  // Phase 2: 辅助功能
+  // ============================================================
+
+  /**
+   * 预览批量操作计划（dry-run）
+   * @param {object} args
+   * @param {string} args.mountId
+   * @param {string} args.capabilityToken
+   * @param {object} args.plan - 操作计划描述
+   */
+  async requestOperations({ mountId, capabilityToken, plan }) {
+    this._validateToken(mountId, capabilityToken);
+    // 当前直接返回计划概要，未来可扩展为冲突检测
+    return { plan, approved: false, message: "Review the operations above" };
+  }
+
+  /**
+   * 显示原生确认对话框
+   * @param {object} args
+   * @param {string} [args.type='question'] - 对话框类型
+   * @param {string} [args.title='确认'] - 标题
+   * @param {string} args.message - 消息
+   * @param {string} [args.detail] - 详细信息
+   * @param {string[]} [args.buttons=['确定', '取消']] - 按钮文本
+   */
+  async confirm({
+    type = "question",
+    title = "确认",
+    message,
+    detail,
+    buttons = ["确定", "取消"],
+  }) {
+    const { dialog } = require("electron");
+    const desktopHandlers = require("./desktopHandlers");
+    const desktopWin = desktopHandlers.getDesktopWindow();
+
+    const result = await dialog.showMessageBox(desktopWin || null, {
+      type,
+      title,
+      message,
+      detail: detail || undefined,
+      buttons,
+      defaultId: 0,
+      cancelId: buttons.length - 1,
+    });
+
+    return { response: result.response, buttonLabel: buttons[result.response] };
   }
 
   // ============================================================
@@ -172,9 +574,14 @@ class NativeFsService {
       return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
     });
 
+    // Phase 2: 触发 NativeFsWatcher 监听当前目录
+    const NativeFsWatcher = require("./NativeFsWatcher");
+    const watchRelPath = relativePath === "." ? "" : relativePath;
+    NativeFsWatcher.watch(mountId, watchRelPath, fullPath);
+
     return {
       entries,
-      currentPath: relativePath === "." ? "" : relativePath,
+      currentPath: watchRelPath,
     };
   }
 
@@ -310,12 +717,51 @@ class NativeFsService {
       return mount.rootRealPath;
     }
 
-    // 清理路径：移除前导的 / 或 \
+    // 清理路径：移除前导的 / 或 \\
     let cleanPath = relativePath.replace(/^[/\\]+/, "");
 
     // 使用 path.resolve 解析
     const fullPath = path.resolve(mount.rootRealPath, cleanPath);
     return fullPath;
+  }
+
+  /**
+   * 解决文件名冲突（Phase 2 辅助方法）
+   * @param {string} destPath - 目标路径
+   * @param {string} strategy - 冲突策略: skip|overwrite|rename
+   * @returns {string|null} 解决后的路径，或 null（表示跳过）
+   * @private
+   */
+  async _resolveConflict(destPath, strategy) {
+    if (!fsSync.existsSync(destPath)) {
+      return destPath;
+    }
+
+    if (strategy === "skip") {
+      return null;
+    }
+
+    if (strategy === "overwrite") {
+      return destPath;
+    }
+
+    // strategy === "rename": 追加 (1), (2), ...
+    const dir = path.dirname(destPath);
+    const ext = path.extname(destPath);
+    const base = path.basename(destPath, ext);
+
+    let counter = 1;
+    let newPath;
+    while (true) {
+      newPath = path.join(dir, `${base} (${counter})${ext}`);
+      if (!fsSync.existsSync(newPath)) {
+        return newPath;
+      }
+      counter++;
+      if (counter > 999) {
+        throw new Error("Too many conflicting files");
+      }
+    }
   }
 }
 
