@@ -173,6 +173,16 @@ function initialize() {
     }
   });
 
+  ipcMain.handle("nativeFs:cutToClipboard", async (event, args) => {
+    try {
+      const result = await nativeFsService.cutToClipboard(args);
+      return { success: true, ...result };
+    } catch (err) {
+      console.error("[NativeFsHandlers] cutToClipboard error:", err.message);
+      return { success: false, error: err.message };
+    }
+  });
+
   ipcMain.handle("nativeFs:pasteFromClipboard", async (event, args) => {
     try {
       const result = await nativeFsService.pasteFromClipboard(args);

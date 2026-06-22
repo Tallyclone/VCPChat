@@ -862,6 +862,9 @@ function createCatalog(ops) {
     nativeFsCopyToClipboard: query((args) =>
       ops.invoke("nativeFs:copyToClipboard", args)
     ),
+    nativeFsCutToClipboard: query((args) =>
+      ops.invoke("nativeFs:cutToClipboard", args)
+    ),
     nativeFsPasteFromClipboard: query((args) =>
       ops.invoke("nativeFs:pasteFromClipboard", args)
     ),
@@ -949,6 +952,7 @@ const ALLOWED_KEYS = [
   "nativeFsNewFolder",
   "nativeFsNewFile",
   "nativeFsCopyToClipboard",
+  "nativeFsCutToClipboard",
   "nativeFsPasteFromClipboard",
   "nativeFsUnwatch",
   "nativeFsRequestOperations",

@@ -23,6 +23,8 @@ class NativeFsService {
     /** @type {Map<string, MountInfo>} mountId -> MountInfo */
     this.mounts = new Map();
     this._idCounter = 0;
+    /** @type {string[]|null} 剪切模式暂存的绝对路径列表（粘贴后清除） */
+    this._cutPaths = null;
   }
 
   // ============================================================
@@ -387,7 +389,58 @@ class NativeFsService {
       }
     );
 
+    this._cutPaths = null; // copy 操作清除剪切状态
     return { copied: paths };
+  }
+
+  /**
+   * 剪切文件到 Windows 系统剪贴板（写入 CF_HDROP + Preferred DropEffect=MOVE）
+   * @param {object} args
+   * @param {string} args.mountId
+   * @param {string} args.capabilityToken
+   * @param {string[]} args.paths - 相对路径数组
+   */
+  async cutToClipboard({ mountId, capabilityToken, paths }) {
+    this._validateToken(mountId, capabilityToken);
+    const mount = this.mounts.get(mountId);
+
+    const fullPaths = [];
+    for (const relPath of paths) {
+      const fullPath = this._resolvePath(mount, relPath);
+      this._validatePathContainment(mount.rootRealPath, fullPath);
+      fullPaths.push(fullPath);
+    }
+
+    // 使用 PowerShell 设置 CF_HDROP + Preferred DropEffect = MOVE (2)
+    // 这使 Windows Explorer 在粘贴时执行移动而非复制
+    const { execSync } = require("child_process");
+    const addLines = fullPaths
+      .map((p) => `$col.Add('${p.replace(/'/g, "''")}')`)
+      .join("; ");
+    const psScript = [
+      "Add-Type -AssemblyName System.Windows.Forms",
+      "$dataObj = New-Object System.Windows.Forms.DataObject",
+      "$col = New-Object System.Collections.Specialized.StringCollection",
+      addLines,
+      "$dataObj.SetFileDropList($col)",
+      "$moveEffect = [byte[]](2,0,0,0)",
+      "$ms = New-Object System.IO.MemoryStream(,$moveEffect)",
+      "$dataObj.SetData('Preferred DropEffect', $ms)",
+      "[System.Windows.Forms.Clipboard]::SetDataObject($dataObj, $true)",
+    ].join("; ");
+
+    execSync(
+      `powershell -NoProfile -Command "${psScript.replace(/"/g, '\\"')}"`,
+      {
+        windowsHide: true,
+        timeout: 5000,
+      }
+    );
+
+    // 记录剪切状态，供 widget 内部粘贴时快速判断
+    this._cutPaths = fullPaths;
+
+    return { cut: paths };
   }
 
   /**
@@ -411,9 +464,23 @@ class NativeFsService {
     const destDirFull = this._resolvePath(mount, destDir);
     this._validatePathContainment(mount.rootRealPath, destDirFull);
 
-    // 从 Windows 剪贴板读取文件列表
+    // 从 Windows 剪贴板读取文件列表 + Preferred DropEffect
     const { execSync } = require("child_process");
-    const psRead = `Add-Type -AssemblyName System.Windows.Forms; $files = [System.Windows.Forms.Clipboard]::GetFileDropList(); foreach ($f in $files) { Write-Output $f }`;
+    const psRead = [
+      "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8",
+      "Add-Type -AssemblyName System.Windows.Forms",
+      "$data = [System.Windows.Forms.Clipboard]::GetDataObject()",
+      "$dropEffect = 0",
+      "if ($data.GetDataPresent('Preferred DropEffect')) {",
+      "  $s = $data.GetData('Preferred DropEffect')",
+      "  $b = New-Object byte[] 4",
+      "  $null = $s.Read($b, 0, 4)",
+      "  $dropEffect = [BitConverter]::ToInt32($b, 0)",
+      "}",
+      'Write-Output "DROPEFFECT:$dropEffect"',
+      "$files = [System.Windows.Forms.Clipboard]::GetFileDropList()",
+      "foreach ($f in $files) { Write-Output $f }",
+    ].join("; ");
 
     let output;
     try {
@@ -429,10 +496,31 @@ class NativeFsService {
       throw new Error("Failed to read clipboard: " + err.message);
     }
 
-    const clipPaths = output.trim().split(/\r?\n/).filter(Boolean);
+    // 解析输出：第一行为 DROPEFFECT:N，其余为文件路径
+    const lines = output.trim().split(/\r?\n/).filter(Boolean);
+    let clipboardDropEffect = 0;
+    const clipPaths = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("DROPEFFECT:")) {
+        clipboardDropEffect = parseInt(trimmed.slice(11), 10) || 0;
+      } else if (trimmed) {
+        clipPaths.push(trimmed);
+      }
+    }
     if (clipPaths.length === 0) {
       throw new Error("No files in clipboard");
     }
+
+    // 判断是否为剪切模式：
+    // 1. 剪贴板携带 Preferred DropEffect = DROPEFFECT_MOVE (2)（来自本应用或 Explorer 的剪切）
+    // 2. 或内存 _cutPaths 匹配（向后兼容）
+    const DROPEFFECT_MOVE = 2;
+    const isCutMode =
+      clipboardDropEffect === DROPEFFECT_MOVE ||
+      (this._cutPaths &&
+        this._cutPaths.length === clipPaths.length &&
+        this._cutPaths.every((p) => clipPaths.includes(p)));
 
     const results = [];
     for (const srcFull of clipPaths) {
@@ -451,13 +539,25 @@ class NativeFsService {
         continue;
       }
 
-      await fse.copy(srcFull, destFull, {
-        overwrite: strategy === "overwrite",
-      });
+      if (isCutMode) {
+        await fse.move(srcFull, destFull, {
+          overwrite: strategy === "overwrite",
+        });
+      } else {
+        await fse.copy(srcFull, destFull, {
+          overwrite: strategy === "overwrite",
+        });
+      }
       results.push({
         source: srcFull,
         dest: path.relative(mount.rootRealPath, destFull),
+        moved: isCutMode,
       });
+    }
+
+    // 剪切完成后清除状态
+    if (isCutMode) {
+      this._cutPaths = null;
     }
 
     return { results };

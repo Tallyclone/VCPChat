@@ -43,6 +43,7 @@ function isBuiltinBlock(buffer) {
 
 /**
  * 解析 DESKTOP_PUSH builtin 协议块
+ * 支持单行值和多行「始ESCAPE」...「末ESCAPE」定界符值
  * @param {string} rawBuffer - 完整的 buffer 内容（不包含 start/end 标签）
  * @returns {{ type: string, config: object, options: object } | null}
  */
@@ -56,9 +57,12 @@ function parseDesktopBuiltinBlock(rawBuffer) {
   };
 
   const lines = rawBuffer.split(/\r?\n/);
+  let i = 0;
 
-  for (const line of lines) {
-    const trimmed = line.trim();
+  while (i < lines.length) {
+    const trimmed = lines[i].trim();
+    i++;
+
     if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("//"))
       continue;
 
@@ -71,8 +75,27 @@ function parseDesktopBuiltinBlock(rawBuffer) {
 
     if (!key) continue;
 
-    // 提取「始」...「末」分隔符包裹的值
-    value = extractDelimitedValue(value);
+    // 多行「始ESCAPE」...「末ESCAPE」定界符处理
+    // 如果 value 以「始ESCAPE」开头但不含「末ESCAPE」，进入多行捕获模式
+    if (value.startsWith("「始ESCAPE」") && !value.includes("「末ESCAPE」")) {
+      // 第一行的内容（「始ESCAPE」之后的部分）
+      const multiLines = [value.substring("「始ESCAPE」".length)];
+      // 继续读取后续行直到遇到「末ESCAPE」
+      while (i < lines.length) {
+        const nextLine = lines[i];
+        i++;
+        if (nextLine.trim() === "「末ESCAPE」") {
+          // 找到闭合标记，结束捕获
+          break;
+        }
+        multiLines.push(nextLine);
+      }
+      // 合并多行内容，去掉首尾空行
+      value = multiLines.join("\n").replace(/^\n+|\n+$/g, "");
+    } else {
+      // 单行定界符处理（原有逻辑）
+      value = extractDelimitedValue(value);
+    }
 
     // 类型转换
     value = convertValue(key, value);
