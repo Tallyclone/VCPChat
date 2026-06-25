@@ -39,6 +39,24 @@
               info.savedId = widgetData.savedId;
               info.savedDir = `${widgetsDir}/${widgetData.savedId}`;
             }
+            // Builtin widget 扩展信息
+            if (widgetData._builtinType) {
+              info.builtinType = widgetData._builtinType;
+              info.contentType = "builtin";
+              // 获取 builtin widget 的 QueryInfo
+              if (
+                widgetData._builtinType === "nativeFileMount" &&
+                window.VCPDesktop?.builtinNativeFileMount?.getQueryInfo
+              ) {
+                const queryInfo =
+                  window.VCPDesktop.builtinNativeFileMount.getQueryInfo(
+                    widgetId
+                  );
+                if (queryInfo) {
+                  info.queryInfo = queryInfo;
+                }
+              }
+            }
             widgetsList.push(info);
           }
 
@@ -137,17 +155,30 @@
             return;
           }
 
+          // Builtin widget: 优先返回 _builtinSource（原始 key-value 协议文本）
+          const responseData = {
+            widgetId,
+            savedName: widgetData.savedName || null,
+            savedId: widgetData.savedId || null,
+          };
+
+          if (widgetData._builtinSource) {
+            responseData.source = widgetData._builtinSource;
+            responseData.sourceFormat = "builtinKeyValue";
+            responseData.contentType = "builtin";
+            responseData.builtinType = widgetData._builtinType || null;
+            // 也提供 html 以保持兼容
+            responseData.html = widgetData._builtinSource;
+          } else {
+            responseData.html =
+              widgetData.contentBuffer ||
+              widgetData.contentContainer?.innerHTML ||
+              "";
+          }
+
           sendDesktopRemoteRpcResponse(requestId, {
             ok: true,
-            data: {
-              widgetId,
-              html:
-                widgetData.contentBuffer ||
-                widgetData.contentContainer?.innerHTML ||
-                "",
-              savedName: widgetData.savedName || null,
-              savedId: widgetData.savedId || null,
-            },
+            data: responseData,
           });
           return;
         }
@@ -282,6 +313,136 @@
           return;
         }
 
+        case "CreateNativeFileMount": {
+          if (!window.VCPDesktop?.builtinNativeFileMount?.spawn) {
+            throw new Error("builtinNativeFileMount module is unavailable.");
+          }
+
+          const spawnData = {
+            widgetId: payload.widgetId,
+            config: payload.config || {},
+            options: payload.options || {},
+          };
+
+          window.VCPDesktop.builtinNativeFileMount.spawn(spawnData);
+
+          // Polling mode: wait for _nfm state + collect runtime errors
+          const hasCustomUI = !!payload.config?.ui?.customUI;
+          const pollInterval = 100;
+          const maxWait = hasCustomUI ? 2000 : 800; // customUI needs more time for async errors
+          let elapsed = 0;
+
+          // Phase 1: Wait for _nfm initialization (status set)
+          let nfmWidgetData = null;
+          while (elapsed < maxWait) {
+            await new Promise((resolve) => setTimeout(resolve, pollInterval));
+            elapsed += pollInterval;
+            nfmWidgetData = state.widgets.get(payload.widgetId);
+            if (
+              nfmWidgetData &&
+              nfmWidgetData._nfm &&
+              nfmWidgetData._nfm.status
+            ) {
+              break;
+            }
+          }
+
+          if (!nfmWidgetData || !nfmWidgetData._nfm) {
+            sendDesktopRemoteRpcResponse(requestId, {
+              ok: false,
+              error:
+                "Widget was not created or _nfm state not initialized (timeout: " +
+                elapsed +
+                "ms).",
+            });
+            return;
+          }
+
+          // Phase 2: If customUI was requested and mounted, wait extra time for runtime errors
+          if (hasCustomUI && nfmWidgetData._nfm.status === "mounted") {
+            const errorWaitMs = Math.min(1200, maxWait - elapsed);
+            if (errorWaitMs > 0) {
+              // Wait in chunks; stop early if we detect errors
+              let errorElapsed = 0;
+              while (errorElapsed < errorWaitMs) {
+                await new Promise((resolve) =>
+                  setTimeout(resolve, pollInterval)
+                );
+                errorElapsed += pollInterval;
+                elapsed += pollInterval;
+                const errs = nfmWidgetData._nfm.runtimeErrors;
+                if (errs && errs.length > 0) {
+                  // Give a short grace period for additional errors to accumulate
+                  await new Promise((resolve) => setTimeout(resolve, 200));
+                  elapsed += 200;
+                  break;
+                }
+              }
+            }
+          }
+
+          const nfmStatus = nfmWidgetData._nfm.status || "mounted";
+          const nfmError = nfmWidgetData._nfm.errorMessage || null;
+          const runtimeErrors = (nfmWidgetData._nfm.runtimeErrors || []).slice(
+            0,
+            10
+          );
+
+          // Detect CustomUI fallback: requested customUI but rendered as default
+          let customUIFallback = false;
+          if (
+            hasCustomUI &&
+            nfmStatus === "mounted" &&
+            nfmWidgetData.contentBuffer &&
+            nfmWidgetData.contentBuffer.indexOf("[NFM-Custom]") === -1
+          ) {
+            customUIFallback = true;
+          }
+
+          sendDesktopRemoteRpcResponse(requestId, {
+            ok: nfmStatus === "mounted",
+            data: {
+              widgetId: payload.widgetId,
+              status: nfmStatus,
+              error: nfmError,
+              customUIFallback: customUIFallback,
+              customUIFallbackReason: customUIFallback
+                ? "CustomUI was requested but the widget rendered with default UI. Check if customUI.html or customUI.js values are valid (non-empty, no delimiter residue)."
+                : null,
+              runtimeErrors: runtimeErrors.length > 0 ? runtimeErrors : null,
+              pollingElapsedMs: elapsed,
+            },
+          });
+          return;
+        }
+
+        case "EditNativeFileMount": {
+          if (!window.VCPDesktop?.builtinNativeFileMount?.edit) {
+            throw new Error("builtinNativeFileMount module is unavailable.");
+          }
+
+          const editData = {
+            widgetId: payload.widgetId,
+            target: payload.target,
+            replace: payload.replace,
+          };
+
+          window.VCPDesktop.builtinNativeFileMount.edit(editData);
+
+          // Wait for respawn to complete
+          await new Promise((resolve) => setTimeout(resolve, 500));
+
+          sendDesktopRemoteRpcResponse(requestId, {
+            ok: true,
+            data: {
+              widgetId: payload.widgetId,
+              action: "edit",
+              status: "completed",
+            },
+          });
+          return;
+        }
+
         default:
           sendDesktopRemoteRpcResponse(requestId, {
             ok: false,
@@ -325,8 +486,12 @@
             widget.clearAll();
             break;
           case "createBuiltinWidget":
-            // Builtin 挂件由各自的 widget 模块处理（如 nativeFileMountWidget.js）
-            // 此处为 no-op，避免 "Unknown action" 警告
+            // NativeFileMount 现已通过 DesktopRemote RPC 驱动（CreateNativeFileMount command）
+            // 保留 no-op 避免旧流程残留触发 "Unknown action" 警告
+            break;
+          case "editBuiltinWidget":
+            // NativeFileMount 编辑现已通过 DesktopRemote RPC 驱动（EditNativeFileMount command）
+            // 保留 no-op 避免旧流程残留触发 "Unknown action" 警告
             break;
           default:
             console.warn(`[Desktop] Unknown action: ${action}`);

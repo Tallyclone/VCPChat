@@ -143,11 +143,27 @@
       '    if (!nfmState) { console.error("[NFM-Custom] Cannot find _nfm state"); return; }',
       '    console.log("[NFM-Custom] nfmState found, mountPath:", nfmState.mountPath, "mode:", nfmState.mode);',
       "",
+      "    // ---- Runtime error collection ----",
+      "    if (!nfmState.runtimeErrors) { nfmState.runtimeErrors = []; }",
+      "    function _nfmPushError(msg, source, lineno) {",
+      "        if (nfmState.runtimeErrors.length >= 10) return;",
+      "        nfmState.runtimeErrors.push({ message: String(msg).slice(0, 300), source: source || 'customUI.js', line: lineno || 0, ts: Date.now() });",
+      "    }",
+      "    window.addEventListener('error', function(ev) {",
+      "        _nfmPushError(ev.message || ev.error, ev.filename || 'customUI', ev.lineno);",
+      "    });",
+      "    window.addEventListener('unhandledrejection', function(ev) {",
+      "        var reason = ev.reason;",
+      "        var msg = reason instanceof Error ? reason.message : String(reason);",
+      "        _nfmPushError('UnhandledPromiseRejection: ' + msg, 'customUI.js(async)', 0);",
+      "    });",
+      "    // ---- End error collection ----",
+      "",
       "    var nfm = {",
       "        mountId: nfmState.mountId,",
       "        mountPath: nfmState.mountPath,",
       "        mode: nfmState.mode,",
-      '        list: function(relPath) { return api.nativeFsList({ mountId: nfmState.mountId, capabilityToken: nfmState.capabilityToken, path: relPath || "." }).then(function(r) { if (r && r.entries) { r.entries.forEach(function(e) { e.isDir = e.isDirectory = (e.type === "directory"); }); } return r; }); },',
+      '        list: function(relPath) { return api.nativeFsList({ mountId: nfmState.mountId, capabilityToken: nfmState.capabilityToken, path: relPath || "." }).then(function(r) { if (!r || !r.success) { return { success: false, error: r ? r.error : "Unknown error", entries: [], currentPath: "" }; } r.entries = r.entries || []; r.entries.forEach(function(e) { e.isDir = e.isDirectory = (e.type === "directory"); }); return r; }); },',
       "        open: function(relPath) { return api.nativeFsStat({ mountId: nfmState.mountId, capabilityToken: nfmState.capabilityToken, path: relPath }).then(function(s) { if (s && s.type === 'directory') { return Promise.reject('[NFM] Cannot open a directory with nfm.open(). Use nfm.list() to navigate into it.'); } return api.nativeFsOpen({ mountId: nfmState.mountId, capabilityToken: nfmState.capabilityToken, path: relPath }); }); },",
       "        reveal: function(relPath) { return api.nativeFsReveal({ mountId: nfmState.mountId, capabilityToken: nfmState.capabilityToken, path: relPath }); },",
       '        newFolder: function(parentPath, name) { return api.nativeFsNewFolder({ mountId: nfmState.mountId, capabilityToken: nfmState.capabilityToken, parentPath: parentPath || ".", folderName: name }); },',
@@ -169,6 +185,7 @@
       "    " + userJs,
       "    } catch(_nfmErr) {",
       '        console.error("[NFM-Custom] customUI.js runtime error:", _nfmErr);',
+      "        _nfmPushError(_nfmErr.message || String(_nfmErr), 'customUI.js(sync)', _nfmErr.lineNumber || 0);",
       "    }",
       '    console.log("[NFM-Custom] customUI.js execution finished");',
       "})();",
@@ -935,6 +952,49 @@
     return css + "\n" + html + "\n" + inlineScript;
   }
 
+  // ========== 辅助函数：重建 source 文本 ==========
+  function _rebuildSourceText(data) {
+    var config = data.config || {};
+    var opts = data.options || {};
+    var lines = [];
+    lines.push("type: nativeFileMount");
+    if (config.mountPath)
+      lines.push("mountPath:「始」" + config.mountPath + "「末」");
+    if (config.mode) lines.push("mode: " + config.mode);
+    if (opts.width) lines.push("width: " + opts.width);
+    if (opts.height) lines.push("height: " + opts.height);
+    if (opts.x != null) lines.push("x: " + opts.x);
+    if (opts.y != null) lines.push("y: " + opts.y);
+    var frame = opts.frame || {};
+    for (var fKey in frame) {
+      if (frame.hasOwnProperty(fKey)) {
+        lines.push("frame." + fKey + ": " + String(frame[fKey]));
+      }
+    }
+    if (config.ui) {
+      _flattenObject("ui", config.ui, lines);
+    }
+    return lines.join("\n");
+  }
+
+  function _flattenObject(prefix, obj, lines) {
+    for (var key in obj) {
+      if (!obj.hasOwnProperty(key)) continue;
+      var fullKey = prefix + "." + key;
+      var val = obj[key];
+      if (val && typeof val === "object" && !Array.isArray(val)) {
+        _flattenObject(fullKey, val, lines);
+      } else {
+        var strVal = String(val);
+        if (strVal.indexOf("\n") !== -1) {
+          lines.push(fullKey + ":「始ESCAPE」" + strVal + "「末ESCAPE」");
+        } else {
+          lines.push(fullKey + ": " + strVal);
+        }
+      }
+    }
+  }
+
   // ========== 创建挂件 ==========
   async function spawnNativeFileMount(data) {
     var widgetId = data.widgetId || "nfm-" + Date.now();
@@ -975,6 +1035,19 @@
       if (widgetData.element)
         widgetData.element.classList.remove("constructing");
       widget.autoResize(widgetData);
+
+      // 保存错误状态
+      widgetData._nfm = {
+        mountId: null,
+        capabilityToken: null,
+        mountPath: mountPath,
+        currentRelativePath: "",
+        mode: mode,
+        uiConfig: uiConfig,
+        status: "error",
+        errorMessage: errorMsg,
+      };
+
       console.error("[NFM] Mount failed, showing error widget:", errorMsg);
     }
 
@@ -1009,12 +1082,13 @@
       y: opts.y != null ? opts.y : 150,
       width: opts.width != null ? opts.width : 880,
       height: opts.height != null ? opts.height : 620,
+      frame: opts.frame || undefined,
     });
 
     // Phase 3: Frame 配置
     var frameOpts = opts.frame || {};
     var widgetEl = widgetData.element;
-
+    // frame 细项配置（minimal 模式下也生效，可覆盖 minimal 的默认隐藏）
     if (frameOpts.transparent === true) {
       widgetEl.style.background = "transparent";
       widgetEl.style.border = "none";
@@ -1032,14 +1106,25 @@
     if (frameOpts.showGrip === false) {
       var gripEl = widgetEl.querySelector(".desktop-widget-grip");
       if (gripEl) gripEl.style.display = "none";
+    } else if (frameOpts.showGrip === true) {
+      var gripEl = widgetEl.querySelector(".desktop-widget-grip");
+      if (gripEl) gripEl.style.display = "";
     }
     if (frameOpts.showCloseButton === false) {
       var closeBtnEl = widgetEl.querySelector(".desktop-widget-close-btn");
       if (closeBtnEl) closeBtnEl.style.display = "none";
+    } else if (frameOpts.showCloseButton === true) {
+      var closeBtnEl = widgetEl.querySelector(".desktop-widget-close-btn");
+      if (closeBtnEl) closeBtnEl.style.display = "";
     }
-    if (frameOpts.resizable === false && widgetData._resizeObserver) {
-      widgetData._resizeObserver.disconnect();
-      widgetData._resizeObserver = null;
+    // resizable（即 autoResize：内容变化时自动调整挂件尺寸）默认关闭。
+    // NativeFileMount 有固定布局，内容溢出应由内部 overflow 滚动处理，
+    // 不应让挂件随内容无限撑大，破坏 Agent 指定的 width/height。
+    // 仅当 Agent 显式传 frame_resizable: true 时才开启 autoResize。
+    if (frameOpts.resizable === true) {
+      widgetData.fixedSize = false;
+    } else {
+      widgetData.fixedSize = true;
     }
 
     // 保存状态
@@ -1050,7 +1135,16 @@
       currentRelativePath: "",
       mode: mode,
       uiConfig: uiConfig,
+      status: "mounted",
+      errorMessage: null,
     };
+
+    // 保存原始 BUILTIN source 文本，用于收藏保存和编辑
+    widgetData._builtinSource = data._builtinSource || null;
+    widgetData._builtinType = "nativeFileMount";
+    if (!widgetData._builtinSource) {
+      widgetData._builtinSource = _rebuildSourceText(data);
+    }
 
     // NativeFileMount 始终使用固定尺寸，禁用自动调整
     widgetData.fixedSize = true;
@@ -1092,23 +1186,319 @@
     );
   }
 
-  // ========== 监听 DESKTOP_PUSH ==========
-  if (desktopApi && desktopApi.onDesktopPush) {
-    desktopApi.onDesktopPush(function (data) {
-      if (
-        data &&
-        data.action === "createBuiltinWidget" &&
-        data.builtinType === "nativeFileMount"
-      ) {
-        spawnNativeFileMount(data);
+  // ========== Edit 模式处理 ==========
+  function handleEditBuiltinWidget(data) {
+    var widgetId = data.widgetId;
+    if (!widgetId) {
+      console.warn("[NFM] editBuiltinWidget: missing widgetId");
+      return;
+    }
+
+    var widgetData = state.widgets.get(widgetId);
+    if (!widgetData || !widgetData._builtinSource) {
+      console.warn(
+        "[NFM] editBuiltinWidget: widget not found or no source:",
+        widgetId
+      );
+      return;
+    }
+
+    var mode = data.mode || "targetReplace";
+    if (mode === "targetReplace") {
+      var target = data.target;
+      var replace = data.replace;
+      if (target == null || replace == null) {
+        console.warn("[NFM] editBuiltinWidget: missing target or replace");
+        return;
       }
-    });
+
+      var source = widgetData._builtinSource;
+      var idx = source.indexOf(target);
+
+      // Fallback: 如果精确匹配失败，尝试去除定界符标记后匹配
+      // Agent 可能在 target 中包含或遗漏定界符，导致与 source 中的文本不一致
+      if (idx === -1) {
+        var stripDelimiters = function (s) {
+          return s
+            .replace(/「始ESCAPE」/g, "")
+            .replace(/「末ESCAPE」/g, "")
+            .replace(/「始」/g, "")
+            .replace(/「末」/g, "");
+        };
+        var strippedSource = stripDelimiters(source);
+        var strippedTarget = stripDelimiters(target);
+        var strippedIdx = strippedSource.indexOf(strippedTarget);
+        if (strippedIdx !== -1) {
+          // 在去定界符的文本上匹配成功 — 用去定界符的 source 做替换
+          var strippedReplace = stripDelimiters(replace);
+          var newStrippedSource =
+            strippedSource.substring(0, strippedIdx) +
+            strippedReplace +
+            strippedSource.substring(strippedIdx + strippedTarget.length);
+          console.log(
+            "[NFM] editBuiltinWidget: matched via delimiter-stripped fallback, respawning widget:",
+            widgetId
+          );
+          _respawnFromSource(widgetId, widgetData, newStrippedSource);
+          return;
+        }
+        console.warn(
+          "[NFM] editBuiltinWidget: target not found in source (also tried stripped match):",
+          target.substring(0, 100) + "..."
+        );
+        return;
+      }
+
+      var newSource =
+        source.substring(0, idx) +
+        replace +
+        source.substring(idx + target.length);
+      console.log(
+        "[NFM] editBuiltinWidget: source modified, respawning widget:",
+        widgetId
+      );
+
+      _respawnFromSource(widgetId, widgetData, newSource);
+    } else {
+      console.warn("[NFM] editBuiltinWidget: unknown mode:", mode);
+    }
   }
+
+  async function _respawnFromSource(widgetId, oldWidgetData, newSource) {
+    var parsed = _parseSourceText(newSource);
+    if (!parsed || parsed.type !== "nativeFileMount") {
+      console.error("[NFM] _respawnFromSource: invalid source after edit");
+      return;
+    }
+
+    var rect = oldWidgetData.element
+      ? oldWidgetData.element.getBoundingClientRect()
+      : null;
+    var oldNfm = oldWidgetData._nfm || {};
+
+    // 保存位置信息和 capabilityToken
+    var newWidgetId =
+      "nfm-edit-" +
+      Date.now() +
+      "-" +
+      Math.random().toString(36).substring(2, 7);
+    var spawnData = {
+      widgetId: newWidgetId,
+      config: parsed.config,
+      options: {
+        x: rect ? Math.round(rect.left) : 200,
+        y: rect ? Math.round(rect.top) : 150,
+        width: parsed.options.width || (rect ? Math.round(rect.width) : 880),
+        height: parsed.options.height || (rect ? Math.round(rect.height) : 620),
+        frame: parsed.options.frame || {},
+      },
+      _builtinSource: newSource,
+    };
+
+    // 先注销旧 mount（在 remove 之前调用，因为 remove 后 widgetData 会被清理）
+    if (oldNfm.mountId && oldNfm.capabilityToken) {
+      try {
+        await desktopApi.nativeFsUnmount({
+          mountId: oldNfm.mountId,
+          capabilityToken: oldNfm.capabilityToken,
+        });
+      } catch (err) {
+        console.warn("[NFM] Failed to unmount old mount:", err);
+      }
+    }
+
+    // 移除旧 widget（带退出动画，使用新 ID 避免 removingWidgetIds 冲突）
+    widget.remove(widgetId);
+
+    // 用新 ID 重新创建 widget（无需等待旧 widget 动画完成）
+    await spawnNativeFileMount(spawnData);
+    console.log(
+      "[NFM] Respawned widget from edited source:",
+      newWidgetId,
+      "(old:",
+      widgetId,
+      ")"
+    );
+  }
+
+  // ========== 轻量级 source 文本解析 ==========
+  function _parseSourceText(source) {
+    var result = { type: "", config: {}, options: {} };
+    var lines = source.split(/\r?\n/);
+    var i = 0;
+
+    while (i < lines.length) {
+      var trimmed = lines[i].trim();
+      i++;
+      if (!trimmed || trimmed.charAt(0) === "#" || trimmed.indexOf("//") === 0)
+        continue;
+
+      var colonIdx = trimmed.indexOf(":");
+      if (colonIdx === -1) continue;
+
+      var key = trimmed.substring(0, colonIdx).trim();
+      var value = trimmed.substring(colonIdx + 1).trim();
+
+      // 定界符常量
+      var DELIM_START_ESC =
+        "\u300C\u59CB\u0045\u0053\u0043\u0041\u0050\u0045\u300D";
+      var DELIM_END_ESC =
+        "\u300C\u672B\u0045\u0053\u0043\u0041\u0050\u0045\u300D";
+      var DELIM_START = "\u300C\u59CB\u300D";
+      var DELIM_END = "\u300C\u672B\u300D";
+
+      // 定界符处理：深度计数配对（支持嵌套）
+      var startsWithEsc = value.indexOf(DELIM_START_ESC) === 0;
+      var startsWithNorm = !startsWithEsc && value.indexOf(DELIM_START) === 0;
+
+      if (startsWithEsc || startsWithNorm) {
+        var openMark = startsWithEsc ? DELIM_START_ESC : DELIM_START;
+        var closeMark = startsWithEsc ? DELIM_END_ESC : DELIM_END;
+
+        // 把当前行冒号后文本 + 剩余所有行拼成一个完整文本
+        var fullText = value + "\n" + lines.slice(i).join("\n");
+
+        // 从 openMark 之后开始深度配对扫描
+        var depth = 1;
+        var pos = openMark.length;
+        var matchContent = null;
+        var matchEndPos = -1;
+        while (pos < fullText.length && depth > 0) {
+          if (fullText.indexOf(openMark, pos) === pos) {
+            depth++;
+            pos += openMark.length;
+          } else if (fullText.indexOf(closeMark, pos) === pos) {
+            depth--;
+            if (depth === 0) {
+              matchContent = fullText.substring(openMark.length, pos);
+              matchEndPos = pos + closeMark.length;
+              break;
+            }
+            pos += closeMark.length;
+          } else {
+            pos++;
+          }
+        }
+
+        if (matchContent !== null) {
+          value = matchContent.replace(/^\n+|\n+$/g, ""); // 去首尾空行
+          // 计算消耗了多少行
+          var consumed = fullText.substring(0, matchEndPos);
+          var newlineCount = 0;
+          for (var ci = 0; ci < consumed.length; ci++) {
+            if (consumed.charAt(ci) === "\n") newlineCount++;
+          }
+          i += newlineCount; // 跳过消耗的行
+        } else {
+          // fallback: 没找到配对，取到文件末尾
+          value = fullText.substring(openMark.length).replace(/^\n+|\n+$/g, "");
+          i = lines.length;
+        }
+      } else {
+        // 无定界符 — 值就是冒号后面的内容（已 trim）
+        // 但仍检查是否有单行残留定界符需要剥离
+        var escMatch = value.match(
+          /^\u300C\u59CBESCAPE\u300D([\s\S]*?)\u300C\u672BESCAPE\u300D$/
+        );
+        if (escMatch) {
+          value = escMatch[1];
+        } else {
+          var normMatch = value.match(
+            /^\u300C\u59CB\u300D([\s\S]*?)\u300C\u672B\u300D$/
+          );
+          if (normMatch) {
+            value = normMatch[1];
+          }
+        }
+      }
+
+      if (key === "type") {
+        result.type = value;
+      } else if (
+        key === "width" ||
+        key === "height" ||
+        key === "x" ||
+        key === "y"
+      ) {
+        result.options[key] = Number(value) || 0;
+      } else if (key.indexOf("frame.") === 0) {
+        if (!result.options.frame) result.options.frame = {};
+        var frameProp = key.substring(6);
+        result.options.frame[frameProp] = _autoConvert(value);
+      } else if (key.indexOf("ui.") === 0) {
+        _setNested(result.config, key, _autoConvert(value));
+      } else {
+        result.config[key] = _autoConvert(value);
+      }
+    }
+
+    return result.type ? result : null;
+  }
+
+  function _autoConvert(v) {
+    if (v === "true") return true;
+    if (v === "false") return false;
+    if (/^-?\d+(\.\d+)?$/.test(v)) return Number(v);
+    return v;
+  }
+
+  function _setNested(obj, dottedKey, value) {
+    var parts = dottedKey.split(".");
+    var target = obj;
+    for (var i = 0; i < parts.length - 1; i++) {
+      if (!target[parts[i]] || typeof target[parts[i]] !== "object") {
+        target[parts[i]] = {};
+      }
+      target = target[parts[i]];
+    }
+    target[parts[parts.length - 1]] = value;
+  }
+
+  // ========== QueryDesktop: getQueryInfo ==========
+  function getQueryInfo(widgetId) {
+    var widgetData = state.widgets.get(widgetId);
+    if (!widgetData || !widgetData._nfm) return null;
+
+    var nfm = widgetData._nfm;
+    var selectedItems = [];
+
+    if (widgetData.contentContainer) {
+      var selectedRows = widgetData.contentContainer.querySelectorAll(
+        ".nfm-file-row.selected"
+      );
+      selectedRows.forEach(function (row) {
+        var nameEl = row.querySelector(".nfm-file-name");
+        if (nameEl) selectedItems.push(nameEl.textContent || "");
+      });
+    }
+
+    return {
+      type: "nativeFileMount",
+      title: widgetData.savedName || "File Browser",
+      nativeFileMount: {
+        mountPath: nfm.mountPath,
+        mode: nfm.mode,
+        currentPath: nfm.currentRelativePath || "",
+        selectedItems: selectedItems,
+        status: nfm.status || "mounted",
+        errorMessage: nfm.errorMessage || null,
+      },
+      source: widgetData._builtinSource || null,
+      sourceFormat: "builtinKeyValue",
+    };
+  }
+
+  // ========== DESKTOP_PUSH 监听已移除 ==========
+  // NativeFileMount 现在完全通过 DesktopRemote Tool Request RPC 驱动
+  // 创建: CreateNativeFileMount command → ipcBridge.js → spawn()
+  // 编辑: EditNativeFileMount command → ipcBridge.js → edit()
 
   // ========== 导出 ==========
   window.VCPDesktop = window.VCPDesktop || {};
   window.VCPDesktop.builtinNativeFileMount = {
     spawn: spawnNativeFileMount,
+    edit: handleEditBuiltinWidget,
+    getQueryInfo: getQueryInfo,
   };
 
   console.log("[NFM] Native file mount widget module loaded.");

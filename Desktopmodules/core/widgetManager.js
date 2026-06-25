@@ -69,6 +69,15 @@
     });
     widget.appendChild(closeBtn);
 
+    // frame_minimal: true 模式 — 清零外框样式，隐藏 grip/closeBtn
+    if (options.frame && options.frame.minimal === true) {
+      widget.style.background = "transparent";
+      widget.style.border = "none";
+      widget.style.boxShadow = "none";
+      grip.style.display = "none";
+      closeBtn.style.display = "none";
+    }
+
     // 内容区（Shadow DOM）
     const contentWrapper = document.createElement("div");
     contentWrapper.className = "desktop-widget-content";
