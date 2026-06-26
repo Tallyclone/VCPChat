@@ -451,12 +451,20 @@ async function _handleQueryDesktop(desktopWin) {
     mdReport += "- none\n\n";
   } else {
     mdReport +=
-      "| widgetId | saved | savedName | savedDir |\n|---|---|---|---|\n";
+      "| widgetId | saved | savedName | savedDir | mountPath | currentPath |\n|---|---|---|---|---|---|\n";
     for (const widgetInfo of widgets) {
+      let mountPath = "-";
+      let currentPath = "-";
+      if (widgetInfo.queryInfo && widgetInfo.queryInfo.nativeFileMount) {
+        mountPath = widgetInfo.queryInfo.nativeFileMount.mountPath || "-";
+        currentPath = widgetInfo.queryInfo.nativeFileMount.currentPath || ".";
+      }
       mdReport += `| \`${widgetInfo.id}\` | ${
         widgetInfo.savedName ? "yes" : "no"
       } | ${widgetInfo.savedName || "-"} | ${
         widgetInfo.savedDir ? `\`${widgetInfo.savedDir}\`` : "-"
+      } | ${mountPath !== "-" ? `\`${mountPath}\`` : "-"} | ${
+        currentPath !== "-" ? `\`${currentPath}\`` : "-"
       } |\n`;
     }
     mdReport += "\n";
