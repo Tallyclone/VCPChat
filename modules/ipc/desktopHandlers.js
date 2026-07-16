@@ -1463,6 +1463,12 @@ function initialize(params) {
         );
       }
 
+      if (appAction === "open-e3-chat-window") {
+        const e3ChatWindow = require("../e3chat/e3ChatWindow");
+        await e3ChatWindow.openE3ChatWindow({ openChildWindows });
+        return { success: true };
+      }
+
       if (appAction === "open-powershell-executor-terminal") {
         const powerShellExecutor = require(path.join(
           PROJECT_ROOT,

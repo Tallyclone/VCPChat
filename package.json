@@ -93,6 +93,7 @@
       "style.css",
       "assets/",
       "modules/**/*",
+      "Desktopmodules/**/*",
       "vendor/**/*",
       "node_modules/**/*"
     ],

@@ -1,0 +1,63 @@
+{
+  "name": "MusicPlay",
+  "displayName": "外部音乐播放器控制器",
+  "pluginType": "synchronous",
+  "version": "1.0.0",
+  "description": "通过网络控制独立的 VCP Music Player，支持打开、关闭、基础控制（播放、暂停、切歌、音量、模式），在线搜索，查询排行榜及推荐歌单，下载/点播特定曲目。",
+  "author": "Antigravity",
+  "license": "MIT",
+  "entryPoint": {
+    "command": "node music-play.js"
+  },
+  "communication": {
+    "protocol": "stdio"
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "command": "controlPlayer",
+        "description": "功能: 控制音乐播放器的运行状态和基础播放属性。\n参数:\n- action (字符串, 必需): 可选值为 'open'（打开播放器）, 'close'（关闭播放器，保持悬浮歌词）, 'quit'（彻底退出播放器进程并关闭所有窗口）, 'minimize'（最小化到系统托盘）, 'show'（显示/从托盘唤起播放器窗口）, 'play'（播放）, 'pause'（暂停）, 'next'（下一首）, 'prev'（上一首）, 'volume'（调节音量）, 'playMode'（切换播放模式）。\n- value (任何, 可选): 当 action 为 'volume' 时，该值为 0 到 1 之间的数字（如 0.5）；当 action 为 'playMode' 时，该值为 'repeat'（列表循环）, 'repeat-one'（单曲循环）, 'shuffle' (随机播放) 之一。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」MusicPlay「末」,\ncommand:「始」controlPlayer「末」,\naction:「始」volume「末」,\nvalue:「始」0.5「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "searchOnline",
+        "description": "功能: 在线搜索音乐曲库并返回歌曲列表。\n参数:\n- query (字符串, 必需): 搜歌曲名、歌手或专辑名称。\n- platform (字符串, 可选): 搜索平台。可选为 'all'（全部平台，默认）, 'netease'（网易云）, 'qq'（QQ音乐）, 'kuwo'（酷我）。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」MusicPlay「末」,\ncommand:「始」searchOnline「末」,\nquery:「始」周杰伦「末」,\nplatform:「始」all「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "getLibrary",
+        "description": "功能: 检索本地播放列表（曲库）中扫描保存 of 歌曲。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」MusicPlay「末」,\ncommand:「始」getLibrary「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "manageToplist",
+        "description": "功能: 对在线音乐排行榜进行管理与操作（获取排行列表、获取某排行榜歌曲详情，或直接在播放器里一键播放/追加整单）。\n参数:\n- action (字符串, 必需): 操作行为。可选值为 'query'（查询所有可用排行榜列表）, 'detail'（查询某排行榜内的歌曲详情列表）, 'play'（一键将该排行榜整单导入播放队列并开始播放）, 'add'（一键将该排行榜整单追加到当前播放队列末尾/稍后播放）。\n- id (字符串, 可选): 当 action 为 'detail', 'play', 'add' 时必需，指定排行榜的 ID。\n- platform (字符串, 可选): 平台选择，可选为 'netease'（网易云，默认）, 'qq'（QQ音乐）, 'kuwo'（酷我）。\n- quality (字符串, 可选): 当 action 为 'play', 'add' 时有效，指定播放/追加音质。可选为 'flac'（无损，默认）, '320k'（高品质）, '128k'（标准音质）。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」MusicPlay「末」,\ncommand:「始」manageToplist「末」,\naction:「始」query「末」,\nplatform:「始」netease「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "manageOnlinePlaylist",
+        "description": "功能: 对在线热门推荐歌单进行管理与操作（获取歌单列表、获取某歌单内的歌曲详情，或直接在播放器里一键播放/追加整单）。\n参数:\n- action (字符串, 必需): 操作行为。可选值为 'query'（查询热门歌单列表）, 'detail'（查询某在线歌单内的歌曲详情列表）, 'play'（一键将该歌单整单导入播放队列并开始播放）, 'add'（一键将该歌单整单追加到当前播放队列末尾/稍后播放）。\n- id (字符串, 可选): 当 action 为 'detail', 'play', 'add' 时必需，指定在线歌单的 ID。\n- platform (字符串, 可选): 平台选择，可选为 'netease'（网易云，默认）, 'qq'（QQ音乐）, 'kuwo'（酷我）。\n- cat (字符串, 可选): 当 action 为 'query' 时可选，指定歌单分类分类标签（如 '华语', '流行'），默认 '全部'。\n- page (数字, 可选): 当 action 为 'query' 时可选，指定页码，默认 1。\n- limit (数字, 可选): 当 action 为 'query' 时可选，指定单页返回歌单数，默认 20。\n- quality (字符串, 可选): 当 action 为 'play', 'add' 时有效，指定播放/追加音质。可选为 'flac'（无损，默认）, '320k'（高品质）, '128k'（标准音质）。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」MusicPlay「末」,\ncommand:「始」manageOnlinePlaylist「末」,\naction:「始」query「末」,\nplatform:「始」netease「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "randomListen",
+        "description": "功能: 随便听听，从指定平台 and 分类标签中随机选取一首歌曲并自动在播放器开始播放。\n参数:\n- platform (字符串, 必需): 平台选择，可选 'netease', 'qq', 'kuwo'。\n- tag (字符串, 必需): 排行榜标记如 'hot'（热歌）, 'new'（新歌）, 'soaring'（飙升），或者分类标签如 '华语', '流行', '摇滚', 'ACG'。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」MusicPlay「末」,\ncommand:「始」randomListen「末」,\nplatform:「始」netease「末」,\ntag:「始」hot「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "playTrack",
+        "description": "功能: 播放指定的一首或多首本地或在线歌曲。\n参数:\n- tracks (字符串, 必需): 格式为 'platform|id|title|artist'（如 'netease|60264|不要说我们是朋友|阿木'）或本地路径简写（如 'local|E:\\音乐\\星梦.flac|星梦|GAI周延'）。若为多首歌曲，请用分号 ';' 分隔，例如 'netease|60264|不要说我们是朋友|阿木;netease|60263|他一定很爱你|阿杜'。\n- quality (字符串, 可选): 指定点播音质。可选为 'flac'（无损，默认）, '320k'（高品质）, '128k'（标准）。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」MusicPlay「末」,\ncommand:「始」playTrack「末」,\ntracks:「始」netease|60264|不要说我们是朋友|阿木;netease|60263|他一定很爱你|阿杜「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "addTracksToQueue",
+        "description": "功能: 将指定的一首或多首本地或在线歌曲追加到当前播放器队列的末尾（稍后播放），不影响当前正在播放的歌曲，并自动在后台缓存它们。\n参数:\n- tracks (字符串, 必需): 格式为 'platform|id|title|artist'（如 'netease|60264|不要说我们是朋友|阿木'）或本地路径简写（如 'local|E:\\音乐\\星梦.flac|星梦|GAI周延'）。多首用分号 ';' 分隔，例如 'netease|60264|不要说我们是朋友|阿木;netease|60263|他一定很爱你|阿杜'。\n- quality (字符串, 可选): 指定追加音质。可选为 'flac'（无损，默认）, '320k'（高品质）, '128k'（标准）。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始`MusicPlay「末」,\ncommand:「始`addTracksToQueue「末」,\ntracks:「始」netease|60264|不要说我们是朋友|阿木「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "getPlayerState",
+        "description": "功能: 获取音乐播放器当前的实时状态（是否正在播放、当前歌曲名称、歌手、专辑、音量大小、播放模式、当前播放进度及歌曲总时长等）。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」MusicPlay「末」,\ncommand:「始」getPlayerState「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "downloadTrack",
+        "description": "功能: 将一首或多首网络歌曲下载到本地保存目录，并自动触发重新扫描添加至本地曲库（如果已在 Temp 缓存中播放，将启动瞬时离线拷贝，零网络消耗）。\n参数:\n- tracks (字符串, 必需): 格式为 'platform|id|title|artist'，多首歌曲用分号 ';' 分隔。例如 'netease|60264|不要说我们是朋友|阿木;netease|60263|他一定很爱你|阿杜'。\n- quality (字符串, 可选): 下载音质。可选值为 '128k', '320k', 'flac'（默认）。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」MusicPlay「末」,\ncommand:「始」downloadTrack「末」,\ntracks:「始」netease|60264|不要说我们是朋友|阿木;netease|60263|他一定很爱你|阿杜「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "manageCustomPlaylist",
+        "description": "功能: 对本地用户自定义创建的歌单进行管理，支持批量播放、添加或移除特定的歌曲。\n参数:\n- action (字符串, 必需): 操作行为。可选值为 'query'（查询所有歌单）, 'create'（新建歌单）, 'delete'（删除指定歌单）, 'play'（装载并播放歌单全部歌曲）, 'playSong'（点播歌单内特定的歌曲）, 'addSong'（将歌曲加入歌单）, 'removeSong'（将歌曲从歌单中移除）。\n- name (字符串, 可选): 当 action 为 'create' 时需要，指定新歌单名称。\n- id (字符串, 可选): 当 action 为 'delete', 'play', 'playSong', 'addSong', 'removeSong' 时需要，指定操作的歌单 ID。\n- tracks (字符串, 可选): 当 action 为 'addSong' 或 'removeSong' 时可用，指定要添加或删除的歌曲列表，格式为 'platform|id|title|artist' 或 'local|path|title|artist'，多首歌曲用分号 ';' 分隔。\n- songIndex (字符串, 可选): 当 action 为 'playSong' 或 'removeSong' 时可用，指定位置索引，多首用分号 ';' 分隔，如 '0;2'。\n- songTitle (字符串, 可选): 当 action 为 'playSong' 或 'removeSong' 时可用，指定匹配歌名，多首用分号 ';' 分隔，如 '天黑;晴天'。\n- trackPath (字符串, 可选): 当 action 为 'removeSong' 时可用，指定移除歌曲的物理路径，多首用分号 ';' 分隔。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」MusicPlay「末」,\ncommand:「始」manageCustomPlaylist「末」,\naction:「始」query「末」\n<<<[END_TOOL_REQUEST]>>>"
+      }
+    ]
+  }
+}

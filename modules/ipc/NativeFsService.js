@@ -17,6 +17,9 @@ const path = require("path");
 const crypto = require("crypto");
 const { shell } = require("electron");
 const fse = require("fs-extra");
+const { exec } = require("child_process");
+const util = require("util");
+const execAsync = util.promisify(exec);
 
 class NativeFsService {
   constructor() {
@@ -312,6 +315,95 @@ class NativeFsService {
 
     await fs.mkdir(newFolderFull, { recursive: true });
     return { createdPath: path.relative(mount.rootRealPath, newFolderFull) };
+  }
+
+  /**
+   * 探测系统里可用的 7z 命令行路径
+   * @private
+   */
+  async _findSevenZipPath() {
+    try {
+      await execAsync("7z --help");
+      return "7z";
+    } catch (e) {
+      /* ignore */
+    }
+
+    const winPaths = [
+      "C:\\Program Files\\7-Zip\\7z.exe",
+      "C:\\Program Files (x86)\\7-Zip\\7z.exe",
+    ];
+    for (const p of winPaths) {
+      if (fsSync.existsSync(p)) {
+        return `"${p}"`;
+      }
+    }
+
+    const unixPaths = ["/usr/bin/7z", "/usr/local/bin/7z"];
+    for (const p of unixPaths) {
+      if (fsSync.existsSync(p)) {
+        return p;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * 解压压缩包 (优先 7-Zip，若无则自适应降级 fallback 跨平台系统工具)
+   * @param {object} args
+   * @param {string} args.mountId
+   * @param {string} args.capabilityToken
+   * @param {string} args.zipFilePath - 压缩文件相对路径
+   * @param {string} [args.destDirPath] - 目标解压路径相对路径
+   */
+  async unzip({ mountId, capabilityToken, zipFilePath, destDirPath }) {
+    this._validateToken(mountId, capabilityToken);
+    this._validateWriteAccess(mountId);
+    const mount = this.mounts.get(mountId);
+
+    const zipFull = this._resolvePath(mount, zipFilePath);
+    this._validatePathContainment(mount.rootRealPath, zipFull);
+
+    if (!fsSync.existsSync(zipFull)) {
+      throw new Error(`Zip file not found: ${zipFilePath}`);
+    }
+
+    let destFull;
+    if (destDirPath) {
+      destFull = this._resolvePath(mount, destDirPath);
+    } else {
+      const ext = path.extname(zipFull);
+      destFull = zipFull.slice(0, -ext.length);
+    }
+    this._validatePathContainment(mount.rootRealPath, destFull);
+
+    await fs.mkdir(destFull, { recursive: true });
+
+    const sevenZip = await this._findSevenZipPath();
+    const isWindows = process.platform === "win32";
+
+    try {
+      if (sevenZip) {
+        // x: 带目录解压, -o: 目标路径(不可留空), -y: 自动覆盖
+        const cmd = `${sevenZip} x "${zipFull}" -o"${destFull}" -y`;
+        await execAsync(cmd);
+      } else {
+        if (isWindows) {
+          const cmd = `powershell.exe -NoProfile -Command "Expand-Archive -Path '${zipFull}' -DestinationPath '${destFull}' -Force"`;
+          await execAsync(cmd);
+        } else {
+          const cmd = `unzip -o "${zipFull}" -d "${destFull}"`;
+          await execAsync(cmd);
+        }
+      }
+      return {
+        success: true,
+        destDir: path.relative(mount.rootRealPath, destFull),
+      };
+    } catch (err) {
+      throw new Error(`Unzip failed: ${err.message}`);
+    }
   }
 
   /**

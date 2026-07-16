@@ -159,6 +159,16 @@ function initialize() {
     }
   });
 
+  ipcMain.handle("nativeFs:unzip", async (event, args) => {
+    try {
+      const result = await nativeFsService.unzip(args);
+      return { success: true, ...result };
+    } catch (err) {
+      console.error("[NativeFsHandlers] unzip error:", err.message);
+      return { success: false, error: err.message };
+    }
+  });
+
   // ============================================================
   // Phase 2: 剪贴板
   // ============================================================

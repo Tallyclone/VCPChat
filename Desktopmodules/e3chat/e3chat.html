@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>E3 Chat</title>
+    <link rel="stylesheet" href="./e3chat.css" />
+    <link rel="stylesheet" href="../../vendor/katex.min.css" />
+    <script src="../../vendor/marked.min.js"></script>
+    <script src="../../vendor/highlight.min.js"></script>
+    <script src="../../vendor/katex.min.js"></script>
+    <script src="../../vendor/auto-render.min.js"></script>
+    <script src="../../vendor/mermaid.min.js"></script>
+    <script src="../../vendor/morphdom.min.js"></script>
+    <script src="../../vendor/purify.min.js"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <header>
+          <h1>E3 Chat</h1>
+          <p id="connection-state">未连接</p>
+        </header>
+        <section class="sidebar-section">
+          <button id="refresh-workspace">刷新工作空间</button>
+          <button id="reconnect">连接 / 重连</button>
+          <button id="disconnect">断开</button>
+        </section>
+        <section class="sidebar-section">
+          <div class="section-title-row">
+            <h2>会话</h2>
+            <button type="button" id="new-session" class="inline-action">
+              新建会话
+            </button>
+          </div>
+          <div id="session-list" class="session-list"></div>
+        </section>
+        <section class="sidebar-section">
+          <h2>诊断</h2>
+          <pre id="diagnostics" class="diagnostics"></pre>
+        </section>
+      </aside>
+      <main class="chat-panel">
+        <div id="message-list" class="message-list"></div>
+        <div id="pending-question" class="pending-question" hidden></div>
+        <form id="composer" class="composer">
+          <textarea
+            id="prompt"
+            rows="4"
+            placeholder="向 E3 发送消息…"
+          ></textarea>
+          <div class="composer-actions">
+            <button
+              type="submit"
+              id="chat-action"
+              class="chat-action"
+              aria-label="发送消息"
+              title="发送消息 (Enter)"
+            >
+              <svg
+                class="action-icon action-icon-send"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path
+                  d="M3.4 20.4 21 12 3.4 3.6l-.1 6.5L15.9 12 3.3 13.9l.1 6.5Z"
+                />
+              </svg>
+              <svg
+                class="action-icon action-icon-stop"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="9" />
+                <rect x="8" y="8" width="8" height="8" rx="1" />
+              </svg>
+            </button>
+          </div>
+        </form>
+      </main>
+    </div>
+
+    <script src="../../vendor/anime.min.js"></script>
+    <script src="../../vendor/three.min.js"></script>
+    <script src="./animationProcessor.js"></script>
+    <script src="./blocks/messageBlock.js"></script>
+    <script src="./blocks/thinkingBlock.js"></script>
+    <script src="./blocks/toolCard.js"></script>
+    <script src="./blocks/questionCard.js"></script>
+    <script src="./blocks/errorBlock.js"></script>
+    <script src="./messageStreamRenderer.js"></script>
+    <script src="./workspaceSessionSidebar.js"></script>
+    <script src="./e3ChatSettingsPanel.js"></script>
+    <script src="./e3DiagnosticsPanel.js"></script>
+    <script src="./e3chat.js"></script>
+  </body>
+</html>

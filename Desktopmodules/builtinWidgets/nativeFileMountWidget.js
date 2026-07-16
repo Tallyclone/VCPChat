@@ -173,6 +173,7 @@
       "        copyToClipboard: function(paths) { return api.nativeFsCopyToClipboard({ mountId: nfmState.mountId, capabilityToken: nfmState.capabilityToken, paths: Array.isArray(paths) ? paths : [paths] }); },",
       "        cutToClipboard: function(paths) { return api.nativeFsCutToClipboard({ mountId: nfmState.mountId, capabilityToken: nfmState.capabilityToken, paths: Array.isArray(paths) ? paths : [paths] }); },",
       '        paste: function(destDir, strategy) { return api.nativeFsPasteFromClipboard({ mountId: nfmState.mountId, capabilityToken: nfmState.capabilityToken, destDir: destDir || ".", strategy: strategy || "rename" }); },',
+      '        unzip: function(relPath, destDir) { return api.nativeFsUnzip({ mountId: nfmState.mountId, capabilityToken: nfmState.capabilityToken, zipFilePath: relPath, destDirPath: destDir }); },',
       "        onFileChange: function(callback) { if (api.onNativeFsChange) { api.onNativeFsChange(function(data) { if (data.mountId === nfmState.mountId) callback(data); }); } }",
       "    };",
       "",
@@ -569,6 +570,10 @@
       "            items.push({ id: \"open\", label: \"打开文件夹\", icon: \"folder\", action: function() { navigateInto(entry.name); } });",
       "        } else {",
       "            items.push({ id: \"open\", label: \"打开文件\", icon: \"file\", action: function() { openFile(entry.name); } });",
+      "            var lowerName = entry.name.toLowerCase();",
+      "            if (lowerName.endsWith(\".zip\") || lowerName.endsWith(\".rar\") || lowerName.endsWith(\".7z\") || lowerName.endsWith(\".tar\") || lowerName.endsWith(\".gz\")) {",
+      "                items.push({ id: \"unzip\", label: \"解压到当前目录\", icon: \"unzip\", action: function() { handleUnzip(entry.name); } });",
+      "            }",
       "        }",
       "        items.push({ id: \"reveal\", label: \"在资源管理器中显示\", icon: \"reveal\", action: function() { revealFile(entry.name); } });",
       "        items.push({ id: \"_sep1\", label: \"\" });",
@@ -594,7 +599,8 @@
       "            copy: '<svg class=\"nfm-svg-icon\" viewBox=\"0 0 24 24\"><rect x=\"9\" y=\"9\" width=\"13\" height=\"13\" rx=\"2\" ry=\"2\"/><path d=\"M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1\"/></svg>',",
       "            cut: '<svg class=\"nfm-svg-icon\" viewBox=\"0 0 24 24\"><circle cx=\"6\" cy=\"6\" r=\"3\"/><circle cx=\"6\" cy=\"18\" r=\"3\"/><line x1=\"20\" y1=\"4\" x2=\"8.12\" y2=\"15.88\"/><line x1=\"14.47\" y1=\"14.48\" x2=\"20\" y2=\"20\"/><line x1=\"8.12\" y1=\"8.12\" x2=\"12\" y2=\"12\"/></svg>',",
       "            delete: '<svg class=\"nfm-svg-icon\" viewBox=\"0 0 24 24\"><path d=\"M3 6h18\"/><path d=\"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6\"/><path d=\"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2\"/><line x1=\"10\" y1=\"11\" x2=\"10\" y2=\"17\"/><line x1=\"14\" y1=\"11\" x2=\"14\" y2=\"17\"/></svg>',",
-      "            paste: '<svg class=\"nfm-svg-icon\" viewBox=\"0 0 24 24\"><rect x=\"8\" y=\"2\" width=\"8\" height=\"4\" rx=\"1\" ry=\"1\"/><path d=\"M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2\"/></svg>'",
+      "            paste: '<svg class=\"nfm-svg-icon\" viewBox=\"0 0 24 24\"><rect x=\"8\" y=\"2\" width=\"8\" height=\"4\" rx=\"1\" ry=\"1\"/><path d=\"M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2\"/></svg>',",
+      "            unzip: '<svg class=\"nfm-svg-icon\" viewBox=\"0 0 24 24\"><path d=\"M12 22V2M17 17l-5 5-5-5M2 2h20\"/></svg>'",
       "        };",
       "",
       "        items.forEach(function(item) {",
@@ -930,6 +936,23 @@
       "        }",
       "    }",
       "",
+      "    // === 解压 ===",
+      "    async function handleUnzip(fileName) {",
+      "        var relPath = nfm.currentRelativePath ? nfm.currentRelativePath + \"/\" + fileName : fileName;",
+      "        try {",
+      "            showToast(\"正在解压: \" + fileName + \"...\");",
+      "            var result = await api.nativeFsUnzip({ mountId: nfm.mountId, capabilityToken: nfm.capabilityToken, zipFilePath: relPath });",
+      "            if (result && result.success === false) {",
+      "                showToast(\"解压失败: \" + (result.error || \"未知错误\"));",
+      "            } else {",
+      "                showToast(\"解压完成！\");",
+      "                loadDirectory(nfm.currentRelativePath || \".\");",
+      "            }",
+      "        } catch (err) {",
+      "            showToast(\"解压失败: \" + (err.message || err));",
+      "        }",
+      "    }",
+      "",
       "    // === 按钮事件 ===",
       '    if (btnNewFolder) btnNewFolder.addEventListener("click", createNewFolder);',
       '    if (btnNewFile) btnNewFile.addEventListener("click", createNewFile);',
@@ -1213,20 +1236,17 @@
   }
 
   // ========== Edit 模式处理 ==========
-  function handleEditBuiltinWidget(data) {
+  async function handleEditBuiltinWidget(data) {
     var widgetId = data.widgetId;
     if (!widgetId) {
-      console.warn("[NFM] editBuiltinWidget: missing widgetId");
-      return;
+      throw new Error("[NFM] editBuiltinWidget: missing widgetId");
     }
 
     var widgetData = state.widgets.get(widgetId);
     if (!widgetData || !widgetData._builtinSource) {
-      console.warn(
-        "[NFM] editBuiltinWidget: widget not found or no source:",
-        widgetId
+      throw new Error(
+        "[NFM] editBuiltinWidget: widget not found or has no source: " + widgetId
       );
-      return;
     }
 
     var mode = data.mode || "targetReplace";
@@ -1234,8 +1254,7 @@
       var target = data.target;
       var replace = data.replace;
       if (target == null || replace == null) {
-        console.warn("[NFM] editBuiltinWidget: missing target or replace");
-        return;
+        throw new Error("[NFM] editBuiltinWidget: missing target or replace");
       }
 
       var source = widgetData._builtinSource;
@@ -1265,14 +1284,14 @@
             "[NFM] editBuiltinWidget: matched via delimiter-stripped fallback, respawning widget:",
             widgetId
           );
-          _respawnFromSource(widgetId, widgetData, newStrippedSource);
+          await _respawnFromSource(widgetId, widgetData, newStrippedSource);
           return;
         }
-        console.warn(
-          "[NFM] editBuiltinWidget: target not found in source (also tried stripped match):",
-          target.substring(0, 100) + "..."
+        throw new Error(
+          "[NFM] editBuiltinWidget: target not found in source (also tried stripped match): " +
+            target.substring(0, 100) +
+            "..."
         );
-        return;
       }
 
       var newSource =
@@ -1284,17 +1303,16 @@
         widgetId
       );
 
-      _respawnFromSource(widgetId, widgetData, newSource);
+      await _respawnFromSource(widgetId, widgetData, newSource);
     } else {
-      console.warn("[NFM] editBuiltinWidget: unknown mode:", mode);
+      throw new Error("[NFM] editBuiltinWidget: unknown mode: " + mode);
     }
   }
 
   async function _respawnFromSource(widgetId, oldWidgetData, newSource) {
     var parsed = _parseSourceText(newSource);
     if (!parsed || parsed.type !== "nativeFileMount") {
-      console.error("[NFM] _respawnFromSource: invalid source after edit");
-      return;
+      throw new Error("[NFM] _respawnFromSource: invalid source after edit");
     }
 
     var rect = oldWidgetData.element
@@ -1302,14 +1320,9 @@
       : null;
     var oldNfm = oldWidgetData._nfm || {};
 
-    // 保存位置信息和 capabilityToken
-    var newWidgetId =
-      "nfm-edit-" +
-      Date.now() +
-      "-" +
-      Math.random().toString(36).substring(2, 7);
+    // 沿用原有 widgetId，保留位置信息与大小
     var spawnData = {
-      widgetId: newWidgetId,
+      widgetId: widgetId,
       config: parsed.config,
       options: {
         x: rect ? Math.round(rect.left) : 200,
@@ -1333,17 +1346,43 @@
       }
     }
 
-    // 移除旧 widget（带退出动画，使用新 ID 避免 removingWidgetIds 冲突）
-    widget.remove(widgetId);
+    // 干净清理旧挂件的资源与观察器，防止内存泄漏和监听器残留（不走带退出动画的 widget.remove，避免 ID 被放入 removingWidgetIds）
+    if (oldWidgetData._resizeObserver) {
+      oldWidgetData._resizeObserver.disconnect();
+      oldWidgetData._resizeObserver = null;
+    }
+    if (oldWidgetData._intervals) {
+      oldWidgetData._intervals.forEach(function (id) {
+        clearInterval(id);
+      });
+      oldWidgetData._intervals = [];
+    }
+    if (oldWidgetData._timeouts) {
+      oldWidgetData._timeouts.forEach(function (id) {
+        clearTimeout(id);
+      });
+      oldWidgetData._timeouts = [];
+    }
+    if (oldWidgetData._windowListeners) {
+      oldWidgetData._windowListeners.forEach(function (l) {
+        window.removeEventListener(l.type, l.listener, l.options);
+      });
+      oldWidgetData._windowListeners = [];
+    }
 
-    // 用新 ID 重新创建 widget（无需等待旧 widget 动画完成）
+    // 从 DOM 树中同步彻底移除旧挂件 DOM 元素
+    if (oldWidgetData.element) {
+      oldWidgetData.element.remove();
+    }
+
+    // 从 state.widgets 中同步彻底移除状态数据
+    state.widgets.delete(widgetId);
+
+    // 用原 ID 重新创建 widget，并等待其初始化与挂载完成
     await spawnNativeFileMount(spawnData);
     console.log(
-      "[NFM] Respawned widget from edited source:",
-      newWidgetId,
-      "(old:",
-      widgetId,
-      ")"
+      "[NFM] Respawned widget from edited source using original ID:",
+      widgetId
     );
   }
 
@@ -1525,6 +1564,7 @@
     spawn: spawnNativeFileMount,
     edit: handleEditBuiltinWidget,
     getQueryInfo: getQueryInfo,
+    parseSourceText: _parseSourceText,
   };
 
   console.log("[NFM] Native file mount widget module loaded.");

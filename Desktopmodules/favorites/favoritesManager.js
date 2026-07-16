@@ -124,8 +124,10 @@
    * @param {string} favoriteId - 收藏 ID
    * @param {number} [x] - 放置 X 坐标
    * @param {number} [y] - 放置 Y 坐标
+   * @param {number} [width] - 宽度
+   * @param {number} [height] - 高度
    */
-  async function spawnFromFavorite(favoriteId, x, y) {
+  async function spawnFromFavorite(favoriteId, x, y, width, height) {
     if (desktopApi?.desktopLoadWidget) {
       try {
         const result = await desktopApi.desktopLoadWidget(favoriteId);
@@ -138,67 +140,77 @@
               "[Desktop] Detected builtin source, respawning nativeFileMount..."
             );
             if (window.VCPDesktop?.builtinNativeFileMount?.spawn) {
-              // 解析 source 文本取得 config
-              // 使用简化解析：提取 mountPath 和 mode
-              var mountPathMatch = trimmedHtml.match(
-                /mountPath:(?:「始」|「始ESCAPE」)(.*?)(?:「末」|「末ESCAPE」)/
-              );
-              var modeMatch = trimmedHtml.match(/mode:\s*(\S+)/);
-              var spawnConfig = {
-                mountPath: mountPathMatch ? mountPathMatch[1] : "",
-                mode: modeMatch ? modeMatch[1] : "readonly",
-              };
-              // 解析 ui.* 字段
-              var uiFields = {};
-              var uiRegex = /^(ui\..+?):\s*(.+)$/gm;
-              var uiMatch;
-              while ((uiMatch = uiRegex.exec(trimmedHtml)) !== null) {
-                var parts = uiMatch[1].split(".");
-                var target = uiFields;
-                for (var pi = 1; pi < parts.length - 1; pi++) {
-                  if (!target[parts[pi]]) target[parts[pi]] = {};
-                  target = target[parts[pi]];
+              var parseFn = window.VCPDesktop.builtinNativeFileMount.parseSourceText;
+              var spawnConfig = {};
+              var spawnOptions = {};
+
+              if (typeof parseFn === "function") {
+                // 使用导出的健壮解析器，支持多行定界符与嵌套
+                var parsed = parseFn(trimmedHtml);
+                spawnConfig = parsed.config || {};
+                spawnOptions = parsed.options || {};
+              } else {
+                // Fallback: 经典的正则提取逻辑
+                var mountPathMatch = trimmedHtml.match(
+                  /mountPath:(?:「始」|「始ESCAPE」)(.*?)(?:「末」|「末ESCAPE」)/
+                );
+                var modeMatch = trimmedHtml.match(/mode:\s*(\S+)/);
+                spawnConfig = {
+                  mountPath: mountPathMatch ? mountPathMatch[1] : "",
+                  mode: modeMatch ? modeMatch[1] : "readonly",
+                };
+                // 解析 ui.* 字段
+                var uiFields = {};
+                var uiRegex = /^(ui\..+?):\s*(.+)$/gm;
+                var uiMatch;
+                while ((uiMatch = uiRegex.exec(trimmedHtml)) !== null) {
+                  var parts = uiMatch[1].split(".");
+                  var target = uiFields;
+                  for (var pi = 1; pi < parts.length - 1; pi++) {
+                    if (!target[parts[pi]]) target[parts[pi]] = {};
+                    target = target[parts[pi]];
+                  }
+                  target[parts[parts.length - 1]] = uiMatch[2];
                 }
-                target[parts[parts.length - 1]] = uiMatch[2];
+                if (Object.keys(uiFields).length > 0) {
+                  spawnConfig.ui = uiFields;
+                }
+                // 解析尺寸字段 (width, height)
+                var widthMatch = trimmedHtml.match(/^width:\s*(\d+)/m);
+                var heightMatch = trimmedHtml.match(/^height:\s*(\d+)/m);
+                // 解析位置字段 (x, y)
+                var srcXMatch = trimmedHtml.match(/^x:\s*(\d+)/m);
+                var srcYMatch = trimmedHtml.match(/^y:\s*(\d+)/m);
+                // 解析 frame.* 字段
+                var frameFields = {};
+                var frameRegex = /^frame\.(\S+?):\s*(.+)$/gm;
+                var frameMatch;
+                while ((frameMatch = frameRegex.exec(trimmedHtml)) !== null) {
+                  var fVal = frameMatch[2].trim();
+                  if (fVal === "true") fVal = true;
+                  else if (fVal === "false") fVal = false;
+                  else if (/^-?\d+(\.\d+)?$/.test(fVal)) fVal = Number(fVal);
+                  frameFields[frameMatch[1]] = fVal;
+                }
+                spawnOptions = {
+                  x: srcXMatch ? Number(srcXMatch[1]) : null,
+                  y: srcYMatch ? Number(srcYMatch[1]) : null,
+                };
+                if (widthMatch) spawnOptions.width = Number(widthMatch[1]);
+                if (heightMatch) spawnOptions.height = Number(heightMatch[1]);
+                if (Object.keys(frameFields).length > 0) {
+                  spawnOptions.frame = frameFields;
+                }
               }
-              if (Object.keys(uiFields).length > 0) {
-                spawnConfig.ui = uiFields;
-              }
-              // 解析尺寸字段 (width, height)
-              var widthMatch = trimmedHtml.match(/^width:\s*(\d+)/m);
-              var heightMatch = trimmedHtml.match(/^height:\s*(\d+)/m);
-              // 解析位置字段 (x, y) — source 中的值作为备选
-              var srcXMatch = trimmedHtml.match(/^x:\s*(\d+)/m);
-              var srcYMatch = trimmedHtml.match(/^y:\s*(\d+)/m);
-              // 解析 frame.* 字段
-              var frameFields = {};
-              var frameRegex = /^frame\.(\S+?):\s*(.+)$/gm;
-              var frameMatch;
-              while ((frameMatch = frameRegex.exec(trimmedHtml)) !== null) {
-                var fVal = frameMatch[2].trim();
-                // 自动类型转换
-                if (fVal === "true") fVal = true;
-                else if (fVal === "false") fVal = false;
-                else if (/^-?\d+(\.\d+)?$/.test(fVal)) fVal = Number(fVal);
-                frameFields[frameMatch[1]] = fVal;
-              }
-              var spawnOptions = {
-                x:
-                  x ||
-                  (srcXMatch
-                    ? Number(srcXMatch[1])
-                    : 150 + Math.random() * 200),
-                y:
-                  y ||
-                  (srcYMatch
-                    ? Number(srcYMatch[1])
-                    : 100 + Math.random() * 200),
-              };
-              if (widthMatch) spawnOptions.width = Number(widthMatch[1]);
-              if (heightMatch) spawnOptions.height = Number(heightMatch[1]);
-              if (Object.keys(frameFields).length > 0) {
-                spawnOptions.frame = frameFields;
-              }
+
+              // 应用拖拽落点位置或随机默认位置
+              spawnOptions.x =
+                x || spawnOptions.x || 150 + Math.random() * 200;
+              spawnOptions.y =
+                y || spawnOptions.y || 100 + Math.random() * 200;
+              if (width) spawnOptions.width = width;
+              if (height) spawnOptions.height = height;
+
               var favWidgetId = `fav-${favoriteId}-${Date.now()}`;
               window.VCPDesktop.builtinNativeFileMount.spawn({
                 widgetId: favWidgetId,
@@ -206,6 +218,16 @@
                 options: spawnOptions,
                 _builtinSource: trimmedHtml,
               });
+
+              // 重建挂件后，异步将已收藏的身份绑定回去，确保后续覆盖保存预设时状态不丢失
+              setTimeout(function () {
+                var newWidgetData = state.widgets.get(favWidgetId);
+                if (newWidgetData) {
+                  newWidgetData.savedId = favoriteId;
+                  newWidgetData.savedName = result.name || favoriteId;
+                }
+              }, 300);
+
               status.update("connected", `已加载: ${result.name}`);
             } else {
               console.warn(
@@ -218,6 +240,8 @@
           const widgetData = widget.create(widgetId, {
             x: x || 150 + Math.random() * 200,
             y: y || 100 + Math.random() * 200,
+            width: width || 320,
+            height: height || 200,
           });
           if (!widgetData) {
             throw new Error(

@@ -427,10 +427,8 @@
             replace: payload.replace,
           };
 
-          window.VCPDesktop.builtinNativeFileMount.edit(editData);
-
-          // Wait for respawn to complete
-          await new Promise((resolve) => setTimeout(resolve, 500));
+          // Await the asynchronous edit/respawn process so that any thrown errors are caught by the outer try...catch
+          await window.VCPDesktop.builtinNativeFileMount.edit(editData);
 
           sendDesktopRemoteRpcResponse(requestId, {
             ok: true,

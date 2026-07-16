@@ -61,6 +61,7 @@ const voiceHandlers = require("./modules/ipc/voiceHandlers"); // Import voice ch
 // speechRecognizer is now lazy-loaded
 const canvasHandlers = require("./modules/ipc/canvasHandlers"); // Import canvas handlers
 const desktopHandlers = require("./modules/ipc/desktopHandlers"); // Import VCPdesktop handlers
+const e3ChatIpcHandlers = require("./modules/e3chat/e3ChatIpcHandlers"); // Import E3 Chat handlers
 const desktopRemoteHandlers = require("./modules/ipc/desktopRemoteHandlers"); // Import desktop remote control handlers
 const tavernHandlers = require("./modules/ipc/tavernHandlers"); // Import VCPChatTarven (advanced reply) handlers
 const nativeFsHandlers = require("./modules/ipc/nativeFsHandlers"); // Import NativeFileMount handlers
@@ -1144,6 +1145,7 @@ if (!gotTheLock) {
       openChildWindows,
       settingsManager: appSettingsManager,
     });
+    e3ChatIpcHandlers.initialize({ projectRoot: PROJECT_ROOT });
     desktopRemoteHandlers.initialize({ mainWindow });
     promptHandlers.initialize({ AGENT_DIR, APP_DATA_ROOT_IN_PROJECT });
     tavernHandlers.initialize({ APP_DATA_ROOT_IN_PROJECT });

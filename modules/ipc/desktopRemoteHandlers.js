@@ -968,16 +968,14 @@ async function _handleEditNativeFileMount(commandPayload, desktopWin) {
       { timeoutMs: 8000, timeoutMessage: "EditNativeFileMount timed out (8s)." }
     );
 
-    const data = response?.data || response || {};
-    const status = data.status || "edited";
-    const errorMsg = data.error || data.errorMessage || null;
+    const status = response?.status || "edited";
 
     let mdReport = "";
     if (status === "error") {
       mdReport += "### NativeFileMount Edit Failed\n\n";
       mdReport += `- widgetId: \`${widgetId}\`\n`;
       mdReport += `- status: error ❌\n`;
-      mdReport += `- error: ${errorMsg}\n`;
+      mdReport += `- error: ${response?.error || response?.errorMessage || "Unknown error"}\n`;
     } else {
       mdReport += "### NativeFileMount Edited\n\n";
       mdReport += `- widgetId: \`${widgetId}\`\n`;
@@ -988,6 +986,7 @@ async function _handleEditNativeFileMount(commandPayload, desktopWin) {
 
     return {
       status: status === "error" ? "error" : "success",
+      message: status === "error" ? (response?.error || response?.errorMessage || "Unknown error") : "Success",
       result: { content: [{ type: "text", text: mdReport }] },
     };
   } catch (err) {
@@ -998,6 +997,7 @@ async function _handleEditNativeFileMount(commandPayload, desktopWin) {
 
     return {
       status: "error",
+      message: err.message,
       result: { content: [{ type: "text", text: mdReport }] },
     };
   }

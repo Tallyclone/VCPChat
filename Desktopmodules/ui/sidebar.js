@@ -638,22 +638,31 @@
         // 恢复挂件
         if (preset.widgets && preset.widgets.length > 0) {
             for (const w of preset.widgets) {
-                if (w.isBuiltin) {
-                    // 内置挂件
-                    const builtinKey = w.widgetId.replace('builtin-', 'builtin');
-                    const capKey = 'builtin' + builtinKey.charAt(7).toUpperCase() + builtinKey.slice(8);
-                    // 尝试匹配: builtin-weather -> builtinWeather
+                if (w.savedId) {
+                    // 优先从收藏恢复（加载个性化保存的自定义UI与参数）
+                    if (D.favorites) {
+                        await D.favorites.spawnFromFavorite(w.savedId, w.x, w.y, w.width, w.height);
+                    }
+                } else if (w.isBuiltin) {
+                    // 没有收藏ID时，作为内置挂件默认版本恢复
                     const parts = w.widgetId.split('-');
                     if (parts.length >= 2) {
-                        const spawnKey = parts[0] + parts.slice(1).map(p => p.charAt(0).toUpperCase() + p.slice(1)).join('');
+                        let spawnKey = parts[0] + parts.slice(1).map(p => p.charAt(0).toUpperCase() + p.slice(1)).join('');
+                        
+                        // 兼容拼写映射：如果 builtinMonitor[Component] 未找到，尝试匹配 builtin[Component]Monitor 命名（如 CPU/RAM 监控等组件）
+                        if (!D[spawnKey]) {
+                            if (spawnKey.startsWith('builtinMonitor')) {
+                                const componentName = spawnKey.substring('builtinMonitor'.length); // "Cpu", "Memory", "Disk" 等
+                                const altKey = 'builtin' + componentName + 'Monitor';
+                                if (D[altKey]) {
+                                    spawnKey = altKey;
+                                }
+                            }
+                        }
+
                         if (D[spawnKey] && D[spawnKey].spawn) {
                             D[spawnKey].spawn();
                         }
-                    }
-                } else if (w.savedId) {
-                    // 收藏挂件
-                    if (D.favorites) {
-                        await D.favorites.spawnFromFavorite(w.savedId, w.x, w.y);
                     }
                 }
             }

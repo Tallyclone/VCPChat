@@ -859,6 +859,7 @@ function createCatalog(ops) {
     nativeFsTrash: query((args) => ops.invoke("nativeFs:trash", args)),
     nativeFsNewFolder: query((args) => ops.invoke("nativeFs:newFolder", args)),
     nativeFsNewFile: query((args) => ops.invoke("nativeFs:newFile", args)),
+    nativeFsUnzip: query((args) => ops.invoke("nativeFs:unzip", args)),
     nativeFsCopyToClipboard: query((args) =>
       ops.invoke("nativeFs:copyToClipboard", args)
     ),
