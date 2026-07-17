@@ -4,11 +4,114 @@
   const api = window.e3chat;
   let chatRunning = false;
   let cancelPending = false;
+  let attachments = [];
   const generation = () => window.E3MessageStreamRenderer.state.generation;
   const eventGeneration = (event) => {
     const parsed = Number(event?.connectionGeneration);
     return Number.isFinite(parsed) ? parsed : generation();
   };
+
+  function renderAttachments() {
+    const host = document.getElementById("attachment-preview");
+    if (!host) return;
+    host.innerHTML = "";
+    host.hidden = attachments.length === 0;
+    attachments.forEach((attachment, index) => {
+      const item = document.createElement("div");
+      item.className = "attachment-item";
+      if (
+        String(attachment.type || "").startsWith("image/") &&
+        attachment.internalPath
+      ) {
+        const thumbnail = document.createElement("img");
+        thumbnail.className = "attachment-thumbnail";
+        thumbnail.src = attachment.internalPath;
+        thumbnail.alt = attachment.name || "图片附件";
+        thumbnail.addEventListener("error", () => thumbnail.remove(), {
+          once: true,
+        });
+        item.appendChild(thumbnail);
+      }
+      const name = document.createElement("span");
+      name.textContent = attachment.name || "未命名文件";
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "attachment-remove";
+      remove.textContent = "×";
+      remove.title = "移除此附件";
+      remove.addEventListener("click", () => {
+        attachments.splice(index, 1);
+        renderAttachments();
+      });
+      item.append(name, remove);
+      host.appendChild(item);
+    });
+  }
+
+  function addAttachments(items) {
+    const existing = new Set(
+      attachments.map((item) => item.id || item.internalPath)
+    );
+    let limitReached = false;
+    for (const item of Array.isArray(items) ? items : []) {
+      const key = item?.id || item?.internalPath;
+      if (!item || (key && existing.has(key))) continue;
+      if (attachments.length >= 10) {
+        limitReached = true;
+        break;
+      }
+      attachments.push(item);
+      if (key) existing.add(key);
+    }
+    renderAttachments();
+    if (limitReached) {
+      window.E3MessageStreamRenderer.showError(
+        "一次最多发送 10 个附件",
+        "invocation",
+        generation()
+      );
+    }
+  }
+
+  async function uploadFiles() {
+    try {
+      addAttachments(await api.selectFiles());
+      document.getElementById("prompt").focus();
+    } catch (error) {
+      window.E3MessageStreamRenderer.showError(
+        error.message,
+        "invocation",
+        generation()
+      );
+    }
+  }
+
+  async function pasteFiles(event) {
+    const files = Array.from(event.clipboardData?.items || [])
+      .filter((item) => item.kind === "file")
+      .map((item) => item.getAsFile())
+      .filter(Boolean);
+    if (!files.length) return;
+    event.preventDefault();
+    try {
+      for (const file of files) {
+        const data = new Uint8Array(await file.arrayBuffer());
+        addAttachments([
+          await api.storePastedFile({
+            name: file.name || `pasted_image_${Date.now()}.png`,
+            type: file.type || "application/octet-stream",
+            data,
+          }),
+        ]);
+      }
+    } catch (error) {
+      window.E3MessageStreamRenderer.showError(
+        error.message,
+        "invocation",
+        generation()
+      );
+    }
+  }
 
   function setChatRunning(running, pendingCancel = false) {
     chatRunning = !!running;
@@ -17,8 +120,23 @@
     if (!button) return;
     button.classList.toggle("is-running", chatRunning);
     button.disabled = cancelPending;
+    document.getElementById("upload-file").disabled = chatRunning;
+    document.getElementById("new-session").disabled = chatRunning;
+    document.getElementById("sidebar-new-session").disabled = chatRunning;
     button.setAttribute("aria-label", chatRunning ? "取消生成" : "发送消息");
     button.title = chatRunning ? "取消生成" : "发送消息 (Enter)";
+  }
+
+  async function startNewSession() {
+    attachments = [];
+    renderAttachments();
+    window.E3WorkspaceSidebar.startNewSession();
+    await window.E3WorkspaceSidebar.renderSessions({
+      preserveSelection: false,
+      selectSessionId: null,
+      allowNoSelection: true,
+    });
+    document.getElementById("prompt").focus();
   }
 
   async function bootstrap() {
@@ -40,20 +158,21 @@
       });
     document
       .getElementById("new-session")
-      .addEventListener("click", async () => {
-        window.E3WorkspaceSidebar.startNewSession();
-        await window.E3WorkspaceSidebar.renderSessions({
-          preserveSelection: false,
-          selectSessionId: null,
-          allowNoSelection: true,
-        });
-      });
+      .addEventListener("click", startNewSession);
+    document
+      .getElementById("sidebar-new-session")
+      .addEventListener("click", startNewSession);
+    document
+      .getElementById("upload-file")
+      .addEventListener("click", uploadFiles);
     document.getElementById("reconnect").addEventListener("click", connect);
     document
       .getElementById("disconnect")
       .addEventListener("click", async () => api.disconnect());
     document.getElementById("composer").addEventListener("submit", sendMessage);
-    document.getElementById("prompt").addEventListener("keydown", (event) => {
+    const prompt = document.getElementById("prompt");
+    prompt.addEventListener("paste", pasteFiles);
+    prompt.addEventListener("keydown", (event) => {
       if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
       event.preventDefault();
       if (!chatRunning) event.currentTarget.form.requestSubmit();
@@ -103,20 +222,27 @@
 
     const textarea = document.getElementById("prompt");
     const content = textarea.value.trim();
-    if (!content) return;
+    if (!content && !attachments.length) return;
+    const sendingAttachments = attachments.slice();
+    const visibleContent =
+      content ||
+      sendingAttachments.map((item) => `[附件] ${item.name}`).join("\n");
 
     const activeSessionId = window.E3WorkspaceSidebar.getActiveSessionId();
     const localId = window.E3MessageStreamRenderer.appendUserMessage(
-      content,
+      visibleContent,
       undefined,
       generation()
     );
     textarea.value = "";
+    attachments = [];
+    renderAttachments();
     setChatRunning(true);
 
     try {
       const result = await api.sendMessage({
         content,
+        attachments: sendingAttachments,
         sessionId: activeSessionId,
         localId,
       });
@@ -133,6 +259,8 @@
         generation()
       );
       textarea.value = content;
+      attachments = sendingAttachments;
+      renderAttachments();
     }
   }
 

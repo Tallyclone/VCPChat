@@ -46,27 +46,27 @@
 
 ### 1.2 新增文件（渲染器端 `Desktopmodules/e3chat/`）
 
-| 文件                         | 字节  | 核查状态          | 职责简述                                  |
-| ---------------------------- | ----- | ----------------- | ----------------------------------------- |
-| `e3chat.html`                | 2869  | ✅                | 入口 HTML，加载所有 vendor + 模块脚本     |
-| `e3chat.js`                  | 5642  | ✅                | 主控制器（bootstrap、事件路由、发送）     |
-| `e3chat.css`                 | 11261 | ✅                | 全部样式                                  |
-| `workspaceSessionSidebar.js` | 6574  | ✅                | 会话列表渲染、历史恢复、会话切换          |
-| `messageStreamRenderer.js`   | 7247  | ✅                | 流式消息渲染协调器（generation 过滤）     |
-| `e3ChatSettingsPanel.js`     | 413   | ✅                | 连接状态/workspace 显示                   |
-| `e3DiagnosticsPanel.js`      | 323   | ✅                | 诊断日志面板                              |
-| **`animationProcessor.js`**  | 11995 | ⚠️ **文档未列出** | anime.js/Three.js 安全执行、CDN→ 本地重写 |
-| `blocks/messageBlock.js`     | 33833 | ✅                | 消息块渲染（Markdown + 10 阶段管线）      |
-| `blocks/thinkingBlock.js`    | 990   | ✅                | 思考块（默认折叠）                        |
-| `blocks/toolCard.js`         | 3466  | ✅                | E3 原生工具卡                             |
-| `blocks/questionCard.js`     | 2210  | ✅                | AskUserQuestion 卡片                      |
-| `blocks/errorBlock.js`       | 336   | ✅                | 错误块                                    |
+| 文件                         | 字节  | 核查状态          | 职责简述                                                              |
+| ---------------------------- | ----- | ----------------- | --------------------------------------------------------------------- |
+| `e3chat.html`                | —     | ✅                | 入口 HTML，保留侧栏新建会话入口，并在输入区新增上传/新建会话 SVG 按钮 |
+| `e3chat.js`                  | —     | ✅                | 主控制器（事件路由、发送、文件选择、图片粘贴）                        |
+| `e3chat.css`                 | —     | ✅                | 全部样式，含附件及图片缩略预览                                        |
+| `workspaceSessionSidebar.js` | 6574  | ✅                | 会话列表渲染、历史恢复、会话切换                                      |
+| `messageStreamRenderer.js`   | 7247  | ✅                | 流式消息渲染协调器（generation 过滤）                                 |
+| `e3ChatSettingsPanel.js`     | 413   | ✅                | 连接状态/workspace 显示                                               |
+| `e3DiagnosticsPanel.js`      | 323   | ✅                | 诊断日志面板                                                          |
+| **`animationProcessor.js`**  | 11995 | ⚠️ **文档未列出** | anime.js/Three.js 安全执行、CDN→ 本地重写                             |
+| `blocks/messageBlock.js`     | 33833 | ✅                | 消息块渲染（Markdown + 10 阶段管线）                                  |
+| `blocks/thinkingBlock.js`    | 990   | ✅                | 思考块（默认折叠）                                                    |
+| `blocks/toolCard.js`         | 3466  | ✅                | E3 原生工具卡                                                         |
+| `blocks/questionCard.js`     | 2210  | ✅                | AskUserQuestion 卡片                                                  |
+| `blocks/errorBlock.js`       | 336   | ✅                | 错误块                                                                |
 
 ### 1.3 Preload
 
-| 文件                 | 字节 | 核查状态                                                            |
-| -------------------- | ---- | ------------------------------------------------------------------- |
-| `preloads/e3chat.js` | 1548 | ✅ 通过 `contextBridge.exposeInMainWorld("e3chat", ...)` 暴露窄 API |
+| 文件                 | 字节 | 核查状态                                                                                   |
+| -------------------- | ---- | ------------------------------------------------------------------------------------------ |
+| `preloads/e3chat.js` | —    | ✅ 通过 `contextBridge.exposeInMainWorld("e3chat", ...)` 暴露窄 API（含文件选择/粘贴保存） |
 
 ### 1.4 已修改的既有文件
 
@@ -178,23 +178,25 @@ if (appAction === "open-e3-chat-window") {
 
 ## 4. IPC 通道完整列表
 
-| 通道                       | 方向          | Handler 位置              | 功能                        |
-| -------------------------- | ------------- | ------------------------- | --------------------------- |
-| `e3chat:register-window`   | Renderer→Main | `e3ChatIpcHandlers.js:62` | 窗口注册（sender 鉴权入口） |
-| `e3chat:get-status`        | Renderer→Main | `e3ChatIpcHandlers.js:73` | 获取连接状态                |
-| `e3chat:connect`           | Renderer→Main | `e3ChatIpcHandlers.js:74` | 连接 E3 后端                |
-| `e3chat:disconnect`        | Renderer→Main | `e3ChatIpcHandlers.js:77` | 断开连接                    |
-| `e3chat:refresh-workspace` | Renderer→Main | `e3ChatIpcHandlers.js:78` | 刷新工作空间                |
-| `e3chat:list-sessions`     | Renderer→Main | `e3ChatIpcHandlers.js:79` | 列出会话                    |
-| `e3chat:load-session`      | Renderer→Main | `e3ChatIpcHandlers.js:80` | 加载会话历史                |
-| `e3chat:rename-session`    | Renderer→Main | `e3ChatIpcHandlers.js:83` | 重命名会话                  |
-| `e3chat:send-message`      | Renderer→Main | `e3ChatIpcHandlers.js:86` | 发送消息                    |
-| `e3chat:cancel`            | Renderer→Main | `e3ChatIpcHandlers.js:93` | 取消当前聊天                |
-| `e3chat:answer-question`   | Renderer→Main | `e3ChatIpcHandlers.js:94` | 回答问题                    |
-| `e3chat:get-diagnostics`   | Renderer→Main | `e3ChatIpcHandlers.js:97` | 获取诊断日志                |
-| `e3chat:get-local-state`   | Renderer→Main | `e3ChatIpcHandlers.js:98` | 读取本地状态                |
-| `e3chat:save-local-state`  | Renderer→Main | `e3ChatIpcHandlers.js:99` | 保存本地状态                |
-| `e3chat:event`             | Main→Renderer | `e3ChatIpcHandlers.js:58` | 推送规范化事件              |
+| 通道                       | 方向          | Handler 位置              | 功能                                             |
+| -------------------------- | ------------- | ------------------------- | ------------------------------------------------ |
+| `e3chat:register-window`   | Renderer→Main | `e3ChatIpcHandlers.js:62` | 窗口注册（sender 鉴权入口）                      |
+| `e3chat:get-status`        | Renderer→Main | `e3ChatIpcHandlers.js:73` | 获取连接状态                                     |
+| `e3chat:connect`           | Renderer→Main | `e3ChatIpcHandlers.js:74` | 连接 E3 后端                                     |
+| `e3chat:disconnect`        | Renderer→Main | `e3ChatIpcHandlers.js:77` | 断开连接                                         |
+| `e3chat:refresh-workspace` | Renderer→Main | `e3ChatIpcHandlers.js:78` | 刷新工作空间                                     |
+| `e3chat:list-sessions`     | Renderer→Main | `e3ChatIpcHandlers.js:79` | 列出会话                                         |
+| `e3chat:load-session`      | Renderer→Main | `e3ChatIpcHandlers.js:80` | 加载会话历史                                     |
+| `e3chat:rename-session`    | Renderer→Main | `e3ChatIpcHandlers.js`    | 重命名会话                                       |
+| `e3chat:select-files`      | Renderer→Main | `e3ChatIpcHandlers.js`    | 打开文件选择器并复用 VChat fileManager 保存/提取 |
+| `e3chat:store-pasted-file` | Renderer→Main | `e3ChatIpcHandlers.js`    | 保存从剪贴板粘贴的图片/文件（上限 25MB）         |
+| `e3chat:send-message`      | Renderer→Main | `e3ChatIpcHandlers.js`    | 发送消息及附件元数据                             |
+| `e3chat:cancel`            | Renderer→Main | `e3ChatIpcHandlers.js`    | 取消当前聊天                                     |
+| `e3chat:answer-question`   | Renderer→Main | `e3ChatIpcHandlers.js:94` | 回答问题                                         |
+| `e3chat:get-diagnostics`   | Renderer→Main | `e3ChatIpcHandlers.js:97` | 获取诊断日志                                     |
+| `e3chat:get-local-state`   | Renderer→Main | `e3ChatIpcHandlers.js:98` | 读取本地状态                                     |
+| `e3chat:save-local-state`  | Renderer→Main | `e3ChatIpcHandlers.js:99` | 保存本地状态                                     |
+| `e3chat:event`             | Main→Renderer | `e3ChatIpcHandlers.js:58` | 推送规范化事件                                   |
 
 **鉴权机制**：`assertE3Sender()` 验证 `event.sender.id === win.webContents.id` 且在 `allowedWebContents` Set 中。`register-window` 时将 sender.id 加入 Set，sender destroyed 时自动移除。
 
@@ -204,18 +206,18 @@ if (appAction === "open-e3-chat-window") {
 
 ### 5.1 `e3ChatService.js` — 核心服务协调器
 
-| 方法                                                    | 行号    | 说明                                                                                                                                    |
-| ------------------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `constructor()`                                         | 80      | 组合所有子模块（discovery、signalr、workspace、session、diagnostics、localState、**viewport**）                                         |
-| `connect(options)`                                      | 117     | 发现后端 → 创建 SignalR 客户端 → 绑定事件 → 握手 →**注册 draw_objects/clear/view_capture 远程 RPC**→ 同步会话 → 发射 connected 事件     |
-| `bindClient(client)`                                    | 172     | 监听 `hub-event`→`normalizeHubEvent`→`emitEvent`；监听 `connection` 状态变化                                                            |
-| `disconnect(mark)`                                      | 194     | 断开 WebSocket，清理客户端引用                                                                                                          |
-| `refreshWorkspace()`                                    | 206     | 刷新会话列表，检测 workspace 变化时重连                                                                                                 |
-| `sendMessage(content, attachments, sessionId)`          | 231     | **核心发送流程**：验证 → 记录 before sessions→LoadChatSession（如有 sessionId）→`SendChatMessage(content, sessionId)`→ 重试检测新建会话 |
-| `cancel()`                                              | 312     | `CancelChat()` invoke                                                                                                                   |
-| `answerQuestion(requestId, payload)`                    | 326     | 验证 pending→`AnswerChatQuestion` invoke→ 移除 pending                                                                                  |
-| `getLocalState(scope)` / `saveLocalState(scope, patch)` | 352/357 | 委托 e3LocalStateStore                                                                                                                  |
-| `getDiagnostics()`                                      | 363     | 返回诊断列表                                                                                                                            |
+| 方法                                                    | 行号    | 说明                                                                                                                                              |
+| ------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `constructor()`                                         | 80      | 组合所有子模块（discovery、signalr、workspace、session、diagnostics、localState、**viewport**）                                                   |
+| `connect(options)`                                      | 117     | 发现后端 → 创建 SignalR 客户端 → 绑定事件 → 握手 →**注册 draw_objects/clear/view_capture 远程 RPC**→ 同步会话 → 发射 connected 事件               |
+| `bindClient(client)`                                    | 172     | 监听 `hub-event`→`normalizeHubEvent`→`emitEvent`；监听 `connection` 状态变化                                                                      |
+| `disconnect(mark)`                                      | 194     | 断开 WebSocket，清理客户端引用                                                                                                                    |
+| `refreshWorkspace()`                                    | 206     | 刷新会话列表，检测 workspace 变化时重连                                                                                                           |
+| `sendMessage(content, attachments, sessionId)`          | —       | **核心发送流程**：附件转为 `[附加文件]` 正文块 → LoadChatSession（如有 sessionId）→`SendChatMessage(messageContent, sessionId)`→ 重试检测新建会话 |
+| `cancel()`                                              | 312     | `CancelChat()` invoke                                                                                                                             |
+| `answerQuestion(requestId, payload)`                    | 326     | 验证 pending→`AnswerChatQuestion` invoke→ 移除 pending                                                                                            |
+| `getLocalState(scope)` / `saveLocalState(scope, patch)` | 352/357 | 委托 e3LocalStateStore                                                                                                                            |
+| `getDiagnostics()`                                      | 363     | 返回诊断列表                                                                                                                                      |
 
 **⚠ 关键发现：`SendChatMessage` 的第二参数**
 
@@ -224,12 +226,12 @@ if (appAction === "open-e3-chat-window") {
 ```js
 const result = await this.client.invoke(
   "SendChatMessage",
-  content,
+  messageContent,
   requestedSessionId
 );
 ```
 
-第二参数是 **currentSessionId**，不是 attachments。传 `null` 会创建新会话。这是已确认的 E3 协议真实行为。
+第二参数是 **currentSessionId**，不是 attachments。传 `null` 会创建新会话。这是已确认的 E3 协议真实行为。附件会先通过 VChat 的 `fileManager` 保存和提取文本，再由 `buildMessageContent()` 合入第一参数，未改变 E3 Hub 调用签名。
 
 ### 5.2 `e3BackendDiscovery.js` — 后端发现
 
@@ -290,22 +292,29 @@ const result = await this.client.invoke(
 
 ## 6. 数据流与事件传播路径
 
-### 6.1 发送消息
+### 6.1 发送消息与附件
 
 ```
-用户输入 → 点击 SVG 发送按钮或按 Enter（Shift+Enter 仅换行）
+用户输入文字，或通过“上传文件”/输入框粘贴添加附件（最多 10 个）
+  → 文件选择：e3chat:select-files；粘贴文件：e3chat:store-pasted-file（单文件上限 25MB）
+  → e3ChatIpcHandlers → VChat fileManager.storeFile() 保存文件并提取文本
+  → e3chat.js 显示文件名；图片使用 internalPath 的 file:// URL 显示缩略图
+  → 点击 SVG 发送按钮或按 Enter（Shift+Enter 仅换行）
   → e3chat.js sendMessage() → 按钮切换为运行/取消 SVG 状态
   → appendUserMessage() 显示用户消息
-  → IPC e3chat:send-message { content, sessionId }
+  → IPC e3chat:send-message { content, attachments, sessionId }
   → e3ChatService.sendMessage()
+    → buildMessageContent() 将附件路径/提取文本合入第一参数的 `[附加文件]` 块
     → [有sessionId] LoadChatSession(sessionId)
-    → SendChatMessage(content, sessionId|null) via SignalR
+    → SendChatMessage(messageContent, sessionId|null) via SignalR
     → [新会话] 轮询 ListChatSessions 检测新增 sessionId (最多5次,间隔150ms递增)
   → 返回 { result, activeSessionId, sessions }
   → 更新 sidebar 选中会话
   → [chat-done/chat-error] 最终化当前助手消息；[断线] 按钮恢复发送 SVG 状态
   → [运行时点击按钮] 发送 CancelChat，最终化已生成内容后恢复发送 SVG 状态
 ```
+
+`SendChatMessage` 的第二参数始终是 `sessionId`，附件不能占用该参数。发送失败时渲染层恢复输入文字和待发送附件；侧栏和输入区均保留新建会话入口，两个入口共用同一逻辑并清空待发送附件。输入区的上传附件、新建会话按钮以及侧栏新建会话按钮均使用 SVG 图标。
 
 ### 6.2 接收流式事件
 
@@ -621,6 +630,16 @@ await e3chat.loadSession("会话ID");
 □ E3 工具卡 running→success/error
 □ AskUserQuestion 单选/多选/Other
 □ 取消后收到 done 的处理
+□ 点击上传文件：单选、多选、取消均正常，并显示附件预览
+□ 在输入框粘贴剪贴板图片并显示缩略图
+□ 粘贴普通文本不被附件逻辑阻止
+□ 仅附件无文字、文字与附件组合时均可发送
+□ 点击 × 后对应附件不再发送
+□ 添加超过 10 个附件时只保留前 10 个并显示提示
+□ 粘贴空文件或超过 25MB 的文件时显示错误
+□ 发送失败后恢复输入文字和待发送附件
+□ 生成期间上传文件和新建会话按钮禁用
+□ 上传文件按钮旁的新建会话按钮清空当前视图和待发送附件
 □ 新建会话
 □ 重命名会话
 □ Workspace 切换后重建 hub

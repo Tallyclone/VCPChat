@@ -76,6 +76,23 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function buildMessageContent(content, attachments) {
+  let message = typeof content === "string" ? content.trim() : "";
+  const files = Array.isArray(attachments) ? attachments.slice(0, 10) : [];
+  for (const attachment of files) {
+    const name = String(attachment?.name || "未命名文件");
+    const filePath = String(attachment?.internalPath || "");
+    const extractedText =
+      typeof attachment?.extractedText === "string"
+        ? attachment.extractedText.slice(0, 50000)
+        : "";
+    message += `\n\n[附加文件: ${filePath || name}]`;
+    if (extractedText) message += `\n${extractedText}`;
+    message += `\n[/附加文件结束: ${name}]`;
+  }
+  return message.trim();
+}
+
 class E3ChatService extends EventEmitter {
   constructor(options = {}) {
     super();
@@ -229,11 +246,8 @@ class E3ChatService extends EventEmitter {
   }
 
   async sendMessage(content, attachments = null, sessionId = null) {
-    if (
-      typeof content !== "string" ||
-      !content.trim() ||
-      content.length > 200000
-    )
+    const messageContent = buildMessageContent(content, attachments);
+    if (!messageContent || messageContent.length > 200000)
       throw new Error("Invalid message content");
     if (!this.client?.connected)
       throw new Error("E3 SignalR client is not connected");
@@ -261,7 +275,7 @@ class E3ChatService extends EventEmitter {
       // 传 null 会明确要求 E3 创建新会话。
       const result = await this.client.invoke(
         "SendChatMessage",
-        content,
+        messageContent,
         requestedSessionId
       );
       let sessions = [];

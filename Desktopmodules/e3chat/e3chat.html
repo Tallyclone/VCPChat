@@ -29,8 +29,16 @@
         <section class="sidebar-section">
           <div class="section-title-row">
             <h2>会话</h2>
-            <button type="button" id="new-session" class="inline-action">
-              新建会话
+            <button
+              type="button"
+              id="sidebar-new-session"
+              class="inline-action icon-button"
+              aria-label="新建会话"
+              title="新建会话"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
             </button>
           </div>
           <div id="session-list" class="session-list"></div>
@@ -44,12 +52,36 @@
         <div id="message-list" class="message-list"></div>
         <div id="pending-question" class="pending-question" hidden></div>
         <form id="composer" class="composer">
+          <div id="attachment-preview" class="attachment-preview" hidden></div>
           <textarea
             id="prompt"
             rows="4"
             placeholder="向 E3 发送消息…"
           ></textarea>
           <div class="composer-actions">
+            <button
+              type="button"
+              id="upload-file"
+              class="composer-tool"
+              aria-label="上传附件"
+              title="上传附件"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 17V4m0 0L7 9m5-5 5 5" />
+                <path d="M5 14v5h14v-5" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              id="new-session"
+              class="composer-tool"
+              aria-label="新建会话"
+              title="新建会话"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            </button>
             <button
               type="submit"
               id="chat-action"

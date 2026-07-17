@@ -78,6 +78,24 @@ textarea {
   background: var(--accent);
   border-color: var(--accent);
 }
+.sidebar button.inline-action.icon-button {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  padding: 0;
+}
+.icon-button svg,
+.composer-tool svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 .session-list {
   display: grid;
   gap: 8px;
@@ -319,10 +337,67 @@ textarea {
   border-radius: 10px;
   padding: 12px;
 }
+.attachment-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.attachment-preview[hidden] {
+  display: none;
+}
+.attachment-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 280px;
+  padding: 7px 9px;
+  color: var(--text);
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.attachment-thumbnail {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  object-fit: cover;
+  border-radius: 6px;
+}
+.attachment-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attachment-remove {
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
 .composer-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+.composer-tool {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  color: var(--text);
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  cursor: pointer;
+}
+.composer-tool:hover {
+  border-color: var(--accent);
+}
+.composer-tool:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 .chat-action {
   position: relative;

@@ -1,6 +1,8 @@
 "use strict";
 
-const { ipcMain, WebContents } = require("electron");
+const { ipcMain, dialog } = require("electron");
+const path = require("path");
+const fileManager = require("../fileManager");
 const E3ChatService = require("./e3ChatService");
 const e3ChatWindow = require("./e3ChatWindow");
 
@@ -83,6 +85,39 @@ function initialize(options = {}) {
   wrap("e3chat:rename-session", (_event, sessionId, title) =>
     svc.renameSession(sessionId, title)
   );
+  wrap("e3chat:select-files", async () => {
+    const win = e3ChatWindow.getE3ChatWindow();
+    const result = await dialog.showOpenDialog(win, {
+      title: "选择要发送的文件",
+      properties: ["openFile", "multiSelections"],
+    });
+    if (result.canceled) return [];
+    const attachments = [];
+    for (const filePath of result.filePaths) {
+      attachments.push(
+        await fileManager.storeFile(
+          filePath,
+          path.basename(filePath),
+          "e3chat",
+          "chat"
+        )
+      );
+    }
+    return attachments;
+  });
+  wrap("e3chat:store-pasted-file", async (_event, file = {}) => {
+    if (!file.name || !file.data) throw new Error("无效的粘贴文件");
+    const data = Buffer.from(file.data);
+    if (!data.length || data.length > 25 * 1024 * 1024)
+      throw new Error("粘贴文件为空或超过 25MB");
+    return await fileManager.storeFile(
+      data,
+      String(file.name),
+      "e3chat",
+      "chat",
+      file.type || "application/octet-stream"
+    );
+  });
   wrap("e3chat:send-message", (_event, input = {}) =>
     svc.sendMessage(
       input.content,
