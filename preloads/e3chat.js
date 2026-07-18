@@ -29,6 +29,32 @@ const api = {
   getLocalState: (scope) => invoke("e3chat:get-local-state", scope),
   saveLocalState: (scope, patch) =>
     invoke("e3chat:save-local-state", scope, patch),
+  getViewportPath: () => invoke("e3chat:get-viewport-path"),
+  selectCustomWallpaper: () => invoke("e3chat:select-custom-wallpaper"),
+  listWallpapers: () => invoke("e3chat:list-wallpapers"),
+  getThemes: () => ipcRenderer.invoke("get-themes"),
+  getCurrentTheme: () => ipcRenderer.invoke("get-current-theme"),
+  applyTheme: (themeFileName) => ipcRenderer.send("apply-theme", themeFileName),
+  setThemeMode: (themeMode) => ipcRenderer.send("set-theme-mode", themeMode),
+  minimizeWindow: () => invoke("e3chat:minimize"),
+  maximizeWindow: () => invoke("e3chat:maximize"),
+  closeWindow: () => invoke("e3chat:close"),
+  onThemeUpdated: (listener) => {
+    if (typeof listener !== "function")
+      throw new TypeError("listener must be a function");
+    const wrapped = (_event, theme) => listener(theme);
+    ipcRenderer.on("theme-updated", wrapped);
+    return () => ipcRenderer.removeListener("theme-updated", wrapped);
+  },
+  onViewportInvoke: (listener) => {
+    if (typeof listener !== "function")
+      throw new TypeError("listener must be a function");
+    const wrapped = (_event, payload) => listener(payload);
+    ipcRenderer.on("e3-viewport-rpc-invoke", wrapped);
+    return () => ipcRenderer.removeListener("e3-viewport-rpc-invoke", wrapped);
+  },
+  sendViewportResponse: (payload) =>
+    ipcRenderer.send("e3-viewport-rpc-response", payload),
   onEvent: (listener) => {
     if (typeof listener !== "function")
       throw new TypeError("listener must be a function");

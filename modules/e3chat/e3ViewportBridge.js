@@ -3,7 +3,8 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
-const { BrowserWindow } = require("electron");
+const { BrowserWindow, ipcMain } = require("electron");
+const e3ChatWindow = require("./e3ChatWindow");
 
 const RPC_TIMEOUT_MS = 30000;
 
@@ -14,12 +15,21 @@ class E3ViewportBridge {
     this.ready = null;
     this.nextRequestId = 1;
     this.pending = new Map();
+
+    // Register global listener for viewport response
+    ipcMain.on("e3-viewport-rpc-response", (event, payload) => {
+      const pending = this.pending.get(String(payload?.requestId || ""));
+      if (!pending) return;
+      clearTimeout(pending.timer);
+      this.pending.delete(String(payload.requestId));
+      pending.resolve(payload.result);
+    });
   }
 
   viewportPath() {
     const localAppData = process.env.LOCALAPPDATA;
     if (!localAppData) throw new Error("LOCALAPPDATA is unavailable");
-    const filePath = path.join(
+    const sourcePath = path.join(
       localAppData,
       "Programs",
       "E3",
@@ -28,76 +38,98 @@ class E3ViewportBridge {
       "viewport",
       "index.html"
     );
-    if (!fs.existsSync(filePath))
-      throw new Error(`E3 native viewport was not found: ${filePath}`);
-    return filePath;
+    if (!fs.existsSync(sourcePath))
+      throw new Error(`E3 native viewport was not found: ${sourcePath}`);
+
+    const patchedPath = path.join(
+      path.dirname(sourcePath),
+      "e3chat-viewport.html"
+    );
+    const source = fs.readFileSync(sourcePath, "utf8");
+    const transparentOverride = `
+    <style id="e3chat-viewport-background-override">
+      html, body, #root, #root > div, canvas {
+        background: transparent !important;
+        background-color: transparent !important;
+      }
+    </style>
+    <script id="e3chat-webgl-alpha-override">
+      (() => {
+        const forceTransparentClear = (Context) => {
+          if (!Context || Context.prototype.__e3chatClearColorPatched) return;
+          const originalClearColor = Context.prototype.clearColor;
+          Object.defineProperty(Context.prototype, "__e3chatClearColorPatched", {
+            value: true,
+          });
+          Context.prototype.clearColor = function (red, green, blue) {
+            return originalClearColor.call(this, red, green, blue, 0);
+          };
+        };
+        const applyHostBackground = (payload) => {
+          if (!payload || payload.type !== "e3chat:set-background") return;
+          const transparent = payload.mode === "transparent";
+          const bodyStyle = document.body.style;
+          document.documentElement.style.setProperty(
+            "background",
+            "transparent",
+            "important"
+          );
+          bodyStyle.setProperty(
+            "background-color",
+            transparent ? "transparent" : payload.color || "#000000",
+            "important"
+          );
+          if (transparent && payload.wallpaperUrl) {
+            bodyStyle.setProperty(
+              "background-image",
+              'url("' + payload.wallpaperUrl + '")',
+              "important"
+            );
+            bodyStyle.setProperty("background-repeat", "no-repeat", "important");
+            bodyStyle.setProperty(
+              "background-size",
+              payload.hostWidth + "px " + payload.hostHeight + "px",
+              "important"
+            );
+            bodyStyle.setProperty(
+              "background-position",
+              -payload.offsetX + "px " + -payload.offsetY + "px",
+              "important"
+            );
+          } else {
+            bodyStyle.setProperty("background-image", "none", "important");
+          }
+        };
+        forceTransparentClear(window.WebGLRenderingContext);
+        forceTransparentClear(window.WebGL2RenderingContext);
+        window.addEventListener("message", (event) => applyHostBackground(event.data));
+        window.parent.postMessage({ type: "e3chat:viewport-ready" }, "*");
+      })();
+    </script>`;
+    if (!source.includes("</head>"))
+      throw new Error("E3 native viewport does not contain a closing head tag");
+    const existingOverride =
+      /\s*<style id="e3chat-viewport-background-override">[\s\S]*?<\/style>(?:\s*<script id="e3chat-webgl-alpha-override">[\s\S]*?<\/script>)?/;
+    const patched = existingOverride.test(source)
+      ? source.replace(existingOverride, transparentOverride)
+      : source.replace("</head>", `${transparentOverride}\n  </head>`);
+
+    if (
+      !fs.existsSync(patchedPath) ||
+      fs.readFileSync(patchedPath, "utf8") !== patched
+    ) {
+      fs.writeFileSync(patchedPath, patched, "utf8");
+    }
+    return patchedPath;
   }
 
   async ensureWindow(baseUrl) {
-    if (this.window && !this.window.isDestroyed()) {
-      if (!this.window.isVisible()) this.window.show();
-      return await this.ready;
+    const win = e3ChatWindow.getE3ChatWindow();
+    if (!win || win.isDestroyed()) {
+      throw new Error("E3 Chat window is not available for 3D viewport");
     }
-
-    const appRoot = require("electron").app.getAppPath();
-    const win = new BrowserWindow({
-      width: 960,
-      height: 720,
-      minWidth: 640,
-      minHeight: 480,
-      title: "E3 Model View",
-      backgroundColor: "#101319",
-      show: false,
-      webPreferences: {
-        preload: path.join(appRoot, "preloads", "e3ViewportBridge.js"),
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: false,
-      },
-    });
     this.window = win;
-    const port = (() => {
-      try {
-        return new URL(baseUrl).port;
-      } catch (_) {
-        return "";
-      }
-    })();
-
-    this.ready = new Promise((resolve, reject) => {
-      const fail = (_event, code, description) =>
-        reject(new Error(`E3 viewport failed to load (${code}): ${description}`));
-      win.webContents.once("did-fail-load", fail);
-      win.webContents.once("did-finish-load", () => {
-        win.webContents.removeListener("did-fail-load", fail);
-        win.show();
-        resolve(win);
-      });
-    });
-
-    win.webContents.on("ipc-message", (_event, channel, payload) => {
-      if (channel !== "e3-viewport-rpc-response") return;
-      const pending = this.pending.get(String(payload?.requestId || ""));
-      if (!pending) return;
-      clearTimeout(pending.timer);
-      this.pending.delete(String(payload.requestId));
-      pending.resolve(payload.result);
-    });
-    win.on("closed", () => {
-      const error = new Error("E3 model view was closed");
-      for (const [, pending] of this.pending) {
-        clearTimeout(pending.timer);
-        pending.reject(error);
-      }
-      this.pending.clear();
-      this.window = null;
-      this.ready = null;
-    });
-
-    await win.loadFile(this.viewportPath(), {
-      query: { mode: "iframe", port: port || "5000" },
-    });
-    return await this.ready;
+    return win;
   }
 
   async forward(methodName, body, baseUrl) {
@@ -137,7 +169,11 @@ class E3ViewportBridge {
         error: "",
       };
     } catch (error) {
-      this.diagnostics?.add("error", `Viewport RPC ${methodName} failed`, error.message);
+      this.diagnostics?.add(
+        "error",
+        `Viewport RPC ${methodName} failed`,
+        error.message
+      );
       return { result: "", hash: "", error: error.message };
     }
   }

@@ -26,7 +26,7 @@ async function openE3ChatWindow({ openChildWindows = [] } = {}) {
     minWidth: 860,
     minHeight: 560,
     title: "E3 Chat",
-    frame: true,
+    frame: false,
     modal: false,
     webPreferences: {
       preload: path.join(appRoot, "preloads", "e3chat.js"),

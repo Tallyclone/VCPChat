@@ -4,6 +4,11 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>E3 Chat</title>
+    <link
+      rel="stylesheet"
+      href="../../styles/themes.css"
+      id="theme-stylesheet"
+    />
     <link rel="stylesheet" href="./e3chat.css" />
     <link rel="stylesheet" href="../../vendor/katex.min.css" />
     <script src="../../vendor/marked.min.js"></script>
@@ -15,20 +20,84 @@
     <script src="../../vendor/purify.min.js"></script>
   </head>
   <body>
-    <div class="app-shell">
-      <aside class="sidebar">
-        <header>
-          <h1>E3 Chat</h1>
-          <p id="connection-state">未连接</p>
-        </header>
-        <section class="sidebar-section">
-          <button id="refresh-workspace">刷新工作空间</button>
-          <button id="reconnect">连接 / 重连</button>
-          <button id="disconnect">断开</button>
-        </section>
-        <section class="sidebar-section">
+    <!-- Custom Window Titlebar for Frameless Window -->
+    <div class="window-titlebar" id="window-titlebar">
+      <div class="titlebar-logo">E3</div>
+      <div class="titlebar-title">E3 Chat</div>
+      <div class="titlebar-drag-region"></div>
+      <div class="titlebar-controls">
+        <button
+          type="button"
+          class="titlebar-btn"
+          id="titlebar-min"
+          title="最小化"
+        >
+          <svg viewBox="0 0 10 1">
+            <rect width="10" height="1" fill="currentColor" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          class="titlebar-btn"
+          id="titlebar-max"
+          title="最大化/还原"
+        >
+          <svg viewBox="0 0 10 10">
+            <rect
+              width="8"
+              height="8"
+              x="1"
+              y="1"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.2"
+            />
+          </svg>
+        </button>
+        <button
+          type="button"
+          class="titlebar-btn close"
+          id="titlebar-close"
+          title="关闭"
+        >
+          <svg viewBox="0 0 10 10">
+            <path
+              d="M1 1 L9 9 M9 1 L1 9"
+              stroke="currentColor"
+              stroke-width="1.2"
+            />
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Background Wallpaper Layer supporting custom image/video background -->
+    <div class="wallpaper-background" id="wallpaper-bg"></div>
+
+    <div class="app-shell" id="app-shell">
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-tabs">
+          <button
+            type="button"
+            class="tab-button active"
+            id="tab-sessions"
+            title="会话历史"
+          >
+            会话
+          </button>
+          <button
+            type="button"
+            class="tab-button"
+            id="tab-settings"
+            title="连接与诊断设置"
+          >
+            设置
+          </button>
+        </div>
+
+        <div class="sidebar-panel active" id="panel-sessions">
           <div class="section-title-row">
-            <h2>会话</h2>
+            <h2>会话列表</h2>
             <button
               type="button"
               id="sidebar-new-session"
@@ -36,81 +105,374 @@
               aria-label="新建会话"
               title="新建会话"
             >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
+              <svg
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
                 <path d="M12 5v14M5 12h14" />
               </svg>
             </button>
           </div>
           <div id="session-list" class="session-list"></div>
-        </section>
-        <section class="sidebar-section">
-          <h2>诊断</h2>
-          <pre id="diagnostics" class="diagnostics"></pre>
-        </section>
-      </aside>
-      <main class="chat-panel">
-        <div id="message-list" class="message-list"></div>
-        <div id="pending-question" class="pending-question" hidden></div>
-        <form id="composer" class="composer">
-          <div id="attachment-preview" class="attachment-preview" hidden></div>
-          <textarea
-            id="prompt"
-            rows="4"
-            placeholder="向 E3 发送消息…"
-          ></textarea>
-          <div class="composer-actions">
-            <button
-              type="button"
-              id="upload-file"
-              class="composer-tool"
-              aria-label="上传附件"
-              title="上传附件"
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 17V4m0 0L7 9m5-5 5 5" />
-                <path d="M5 14v5h14v-5" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              id="new-session"
-              class="composer-tool"
-              aria-label="新建会话"
-              title="新建会话"
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-            </button>
-            <button
-              type="submit"
-              id="chat-action"
-              class="chat-action"
-              aria-label="发送消息"
-              title="发送消息 (Enter)"
-            >
-              <svg
-                class="action-icon action-icon-send"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-              >
-                <path
-                  d="M3.4 20.4 21 12 3.4 3.6l-.1 6.5L15.9 12 3.3 13.9l.1 6.5Z"
-                />
-              </svg>
-              <svg
-                class="action-icon action-icon-stop"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-              >
-                <circle cx="12" cy="12" r="9" />
-                <rect x="8" y="8" width="8" height="8" rx="1" />
-              </svg>
-            </button>
+        </div>
+
+        <div class="sidebar-panel" id="panel-settings">
+          <div class="settings-section">
+            <h3>连接状态</h3>
+            <p id="connection-state">未连接</p>
+            <div class="settings-buttons">
+              <button id="refresh-workspace">刷新</button>
+              <button id="reconnect">连接</button>
+              <button id="disconnect">断开</button>
+            </div>
           </div>
-        </form>
-      </main>
+          <div class="settings-section">
+            <h3>协议诊断</h3>
+            <pre id="diagnostics" class="diagnostics"></pre>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Main Open-Book Container -->
+      <div class="book-container split-mode" id="book-container">
+        <!-- Left Page: Chat Reading Area -->
+        <section class="book-page left-page" id="left-page">
+          <!-- Page Header -->
+          <header class="page-header">
+            <div class="header-left">
+              <div class="app-logo">E3</div>
+              <div class="header-status">
+                <span class="status-title">E3 Chat</span>
+                <span class="status-badge" id="header-status-badge"
+                  >未连接</span
+                >
+              </div>
+            </div>
+            <div class="header-right">
+              <span class="header-time" id="header-time">00:00:00</span>
+              <!-- Theme Overlay Button -->
+              <button
+                type="button"
+                class="header-control-btn theme-btn"
+                id="btn-open-themes"
+                title="主题与壁纸"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <circle cx="13.5" cy="6.5" r="2.5" />
+                  <circle cx="19" cy="11.5" r="2.5" />
+                  <circle cx="17.5" cy="17.5" r="2.5" />
+                  <circle cx="8" cy="16" r="2.5" />
+                  <circle cx="6" cy="10" r="2.5" />
+                  <path
+                    d="M12 2a10 10 0 0 0 0 20c1.1 0 2-.9 2-2v-.5c0-.5-.2-1-.5-1.3-.3-.3-.5-.8-.5-1.2 0-1.1.9-2 2-2h2.4A5.6 5.6 0 0 0 22 9.6 10 10 0 0 0 12 2z"
+                  />
+                </svg>
+              </button>
+              <!-- Toggle Sidebar Icon Button -->
+              <button
+                type="button"
+                class="header-control-btn"
+                id="btn-toggle-sidebar"
+                title="收起/展开侧边栏"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <path d="M9 3v18" />
+                </svg>
+              </button>
+              <!-- Toggle Book Layout Button -->
+              <button
+                type="button"
+                class="header-control-btn"
+                id="btn-toggle-layout"
+                title="切换极简/双页模式"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  class="layout-icon-split"
+                >
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <path d="M12 3v18" />
+                </svg>
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  class="layout-icon-single"
+                >
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                </svg>
+              </button>
+            </div>
+          </header>
+
+          <!-- Messages Area -->
+          <div class="page-body">
+            <div id="message-list" class="message-list custom-scrollbar"></div>
+            <div id="pending-question" class="pending-question" hidden></div>
+          </div>
+
+          <!-- Slot for input box in Single Column (Minimalist) Mode -->
+          <div class="floating-composer-slot" id="composer-floating-slot"></div>
+        </section>
+
+        <!-- Right Page: 3D Viewport & Split-Mode Input Area -->
+        <section class="book-page right-page" id="right-page">
+          <!-- Page Header -->
+          <header class="page-header">
+            <div class="header-left">
+              <span class="status-title">3D Viewport</span>
+            </div>
+            <div class="header-right">
+              <!-- Left click cycles transparent/black/white; right click opens the color wheel. -->
+              <button
+                type="button"
+                class="header-control-btn viewport-background-btn"
+                id="btn-viewport-background"
+                title="3D 背景：透明（左键切换，右键自定义）"
+                aria-label="切换 3D 视图背景"
+              >
+                <span
+                  class="viewport-background-swatch"
+                  aria-hidden="true"
+                ></span>
+              </button>
+              <!-- Toggle Viewport Fullscreen -->
+              <button
+                type="button"
+                class="header-control-btn"
+                id="btn-toggle-viewport-fullscreen"
+                title="3D 视图全屏显示"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+                </svg>
+              </button>
+            </div>
+          </header>
+
+          <div
+            class="viewport-color-popover"
+            id="viewport-color-popover"
+            hidden
+          >
+            <div class="viewport-color-popover-title">自定义 3D 背景</div>
+            <canvas
+              id="viewport-color-wheel"
+              class="viewport-color-wheel"
+              width="180"
+              height="180"
+              aria-label="色相与饱和度色轮"
+            ></canvas>
+            <label class="viewport-value-row">
+              <span>明度</span>
+              <input
+                id="viewport-color-value"
+                type="range"
+                min="0"
+                max="100"
+                value="100"
+              />
+            </label>
+            <div class="viewport-color-readout">
+              <span id="viewport-color-preview" aria-hidden="true"></span>
+              <output id="viewport-color-hex">#2563EB</output>
+            </div>
+            <div class="viewport-color-actions">
+              <button type="button" id="viewport-color-cancel">取消</button>
+              <button type="button" id="viewport-color-confirm">应用</button>
+            </div>
+          </div>
+
+          <!-- 3D Viewport Frame -->
+          <div class="page-body viewport-body" id="viewport-body">
+            <div class="viewport-iframe-wrapper" id="viewport-iframe-wrapper">
+              <iframe
+                id="e3-viewport-iframe"
+                src=""
+                allowtransparency="true"
+                style="
+                  display: none;
+                  border: 0;
+                  width: 100%;
+                  height: 100%;
+                  background: transparent;
+                "
+              ></iframe>
+              <!-- Mock Placeholder if E3 not connected -->
+              <div class="viewport-placeholder" id="viewport-placeholder">
+                <div class="placeholder-icon">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                  >
+                    <path
+                      d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"
+                    />
+                    <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                    <line x1="12" y1="22.08" x2="12" y2="12" />
+                  </svg>
+                </div>
+                <div class="placeholder-text">E3 3D 视图未激活</div>
+                <div class="placeholder-desc">
+                  在左页发送消息建模，或检查 E3 服务端连接状态
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Slot for input box in Book (Co-Pilot) Mode -->
+          <div class="book-composer-slot" id="composer-book-slot"></div>
+        </section>
+      </div>
     </div>
+
+    <!-- Theme Overlay Panel: theme colors and wallpapers are selected as one bound theme -->
+    <div class="theme-overlay" id="theme-overlay" hidden>
+      <div class="theme-overlay-header">
+        <h1>选择您的主题</h1>
+        <button
+          type="button"
+          class="theme-overlay-close"
+          id="theme-overlay-close"
+          title="关闭"
+        >
+          &times;
+        </button>
+      </div>
+      <div class="theme-overlay-body custom-scrollbar">
+        <div class="theme-overlay-section">
+          <div class="theme-overlay-section-header">
+            <h2>主题与壁纸</h2>
+            <div class="theme-mode-row">
+              <span>夜间模式</span>
+              <label class="switch">
+                <input type="checkbox" id="theme-mode-toggle" checked />
+                <span class="slider round"></span>
+              </label>
+            </div>
+          </div>
+          <div id="settings-themes-grid" class="themes-grid"></div>
+        </div>
+
+        <div class="theme-overlay-section">
+          <h2>实时预览</h2>
+          <div class="theme-preview-box" id="theme-preview-box">
+            <div class="preview-pane" id="e3-preview-pane-dark">
+              <div class="preview-wallpaper-bg" id="e3-preview-wp-dark"></div>
+              <div class="mock-title"></div>
+              <div class="mock-text"></div>
+              <div class="mock-text"></div>
+            </div>
+            <div class="preview-pane" id="e3-preview-pane-light">
+              <div class="preview-wallpaper-bg" id="e3-preview-wp-light"></div>
+              <div class="mock-title"></div>
+              <div class="mock-text"></div>
+              <div class="mock-text"></div>
+              <div class="mock-text"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Reusable Input Form (Composer) - can be moved dynamically between slots -->
+    <form id="composer" class="composer">
+      <div id="attachment-preview" class="attachment-preview" hidden></div>
+      <div class="composer-input-row">
+        <button
+          type="button"
+          id="upload-file"
+          class="composer-tool"
+          aria-label="上传附件"
+          title="上传附件"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M12 17V4m0 0L7 9m5-5 5 5" />
+            <path d="M5 14v5h14v-5" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          id="new-session"
+          class="composer-tool"
+          aria-label="新建会话"
+          title="新建会话"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </button>
+        <textarea
+          id="prompt"
+          rows="1"
+          placeholder="请输入指令建模或对话..."
+        ></textarea>
+        <button
+          type="submit"
+          id="chat-action"
+          class="chat-action"
+          aria-label="发送消息"
+          title="发送消息 (Enter)"
+        >
+          <svg
+            class="action-icon action-icon-send"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            fill="currentColor"
+          >
+            <path
+              d="M3.4 20.4 21 12 3.4 3.6l-.1 6.5L15.9 12 3.3 13.9l.1 6.5Z"
+            />
+          </svg>
+          <svg
+            class="action-icon action-icon-stop"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            fill="currentColor"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <rect x="8" y="8" width="8" height="8" rx="1" />
+          </svg>
+        </button>
+      </div>
+    </form>
 
     <script src="../../vendor/anime.min.js"></script>
     <script src="../../vendor/three.min.js"></script>

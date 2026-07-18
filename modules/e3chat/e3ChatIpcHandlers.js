@@ -134,6 +134,84 @@ function initialize(options = {}) {
   wrap("e3chat:save-local-state", (_event, scope, patch) =>
     svc.saveLocalState(scope, patch)
   );
+  wrap("e3chat:get-viewport-path", () => {
+    try {
+      return svc.viewport.viewportPath();
+    } catch (_) {
+      return null;
+    }
+  });
+
+  wrap("e3chat:select-custom-wallpaper", async () => {
+    const win = e3ChatWindow.getE3ChatWindow();
+    const result = await dialog.showOpenDialog(win, {
+      title: "选择自定义壁纸",
+      properties: ["openFile"],
+      filters: [
+        {
+          name: "支持的壁纸格式",
+          extensions: [
+            "jpg",
+            "jpeg",
+            "png",
+            "gif",
+            "webp",
+            "bmp",
+            "svg",
+            "mp4",
+            "webm",
+          ],
+        },
+      ],
+    });
+    if (result.canceled || !result.filePaths.length) return null;
+    const filePath = result.filePaths[0];
+    const fileUrl = `file:///${filePath.replace(/\\/g, "/")}`;
+    const ext = path.extname(filePath).toLowerCase().replace(".", "");
+    const type = ["mp4", "webm"].includes(ext) ? "video" : "image";
+    return { filePath, fileUrl, type };
+  });
+  wrap("e3chat:list-wallpapers", async () => {
+    const fs = require("fs-extra");
+    const wpDir = path.join(projectRoot, "assets", "wallpaper");
+    if (!(await fs.pathExists(wpDir))) return [];
+    const files = await fs.readdir(wpDir);
+    return files
+      .filter((f) => {
+        const ext = path.extname(f).toLowerCase();
+        return [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".gif",
+          ".webp",
+          ".mp4",
+          ".webm",
+        ].includes(ext);
+      })
+      .map((f) => {
+        const filePath = path.join(wpDir, f);
+        const fileUrl = `file:///${filePath.replace(/\\/g, "/")}`;
+        const ext = path.extname(f).toLowerCase().replace(".", "");
+        const type = ["mp4", "webm"].includes(ext) ? "video" : "image";
+        return { name: f, filePath, fileUrl, type };
+      });
+  });
+  wrap("e3chat:minimize", () => {
+    const win = e3ChatWindow.getE3ChatWindow();
+    if (win && !win.isDestroyed()) win.minimize();
+  });
+  wrap("e3chat:maximize", () => {
+    const win = e3ChatWindow.getE3ChatWindow();
+    if (win && !win.isDestroyed()) {
+      if (win.isMaximized()) win.unmaximize();
+      else win.maximize();
+    }
+  });
+  wrap("e3chat:close", () => {
+    const win = e3ChatWindow.getE3ChatWindow();
+    if (win && !win.isDestroyed()) win.close();
+  });
 }
 
 module.exports = { initialize, getService };

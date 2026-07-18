@@ -214,6 +214,11 @@
     // 否则当前连接后续的 message/thinking/tool 事件都会被误判为旧事件。
     global.E3MessageStreamRenderer.clearConversation();
     normalizeMessages(messages).forEach(renderHistoryMessage);
+
+    // Replay 3D viewport commands
+    if (global.E3ViewportBridgeRenderer) {
+      global.E3ViewportBridgeRenderer.replaySessionViewport(sessionId);
+    }
   }
 
   async function renderSessions(options = {}) {
