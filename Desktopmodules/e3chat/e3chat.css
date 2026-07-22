@@ -17,31 +17,54 @@
   border-bottom: 1px solid var(--border-color, #2a3242);
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: 0 12px;
   position: relative;
   z-index: 1000;
   color: var(--primary-text, #e7ebf5);
 }
-.titlebar-logo {
-  font-weight: 800;
-  font-size: 13px;
-  color: var(--highlight-text, #6ea8fe);
-  margin-right: 8px;
+.titlebar-app-logo {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
 }
 .titlebar-title {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   font-size: 12px;
   font-weight: 500;
   color: var(--secondary-text, #91a0bc);
+  pointer-events: none;
 }
 .titlebar-drag-region {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: calc(100% - 140px);
-  height: 100%;
+  inset: 0 132px 0 0;
   -webkit-app-region: drag;
   z-index: -1;
+}
+.titlebar-utilities {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  margin-left: auto;
+  margin-right: 8px;
+  -webkit-app-region: no-drag;
+}
+.titlebar-utilities .header-time {
+  margin-right: 2px;
+  font-size: 11px;
+}
+.titlebar-utilities .header-control-btn {
+  width: 26px;
+  height: 26px;
+  padding: 4px;
+}
+.titlebar-utilities .header-control-btn svg {
+  width: 15px;
+  height: 15px;
 }
 .titlebar-controls {
   display: flex;
