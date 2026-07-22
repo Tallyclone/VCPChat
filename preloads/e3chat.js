@@ -20,6 +20,9 @@ const api = {
   loadSession: (sessionId) => invoke("e3chat:load-session", sessionId),
   renameSession: (sessionId, title) =>
     invoke("e3chat:rename-session", sessionId, title),
+  editMessage: (input) => invoke("e3chat:edit-message", input),
+  deleteMessage: (input) => invoke("e3chat:delete-message", input),
+  regenerateMessage: (input) => invoke("e3chat:regenerate-message", input),
   selectFiles: () => invoke("e3chat:select-files"),
   storePastedFile: (file) => invoke("e3chat:store-pasted-file", file),
   sendMessage: (input) => invoke("e3chat:send-message", input),

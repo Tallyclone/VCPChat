@@ -553,8 +553,19 @@ function buildTopicRuntimeOperations(
 
 async function diffConfig(relativePath, parsedJson, localIndex, context = {}) {
   const profile = context.profile || "bootstrap";
+  const previous = localIndex.getFile(relativePath);
+  const isNewEntity = !previous;
+  const runtimeSchema =
+    profile === "runtime" ? parseConfigIdentity(relativePath) : null;
+  const isNewRuntimeItemConfig = Boolean(
+    isNewEntity &&
+      runtimeSchema &&
+      (runtimeSchema.schema === "agent_config" ||
+        runtimeSchema.schema === "group_config")
+  );
+  const effectiveProfile = isNewRuntimeItemConfig ? "bootstrap" : profile;
   const dto = safeConfigDto(relativePath, parsedJson, {
-    profile,
+    profile: effectiveProfile,
     syncProfileConfig: context.syncProfileConfig,
   });
   if (
@@ -574,7 +585,6 @@ async function diffConfig(relativePath, parsedJson, localIndex, context = {}) {
   }
 
   const checksum = checksumJson(dto.checksum_source);
-  const previous = localIndex.getFile(relativePath);
   const changed = !previous || previous.checksum !== checksum;
   const previousSnapshot =
     previous && previous.snapshot_json ? previous.snapshot_json : null;
@@ -586,7 +596,7 @@ async function diffConfig(relativePath, parsedJson, localIndex, context = {}) {
       context,
       checksum
     ),
-    ...(profile === "runtime" && previousSnapshot
+    ...(profile === "runtime" && (previousSnapshot || isNewRuntimeItemConfig)
       ? buildTopicRuntimeOperations(
           relativePath,
           parsedJson,

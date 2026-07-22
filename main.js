@@ -351,6 +351,12 @@ async function performQuitCleanup() {
       }
     }
 
+    try {
+      await e3ChatIpcHandlers.shutdown();
+    } catch (error) {
+      console.warn("[Main] E3 Chat shutdown rollback failed:", error);
+    }
+
     await stopAudioEngine();
   })();
 

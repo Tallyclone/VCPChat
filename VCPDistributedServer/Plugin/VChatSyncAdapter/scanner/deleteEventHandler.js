@@ -56,6 +56,11 @@ function configDeleteOperation(relativePath, identity, context) {
 
 function itemDeleteOperation(identity, context) {
   const checksum = checksumJson({ identity, deleted_at: nowIso() });
+  const configEntityId = path.posix.join(
+    identity.item_type === "group" ? "AgentGroups" : "Agents",
+    encodeURIComponent(identity.item_id),
+    "config.json"
+  );
   return {
     operation_id: deleteOperationId(
       context,
@@ -77,6 +82,7 @@ function itemDeleteOperation(identity, context) {
     payload: {
       item_type: identity.item_type,
       item_id: identity.item_id,
+      config_entity_id: configEntityId,
       deleted_at: nowIso(),
       reason: "local_unlinkDir",
       delete_config: true,

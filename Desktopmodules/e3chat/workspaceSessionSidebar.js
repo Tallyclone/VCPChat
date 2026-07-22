@@ -35,7 +35,11 @@
   }
 
   function setActiveSessionId(sessionId) {
-    state.activeSessionId = sessionId ? String(sessionId) : null;
+    const nextSessionId = sessionId ? String(sessionId) : null;
+    if (nextSessionId !== state.activeSessionId) {
+      global.E3MessageContextMenu?.close?.();
+    }
+    state.activeSessionId = nextSessionId;
     document.querySelectorAll(".session-item").forEach((item) => {
       item.classList.toggle(
         "active",
@@ -43,8 +47,8 @@
       );
     });
   }
-
   function startNewSession() {
+    global.E3MessageContextMenu?.close?.();
     setActiveSessionId(null);
     global.E3MessageStreamRenderer.clearConversation();
   }
@@ -79,6 +83,18 @@
       if (Array.isArray(parsed)) return parsed;
     }
     return [];
+  }
+
+  function timestampOf(message) {
+    return (
+      message?.timestamp ||
+      message?.Timestamp ||
+      message?.createdAt ||
+      message?.CreatedAt ||
+      message?.receivedAt ||
+      message?.ReceivedAt ||
+      null
+    );
   }
 
   function roleOf(message) {
@@ -142,6 +158,10 @@
     const renderer = global.E3MessageStreamRenderer;
     const generation = renderer.state.generation;
     const role = roleOf(message);
+    const history =
+      message?.__e3History && typeof message.__e3History === "object"
+        ? message.__e3History
+        : null;
     const messageId = String(
       message?.id ||
         message?.Id ||
@@ -164,7 +184,9 @@
       const blockId = `${messageId}:block:${blockIndex}`;
       if (type === "thinking" || type === "reasoning") {
         const content = textOf(block);
-        if (content) renderer.appendThinking(content, generation, blockId);
+        if (content) {
+          renderer.appendThinking(content, generation, blockId, { history });
+        }
         return;
       }
       if (type === "tool" || type === "tool-call" || type === "tool_use") {
@@ -180,10 +202,12 @@
           {
             id: toolId,
             name: block?.name || block?.toolName || "unknown",
+            command: block?.command || block?.Command || null,
             input: block?.input ?? block?.arguments ?? null,
             status: normalizedStatus === "running" ? "running" : status,
           },
-          generation
+          generation,
+          { history }
         );
         if (
           normalizedStatus !== "running" ||
@@ -203,22 +227,69 @@
 
       const content = textOf(block);
       if (!content) return;
-      renderer.appendMessage(role, content, blockId, generation);
+      renderer.appendMessage(role, content, blockId, generation, {
+        history,
+        timestamp: timestampOf(message),
+      });
     });
   }
 
-  async function loadSessionIntoView(sessionId) {
-    const messages = await window.e3chat.loadSession(sessionId);
+  function yieldToRenderer() {
+    return new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  async function renderSessionIntoView(sessionId, messages, options = {}) {
+    const normalizedMessages = normalizeMessages(messages);
     setActiveSessionId(sessionId);
     // 切换会话不会建立新的 SignalR 连接，不能递增 connectionGeneration。
     // 否则当前连接后续的 message/thinking/tool 事件都会被误判为旧事件。
     global.E3MessageStreamRenderer.clearConversation();
-    normalizeMessages(messages).forEach(renderHistoryMessage);
+
+    if (options.chunked) {
+      // History rendering can execute Markdown/HTML enhancement for every message.
+      // Yield between messages so composer keyboard events are not starved by a
+      // large synchronous redraw after edit/delete operations.
+      for (let index = 0; index < normalizedMessages.length; index += 1) {
+        renderHistoryMessage(normalizedMessages[index], index);
+        await yieldToRenderer();
+      }
+    } else {
+      normalizedMessages.forEach(renderHistoryMessage);
+    }
 
     // Replay 3D viewport commands
     if (global.E3ViewportBridgeRenderer) {
       global.E3ViewportBridgeRenderer.replaySessionViewport(sessionId);
     }
+  }
+
+  async function loadSessionIntoView(sessionId, options = {}) {
+    global.E3MessageContextMenu?.close?.();
+    const messages =
+      options.messages !== undefined
+        ? options.messages
+        : await window.e3chat.loadSession(sessionId);
+    await renderSessionIntoView(sessionId, messages, options);
+  }
+
+  async function reconcileDeletedSession(sessionId, messages) {
+    const normalizedMessages = normalizeMessages(messages);
+    const descriptors = normalizedMessages
+      .map((message) =>
+        message?.__e3History && typeof message.__e3History === "object"
+          ? message.__e3History
+          : null
+      )
+      .filter(Boolean);
+    const reconciled =
+      state.activeSessionId === String(sessionId) &&
+      global.E3MessageStreamRenderer.reconcileHistoryMetadata(descriptors);
+    if (!reconciled) {
+      await renderSessionIntoView(sessionId, messages, { chunked: true });
+      return { reconciled: false, fallbackReload: true };
+    }
+    setActiveSessionId(sessionId);
+    return { reconciled: true, fallbackReload: false };
   }
 
   async function renderSessions(options = {}) {
@@ -277,6 +348,7 @@
   global.E3WorkspaceSidebar = {
     renderSessions,
     loadSessionIntoView,
+    reconcileDeletedSession,
     getActiveSessionId,
     setActiveSessionId,
     startNewSession,

@@ -22,7 +22,6 @@
   <body>
     <!-- Custom Window Titlebar for Frameless Window -->
     <div class="window-titlebar" id="window-titlebar">
-      <div class="titlebar-logo">E3</div>
       <div class="titlebar-title">E3 Chat</div>
       <div class="titlebar-drag-region"></div>
       <div class="titlebar-controls">
@@ -74,7 +73,7 @@
     <!-- Background Wallpaper Layer supporting custom image/video background -->
     <div class="wallpaper-background" id="wallpaper-bg"></div>
 
-    <div class="app-shell" id="app-shell">
+    <div class="app-shell sidebar-collapsed" id="app-shell">
       <aside class="sidebar" id="sidebar">
         <div class="sidebar-tabs">
           <button
@@ -143,7 +142,6 @@
           <!-- Page Header -->
           <header class="page-header">
             <div class="header-left">
-              <div class="app-logo">E3</div>
               <div class="header-status">
                 <span class="status-title">E3 Chat</span>
                 <span class="status-badge" id="header-status-badge"
@@ -403,47 +401,49 @@
     <!-- Reusable Input Form (Composer) - can be moved dynamically between slots -->
     <form id="composer" class="composer">
       <div id="attachment-preview" class="attachment-preview" hidden></div>
-      <div class="composer-input-row">
-        <button
-          type="button"
-          id="upload-file"
-          class="composer-tool"
-          aria-label="上传附件"
-          title="上传附件"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
+      <textarea
+        id="prompt"
+        rows="1"
+        placeholder="请输入指令建模或对话..."
+      ></textarea>
+      <div class="composer-actions-row">
+        <div class="composer-tools">
+          <button
+            type="button"
+            id="upload-file"
+            class="composer-tool"
+            aria-label="上传附件"
+            title="上传附件"
           >
-            <path d="M12 17V4m0 0L7 9m5-5 5 5" />
-            <path d="M5 14v5h14v-5" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          id="new-session"
-          class="composer-tool"
-          aria-label="新建会话"
-          title="新建会话"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
+            <svg
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M12 17V4m0 0L7 9m5-5 5 5" />
+              <path d="M5 14v5h14v-5" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            id="new-session"
+            class="composer-tool"
+            aria-label="新建会话"
+            title="新建会话"
           >
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-        </button>
-        <textarea
-          id="prompt"
-          rows="1"
-          placeholder="请输入指令建模或对话..."
-        ></textarea>
+            <svg
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </button>
+        </div>
         <button
           type="submit"
           id="chat-action"
@@ -482,6 +482,7 @@
     <script src="./blocks/toolCard.js"></script>
     <script src="./blocks/questionCard.js"></script>
     <script src="./blocks/errorBlock.js"></script>
+    <script src="./e3MessageContextMenu.js"></script>
     <script src="./messageStreamRenderer.js"></script>
     <script src="./workspaceSessionSidebar.js"></script>
     <script src="./e3ChatSettingsPanel.js"></script>

@@ -18,11 +18,40 @@
     if (!text) return "";
     if (global.marked?.parse) {
       try {
-        let html = global.marked.parse(text, { mangle: false, headerIds: false });
-        return global.DOMPurify?.sanitize ? global.DOMPurify.sanitize(html) : html;
+        let html = global.marked.parse(text, {
+          mangle: false,
+          headerIds: false,
+        });
+        return global.DOMPurify?.sanitize
+          ? global.DOMPurify.sanitize(html)
+          : html;
       } catch (_) {}
     }
     return `<pre>${global.E3MessageBlock?.escapeHtml?.(text) ?? text}</pre>`;
+  }
+
+  function commandOf(tool) {
+    const input = tool?.input ?? tool?.arguments;
+    if (input && typeof input === "object") {
+      return (
+        input.command || input.Command || input.cmd || input.Cmd || "command"
+      );
+    }
+    if (typeof input === "string") {
+      try {
+        const parsed = JSON.parse(input);
+        return (
+          parsed?.command ||
+          parsed?.Command ||
+          parsed?.cmd ||
+          parsed?.Cmd ||
+          "command"
+        );
+      } catch (_) {
+        return input.trim().split(/\s+/)[0] || "command";
+      }
+    }
+    return tool?.command || tool?.Command || "command";
   }
 
   function create(tool) {
@@ -32,15 +61,13 @@
     el.open = false;
 
     const summary = document.createElement("summary");
-    const source = document.createElement("span");
-    source.className = "tool-source";
-    source.textContent = "E3 原生工具";
     const name = document.createElement("strong");
-    name.textContent = tool?.name || "unknown";
+    const toolName = tool?.name || tool?.toolName || "unknown";
+    name.textContent = `VCPTool·${toolName}·${commandOf(tool)}`;
     const state = document.createElement("span");
     state.className = "tool-status";
     state.textContent = "运行中";
-    summary.append(source, name, state);
+    summary.append(name, state);
 
     const section = document.createElement("section");
     const inputTitle = document.createElement("h4");
@@ -63,14 +90,21 @@
   function update(el, result, status, isError) {
     const value = format(result);
     el.className = `tool-card e3-tool-card ${isError ? "error" : "success"}`;
-    el.querySelector(".tool-status").textContent = isError ? "失败" : status || "完成";
+    el.querySelector(".tool-status").textContent = isError
+      ? "失败"
+      : status || "完成";
     el.querySelector(".tool-result-title").hidden = false;
     const resultDiv = el.querySelector(".tool-result");
     resultDiv.hidden = false;
 
     if (value.length > TRUNCATE_THRESHOLD) {
-      const truncatedLines = value.split("\n").slice(0, TRUNCATE_LINES).join("\n");
-      const contentId = `e3-tool-content-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const truncatedLines = value
+        .split("\n")
+        .slice(0, TRUNCATE_LINES)
+        .join("\n");
+      const contentId = `e3-tool-content-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 7)}`;
       fullContentMap.set(contentId, value);
       resultDiv.innerHTML = renderResultMarkdown(truncatedLines);
       const expandBtn = document.createElement("button");

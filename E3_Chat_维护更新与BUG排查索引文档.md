@@ -29,44 +29,46 @@
 
 ### 1.1 新增文件（主进程端 `modules/e3chat/`）
 
-| 文件                        | 字节  | 核查状态          | 职责简述                                      |
-| --------------------------- | ----- | ----------------- | --------------------------------------------- |
-| `e3ChatWindow.js`           | 1747  | ✅                | 创建/聚焦 E3 Chat BrowserWindow               |
-| `e3ChatIpcHandlers.js`      | 3097  | ✅                | 注册所有 `e3chat:*` IPC，调用者鉴权           |
-| `e3ChatService.js`          | 10874 | ✅                | 核心服务协调器，组合所有子模块                |
-| `e3BackendDiscovery.js`     | 3454  | ✅                | 发现 E3 后端（进程/手动/last-known）          |
-| `e3SignalRClient.js`        | 5283  | ✅                | 基于 `ws` 的 SignalR JSON 协议客户端          |
-| `e3EventNormalizer.js`      | 5241  | ✅                | Hub 事件规范化为统一 E3NormalizedEvent        |
-| `e3WorkspaceCoordinator.js` | 752   | ✅                | 维护 connectionGeneration 与 workspace 上下文 |
-| `e3SessionRepository.js`    | 991   | ✅                | List/Load/Rename 会话的 Hub invoke 封装       |
-| `e3SessionSyncService.js`   | 796   | ✅                | 刷新会话列表并推断 workspaceIdentity          |
-| `e3ProtocolDiagnostics.js`  | 873   | ✅                | 环形诊断缓冲区（500 条），含脱敏              |
-| `e3LocalStateStore.js`      | 1329  | ✅                | 本地 JSON 状态持久化（AppData/E3Chat）        |
-| **`e3ViewportBridge.js`**   | 4450  | ⚠️ **文档未列出** | E3 原生 3D 视口桥接（draw_objects 等 RPC）    |
+| 文件                          | 字节   | 核查状态           | 职责简述                                                                   |
+| ----------------------------- | ------ | ------------------ | -------------------------------------------------------------------------- |
+| `e3ChatWindow.js`             | 1747   | ✅                 | 创建/聚焦 E3 Chat BrowserWindow                                            |
+| `e3ChatIpcHandlers.js`        | 3097   | ✅                 | 注册所有 `e3chat:*` IPC，调用者鉴权                                        |
+| `e3ChatService.js`            | 10874  | ✅                 | 核心服务协调器，组合所有子模块                                             |
+| `e3BackendDiscovery.js`       | 3454   | ✅                 | 发现 E3 后端（进程/手动/last-known）                                       |
+| `e3SignalRClient.js`          | 5283   | ✅                 | 基于 `ws` 的 SignalR JSON 协议客户端                                       |
+| `e3EventNormalizer.js`        | 5241   | ✅                 | Hub 事件规范化为统一 E3NormalizedEvent                                     |
+| `e3WorkspaceCoordinator.js`   | 752    | ✅                 | 维护 connectionGeneration 与 workspace 上下文                              |
+| `e3SessionRepository.js`      | 991    | ✅                 | List/Load/Rename 会话的 Hub invoke 封装                                    |
+| `e3SessionSyncService.js`     | 796    | ✅                 | 刷新会话列表并推断 workspaceIdentity                                       |
+| `e3ProtocolDiagnostics.js`    | 873    | ✅                 | 环形诊断缓冲区（500 条），含脱敏                                           |
+| `e3LocalStateStore.js`        | 1329   | ✅                 | 本地 JSON 状态持久化（AppData/E3Chat）                                     |
+| **`e3ViewportBridge.js`**     | 4450   | ⚠️ **文档未列出**  | E3 原生 3D 视口桥接（draw_objects 等 RPC）                                 |
+| **`e3HistoryCoordinator.js`** | ~1020+ | ✅ 2026-07-20 新增 | 会话历史编辑/删除/再生成事务管理、stale-reference 检测、per-session 串行化 |
 
 ### 1.2 新增文件（渲染器端 `Desktopmodules/e3chat/`）
 
-| 文件                         | 字节  | 核查状态          | 职责简述                                                              |
-| ---------------------------- | ----- | ----------------- | --------------------------------------------------------------------- |
-| `e3chat.html`                | —     | ✅                | 入口 HTML，保留侧栏新建会话入口，并在输入区新增上传/新建会话 SVG 按钮 |
-| `e3chat.js`                  | —     | ✅                | 主控制器（事件路由、发送、文件选择、图片粘贴）                        |
-| `e3chat.css`                 | —     | ✅                | 全部样式，含附件及图片缩略预览                                        |
-| `workspaceSessionSidebar.js` | 6574  | ✅                | 会话列表渲染、历史恢复、会话切换                                      |
-| `messageStreamRenderer.js`   | 7247  | ✅                | 流式消息渲染协调器（generation 过滤）                                 |
-| `e3ChatSettingsPanel.js`     | 413   | ✅                | 连接状态/workspace 显示                                               |
-| `e3DiagnosticsPanel.js`      | 323   | ✅                | 诊断日志面板                                                          |
-| **`animationProcessor.js`**  | 11995 | ⚠️ **文档未列出** | anime.js/Three.js 安全执行、CDN→ 本地重写                             |
-| `blocks/messageBlock.js`     | 33833 | ✅                | 消息块渲染（Markdown + 10 阶段管线）                                  |
-| `blocks/thinkingBlock.js`    | 990   | ✅                | 思考块（默认折叠）                                                    |
-| `blocks/toolCard.js`         | 3466  | ✅                | E3 原生工具卡                                                         |
-| `blocks/questionCard.js`     | 2210  | ✅                | AskUserQuestion 卡片                                                  |
-| `blocks/errorBlock.js`       | 336   | ✅                | 错误块                                                                |
+| 文件                          | 字节  | 核查状态           | 职责简述                                                                       |
+| ----------------------------- | ----- | ------------------ | ------------------------------------------------------------------------------ |
+| `e3chat.html`                 | —     | ✅                 | 入口 HTML，保留侧栏新建会话入口，并在输入区新增上传/新建会话 SVG 按钮          |
+| `e3chat.js`                   | —     | ✅                 | 主控制器（事件路由、发送、文件选择、图片粘贴）                                 |
+| `e3chat.css`                  | —     | ✅                 | 全部样式，含附件及图片缩略预览                                                 |
+| `workspaceSessionSidebar.js`  | 6574  | ✅                 | 会话列表渲染、历史恢复、会话切换                                               |
+| `messageStreamRenderer.js`    | 7247  | ✅                 | 流式消息渲染协调器（generation 过滤）                                          |
+| `e3ChatSettingsPanel.js`      | 413   | ✅                 | 连接状态/workspace 显示                                                        |
+| `e3DiagnosticsPanel.js`       | 323   | ✅                 | 诊断日志面板                                                                   |
+| **`animationProcessor.js`**   | 11995 | ⚠️ **文档未列出**  | anime.js/Three.js 安全执行、CDN→ 本地重写                                      |
+| `blocks/messageBlock.js`      | 33833 | ✅                 | 消息块渲染（Markdown + 10 阶段管线）                                           |
+| `blocks/thinkingBlock.js`     | 990   | ✅                 | 思考块（默认折叠）                                                             |
+| `blocks/toolCard.js`          | 3466  | ✅                 | E3 原生工具卡                                                                  |
+| `blocks/questionCard.js`      | 2210  | ✅                 | AskUserQuestion 卡片                                                           |
+| `blocks/errorBlock.js`        | 336   | ✅                 | 错误块                                                                         |
+| **`e3MessageContextMenu.js`** | ~800+ | ✅ 2026-07-20 新增 | 右键菜单组件（复制/编辑/删除/再生成/中止），挂载 `window.E3MessageContextMenu` |
 
 ### 1.3 Preload
 
-| 文件                 | 字节 | 核查状态                                                                                   |
-| -------------------- | ---- | ------------------------------------------------------------------------------------------ |
-| `preloads/e3chat.js` | —    | ✅ 通过 `contextBridge.exposeInMainWorld("e3chat", ...)` 暴露窄 API（含文件选择/粘贴保存） |
+| 文件                 | 字节 | 核查状态                                                                                                                |
+| -------------------- | ---- | ----------------------------------------------------------------------------------------------------------------------- |
+| `preloads/e3chat.js` | —    | ✅ 通过 `contextBridge.exposeInMainWorld("e3chat", ...)` 暴露窄 API（含文件选择/粘贴保存/编辑消息/删除消息/再生成消息） |
 
 ### 1.4 已修改的既有文件
 
@@ -118,10 +120,12 @@ main.js → e3ChatIpcHandlers.js → E3ChatService
   ├─ e3EventNormalizer       (Hub事件→标准事件)
   ├─ e3ProtocolDiagnostics   (脱敏日志)
   ├─ e3LocalStateStore       (本地JSON持久化)
-  └─ e3ViewportBridge        (E3原生3D视口RPC)
+  ├─ e3ViewportBridge        (E3原生3D视口RPC)
+  └─ e3HistoryCoordinator    (会话历史编辑/删除/再生成事务)
 
 Renderer (e3chat.html)
   ├─ e3chat.js               (主控制器)
+  ├─ e3MessageContextMenu.js (右键菜单：复制/编辑/删除/再生成/中止)
   ├─ messageStreamRenderer.js (流式渲染协调)
   ├─ workspaceSessionSidebar.js (会话侧栏)
   ├─ e3ChatSettingsPanel.js  (连接状态)
@@ -178,25 +182,28 @@ if (appAction === "open-e3-chat-window") {
 
 ## 4. IPC 通道完整列表
 
-| 通道                       | 方向          | Handler 位置              | 功能                                             |
-| -------------------------- | ------------- | ------------------------- | ------------------------------------------------ |
-| `e3chat:register-window`   | Renderer→Main | `e3ChatIpcHandlers.js:62` | 窗口注册（sender 鉴权入口）                      |
-| `e3chat:get-status`        | Renderer→Main | `e3ChatIpcHandlers.js:73` | 获取连接状态                                     |
-| `e3chat:connect`           | Renderer→Main | `e3ChatIpcHandlers.js:74` | 连接 E3 后端                                     |
-| `e3chat:disconnect`        | Renderer→Main | `e3ChatIpcHandlers.js:77` | 断开连接                                         |
-| `e3chat:refresh-workspace` | Renderer→Main | `e3ChatIpcHandlers.js:78` | 刷新工作空间                                     |
-| `e3chat:list-sessions`     | Renderer→Main | `e3ChatIpcHandlers.js:79` | 列出会话                                         |
-| `e3chat:load-session`      | Renderer→Main | `e3ChatIpcHandlers.js:80` | 加载会话历史                                     |
-| `e3chat:rename-session`    | Renderer→Main | `e3ChatIpcHandlers.js`    | 重命名会话                                       |
-| `e3chat:select-files`      | Renderer→Main | `e3ChatIpcHandlers.js`    | 打开文件选择器并复用 VChat fileManager 保存/提取 |
-| `e3chat:store-pasted-file` | Renderer→Main | `e3ChatIpcHandlers.js`    | 保存从剪贴板粘贴的图片/文件（上限 25MB）         |
-| `e3chat:send-message`      | Renderer→Main | `e3ChatIpcHandlers.js`    | 发送消息及附件元数据                             |
-| `e3chat:cancel`            | Renderer→Main | `e3ChatIpcHandlers.js`    | 取消当前聊天                                     |
-| `e3chat:answer-question`   | Renderer→Main | `e3ChatIpcHandlers.js:94` | 回答问题                                         |
-| `e3chat:get-diagnostics`   | Renderer→Main | `e3ChatIpcHandlers.js:97` | 获取诊断日志                                     |
-| `e3chat:get-local-state`   | Renderer→Main | `e3ChatIpcHandlers.js:98` | 读取本地状态                                     |
-| `e3chat:save-local-state`  | Renderer→Main | `e3ChatIpcHandlers.js:99` | 保存本地状态                                     |
-| `e3chat:event`             | Main→Renderer | `e3ChatIpcHandlers.js:58` | 推送规范化事件                                   |
+| 通道                        | 方向          | Handler 位置              | 功能                                                                     |
+| --------------------------- | ------------- | ------------------------- | ------------------------------------------------------------------------ |
+| `e3chat:register-window`    | Renderer→Main | `e3ChatIpcHandlers.js:62` | 窗口注册（sender 鉴权入口）                                              |
+| `e3chat:get-status`         | Renderer→Main | `e3ChatIpcHandlers.js:73` | 获取连接状态                                                             |
+| `e3chat:connect`            | Renderer→Main | `e3ChatIpcHandlers.js:74` | 连接 E3 后端                                                             |
+| `e3chat:disconnect`         | Renderer→Main | `e3ChatIpcHandlers.js:77` | 断开连接                                                                 |
+| `e3chat:refresh-workspace`  | Renderer→Main | `e3ChatIpcHandlers.js:78` | 刷新工作空间                                                             |
+| `e3chat:list-sessions`      | Renderer→Main | `e3ChatIpcHandlers.js:79` | 列出会话                                                                 |
+| `e3chat:load-session`       | Renderer→Main | `e3ChatIpcHandlers.js:80` | 加载会话历史                                                             |
+| `e3chat:rename-session`     | Renderer→Main | `e3ChatIpcHandlers.js`    | 重命名会话                                                               |
+| `e3chat:select-files`       | Renderer→Main | `e3ChatIpcHandlers.js`    | 打开文件选择器并复用 VChat fileManager 保存/提取                         |
+| `e3chat:store-pasted-file`  | Renderer→Main | `e3ChatIpcHandlers.js`    | 保存从剪贴板粘贴的图片/文件（上限 25MB）                                 |
+| `e3chat:send-message`       | Renderer→Main | `e3ChatIpcHandlers.js`    | 发送消息及附件元数据                                                     |
+| `e3chat:cancel`             | Renderer→Main | `e3ChatIpcHandlers.js`    | 取消当前聊天                                                             |
+| `e3chat:answer-question`    | Renderer→Main | `e3ChatIpcHandlers.js:94` | 回答问题                                                                 |
+| `e3chat:get-diagnostics`    | Renderer→Main | `e3ChatIpcHandlers.js:97` | 获取诊断日志                                                             |
+| `e3chat:get-local-state`    | Renderer→Main | `e3ChatIpcHandlers.js:98` | 读取本地状态                                                             |
+| `e3chat:save-local-state`   | Renderer→Main | `e3ChatIpcHandlers.js:99` | 保存本地状态                                                             |
+| `e3chat:edit-message`       | Renderer→Main | `e3ChatIpcHandlers.js`    | 编辑消息（JSONL 重写 + index.json 更新）⚠️ 2026-07-20 新增               |
+| `e3chat:delete-message`     | Renderer→Main | `e3ChatIpcHandlers.js`    | 删除消息（JSONL 重写 + index.json 更新）⚠️ 2026-07-20 新增               |
+| `e3chat:regenerate-message` | Renderer→Main | `e3ChatIpcHandlers.js`    | 再生成（截断历史 → LoadChatSession → SendChatMessage）⚠️ 2026-07-20 新增 |
+| `e3chat:event`              | Main→Renderer | `e3ChatIpcHandlers.js:58` | 推送规范化事件                                                           |
 
 **鉴权机制**：`assertE3Sender()` 验证 `event.sender.id === win.webContents.id` 且在 `allowedWebContents` Set 中。`register-window` 时将 sender.id 加入 Set，sender destroyed 时自动移除。
 
@@ -287,6 +294,41 @@ const result = await this.client.invoke(
 ### 5.6 `e3ViewportBridge.js` — E3 原生视口桥接 ⚠️ 文档未涉及
 
 处理 E3 服务端通过 SignalR 发起的 RPC 调用（`draw_objects`、`draw_objects_agent`、`clear`、`view_capture`）。创建隐藏的 BrowserWindow 加载 E3 原生 viewport HTML，通过 IPC 双向通信完成 3D 渲染操作。
+
+### 5.7 `e3HistoryCoordinator.js` — 会话历史编辑/删除/再生成事务 ⚠️ 2026-07-20 新增
+
+| 方法                                             | 说明                                                                 |
+| ------------------------------------------------ | -------------------------------------------------------------------- |
+| `constructor(service, sessionsRoot)`             | 绑定 E3ChatService 引用和 JSONL/index.json 根目录                    |
+| `editMessage({ sessionId, reference, newText })` | JSONL 重写 + index.json 更新，per-session 串行化                     |
+| `deleteMessage({ sessionId, reference })`        | JSONL 过滤 + index.json 更新，reference 类型校验（不允许删 system）  |
+| `regenerateMessage({ sessionId, reference })`    | 截断历史 → `LoadChatSession` → `SendChatMessage` → 返回流式事件      |
+| `_withSessionLock(sessionId, fn)`                | per-session 串行化队列，防止并发 JSONL 写入                          |
+| `_rewriteJSONL(sessionId, filterFn)`             | 原子 JSONL 重写（读取 → 过滤/变换 → 写入临时文件 → rename）          |
+| `_updateIndex(sessionId, messages)`              | 根据重写后的消息更新 `index.json` 中的 `messageCount`/`lastModified` |
+| `_resolveReference(messages, reference)`         | stale-reference 检测：按 `{ role, index }` 或 `{ id }` 定位消息      |
+
+**⚠ 排查注意**：
+
+- `sessionsRoot` 配置路径（`%AppData%/E3Chat/sessions/`）需在 IPC handler 初始化时正确传入
+- JSONL 重写使用 rename 原子替换，崩溃时可能残留 `.tmp` 文件
+- stale-reference（消息已被前序操作删除/移动）会抛出 `STALE_REFERENCE` 错误码
+
+### 5.8 `e3MessageContextMenu.js` — 渲染器右键菜单组件 ⚠️ 2026-07-20 新增
+
+挂载为 `window.E3MessageContextMenu`，通过 `#message-list` 的 `contextmenu` 事件委托触发。
+
+| 方法                                  | 说明                                                                                                              |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `init()`                              | 初始化菜单 DOM 容器 + 全局 click/Escape 监听，并给 composer 安装局部 `pointerdown` 焦点自愈                       |
+| `show(event, block, { chatRunning })` | 读取 `block.__e3History` 元数据 → 构建菜单项 → 定位显示                                                           |
+| `close()`                             | 关闭菜单（`messageStreamRenderer` 清除对话时自动调用）                                                            |
+| 内联编辑                              | `.message-content` → `.e3-edit-textarea` → 保存/取消 → `api.editMessage()` → `loadSession` 刷新                   |
+| 删除确认                              | 页面内模态确认 → 乐观移除同 reference 节点 → `api.deleteMessage()` → fingerprint 权威增量协调；匹配失败才完整重绘 |
+| 焦点恢复                              | 确认关闭后同步 `prompt.focus()`，删除协调结束后再次聚焦并在下一帧验证                                             |
+| Toast                                 | `showToast(msg, type)` — 自动消失的操作反馈（复制成功/失败等）                                                    |
+
+**⚠ 数据依赖**：菜单项的可用性完全取决于 `block.__e3History` 中的 `canEdit`/`canDelete`/`canRegenerate`/`originalText`/`reference`/`sessionId` 字段。如果 `messageStreamRenderer.js` 未正确填充这些字段，菜单项将被禁用或不显示。
 
 ---
 
@@ -410,28 +452,38 @@ refreshWorkspace() → IPC e3chat:refresh-workspace
 
 ### 8.1 关键已知问题
 
-| ID          | 问题                                 | 根因                                                                                                                                                                    | 影响范围                | 修复状态                                                                                                                                                   |
-| ----------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **BUG-001** | 会话切换后流式消息不显示             | `loadSessionIntoView` 递增了 generation，导致后续当前连接事件被 generation 过滤丢弃                                                                                     | 所有消息类事件          | ✅ 已修复：切换会话只 `clearConversation()`，不递增 generation                                                                                             |
-| **BUG-002** | 流式文本为空/只显示切换后的历史      | `normalizeHubEvent` 只取对象参数，忽略了纯字符串位置参数                                                                                                                | chat-message/thinking   | ✅ 已修复：normalizer 同时兼容对象、JSON 字符串和位置参数                                                                                                  |
-| **BUG-003** | 新消息创建新会话而非复用当前会话     | `SendChatMessage` 第二参数是 sessionId 不是 attachments                                                                                                                 | 每条消息都创建新会话    | ✅ 已修复：传入 `requestedSessionId`                                                                                                                       |
-| **BUG-004** | 首次发送后会话列表不显示新会话       | invocation completion 早于 ListChatSessions 可见                                                                                                                        | 新建会话场景            | ✅ 已修复：有限重试（5 次, 150ms 递增间隔）+ beforeSessions 差集检测                                                                                       |
-| **BUG-005** | `<script>` 占位符泄漏到代码窗口      | DOMPurify 会删除脚本；未知自定义占位标签可能被转义，且带 4 空格缩进的隐藏 `span` 会被 marked 解析为 `<pre><code>`                                                       | 动画/Three.js 脚本      | ✅ 已修复：DOMPurify 前提取脚本；独占行替换时吞掉行首缩进；Phase 9.5 宽松恢复并防御性清理占位符                                                            |
-| **BUG-006** | 中文粗体标记连续时渲染异常           | `**文本****文本**` marked 无法正确解析                                                                                                                                  | Markdown 渲染           | ✅ 已修复：Phase 5.5 插入 HTML 注释分隔符                                                                                                                  |
-| **BUG-007** | 重启或切换会话后历史 HTML 不渲染     | 除旧版 `<!DOCTYPE html>` 自动围栏和 marked HTML 块边界外，旧缓存还在消息 scope wrapper 创建前保存 HTML；缓存命中会跳过 scoped CSS 注入并用无 scope DOM 覆盖首次正确渲染 | 历史 Markdown/HTML/动画 | ✅ 已修复：保留 HTML 主导片段绕过 marked；缓存仅保存去除 `<style>` 后的纯 raw HTML；CSS 每次按稳定消息容器 ID 重新 scope 和注入；历史与实时共用 `update()` |
-| **BUG-008** | 流式期间临时出现代码窗口，完成后恢复 | 每个增量帧都按最终态运行 `marked` 和重型增强；未闭合 HTML 在流式中间态可能被解释为缩进代码块                                                                            | 流式 HTML/动画          | ✅ 已修复：对齐 VChat 的流式/最终态分工；HTML 主导片段流式绕过 marked，流式帧跳过重型增强，done/取消/error 时统一最终化                                    |
+| ID          | 问题                                   | 根因                                                                                                                                                                    | 影响范围                | 修复状态                                                                                                                                                   |
+| ----------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **BUG-001** | 会话切换后流式消息不显示               | `loadSessionIntoView` 递增了 generation，导致后续当前连接事件被 generation 过滤丢弃                                                                                     | 所有消息类事件          | ✅ 已修复：切换会话只 `clearConversation()`，不递增 generation                                                                                             |
+| **BUG-002** | 流式文本为空/只显示切换后的历史        | `normalizeHubEvent` 只取对象参数，忽略了纯字符串位置参数                                                                                                                | chat-message/thinking   | ✅ 已修复：normalizer 同时兼容对象、JSON 字符串和位置参数                                                                                                  |
+| **BUG-003** | 新消息创建新会话而非复用当前会话       | `SendChatMessage` 第二参数是 sessionId 不是 attachments                                                                                                                 | 每条消息都创建新会话    | ✅ 已修复：传入 `requestedSessionId`                                                                                                                       |
+| **BUG-004** | 首次发送后会话列表不显示新会话         | invocation completion 早于 ListChatSessions 可见                                                                                                                        | 新建会话场景            | ✅ 已修复：有限重试（5 次, 150ms 递增间隔）+ beforeSessions 差集检测                                                                                       |
+| **BUG-005** | `<script>` 占位符泄漏到代码窗口        | DOMPurify 会删除脚本；未知自定义占位标签可能被转义，且带 4 空格缩进的隐藏 `span` 会被 marked 解析为 `<pre><code>`                                                       | 动画/Three.js 脚本      | ✅ 已修复：DOMPurify 前提取脚本；独占行替换时吞掉行首缩进；Phase 9.5 宽松恢复并防御性清理占位符                                                            |
+| **BUG-006** | 中文粗体标记连续时渲染异常             | `**文本****文本**` marked 无法正确解析                                                                                                                                  | Markdown 渲染           | ✅ 已修复：Phase 5.5 插入 HTML 注释分隔符                                                                                                                  |
+| **BUG-007** | 重启或切换会话后历史 HTML 不渲染       | 除旧版 `<!DOCTYPE html>` 自动围栏和 marked HTML 块边界外，旧缓存还在消息 scope wrapper 创建前保存 HTML；缓存命中会跳过 scoped CSS 注入并用无 scope DOM 覆盖首次正确渲染 | 历史 Markdown/HTML/动画 | ✅ 已修复：保留 HTML 主导片段绕过 marked；缓存仅保存去除 `<style>` 后的纯 raw HTML；CSS 每次按稳定消息容器 ID 重新 scope 和注入；历史与实时共用 `update()` |
+| **BUG-008** | 流式期间临时出现代码窗口，完成后恢复   | 每个增量帧都按最终态运行 `marked` 和重型增强；未闭合 HTML 在流式中间态可能被解释为缩进代码块                                                                            | 流式 HTML/动画          | ✅ 已修复：对齐 VChat 的流式/最终态分工；HTML 主导片段流式绕过 marked，流式帧跳过重型增强，done/取消/error 时统一最终化                                    |
+| **BUG-009** | 删除/再生成报 `Invalid E3 sessionId`   | `decorateLoadedSession()` 生成的 `__e3History` 描述符缺少 `sessionId`，右键菜单向 IPC 传入 `undefined`                                                                  | 编辑/删除/再生成        | ✅ 已修复：历史描述符显式携带可信 `sessionId`，并补齐 `originalText`/`text` 供菜单复制、编辑和确认预览                                                     |
+| **BUG-010** | 当前聊天右键仅复制，切换会话后才可编辑 | 实时消息块没有持久化历史引用；生成完成后只刷新侧栏，未把当前视图替换为带 `__e3History` 的权威历史                                                                       | 当前会话右键菜单        | ✅ 已修复：done 后重载当前已知会话；新会话在发送返回 sessionId 后补重载，避免误加载侧栏第一条历史会话                                                      |
+| **BUG-011** | 编辑/删除成功后界面不立即刷新          | 菜单成功分支仅调用 preload `loadSession()`，返回值未进入渲染器                                                                                                          | 编辑/删除后的当前视图   | ✅ 已修复：编辑仍重载权威会话；删除改用后端 decorated session 按 fingerprint 增量刷新 reference，无法完整匹配时才分段重绘                                  |
+| **BUG-012** | 删除后输入框约 40 秒无光标、无法输入   | 同步 `window.confirm()` 关闭后 Chromium 文本编辑焦点异常，单次 rAF 聚焦又可能被后续整会话重绘覆盖；打开/取消附件对话框后的直接 focus 会暂时自愈                         | 删除消息后的 composer   | ✅ 已修复：页面内确认弹层替代 `window.confirm()`；确认关闭/删除协调完成双阶段聚焦；composer 局部 pointerdown 自愈；删除默认不再 clear+rebuild              |
 
 ### 8.2 高风险热点区域
 
-| 区域                          | 风险                                                                               | 监控要点                                           |
-| ----------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------- |
-| `mergeStreamText()`           | E3 可能发送增量/快照混合模式                                                       | 检查是否出现文本重复或丢失                         |
-| `pendingQuestions` Set        | 如果 requestId 不匹配，`answerQuestion` 会抛错                                     | 确保 done/error 后不残留 pending question          |
-| `hubKey: "dev"` 硬编码        | 生产环境可能使用不同 key                                                           | 如果连接失败先检查此处                             |
-| `IntersectionObserver` 懒增强 | 快速滚动可能导致消息未增强                                                         | rootMargin 200px 是安全边距                        |
-| `renderCache` FNV-1a 碰撞     | 极低概率但理论上可能                                                               | 相同哈希返回错误缓存 HTML                          |
-| Scoped CSS 生命周期           | scope 绑定稳定的 `.message-block` ID；更新前按消息删除旧 style，会话清空再全局兜底 | 检查 `style[data-e3-scope]` 是否与消息 ID 一一对应 |
-| Three.js/anime.js 内存泄漏    | `update()` 与 `clearConversation()` 都会在 DOM 移除前调用 `cleanupAnimations()`    | 检查流式更新和会话切换后是否残留 canvas/动画       |
+| 区域                                        | 风险                                                                                           | 监控要点                                                 |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `mergeStreamText()`                         | E3 可能发送增量/快照混合模式                                                                   | 检查是否出现文本重复或丢失                               |
+| `pendingQuestions` Set                      | 如果 requestId 不匹配，`answerQuestion` 会抛错                                                 | 确保 done/error 后不残留 pending question                |
+| `hubKey: "dev"` 硬编码                      | 生产环境可能使用不同 key                                                                       | 如果连接失败先检查此处                                   |
+| `IntersectionObserver` 懒增强               | 快速滚动可能导致消息未增强                                                                     | rootMargin 200px 是安全边距                              |
+| `renderCache` FNV-1a 碰撞                   | 极低概率但理论上可能                                                                           | 相同哈希返回错误缓存 HTML                                |
+| Scoped CSS 生命周期                         | scope 绑定稳定的 `.message-block` ID；更新前按消息删除旧 style，会话清空再全局兜底             | 检查 `style[data-e3-scope]` 是否与消息 ID 一一对应       |
+| Three.js/anime.js 内存泄漏                  | `update()` 与 `clearConversation()` 都会在 DOM 移除前调用 `cleanupAnimations()`                | 检查流式更新和会话切换后是否残留 canvas/动画             |
+| JSONL 重写并发（2026-07-20 新增）           | `_withSessionLock` per-session 串行化；跨 session 可并发但同 session 必须串行                  | 高频编辑/删除操作是否导致 JSONL 损坏                     |
+| stale-reference 竞态（2026-07-20 新增）     | 用户快速连续编辑/删除不同消息，前序操作可能使后续 reference 失效                               | `STALE_REFERENCE` 错误是否正确上报给渲染层               |
+| `__e3History` 元数据填充（2026-07-20 新增） | `messageStreamRenderer` 需在 load-session 时正确填充 canEdit/canDelete/canRegenerate/reference | 缺失字段导致菜单项不显示                                 |
+| 菜单与编辑器状态残留（2026-07-20 新增）     | 会话切换/`clearConversation` 时 `E3MessageContextMenu.close()` 是否被调用                      | 旧会话的编辑器/菜单是否残留到新会话                      |
+| 删除增量协调（2026-07-21 新增）             | 按 `reference.fingerprint` 保留未变 DOM、刷新 `__e3History`；缺失/新增描述符时回退分段完整重绘 | 删除后 reference 正确、滚动/动画不闪烁、无 detached node |
+| composer 焦点生命周期（2026-07-21 新增）    | 页面内确认关闭和权威协调结束后均聚焦；仅 composer 非按钮区域启用 pointerdown 自愈              | 删除后立即可点击输入且不抢占附件/发送/内联编辑焦点       |
 
 ---
 
@@ -439,26 +491,32 @@ refreshWorkspace() → IPC e3chat:refresh-workspace
 
 ### 症状 → 排查路径
 
-| 症状                         | 第一步检查                                                       | 第二步检查                                                         | 第三步检查                            |
-| ---------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------- |
-| **Dock 看不到 E3 Chat**      | `vchatApps.js` L320 是否存在                                     | `desktopHandlers.js` L1466 分支是否存在                            | `main.js` L64/L1148 初始化是否正常    |
-| **窗口打不开/白屏**          | `e3ChatWindow.js` loadFile 路径                                  | DevTools 控制台错误                                                | preload 路径 `preloads/e3chat.js`     |
-| **"未连接"状态不变**         | E3 是否在运行（检查 `esws.exe` 进程）                            | `e3BackendDiscovery.js` 发现逻辑                                   | 诊断面板查看具体错误                  |
-| **连接失败**                 | negotiate 返回状态码（检查 diagnostics）                         | hubKey 是否匹配                                                    | E3 端口是否正确                       |
-| **消息发送无响应**           | SignalR `connected` 状态                                         | `SendChatMessage` invocation 是否返回                              | diagnostics 中是否有 invocation error |
-| **流式文本为空**             | `e3EventNormalizer.js` → 检查 args 格式                          | `messageStreamRenderer.appendAssistantMessageText` generation 过滤 | E3 Hub 事件格式是否变化               |
-| **切换会话后消息不显示**     | `loadSessionIntoView` 是否改变了 generation                      | `renderHistoryMessage` block.type 解析                             | `normalizeMessages` 返回值            |
-| **工具卡不更新结果**         | `toolId` 是否匹配（`chat-tool-call.id` → `chat-tool-result.id`） | `finalizeToolResult` fallback 逻辑                                 | `lastRunningToolId` 是否被正确设置    |
-| **问题卡提交失败**           | `pendingQuestions` 是否包含该 requestId                          | `AnswerChatQuestion` invocation 错误                               | 网络/SignalR 连接状态                 |
-| **Markdown 渲染异常**        | 哪个阶段出错（代码围栏/LaTeX/Mermaid）                           | DOMPurify 是否删除了内容                                           | 检查 renderCache 是否返回了旧缓存     |
-| **流式期间出现代码窗口**     | `appendAssistantMessageText` 是否传入 `streaming:true`           | HTML 主导片段是否绕过 `marked`                                     | done/error/cancel 是否执行最终化      |
-| **KaTeX 公式不渲染**         | `vendor/katex.min.js` 是否加载                                   | `auto-render.min.js` 是否加载                                      | `$` 是否在代码块内被误触              |
-| **Mermaid 图表报错**         | 智能字符替换（em dash → `--`、smart quotes → `"`）是否生效       | `mermaid.render()` 错误信息                                        | 异步/同步 API 兼容                    |
-| **动画不执行**               | `animationProcessor.js` 是否加载                                 | CDN→ 本地 URL 重写是否正确                                         | DOMPurify script 占位符是否恢复       |
-| **表情包图片 404**           | `fixEmoticonUrlSmart()` 相似度阈值 0.6                           | `electronAPI.getEmoticonLibrary()` 是否可用                        | 相对路径 `../../` 是否正确            |
-| **workspace 切换后数据串线** | generation 是否递增                                              | 旧 generation 事件是否被过滤                                       | `refreshWorkspace()` 是否触发重连     |
-| **本地状态丢失**             | `AppData/E3Chat/local-state.json` 路径                           | `fs-extra` 写是否成功                                              | `loadAll()` 缓存是否过期              |
-| **内存泄漏**                 | Three.js renderer 是否 dispose                                   | anime.js 实例是否清理                                              | scoped CSS `<style>` 是否清理         |
+| 症状                           | 第一步检查                                                       | 第二步检查                                                         | 第三步检查                                                     |
+| ------------------------------ | ---------------------------------------------------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------- |
+| **Dock 看不到 E3 Chat**        | `vchatApps.js` L320 是否存在                                     | `desktopHandlers.js` L1466 分支是否存在                            | `main.js` L64/L1148 初始化是否正常                             |
+| **窗口打不开/白屏**            | `e3ChatWindow.js` loadFile 路径                                  | DevTools 控制台错误                                                | preload 路径 `preloads/e3chat.js`                              |
+| **"未连接"状态不变**           | E3 是否在运行（检查 `esws.exe` 进程）                            | `e3BackendDiscovery.js` 发现逻辑                                   | 诊断面板查看具体错误                                           |
+| **连接失败**                   | negotiate 返回状态码（检查 diagnostics）                         | hubKey 是否匹配                                                    | E3 端口是否正确                                                |
+| **消息发送无响应**             | SignalR `connected` 状态                                         | `SendChatMessage` invocation 是否返回                              | diagnostics 中是否有 invocation error                          |
+| **流式文本为空**               | `e3EventNormalizer.js` → 检查 args 格式                          | `messageStreamRenderer.appendAssistantMessageText` generation 过滤 | E3 Hub 事件格式是否变化                                        |
+| **切换会话后消息不显示**       | `loadSessionIntoView` 是否改变了 generation                      | `renderHistoryMessage` block.type 解析                             | `normalizeMessages` 返回值                                     |
+| **工具卡不更新结果**           | `toolId` 是否匹配（`chat-tool-call.id` → `chat-tool-result.id`） | `finalizeToolResult` fallback 逻辑                                 | `lastRunningToolId` 是否被正确设置                             |
+| **问题卡提交失败**             | `pendingQuestions` 是否包含该 requestId                          | `AnswerChatQuestion` invocation 错误                               | 网络/SignalR 连接状态                                          |
+| **Markdown 渲染异常**          | 哪个阶段出错（代码围栏/LaTeX/Mermaid）                           | DOMPurify 是否删除了内容                                           | 检查 renderCache 是否返回了旧缓存                              |
+| **流式期间出现代码窗口**       | `appendAssistantMessageText` 是否传入 `streaming:true`           | HTML 主导片段是否绕过 `marked`                                     | done/error/cancel 是否执行最终化                               |
+| **KaTeX 公式不渲染**           | `vendor/katex.min.js` 是否加载                                   | `auto-render.min.js` 是否加载                                      | `$` 是否在代码块内被误触                                       |
+| **Mermaid 图表报错**           | 智能字符替换（em dash → `--`、smart quotes → `"`）是否生效       | `mermaid.render()` 错误信息                                        | 异步/同步 API 兼容                                             |
+| **动画不执行**                 | `animationProcessor.js` 是否加载                                 | CDN→ 本地 URL 重写是否正确                                         | DOMPurify script 占位符是否恢复                                |
+| **表情包图片 404**             | `fixEmoticonUrlSmart()` 相似度阈值 0.6                           | `electronAPI.getEmoticonLibrary()` 是否可用                        | 相对路径 `../../` 是否正确                                     |
+| **workspace 切换后数据串线**   | generation 是否递增                                              | 旧 generation 事件是否被过滤                                       | `refreshWorkspace()` 是否触发重连                              |
+| **本地状态丢失**               | `AppData/E3Chat/local-state.json` 路径                           | `fs-extra` 写是否成功                                              | `loadAll()` 缓存是否过期                                       |
+| **内存泄漏**                   | Three.js renderer 是否 dispose                                   | anime.js 实例是否清理                                              | scoped CSS `<style>` 是否清理                                  |
+| **右键菜单不显示**（新增）     | `e3MessageContextMenu.js` 是否通过 `<script>` 加载               | `e3chat.js` `bindUi()` 是否初始化 `E3MessageContextMenu.init()`    | 右键目标是否为 `.message-block`                                |
+| **菜单项缺失/全灰**（新增）    | `block.__e3History` 元数据是否填充                               | `canEdit`/`canDelete`/`canRegenerate` 值是否为 true                | 消息是否仍在 streaming 状态                                    |
+| **编辑消息保存失败**（新增）   | `preloads/e3chat.js` 是否暴露 `editMessage` 方法                 | `e3ChatIpcHandlers.js` 是否注册 `e3chat:edit-message` handler      | `e3HistoryCoordinator.editMessage` 是否抛错（JSONL 路径/权限） |
+| **删除消息无效果**（新增）     | 页面内确认弹层是否被取消                                         | `e3chat:delete-message` IPC 是否到达主进程                         | `reconcileDeletedSession()` 是否成功或触发 fallback 重绘       |
+| **删除后输入框无光标**（新增） | 是否仍调用 `window.confirm()`（当前应为 0 处）                   | 确认关闭/删除结束后 `document.activeElement === #prompt`           | composer pointerdown 自愈是否被按钮/编辑器条件正确过滤         |
+| **再生成无回复**（新增）       | `regenerateMessage` 是否正确截断历史                             | `LoadChatSession` + `SendChatMessage` 是否成功 invoke              | 事件流是否正常推送到渲染层                                     |
 
 ### 诊断数据获取
 
@@ -471,19 +529,19 @@ refreshWorkspace() → IPC e3chat:refresh-workspace
 
 ## 10. 安全红线速查
 
-| 类别                                | 要求                                             | 源码实现位置                            | 状态 |
-| ----------------------------------- | ------------------------------------------------ | --------------------------------------- | ---- |
-| **contextIsolation**                | `true`                                           | `e3ChatWindow.js:33`                    | ✅   |
-| **nodeIntegration**                 | `false`                                          | `e3ChatWindow.js:34`                    | ✅   |
-| **窄 preload API**                  | 只暴露 `window.e3chat` 14 个方法                 | `preloads/e3chat.js:12-33`              | ✅   |
-| **sender 鉴权**                     | 验证 webContents.id                              | `e3ChatIpcHandlers.js:17-27`            | ✅   |
-| **参数校验**                        | content 长度 ≤ 200000                            | `e3ChatService.js:233-236`              | ✅   |
-| **pending requestId**               | 只允许回答 pending 中的                          | `e3ChatService.js:327-328`              | ✅   |
-| **脱敏**                            | API key/Authorization/cookie/token/workspace key | `e3ProtocolDiagnostics.js:3` 正则       | ✅   |
-| **DOMPurify**                       | 所有 Markdown HTML 都经过净化                    | `messageBlock.js:340-345`               | ✅   |
-| **不暴露 ipcRenderer/require/Node** | preload 只用 contextBridge                       | `preloads/e3chat.js:35` `Object.freeze` | ✅   |
-| **不修改 E3 私有存储**              | 本地状态存储在 `AppData/E3Chat/`                 | `e3LocalStateStore.js:8-9`              | ✅   |
-| **不修改 package.json**             | 使用已安装的 `ws`                                | `e3SignalRClient.js:4`                  | ✅   |
+| 类别                                | 要求                                                   | 源码实现位置                            | 状态 |
+| ----------------------------------- | ------------------------------------------------------ | --------------------------------------- | ---- |
+| **contextIsolation**                | `true`                                                 | `e3ChatWindow.js:33`                    | ✅   |
+| **nodeIntegration**                 | `false`                                                | `e3ChatWindow.js:34`                    | ✅   |
+| **窄 preload API**                  | 只暴露 `window.e3chat` 17 个方法（含编辑/删除/再生成） | `preloads/e3chat.js:12-33`              | ✅   |
+| **sender 鉴权**                     | 验证 webContents.id                                    | `e3ChatIpcHandlers.js:17-27`            | ✅   |
+| **参数校验**                        | content 长度 ≤ 200000                                  | `e3ChatService.js:233-236`              | ✅   |
+| **pending requestId**               | 只允许回答 pending 中的                                | `e3ChatService.js:327-328`              | ✅   |
+| **脱敏**                            | API key/Authorization/cookie/token/workspace key       | `e3ProtocolDiagnostics.js:3` 正则       | ✅   |
+| **DOMPurify**                       | 所有 Markdown HTML 都经过净化                          | `messageBlock.js:340-345`               | ✅   |
+| **不暴露 ipcRenderer/require/Node** | preload 只用 contextBridge                             | `preloads/e3chat.js:35` `Object.freeze` | ✅   |
+| **不修改 E3 私有存储**              | 本地状态存储在 `AppData/E3Chat/`                       | `e3LocalStateStore.js:8-9`              | ✅   |
+| **不修改 package.json**             | 使用已安装的 `ws`                                      | `e3SignalRClient.js:4`                  | ✅   |
 
 **⚠ 注意事项**：
 
@@ -580,6 +638,7 @@ $files = @(
   "modules\e3chat\e3ProtocolDiagnostics.js",
   "modules\e3chat\e3LocalStateStore.js",
   "modules\e3chat\e3ViewportBridge.js",
+  "modules\e3chat\e3HistoryCoordinator.js",
   "preloads\e3chat.js"
 )
 foreach ($f in $files) { node --check (Join-Path $root $f) }
@@ -646,6 +705,21 @@ await e3chat.loadSession("会话ID");
 □ 断线后 reconnect
 □ Markdown/代码/KaTeX/Mermaid 渲染
 □ 关闭窗口后资源清理
+□ 右键消息块显示上下文菜单，菜单项根据消息类型/状态正确显示/隐藏
+□ 复制文本 → 剪贴板内容正确
+□ 复制选中 → 仅选区文字进入剪贴板
+□ 复制源文本 → 原始 Markdown 进入剪贴板
+□ 编辑消息 → 内联 textarea 显示 → 保存后 session reload 正确刷新
+□ 编辑取消/Escape → 恢复原消息内容，无残留 UI
+□ 删除消息 → 页面内确认弹层 → fingerprint 增量协调，未变消息 DOM/滚动位置/动画不闪烁
+□ 删除确认取消、确认后 IPC 等待期、成功 Toast 消失后，输入框均可立即获得光标并输入
+□ 删除含 thinking/tool 关联块时，同 reference 节点一并移除且剩余消息 reference 可继续编辑/删除
+□ 人为制造 fingerprint 匹配失败时自动回退 chunked 完整重绘，界面保持权威状态
+□ 再生成 → 截断历史 → 新回复流式渲染
+□ 中止生成 → CancelChat → UI 恢复
+□ 流式中/streaming 状态不显示编辑/删除菜单项
+□ 浅色主题下菜单/编辑/toast 外观正确
+□ 菜单定位不超出视口边界（右下角消息）
 ```
 
 ---

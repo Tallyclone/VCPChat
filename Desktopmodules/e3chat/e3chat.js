@@ -321,6 +321,7 @@
       remove.addEventListener("click", () => {
         attachments.splice(index, 1);
         renderAttachments();
+        resizeComposerPrompt();
       });
       item.append(name, remove);
       host.appendChild(item);
@@ -343,6 +344,7 @@
       if (key) existing.add(key);
     }
     renderAttachments();
+    resizeComposerPrompt();
     if (limitReached) {
       window.E3MessageStreamRenderer.showError(
         "一次最多发送 10 个附件",
@@ -802,6 +804,7 @@
       bookContainer.classList.add("split-mode");
       bookSlot.appendChild(composer);
     }
+    resizeComposerPrompt();
     api.saveLocalState("global", { layoutMode: mode }).catch(() => {});
   }
 
@@ -947,6 +950,23 @@
     });
   }
 
+  function resizeComposerPrompt() {
+    const prompt = document.getElementById("prompt");
+    if (!prompt) return;
+    prompt.style.height = "auto";
+    prompt.style.height = `${prompt.scrollHeight}px`;
+    prompt.style.overflowY = "hidden";
+    requestAnimationFrame(() => {
+      const composer = document.getElementById("composer");
+      if (composer) {
+        document.documentElement.style.setProperty(
+          "--composer-overlay-height",
+          `${composer.offsetHeight + 28}px`
+        );
+      }
+    });
+  }
+
   function updateThemePreview() {
     if (!currentSelectedTheme) return;
     const darkVars = currentSelectedTheme.variables.dark || {};
@@ -1011,12 +1031,27 @@
 
     const prompt = document.getElementById("prompt");
     prompt.addEventListener("paste", pasteFiles);
+    prompt.addEventListener("input", resizeComposerPrompt);
+    window.addEventListener("resize", resizeComposerPrompt);
+    resizeComposerPrompt();
     prompt.addEventListener("keydown", (event) => {
       if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
       event.preventDefault();
       if (!chatRunning) event.currentTarget.form.requestSubmit();
     });
     api.onEvent(handleEvent);
+
+    // ── Context Menu ──────────────────────────────────────────────
+    if (window.E3MessageContextMenu) {
+      window.E3MessageContextMenu.init();
+      document
+        .getElementById("message-list")
+        .addEventListener("contextmenu", (event) => {
+          const block = event.target.closest(".message-block");
+          if (!block) return;
+          window.E3MessageContextMenu.show(event, block, { chatRunning });
+        });
+    }
   }
 
   async function connect() {
@@ -1074,6 +1109,7 @@
       generation()
     );
     textarea.value = "";
+    resizeComposerPrompt();
     attachments = [];
     renderAttachments();
     setChatRunning(true);
@@ -1089,6 +1125,12 @@
       if (returnedSessionId)
         window.E3WorkspaceSidebar.setActiveSessionId(returnedSessionId);
       await refreshSessionsAfterSend(result);
+      // A new session id may only become known after the done event has already
+      // arrived. Reload once the send call settles so the current conversation
+      // receives persisted history metadata without requiring a manual switch.
+      if (!chatRunning && returnedSessionId) {
+        await window.E3WorkspaceSidebar.loadSessionIntoView(returnedSessionId);
+      }
     } catch (error) {
       window.E3MessageStreamRenderer.finalizeCurrentAssistant(generation());
       setChatRunning(false);
@@ -1098,6 +1140,7 @@
         generation()
       );
       textarea.value = content;
+      resizeComposerPrompt();
       attachments = sendingAttachments;
       renderAttachments();
     }
@@ -1159,6 +1202,7 @@
         eventGeneration(event)
       );
     if (event.type === "done") {
+      const completedSessionId = window.E3WorkspaceSidebar.getActiveSessionId();
       window.E3MessageStreamRenderer.finalizeCurrentAssistant(
         eventGeneration(event)
       );
@@ -1167,6 +1211,12 @@
       await window.E3WorkspaceSidebar.renderSessions({
         preserveSelection: true,
       });
+      // Replace live-only blocks with the persisted, decorated history. For a
+      // brand-new chat the id may not be known until sendMessage() returns, so
+      // do not accidentally reload the sidebar's fallback first session here.
+      if (completedSessionId) {
+        await window.E3WorkspaceSidebar.loadSessionIntoView(completedSessionId);
+      }
       return;
     }
     if (event.type === "error") {

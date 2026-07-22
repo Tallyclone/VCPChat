@@ -35,6 +35,44 @@ function safeError(error) {
   };
 }
 
+function normalizeHistoryRequest(input, options = {}) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw new Error("无效的 E3 历史操作请求");
+  }
+  const allowedKeys = new Set(
+    options.includeText
+      ? ["sessionId", "reference", "newText"]
+      : ["sessionId", "reference"]
+  );
+  const unsupportedKey = Object.keys(input).find(
+    (key) => !allowedKeys.has(key)
+  );
+  if (unsupportedKey) {
+    throw new Error(`E3 历史操作包含不受支持的字段: ${unsupportedKey}`);
+  }
+  const reference = input.reference;
+  if (!reference || typeof reference !== "object" || Array.isArray(reference)) {
+    throw new Error("无效的 E3 消息引用");
+  }
+  const unsupportedReferenceKey = Object.keys(reference).find(
+    (key) => key !== "rowIndex" && key !== "fingerprint"
+  );
+  if (unsupportedReferenceKey) {
+    throw new Error(
+      `E3 消息引用包含不受支持的字段: ${unsupportedReferenceKey}`
+    );
+  }
+  const request = {
+    sessionId: input.sessionId,
+    reference: {
+      rowIndex: reference.rowIndex,
+      fingerprint: reference.fingerprint,
+    },
+  };
+  if (options.includeText) request.newText = input.newText;
+  return request;
+}
+
 function wrap(channel, handler) {
   ipcMain.removeHandler(channel);
   ipcMain.handle(channel, async (event, ...args) => {
@@ -85,6 +123,22 @@ function initialize(options = {}) {
   wrap("e3chat:rename-session", (_event, sessionId, title) =>
     svc.renameSession(sessionId, title)
   );
+  wrap("e3chat:edit-message", (_event, input) => {
+    const request = normalizeHistoryRequest(input, { includeText: true });
+    return svc.editMessage(
+      request.sessionId,
+      request.reference,
+      request.newText
+    );
+  });
+  wrap("e3chat:delete-message", (_event, input) => {
+    const request = normalizeHistoryRequest(input);
+    return svc.deleteMessage(request.sessionId, request.reference);
+  });
+  wrap("e3chat:regenerate-message", (_event, input) => {
+    const request = normalizeHistoryRequest(input);
+    return svc.regenerateMessage(request.sessionId, request.reference);
+  });
   wrap("e3chat:select-files", async () => {
     const win = e3ChatWindow.getE3ChatWindow();
     const result = await dialog.showOpenDialog(win, {
@@ -214,4 +268,17 @@ function initialize(options = {}) {
   });
 }
 
-module.exports = { initialize, getService };
+let shutdownPromise = null;
+
+async function shutdown() {
+  if (!service) return { shutdown: false, reason: "not-initialized" };
+  if (!shutdownPromise) {
+    shutdownPromise = service.shutdown().catch((error) => {
+      shutdownPromise = null;
+      throw error;
+    });
+  }
+  return await shutdownPromise;
+}
+
+module.exports = { initialize, getService, shutdown };

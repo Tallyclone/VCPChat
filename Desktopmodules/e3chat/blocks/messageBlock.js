@@ -184,13 +184,101 @@
     return result;
   }
 
+  function unwrapRenderableHtmlFence(text) {
+    const source = String(text ?? "");
+    const openingPattern = /(^|\n)[ \t]*(`{3,})\s*(?:html?|xhtml)\s*\r?\n/i;
+    const opening = openingPattern.exec(source);
+    if (!opening) return source;
+
+    const fence = opening[2];
+    const contentStart = opening.index + opening[0].length;
+    const closingPattern = new RegExp(
+      `\\r?\\n[ \\t]*${fence}\\s*(?=\\r?\\n|$)`,
+      "g"
+    );
+    closingPattern.lastIndex = contentStart;
+    const closing = closingPattern.exec(source);
+    const contentEnd = closing ? closing.index : source.length;
+    const content = source.slice(contentStart, contentEnd);
+    const candidate = content.trimStart();
+    if (
+      !/^(?:<!doctype\s+html\b|<!--|<(?:html|head|body|main|section|article|div|style|script|canvas|svg)\b)/i.test(
+        candidate
+      )
+    ) {
+      return source;
+    }
+
+    const prefix = source.slice(0, opening.index) + opening[1];
+    const suffix = closing
+      ? source.slice(closing.index + closing[0].length)
+      : "";
+    return `${prefix}${content}${suffix}`;
+  }
+
+  function normalizeHtmlAttributeQuotes(text) {
+    const source = String(text ?? "");
+    if (!/[“”„‟＂‘’‚‛＇]/.test(source)) return source;
+
+    let result = "";
+    let cursor = 0;
+    while (cursor < source.length) {
+      const tagStart = source.indexOf("<", cursor);
+      if (tagStart === -1) {
+        result += source.slice(cursor);
+        break;
+      }
+      result += source.slice(cursor, tagStart);
+
+      if (source.startsWith("<!--", tagStart)) {
+        const commentEnd = source.indexOf("-->", tagStart + 4);
+        if (commentEnd === -1) {
+          result += source.slice(tagStart);
+          break;
+        }
+        result += source.slice(tagStart, commentEnd + 3);
+        cursor = commentEnd + 3;
+        continue;
+      }
+
+      let tagEnd = tagStart + 1;
+      let quote = "";
+      for (; tagEnd < source.length; tagEnd++) {
+        const ch = source[tagEnd];
+        const normalized = /[“”„‟＂]/.test(ch)
+          ? '"'
+          : /[‘’‚‛＇]/.test(ch)
+          ? "'"
+          : ch;
+        if (!quote && (normalized === '"' || normalized === "'"))
+          quote = normalized;
+        else if (quote && normalized === quote) quote = "";
+        else if (!quote && normalized === ">") break;
+      }
+
+      if (tagEnd >= source.length) {
+        result += source.slice(tagStart);
+        break;
+      }
+
+      result += source
+        .slice(tagStart, tagEnd + 1)
+        .replace(/[“”„‟＂]/g, '"')
+        .replace(/[‘’‚‛＇]/g, "'");
+      cursor = tagEnd + 1;
+    }
+    return result;
+  }
+
   function renderMarkdown(text, messageElement, options = {}) {
     const raw = String(text ?? "");
     const streaming = options.streaming === true;
 
-    // Phase 0: 保留原始 HTML。只有模型明确输出的 Markdown 代码围栏才按代码展示；
-    // 不能把 <!DOCTYPE html> 自动改写成代码块，否则实时完成态和历史恢复都会失去 HTML 渲染。
-    let source = raw;
+    // Phase 0: An html/htm fence containing an actual widget is executable, including a
+    // still-open streaming fence. Normalize typographic quotes only inside HTML tags.
+    const unwrappedSource = unwrapRenderableHtmlFence(raw);
+    const hasRenderableHtmlFence = unwrappedSource !== raw;
+    let source = normalizeHtmlAttributeQuotes(unwrappedSource);
 
     // Phase 1: Code fence protection (state machine)
     const codeFenceMap = new Map();
@@ -337,9 +425,9 @@
       /^(?:<!doctype\s+html\b[^>]*>\s*)?(?:<(?:html|body|main|section|article|div)\b|<!doctype\s+html\b)/i.test(
         trimmedProcessed
       );
-    // 与 VChat 一致：以 HTML 文档/主容器开头的内容不交给 marked。
-    // 这样流式未闭合片段，以及取消时保留下来的半截 HTML，都不会瞬间变成代码窗口。
-    const isHtmlDominant = startsAsHtml;
+    // 裸 HTML 或已识别的 html 围栏都绕过 marked。后者可能前置少量说明文字，
+    // 但仍必须保持 HTML 块及其缩进完整，避免再次变成 <pre><code>。
+    const isHtmlDominant = hasRenderableHtmlFence || startsAsHtml;
     let html;
     if (isHtmlDominant) {
       html = processed;
@@ -1070,7 +1158,7 @@
     }
   }
 
-  function create(role, id) {
+  function create(role, id, options = {}) {
     const el = document.createElement("article");
     el.className = `message-block ${
       role === "user" ? "message-user" : "message-assistant"
@@ -1081,7 +1169,26 @@
     if (id) el.dataset.blockId = id;
     const roleNode = document.createElement("div");
     roleNode.className = "message-role";
-    roleNode.textContent = role === "user" ? "你" : "E3";
+    if (role === "user") {
+      const timestamp = new Date(options.timestamp || Date.now());
+      const timeNode = document.createElement("time");
+      timeNode.className = "message-time";
+      timeNode.dateTime = Number.isNaN(timestamp.getTime())
+        ? new Date().toISOString()
+        : timestamp.toISOString();
+      const value = Number.isNaN(timestamp.getTime()) ? new Date() : timestamp;
+      const pad = (number) => String(number).padStart(2, "0");
+      timeNode.textContent = `${value.getFullYear()}-${pad(
+        value.getMonth() + 1
+      )}-${pad(value.getDate())} ${pad(value.getHours())}:${pad(
+        value.getMinutes()
+      )}`;
+      const labelNode = document.createElement("span");
+      labelNode.textContent = "用户";
+      roleNode.append(timeNode, labelNode);
+    } else {
+      roleNode.textContent = "E3";
+    }
     const content = document.createElement("div");
     content.className = "message-content";
     el.append(roleNode, content);
