@@ -14,7 +14,7 @@
 .window-titlebar {
   height: 30px;
   background: transparent;
-  border-bottom: 1px solid var(--border-color, #2a3242);
+  border-bottom: none;
   display: flex;
   align-items: center;
   padding: 0 12px;
@@ -47,24 +47,68 @@
 .titlebar-utilities {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 2px;
   height: 100%;
   margin-left: auto;
-  margin-right: 8px;
+  margin-right: 2px;
   -webkit-app-region: no-drag;
 }
 .titlebar-utilities .header-time {
-  margin-right: 2px;
-  font-size: 11px;
+  margin: 0 8px 0 0;
+  font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.035em;
+  color: var(--highlight-text, var(--accent));
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 12px color-mix(in srgb, currentColor 28%, transparent);
 }
 .titlebar-utilities .header-control-btn {
-  width: 26px;
-  height: 26px;
-  padding: 4px;
+  width: 36px;
+  height: 100%;
+  padding: 0;
+  border-radius: 0;
+  color: var(--secondary-text, #91a0bc);
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+}
+.titlebar-utilities .header-control-btn:hover {
+  color: var(--primary-text, #e7ebf5);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+  transform: none;
+}
+.titlebar-utilities .header-control-btn:active {
+  transform: none;
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: none;
+}
+.titlebar-utilities .header-control-btn:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--highlight-text, var(--accent));
 }
 .titlebar-utilities .header-control-btn svg {
   width: 15px;
   height: 15px;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+/* Sidebar + layout icons slightly larger than theme brush */
+.titlebar-utilities #btn-toggle-sidebar svg,
+.titlebar-utilities #btn-toggle-layout svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 1.65;
+}
+/* VCPChat 主题商店画笔为填充路径 */
+.titlebar-utilities .header-control-btn.theme-btn svg {
+  fill: currentColor;
+  stroke: none;
 }
 .titlebar-controls {
   display: flex;
@@ -168,7 +212,10 @@ input {
 
 /* Sidebar with Tab navigation */
 .sidebar {
-  width: 300px;
+  position: relative;
+  width: 200px;
+  min-width: 160px;
+  max-width: 420px;
   flex-shrink: 0;
   height: 100%;
   background: transparent;
@@ -181,24 +228,69 @@ input {
   z-index: 100;
 }
 .app-shell.sidebar-collapsed .sidebar {
-  width: 0;
+  width: 0 !important;
+  min-width: 0;
   transform: translateX(-100%);
   border-right-width: 0;
   opacity: 0;
 }
 
+.sidebar-resize-handle {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: -3px;
+  width: 7px;
+  height: 100%;
+  cursor: ew-resize;
+  touch-action: none;
+  -webkit-app-region: no-drag;
+}
+
+.sidebar-resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 1px;
+  background: transparent;
+  transition: background-color 0.15s ease;
+}
+
+.sidebar-resize-handle:hover::after,
+body.sidebar-resizing .sidebar-resize-handle::after {
+  background: var(--highlight-text, var(--accent));
+}
+
+.app-shell.sidebar-collapsed .sidebar-resize-handle {
+  pointer-events: none;
+}
+
+body.sidebar-resizing {
+  cursor: ew-resize;
+  user-select: none;
+}
+
+body.sidebar-resizing .sidebar {
+  transition: none;
+}
+
 .sidebar-tabs {
   display: flex;
-  border-bottom: 1px solid var(--border-color, var(--border));
+  height: 40px;
+  border-bottom: none;
   background: transparent;
+  flex-shrink: 0;
 }
 .tab-button {
   flex: 1;
+  height: 100%;
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
-  padding: 14px 10px;
-  font-size: 14px;
+  padding: 0 10px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--secondary-text, var(--muted));
   cursor: pointer;
@@ -273,7 +365,8 @@ input {
 }
 .session-item {
   text-align: left;
-  padding: 12px 14px;
+  padding: 8px 10px;
+  font-size: 12px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 8px;
@@ -495,12 +588,12 @@ input:checked + .slider:before {
 
 /* Page Header Controls */
 .page-header {
-  height: 60px;
-  padding: 0 20px;
+  height: 40px;
+  padding: 0 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: none;
   flex-shrink: 0;
   background: transparent;
   z-index: 5;
@@ -555,27 +648,35 @@ input:checked + .slider:before {
   color: var(--secondary-text, var(--muted));
   cursor: pointer;
   padding: 6px;
-  border-radius: 6px;
+  border-radius: 7px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s;
+  transition: color 0.18s ease, background-color 0.18s ease,
+    transform 0.18s ease, box-shadow 0.18s ease;
 }
 .header-control-btn:hover {
   color: var(--highlight-text, var(--accent));
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.09);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.16);
+  transform: translateY(-1px);
+}
+.header-control-btn:active {
+  transform: translateY(0) scale(0.94);
+  box-shadow: none;
+}
+.header-control-btn:focus-visible {
+  outline: 1px solid var(--highlight-text, var(--accent));
+  outline-offset: 1px;
 }
 .header-control-btn svg {
   width: 18px;
   height: 18px;
 }
 
-/* Layout Icons Switching */
-.book-container.split-mode .layout-icon-split {
-  display: none;
-}
-.book-container.single-mode .layout-icon-single {
-  display: none;
+/* Layout uses a single book-page icon; no dual-icon switching */
+.layout-icon-book {
+  display: block;
 }
 
 /* Page Body containing contents */
@@ -690,11 +791,208 @@ input:checked + .slider:before {
   letter-spacing: 0;
   color: var(--secondary-text, var(--muted));
 }
-/* Assistant Message: Left Aligned */
-.message-assistant {
+/* One assistant turn: thinking, tools and text share one frosted glass. */
+.assistant-turn {
   align-self: flex-start;
-  background: var(--assistant-bubble-bg, rgba(255, 255, 255, 0.06));
+  width: calc(100% - 8px);
+  min-width: 0;
   color: var(--agent-text, var(--primary-text));
+}
+.assistant-turn-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  margin: 0 4px 6px;
+  text-align: left;
+  text-transform: none;
+}
+.assistant-turn-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  padding: 12px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  background: var(--assistant-bubble-bg, rgba(255, 255, 255, 0.06));
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+/*
+  Pure border-ring light + flowing ellipsis (Electron-safe):
+  - Host clips a large rotating conic disc (overflow:hidden + radius)
+  - ::after is a fully opaque fill inset 1.5px → only a 1.5px border ring shows light
+  - NO mask / @property (both flaky in this Electron shell)
+  - Ellipsis: real "..." text + max-width steps (. → .. → ...)
+*/
+.assistant-turn-content:has(> .assistant-generation-indicator:only-child) {
+  width: 20%;
+  max-width: 20%;
+  min-width: 160px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.assistant-generation-indicator {
+  --e3-gen-fill: var(--panel, #171b24);
+  --e3-gen-accent: var(--highlight-text, var(--accent, #7aa2ff));
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  width: 100%;
+  min-height: 30px;
+  padding: 5px 12px;
+  overflow: hidden;
+  border: none;
+  border-radius: 10px;
+  background-color: var(--e3-gen-fill);
+  box-shadow: none;
+}
+
+/* Large spinning conic disc — clipped by host; only the outer ring remains visible. */
+.assistant-generation-indicator::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 50%;
+  left: 50%;
+  width: 220%;
+  height: 220%;
+  margin: 0;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    transparent 250deg,
+    rgba(122, 162, 255, 0.15) 280deg,
+    rgba(122, 162, 255, 0.45) 305deg,
+    #c9d8ff 328deg,
+    rgba(122, 162, 255, 0.45) 345deg,
+    rgba(122, 162, 255, 0.15) 355deg,
+    transparent 360deg
+  );
+  transform: translate(-50%, -50%) rotate(0deg);
+  transform-origin: center center;
+  animation: e3-generation-border 3.6s linear infinite;
+  pointer-events: none;
+  will-change: transform;
+}
+
+/* Fully opaque interior cover: pure border light only, zero interior glow. */
+.assistant-generation-indicator::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  inset: 1.5px;
+  border-radius: 8.5px;
+  background-color: var(--e3-gen-fill);
+  pointer-events: none;
+}
+
+.assistant-generation-text {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-items: baseline;
+  color: var(--secondary-text, var(--muted, #a0a8b8));
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+/* Real glyphs + width steps in ch = reliable ". → .. → ..." in Chromium/Electron. */
+.assistant-generation-ellipsis {
+  display: inline-block;
+  overflow: hidden;
+  width: 0;
+  max-width: 3ch;
+  white-space: nowrap;
+  vertical-align: bottom;
+  letter-spacing: 0;
+  animation: e3-generation-ellipsis 1.2s steps(4, end) infinite;
+}
+
+@keyframes e3-generation-border {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+@keyframes e3-generation-ellipsis {
+  0% {
+    width: 0;
+  }
+  100% {
+    width: 3ch;
+  }
+}
+
+/*
+  Generation progress is an essential state indicator, not decorative motion.
+  Keep it active even when Windows requests reduced motion; both animations are
+  slow/stepped and contain no large translation or flashing.
+*/
+@media (max-width: 720px) {
+  .assistant-turn-content:has(> .assistant-generation-indicator:only-child) {
+    width: 25%;
+    max-width: 25%;
+  }
+}
+.message-assistant {
+  align-self: stretch;
+  width: 100%;
+  max-width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  color: inherit;
+}
+.assistant-turn-content > .message-assistant > .message-role {
+  display: none;
+}
+.message-assistant .message-content {
+  width: 100%;
+  max-width: 100%;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.assistant-turn-content > .thinking-block,
+.assistant-turn-content .tool-card {
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.assistant-turn-content > .thinking-block {
+  margin: 0;
+  padding: 8px 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-right: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.08);
+}
+.assistant-turn-content .tool-card {
+  background: rgba(0, 0, 0, 0.08);
 }
 
 .thinking-block,
@@ -764,8 +1062,12 @@ input:checked + .slider:before {
 }
 
 .tool-card section,
+.tool-card .protocol-content,
 .thinking-block > pre,
 .thinking-content {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   margin-top: 12px;
   font-size: 13px;
   line-height: 1.5;
@@ -773,6 +1075,101 @@ input:checked + .slider:before {
   border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 8px;
   padding: 12px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.tool-card .tool-input,
+.tool-card .tool-result,
+.tool-card .tool-result pre,
+.tool-card .protocol-content {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  overflow-x: hidden;
+}
+.tool-card .tool-result > * {
+  max-width: 100%;
+}
+
+/* VCPTool request cards: same chrome as E3 tools, width 2/3 of chat area */
+.message-content .tool-card.vcp-tool-request-card,
+.tool-card.vcp-tool-request-card {
+  width: calc(100% * 2 / 3);
+  max-width: calc(100% * 2 / 3);
+  margin: 10px 0;
+  box-sizing: border-box;
+}
+.message-content .tool-card.vcp-tool-request-card .protocol-content,
+.tool-card.vcp-tool-request-card .protocol-content {
+  margin: 12px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  overflow-x: hidden;
+}
+@media (max-width: 720px) {
+  .message-content .tool-card.vcp-tool-request-card,
+  .tool-card.vcp-tool-request-card {
+    width: 100%;
+    max-width: 100%;
+  }
+}
+
+/* Non-request protocol cards keep a lighter but consistent fold chrome */
+.vcp-protocol-card:not(.tool-card) {
+  margin: 10px 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-left: 4px solid var(--tool-bubble-border, #6ea8fe);
+  background: var(--tool-bubble-bg, rgba(255, 255, 255, 0.03));
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.12);
+}
+.vcp-protocol-card:not(.tool-card) summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+  font-weight: 500;
+  font-size: 13px;
+}
+.vcp-protocol-card:not(.tool-card) summary::-webkit-details-marker {
+  display: none;
+}
+.vcp-protocol-card:not(.tool-card) summary::before {
+  content: "▸";
+  width: 14px;
+  color: var(--secondary-text, var(--muted));
+  transition: transform 0.2s;
+}
+.vcp-protocol-card:not(.tool-card)[open] summary::before {
+  transform: rotate(90deg);
+}
+.vcp-protocol-card:not(.tool-card) .protocol-content {
+  margin-top: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}
+.protocol-label {
+  color: var(--secondary-text, var(--muted));
+  font-weight: 500;
+}
+.protocol-status {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--secondary-text, var(--muted));
 }
 
 /* Markdown formatting inside bubbles */
@@ -1190,8 +1587,8 @@ input:checked + .slider:before {
 
 /* ============ Theme Header Button ============ */
 .header-control-btn.theme-btn svg {
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
 }
 
 /* ============ Theme Overlay Panel ============ */
@@ -1659,7 +2056,7 @@ body.light-theme .e3-toast-info {
   max-width: min(78%, 860px);
 }
 
-.message-assistant,
+.assistant-turn,
 .thinking-block,
 .tool-card,
 .question-card,
@@ -1672,23 +2069,29 @@ body.light-theme .e3-toast-info {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  width: min(52%, 720px);
-  max-width: 52%;
-  padding: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
-  background: var(--tool-bubble-bg, rgba(255, 255, 255, 0.03));
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.16);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  width: calc(100% * 2 / 3);
+  max-width: calc(100% * 2 / 3);
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
-
-.tool-group .tool-card {
+.tool-group > .tool-card {
   width: 100%;
   max-width: none;
   margin: 0;
-  background: rgba(255, 255, 255, 0.025);
+  padding: 8px 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-right: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.08);
   box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 @media (max-width: 720px) {

@@ -448,6 +448,11 @@
       return;
     }
 
+    global.E3MessageStreamRenderer?.beginRegeneration?.(block, {
+      timestamp: Date.now(),
+    });
+    global.dispatchEvent(new CustomEvent("e3chat:regeneration-start"));
+
     try {
       await api.regenerateMessage({
         sessionId: history.sessionId,
@@ -457,7 +462,15 @@
       // The backend will truncate + resend + push events, which the
       // normal event handler in e3chat.js will render.
     } catch (err) {
+      global.dispatchEvent(new CustomEvent("e3chat:regeneration-error"));
+      global.E3MessageStreamRenderer?.clearGenerationIndicator?.(true);
       toast(`重新生成失败: ${err.message}`, "error");
+      if (history.sessionId) {
+        await global.E3WorkspaceSidebar?.loadSessionIntoView?.(
+          history.sessionId,
+          { chunked: true }
+        );
+      }
     }
   }
 

@@ -862,11 +862,55 @@
       }
     });
 
-    // Fold Sidebar Toggle
+    // Fold Sidebar Toggle and resize handle
     const btnToggleSidebar = document.getElementById("btn-toggle-sidebar");
     const shell = document.getElementById("app-shell");
+    const sidebar = document.getElementById("sidebar");
+    const sidebarResizeHandle = document.getElementById(
+      "sidebar-resize-handle"
+    );
+    const sidebarMinWidth = 160;
+    const sidebarMaxWidth = 420;
+
     btnToggleSidebar.addEventListener("click", () => {
       shell.classList.toggle("sidebar-collapsed");
+    });
+
+    sidebarResizeHandle.addEventListener("pointerdown", (event) => {
+      if (shell.classList.contains("sidebar-collapsed")) return;
+      event.preventDefault();
+      const startX = event.clientX;
+      const startWidth = sidebar.getBoundingClientRect().width;
+      document.body.classList.add("sidebar-resizing");
+      sidebarResizeHandle.setPointerCapture(event.pointerId);
+
+      const resizeSidebar = (moveEvent) => {
+        const nextWidth = Math.min(
+          sidebarMaxWidth,
+          Math.max(sidebarMinWidth, startWidth + moveEvent.clientX - startX)
+        );
+        sidebar.style.width = `${nextWidth}px`;
+      };
+
+      const finishSidebarResize = () => {
+        document.body.classList.remove("sidebar-resizing");
+        sidebarResizeHandle.removeEventListener("pointermove", resizeSidebar);
+        sidebarResizeHandle.removeEventListener(
+          "pointerup",
+          finishSidebarResize
+        );
+        sidebarResizeHandle.removeEventListener(
+          "pointercancel",
+          finishSidebarResize
+        );
+      };
+
+      sidebarResizeHandle.addEventListener("pointermove", resizeSidebar);
+      sidebarResizeHandle.addEventListener("pointerup", finishSidebarResize);
+      sidebarResizeHandle.addEventListener(
+        "pointercancel",
+        finishSidebarResize
+      );
     });
 
     // Split / Single Page Toggle
@@ -1040,6 +1084,12 @@
       if (!chatRunning) event.currentTarget.form.requestSubmit();
     });
     api.onEvent(handleEvent);
+    window.addEventListener("e3chat:regeneration-start", () => {
+      setChatRunning(true);
+    });
+    window.addEventListener("e3chat:regeneration-error", () => {
+      setChatRunning(false);
+    });
 
     // ── Context Menu ──────────────────────────────────────────────
     if (window.E3MessageContextMenu) {
@@ -1082,6 +1132,7 @@
       try {
         await api.cancel();
         window.E3MessageStreamRenderer.finalizeCurrentAssistant(generation());
+        window.E3MessageStreamRenderer.clearGenerationIndicator(true);
         setChatRunning(false);
       } catch (error) {
         setChatRunning(true);
@@ -1113,6 +1164,9 @@
     attachments = [];
     renderAttachments();
     setChatRunning(true);
+    window.E3MessageStreamRenderer.showGenerationIndicator("生成中…", {
+      timestamp: Date.now(),
+    });
 
     try {
       const result = await api.sendMessage({
@@ -1206,6 +1260,7 @@
       window.E3MessageStreamRenderer.finalizeCurrentAssistant(
         eventGeneration(event)
       );
+      window.E3MessageStreamRenderer.clearGenerationIndicator(true);
       setChatRunning(false);
       window.E3MessageStreamRenderer.clearQuestion();
       await window.E3WorkspaceSidebar.renderSessions({

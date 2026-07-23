@@ -154,10 +154,14 @@
     return "";
   }
 
-  function renderHistoryMessage(message, messageIndex) {
+  function renderHistoryMessage(message, messageIndex, assistantTurnId = null) {
     const renderer = global.E3MessageStreamRenderer;
     const generation = renderer.state.generation;
     const role = roleOf(message);
+    const turnId =
+      role === "user"
+        ? null
+        : assistantTurnId || `history-turn-${messageIndex}`;
     const history =
       message?.__e3History && typeof message.__e3History === "object"
         ? message.__e3History
@@ -185,7 +189,11 @@
       if (type === "thinking" || type === "reasoning") {
         const content = textOf(block);
         if (content) {
-          renderer.appendThinking(content, generation, blockId, { history });
+          renderer.appendThinking(content, generation, blockId, {
+            history,
+            timestamp: timestampOf(message),
+            turnId,
+          });
         }
         return;
       }
@@ -201,13 +209,30 @@
         renderer.renderTool(
           {
             id: toolId,
-            name: block?.name || block?.toolName || "unknown",
+            source:
+              block?.source ||
+              block?.Source ||
+              block?.provider ||
+              block?.Provider ||
+              null,
+            name:
+              block?.name || block?.toolName || block?.tool_name || "unknown",
             command: block?.command || block?.Command || null,
+            maid:
+              block?.maid ||
+              block?.Maid ||
+              block?.maidName ||
+              block?.MaidName ||
+              null,
             input: block?.input ?? block?.arguments ?? null,
             status: normalizedStatus === "running" ? "running" : status,
           },
           generation,
-          { history }
+          {
+            history,
+            timestamp: timestampOf(message),
+            turnId,
+          }
         );
         if (
           normalizedStatus !== "running" ||
@@ -230,6 +255,7 @@
       renderer.appendMessage(role, content, blockId, generation, {
         history,
         timestamp: timestampOf(message),
+        turnId,
       });
     });
   }
@@ -238,8 +264,25 @@
     return new Promise((resolve) => setTimeout(resolve, 0));
   }
 
+  function historyTurnIds(messages) {
+    let turnIndex = 0;
+    let activeAssistantTurnId = null;
+    return messages.map((message) => {
+      if (roleOf(message) === "user") {
+        activeAssistantTurnId = null;
+        return null;
+      }
+      if (!activeAssistantTurnId) {
+        activeAssistantTurnId = `history-assistant-turn-${turnIndex}`;
+        turnIndex += 1;
+      }
+      return activeAssistantTurnId;
+    });
+  }
+
   async function renderSessionIntoView(sessionId, messages, options = {}) {
     const normalizedMessages = normalizeMessages(messages);
+    const assistantTurnIds = historyTurnIds(normalizedMessages);
     setActiveSessionId(sessionId);
     // 切换会话不会建立新的 SignalR 连接，不能递增 connectionGeneration。
     // 否则当前连接后续的 message/thinking/tool 事件都会被误判为旧事件。
@@ -250,11 +293,17 @@
       // Yield between messages so composer keyboard events are not starved by a
       // large synchronous redraw after edit/delete operations.
       for (let index = 0; index < normalizedMessages.length; index += 1) {
-        renderHistoryMessage(normalizedMessages[index], index);
+        renderHistoryMessage(
+          normalizedMessages[index],
+          index,
+          assistantTurnIds[index]
+        );
         await yieldToRenderer();
       }
     } else {
-      normalizedMessages.forEach(renderHistoryMessage);
+      normalizedMessages.forEach((message, index) =>
+        renderHistoryMessage(message, index, assistantTurnIds[index])
+      );
     }
 
     // Replay 3D viewport commands

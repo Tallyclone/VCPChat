@@ -9,6 +9,8 @@
     currentThinkingId: null,
     thinkingTexts: new Map(),
     lastRunningToolId: null,
+    assistantTurn: null,
+    assistantTurnKey: null,
     toolGroup: null,
     generation: 0,
   };
@@ -24,6 +26,120 @@
 
   function safeId(prefix) {
     return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  function resetAssistantTurn() {
+    state.assistantTurn = null;
+    state.assistantTurnKey = null;
+    state.toolGroup = null;
+  }
+
+  function ensureAssistantTurn(options = {}) {
+    const container = list();
+    if (!container) return null;
+    const turnKey = String(options.turnId || "active-assistant-turn");
+    if (state.assistantTurn && state.assistantTurnKey === turnKey) {
+      return state.assistantTurn;
+    }
+
+    const turn = document.createElement("section");
+    turn.className = "assistant-turn";
+    turn.dataset.turnId = turnKey;
+
+    const meta = document.createElement("div");
+    meta.className = "assistant-turn-meta message-role";
+    const label = document.createElement("span");
+    label.textContent = "E3";
+    const time = document.createElement("time");
+    time.className = "message-time";
+    const stamp = options.timestamp || Date.now();
+    const date = new Date(stamp);
+    time.dateTime = Number.isNaN(date.getTime())
+      ? new Date().toISOString()
+      : date.toISOString();
+    time.textContent = formatMetaTime(stamp);
+    meta.append(label, time);
+
+    const content = document.createElement("div");
+    content.className = "assistant-turn-content";
+    turn.append(meta, content);
+    container.appendChild(turn);
+    state.assistantTurn = turn;
+    state.assistantTurnKey = turnKey;
+    state.toolGroup = null;
+    return turn;
+  }
+
+  function assistantTurnContent(options = {}) {
+    return (
+      ensureAssistantTurn(options)?.querySelector(".assistant-turn-content") ||
+      null
+    );
+  }
+
+  function clearGenerationIndicator(removeEmptyTurn = false) {
+    const indicator = state.assistantTurn?.querySelector(
+      ".assistant-generation-indicator"
+    );
+    if (indicator) indicator.remove();
+    if (
+      removeEmptyTurn &&
+      state.assistantTurn &&
+      !state.assistantTurn.querySelector(".assistant-turn-content")?.children
+        .length
+    ) {
+      state.assistantTurn.remove();
+      resetAssistantTurn();
+    }
+  }
+
+  function showGenerationIndicator(label = "生成中…", options = {}) {
+    clearGenerationIndicator(true);
+    const content = assistantTurnContent({
+      ...options,
+      timestamp: options.timestamp || Date.now(),
+    });
+    if (!content) return null;
+    const indicator = document.createElement("div");
+    indicator.className = "assistant-generation-indicator";
+    indicator.setAttribute("role", "status");
+    indicator.setAttribute("aria-live", "polite");
+    const baseLabel =
+      String(label || "生成中…")
+        .replace(/[.。…]+$/u, "")
+        .trimEnd() || "生成中";
+    const text = document.createElement("span");
+    text.className = "assistant-generation-text";
+    text.append(document.createTextNode(baseLabel));
+    const ellipsis = document.createElement("span");
+    ellipsis.className = "assistant-generation-ellipsis";
+    ellipsis.setAttribute("aria-hidden", "true");
+    // Real glyphs so max-width steps animate ". → .. → ..." without ::before content.
+    ellipsis.textContent = "...";
+    text.appendChild(ellipsis);
+    indicator.appendChild(text);
+    content.appendChild(indicator);
+    scrollToBottom();
+    return indicator;
+  }
+
+  function removeAssistantTurnForNode(node) {
+    const turn = node?.closest?.(".assistant-turn");
+    if (!turn) return false;
+    turn
+      .querySelectorAll(".message-block, .thinking-block, .tool-card")
+      .forEach((child) => {
+        removeNode(child);
+      });
+    turn.remove();
+    if (state.assistantTurn === turn) resetAssistantTurn();
+    return true;
+  }
+
+  function beginRegeneration(node, options = {}) {
+    removeAssistantTurnForNode(node);
+    resetAssistantTurn();
+    return showGenerationIndicator("重新生成中…", options);
   }
 
   function applyHistoryMetadata(node, history) {
@@ -50,7 +166,7 @@
   }
 
   function ensureMessage(id, role, history = null, options = {}) {
-    const container = list();
+    const container = role === "user" ? list() : assistantTurnContent(options);
     if (!container) return null;
     let node = state.nodes.get(id);
     if (!node) {
@@ -71,7 +187,7 @@
     state.currentAssistantId = null;
     state.assistantTexts.clear();
     state.currentThinkingId = null;
-    state.toolGroup = null;
+    resetAssistantTurn();
     state.thinkingTexts.clear();
     const node = ensureMessage(id, "user", options.history || null, options);
     if (node) global.E3MessageBlock.update(node, text);
@@ -101,12 +217,28 @@
     options = {}
   ) {
     if (generation !== state.generation) return null;
+    const incomingText = String(text ?? "");
+    // Some E3 builds emit an empty message event before the first real token.
+    // Keep the generation indicator visible until meaningful content arrives.
+    if (!incomingText && !state.currentAssistantId) return null;
+    if (incomingText) clearGenerationIndicator();
     const messageId = id || state.currentAssistantId || safeId("assistant");
     state.toolGroup = null;
     state.currentAssistantId = messageId;
-    const nextText = mergeStreamText(state.assistantTexts.get(messageId), text);
+    const nextText = mergeStreamText(
+      state.assistantTexts.get(messageId),
+      incomingText
+    );
     state.assistantTexts.set(messageId, nextText);
-    const node = ensureMessage(messageId, "assistant", options.history || null);
+    const node = ensureMessage(
+      messageId,
+      "assistant",
+      options.history || null,
+      {
+        ...options,
+        timestamp: options.timestamp || Date.now(),
+      }
+    );
     if (node)
       global.E3MessageBlock.update(node, nextText, {
         streaming: options.streaming !== false,
@@ -152,6 +284,11 @@
     options = {}
   ) {
     if (generation !== state.generation) return;
+    const incomingText = String(text ?? "");
+    // Ignore the empty thinking prelude emitted by some backends; otherwise it
+    // removes the indicator before there is anything visible to replace it.
+    if (!incomingText && !state.currentThinkingId) return null;
+    if (incomingText) clearGenerationIndicator();
     const id = messageId
       ? `thinking:${messageId}`
       : state.currentThinkingId || safeId("thinking");
@@ -161,20 +298,30 @@
       node = global.E3ThinkingBlock.create("");
       node.dataset.blockId = id;
       state.nodes.set(id, node);
-      list()?.appendChild(node);
+      assistantTurnContent(options)?.appendChild(node);
       state.thinkingTexts.set(id, "");
     }
     applyHistoryMetadata(node, options.history || null);
     state.currentThinkingId = id;
-    const nextText = mergeStreamText(state.thinkingTexts.get(id), text);
+    const nextText = mergeStreamText(state.thinkingTexts.get(id), incomingText);
     state.thinkingTexts.set(id, nextText);
     global.E3ThinkingBlock.update(node, nextText);
     scrollToBottom();
     return id;
   }
 
+  function formatMetaTime(input) {
+    const timestamp = new Date(input || Date.now());
+    const value = Number.isNaN(timestamp.getTime()) ? new Date() : timestamp;
+    const pad = (number) => String(number).padStart(2, "0");
+    return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(
+      value.getDate()
+    )} ${pad(value.getHours())}:${pad(value.getMinutes())}`;
+  }
+
   function renderTool(tool, generation = state.generation, options = {}) {
     if (generation !== state.generation) return null;
+    clearGenerationIndicator();
     const id = String(tool?.id || safeId("tool"));
     const existing = state.nodes.get(id);
     if (existing)
@@ -184,9 +331,9 @@
     state.nodes.set(id, node);
     state.lastRunningToolId = id;
     applyHistoryMetadata(node, options.history || null);
-    const container = list();
+    const container = assistantTurnContent(options);
     if (!container) return node;
-    if (!state.toolGroup) {
+    if (!state.toolGroup || state.toolGroup.parentElement !== container) {
       state.toolGroup = document.createElement("div");
       state.toolGroup.className = "tool-group";
       container.appendChild(state.toolGroup);
@@ -241,6 +388,7 @@
 
   function showError(message, source, generation) {
     if (generation !== state.generation) return;
+    clearGenerationIndicator(true);
     state.toolGroup = null;
     list()?.appendChild(global.E3ErrorBlock.create(message, source));
     scrollToBottom();
@@ -332,7 +480,7 @@
     state.currentThinkingId = null;
     state.thinkingTexts.clear();
     state.lastRunningToolId = null;
-    state.toolGroup = null;
+    resetAssistantTurn();
     clearQuestion();
     const container = list();
     if (container) {
@@ -372,6 +520,9 @@
     appendMessage,
     appendMessageText,
     appendThinking,
+    showGenerationIndicator,
+    clearGenerationIndicator,
+    beginRegeneration,
     renderTool,
     finalizeToolResult,
     renderQuestion,

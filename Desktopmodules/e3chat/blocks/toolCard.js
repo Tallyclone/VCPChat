@@ -30,28 +30,88 @@
     return `<pre>${global.E3MessageBlock?.escapeHtml?.(text) ?? text}</pre>`;
   }
 
-  function commandOf(tool) {
+  function parseInputObject(tool) {
     const input = tool?.input ?? tool?.arguments;
-    if (input && typeof input === "object") {
-      return (
-        input.command || input.Command || input.cmd || input.Cmd || "command"
-      );
+    if (input && typeof input === "object" && !Array.isArray(input)) {
+      return input;
     }
     if (typeof input === "string") {
       try {
         const parsed = JSON.parse(input);
-        return (
-          parsed?.command ||
-          parsed?.Command ||
-          parsed?.cmd ||
-          parsed?.Cmd ||
-          "command"
-        );
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          return parsed;
+        }
       } catch (_) {
-        return input.trim().split(/\s+/)[0] || "command";
+        /* ignore */
       }
     }
-    return tool?.command || tool?.Command || "command";
+    return null;
+  }
+
+  function pickField(source, keys, fallback = "") {
+    if (!source || typeof source !== "object") return fallback;
+    for (const key of keys) {
+      const value = source[key];
+      if (
+        value !== undefined &&
+        value !== null &&
+        String(value).trim() !== ""
+      ) {
+        return String(value).trim();
+      }
+    }
+    return fallback;
+  }
+
+  function commandOf(tool) {
+    const input = parseInputObject(tool);
+    if (input) {
+      return (
+        pickField(input, ["command", "Command", "cmd", "Cmd"]) || "command"
+      );
+    }
+    const raw = tool?.input ?? tool?.arguments;
+    if (typeof raw === "string" && raw.trim()) {
+      return raw.trim().split(/\s+/)[0] || "command";
+    }
+    return pickField(tool, ["command", "Command"], "command");
+  }
+
+  function maidOf(tool) {
+    const input = parseInputObject(tool);
+    return (
+      pickField(tool, [
+        "maid",
+        "Maid",
+        "maidName",
+        "MaidName",
+        "agent",
+        "Agent",
+      ]) ||
+      pickField(input, [
+        "maid",
+        "Maid",
+        "maidName",
+        "MaidName",
+        "agent",
+        "Agent",
+      ]) ||
+      ""
+    );
+  }
+
+  function toolNameOf(tool) {
+    return (
+      pickField(tool, ["name", "toolName", "tool_name", "functionName"]) ||
+      "unknown"
+    );
+  }
+
+  function titleOf(tool) {
+    // toolCard only renders E3 native tool-call events (chat-tool-call).
+    // VCP text-protocol tools (<<<[TOOL_REQUEST]>>>) are handled in messageBlock.
+    // E3原生工具  toolName  (two spaces after label)
+    return `E3原生工具  ${toolNameOf(tool)}`;
   }
 
   function create(tool) {
@@ -62,8 +122,8 @@
 
     const summary = document.createElement("summary");
     const name = document.createElement("strong");
-    const toolName = tool?.name || tool?.toolName || "unknown";
-    name.textContent = `VCPTool·${toolName}·${commandOf(tool)}`;
+    name.className = "tool-name";
+    name.textContent = titleOf(tool);
     const state = document.createElement("span");
     state.className = "tool-status";
     state.textContent = "运行中";

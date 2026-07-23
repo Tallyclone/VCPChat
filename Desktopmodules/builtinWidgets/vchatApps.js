@@ -319,9 +319,10 @@
     {
       id: "vchat-app-e3-chat",
       name: "E3 Chat",
-      icon: null,
+      // E3 original logo (extracted from E3.exe / Desktopmodules/e3chat/e3-logo.png)
+      icon: `${ICON_BASE}/e3-chat.png`,
       animatedIcon: null,
-      svgIcon: SVG_ICONS.chat,
+      svgIcon: null,
       emoji: "💬",
       description: "打开 E3 原生聊天内置窗口",
       appAction: "open-e3-chat-window",

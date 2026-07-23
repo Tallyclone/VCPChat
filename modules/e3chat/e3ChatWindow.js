@@ -35,7 +35,8 @@ async function openE3ChatWindow({ openChildWindows = [] } = {}) {
       sandbox: false,
       devTools: true,
     },
-    icon: path.join(appRoot, "assets", "icon.png"),
+    // Prefer E3 project logo used by the chat UI / desktop widget.
+    icon: path.join(appRoot, "Desktopmodules", "e3chat", "e3-logo.png"),
     show: false,
   });
 

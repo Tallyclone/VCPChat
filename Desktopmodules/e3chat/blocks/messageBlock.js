@@ -555,27 +555,79 @@
     return text || "无内容";
   }
 
+  function extractProtocolField(raw, keys) {
+    const source = String(raw ?? "");
+    for (const key of keys) {
+      const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const patterns = [
+        new RegExp(
+          `(?:^|\\n)\\s*${escaped}\\s*:\\s*「始」\\s*([\\s\\S]*?)\\s*「末」`,
+          "i"
+        ),
+        new RegExp(`<${escaped}>\\s*([\\s\\S]*?)\\s*</${escaped}>`, "i"),
+        new RegExp(`(?:^|\\n)\\s*${escaped}\\s*:\\s*([^\\n\\r「{]+)`, "i"),
+      ];
+      for (const pattern of patterns) {
+        const match = source.match(pattern);
+        if (match?.[1] != null && String(match[1]).trim()) {
+          return String(match[1]).trim();
+        }
+      }
+    }
+    return "";
+  }
+
   function extractToolName(raw) {
-    const xml = raw.match(/<tool_name>\s*([\s\S]*?)\s*<\/tool_name>/i);
-    const field = raw.match(/(?:^|\n)\s*tool_name\s*:\s*([^\n\r「{]+)/i);
-    return (xml?.[1] || field?.[1] || "VCPTool").trim();
+    return (
+      extractProtocolField(raw, ["tool_name", "toolName", "name"]) || "VCPTool"
+    );
+  }
+
+  function extractVcpToolTitle(raw) {
+    const toolName = extractToolName(raw);
+    const maid =
+      extractProtocolField(raw, ["maid", "Maid", "maidName", "MaidName"]) ||
+      "unknown";
+    const command =
+      extractProtocolField(raw, ["command", "Command", "cmd", "Cmd"]) ||
+      "command";
+    // VCPTool  tool_name·maid·command  (two spaces after label)
+    return `VCPTool  ${toolName}·${maid}·${command}`;
   }
 
   function createProtocolCard(kind, label, title, body, status = "") {
     const card = document.createElement("details");
-    card.className = `vcp-protocol-card vcp-${kind}-card`;
+    // VCPTool request cards reuse E3 native tool-card chrome; only the title text differs.
+    if (kind === "tool-request" && !label) {
+      card.className =
+        "tool-card e3-tool-card vcp-protocol-card vcp-tool-request-card";
+    } else {
+      card.className = `vcp-protocol-card vcp-${kind}-card`;
+    }
     card.open = false;
 
     const summary = document.createElement("summary");
-    const labelNode = document.createElement("span");
-    labelNode.className = "protocol-label";
-    labelNode.textContent = label;
-    const titleNode = document.createElement("strong");
-    titleNode.textContent = title;
-    summary.append(labelNode, titleNode);
+    // VCP tool-request uses a single combined title: "VCPTool  name·maid·command"
+    if (kind === "tool-request" && !label) {
+      const titleNode = document.createElement("strong");
+      titleNode.className = "tool-name protocol-title";
+      titleNode.textContent = title;
+      summary.append(titleNode);
+    } else {
+      const labelNode = document.createElement("span");
+      labelNode.className = "protocol-label";
+      labelNode.textContent = label;
+      const titleNode = document.createElement("strong");
+      titleNode.className = "protocol-title";
+      titleNode.textContent = title;
+      summary.append(labelNode, titleNode);
+    }
     if (status) {
       const statusNode = document.createElement("span");
-      statusNode.className = "protocol-status";
+      statusNode.className =
+        kind === "tool-request" || kind === "tool-result"
+          ? "tool-status protocol-status"
+          : "protocol-status";
       statusNode.textContent = status;
       summary.appendChild(statusNode);
     }
@@ -615,8 +667,8 @@
         container.appendChild(
           createProtocolCard(
             "tool-request",
-            "VCP 工具调用",
-            extractToolName(entry.match[1]),
+            "",
+            extractVcpToolTitle(entry.match[1]),
             entry.match[1]
           )
         );
@@ -1158,6 +1210,18 @@
     }
   }
 
+  function formatMessageTime(input) {
+    const timestamp = new Date(input || Date.now());
+    const value = Number.isNaN(timestamp.getTime()) ? new Date() : timestamp;
+    const pad = (number) => String(number).padStart(2, "0");
+    return {
+      dateTime: value.toISOString(),
+      text: `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(
+        value.getDate()
+      )} ${pad(value.getHours())}:${pad(value.getMinutes())}`,
+    };
+  }
+
   function create(role, id, options = {}) {
     const el = document.createElement("article");
     el.className = `message-block ${
@@ -1169,25 +1233,20 @@
     if (id) el.dataset.blockId = id;
     const roleNode = document.createElement("div");
     roleNode.className = "message-role";
+    const timeInfo = formatMessageTime(options.timestamp || Date.now());
+    const timeNode = document.createElement("time");
+    timeNode.className = "message-time";
+    timeNode.dateTime = timeInfo.dateTime;
+    timeNode.textContent = timeInfo.text;
+    const labelNode = document.createElement("span");
     if (role === "user") {
-      const timestamp = new Date(options.timestamp || Date.now());
-      const timeNode = document.createElement("time");
-      timeNode.className = "message-time";
-      timeNode.dateTime = Number.isNaN(timestamp.getTime())
-        ? new Date().toISOString()
-        : timestamp.toISOString();
-      const value = Number.isNaN(timestamp.getTime()) ? new Date() : timestamp;
-      const pad = (number) => String(number).padStart(2, "0");
-      timeNode.textContent = `${value.getFullYear()}-${pad(
-        value.getMonth() + 1
-      )}-${pad(value.getDate())} ${pad(value.getHours())}:${pad(
-        value.getMinutes()
-      )}`;
-      const labelNode = document.createElement("span");
       labelNode.textContent = "用户";
+      // User: time then label, right-aligned via CSS
       roleNode.append(timeNode, labelNode);
     } else {
-      roleNode.textContent = "E3";
+      labelNode.textContent = "E3";
+      // Assistant: E3 then time above frosted glass, left-aligned via CSS
+      roleNode.append(labelNode, timeNode);
     }
     const content = document.createElement("div");
     content.className = "message-content";
