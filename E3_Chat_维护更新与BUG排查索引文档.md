@@ -466,6 +466,7 @@ refreshWorkspace() → IPC e3chat:refresh-workspace
 | **BUG-010** | 当前聊天右键仅复制，切换会话后才可编辑 | 实时消息块没有持久化历史引用；生成完成后只刷新侧栏，未把当前视图替换为带 `__e3History` 的权威历史                                                                       | 当前会话右键菜单        | ✅ 已修复：done 后重载当前已知会话；新会话在发送返回 sessionId 后补重载，避免误加载侧栏第一条历史会话                                                      |
 | **BUG-011** | 编辑/删除成功后界面不立即刷新          | 菜单成功分支仅调用 preload `loadSession()`，返回值未进入渲染器                                                                                                          | 编辑/删除后的当前视图   | ✅ 已修复：编辑仍重载权威会话；删除改用后端 decorated session 按 fingerprint 增量刷新 reference，无法完整匹配时才分段重绘                                  |
 | **BUG-012** | 删除后输入框约 40 秒无光标、无法输入   | 同步 `window.confirm()` 关闭后 Chromium 文本编辑焦点异常，单次 rAF 聚焦又可能被后续整会话重绘覆盖；打开/取消附件对话框后的直接 focus 会暂时自愈                         | 删除消息后的 composer   | ✅ 已修复：页面内确认弹层替代 `window.confirm()`；确认关闭/删除协调完成双阶段聚焦；composer 局部 pointerdown 自愈；删除默认不再 clear+rebuild              |
+| **BUG-013** | 聊天内容无法选择，复制选中项不出现     | `html, body` 全局 `user-select: none` 继承到消息区；右键菜单又要求选区两端都位于当前消息块，无法支持跨消息选区                                                          | 聊天区选择与右键复制    | ✅ 已修复：`#message-list` 对应 `.message-list` 显式恢复 `user-select: text`；菜单打开前缓存聊天区选区，并允许跨消息复制选中文字                           |
 
 ### 8.2 高风险热点区域
 

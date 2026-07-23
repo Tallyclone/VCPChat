@@ -71,6 +71,24 @@
     return document.activeElement === prompt;
   }
 
+  function captureChatSelection() {
+    const selection = global.getSelection?.();
+    const messageList = document.getElementById("message-list");
+    if (
+      !selection ||
+      selection.isCollapsed ||
+      !messageList ||
+      !messageList.contains(selection.anchorNode) ||
+      !messageList.contains(selection.focusNode)
+    ) {
+      return "";
+    }
+    return selection
+      .toString()
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
   function confirmDelete(preview) {
     if (activeConfirm) activeConfirm.resolve(false);
     return new Promise((resolve) => {
@@ -143,6 +161,7 @@
    * @param {boolean}      opts.chatRunning  Whether generation is active.
    */
   function show(event, block, opts = {}) {
+    const selectedText = captureChatSelection();
     event.preventDefault();
     close();
 
@@ -190,26 +209,19 @@
         })
       );
 
-      // ── Copy selected text (only if selection is within this block) ─
-      const sel = global.getSelection();
-      if (
-        sel &&
-        !sel.isCollapsed &&
-        block.contains(sel.anchorNode) &&
-        block.contains(sel.focusNode)
-      ) {
-        const selectedText = sel.toString().trim();
-        if (selectedText) {
-          menu.appendChild(
-            menuItem("📝 复制选中", null, () => {
-              close();
-              navigator.clipboard.writeText(selectedText).then(
-                () => toast("已复制选中文本", "success"),
-                () => toast("复制失败", "error")
-              );
-            })
-          );
-        }
+      // ── Copy selected text (captured before opening the menu) ─────
+      // The selection may span multiple messages, so validate it against the
+      // complete chat list instead of requiring both endpoints in this block.
+      if (selectedText) {
+        menu.appendChild(
+          menuItem("📝 复制选中", null, () => {
+            close();
+            navigator.clipboard.writeText(selectedText).then(
+              () => toast("已复制选中文本", "success"),
+              () => toast("复制失败", "error")
+            );
+          })
+        );
       }
 
       // ── Copy source Markdown ────────────────────────────────────

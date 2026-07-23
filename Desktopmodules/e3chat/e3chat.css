@@ -718,6 +718,8 @@ input:checked + .slider:before {
   flex-direction: column;
   gap: 20px;
   scroll-behavior: smooth;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 /* Frosted glass message bubbles with side gaps */

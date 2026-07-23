@@ -11,10 +11,25 @@ class E3SessionSyncService {
   async refresh() {
     const sessions = await this.repository.listSessions();
     this.sessions = Array.isArray(sessions) ? sessions : [];
-    const roots = [...new Set(this.sessions.map((s) => s && s.workspaceRoot).filter(Boolean))];
-    this.workspaceIdentity = roots[0] || this.workspaceIdentity || "unknown";
-    if (roots.length > 1) this.diagnostics?.add("warn", "ListChatSessions returned multiple workspace roots", roots);
-    return { sessions: this.sessions, workspaceIdentity: this.workspaceIdentity, roots };
+    const roots = [
+      ...new Set(
+        this.sessions.map((s) => s && s.workspaceRoot).filter(Boolean)
+      ),
+    ];
+    // An empty result is meaningful: it can be a newly selected workspace with
+    // no chat sessions yet. Never retain the previous workspace identity here.
+    this.workspaceIdentity = roots[0] || "unknown";
+    if (roots.length > 1)
+      this.diagnostics?.add(
+        "warn",
+        "ListChatSessions returned multiple workspace roots",
+        roots
+      );
+    return {
+      sessions: this.sessions,
+      workspaceIdentity: this.workspaceIdentity,
+      roots,
+    };
   }
 }
 

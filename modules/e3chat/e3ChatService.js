@@ -9,6 +9,7 @@ const E3LocalStateStore = require("./e3LocalStateStore");
 const E3SessionRepository = require("./e3SessionRepository");
 const E3SessionSyncService = require("./e3SessionSyncService");
 const E3WorkspaceCoordinator = require("./e3WorkspaceCoordinator");
+const E3WorkspaceState = require("./e3WorkspaceState");
 const E3ViewportBridge = require("./e3ViewportBridge");
 const E3HistoryCoordinator = require("./e3HistoryCoordinator");
 const {
@@ -112,6 +113,7 @@ class E3ChatService extends EventEmitter {
       diagnostics: this.diagnostics,
     });
     this.workspace = new E3WorkspaceCoordinator();
+    this.workspaceState = new E3WorkspaceState(options.workspaceState || {});
     this.client = null;
     this.baseUrl = null;
     this.source = null;
@@ -128,6 +130,7 @@ class E3ChatService extends EventEmitter {
     });
     this.activeGeneration = null;
     this.pendingRegeneration = null;
+    this.refreshWorkspacePromise = null;
   }
 
   status() {
@@ -377,11 +380,27 @@ class E3ChatService extends EventEmitter {
         error.message
       );
     }
-    const root =
+    const listedWorkspace = this.workspaceState.current();
+    const sessionRoot =
       sync.workspaceIdentity && sync.workspaceIdentity !== "unknown"
         ? sync.workspaceIdentity
         : null;
-    const context = this.workspace.nextGeneration(root);
+    const root = listedWorkspace?.root || sessionRoot;
+    if (listedWorkspace?.root && Array.isArray(sync.sessions)) {
+      sync.sessions = sync.sessions.filter(
+        (session) =>
+          !session?.workspaceRoot ||
+          this.workspaceState.matchesRoot(
+            session.workspaceRoot,
+            listedWorkspace.root
+          )
+      );
+      this.syncService.sessions = sync.sessions;
+    }
+    const context = this.workspace.nextGeneration(root, {
+      identity: listedWorkspace?.identity || root,
+      displayName: listedWorkspace?.displayName,
+    });
     this.emitEvent({
       type: "connection",
       state: "connected",
@@ -445,23 +464,59 @@ class E3ChatService extends EventEmitter {
   }
 
   async refreshWorkspace() {
-    if (!this.client?.connected) await this.connect();
-    const sync = await this.syncService.refresh();
-    const current = this.workspace.current();
-    const root =
-      sync.workspaceIdentity && sync.workspaceIdentity !== "unknown"
-        ? sync.workspaceIdentity
-        : null;
-    if (root && root !== current.root) {
-      await this.connect({ baseUrl: this.baseUrl });
-      return { switched: true, ...this.status() };
+    // E3 persists its workspace catalogue (including lastOpenedAt) separately
+    // from chat sessions. That state is authoritative for an empty workspace;
+    // ListChatSessions alone cannot identify a workspace until its first chat.
+    // Serialize refreshes, reconnect, then constrain sessions to that root.
+    if (this.refreshWorkspacePromise) return await this.refreshWorkspacePromise;
+    this.refreshWorkspacePromise = (async () => {
+      const previousRoot = this.workspace.current().root;
+      const baseUrl = this.baseUrl;
+      if (this.client?.connected || baseUrl) {
+        await this.connect({ baseUrl });
+      } else {
+        await this.connect();
+      }
+      const sync = await this.syncService.refresh();
+      const listedWorkspace = this.workspaceState.current();
+      if (listedWorkspace?.root) {
+        sync.sessions = sync.sessions.filter(
+          (session) =>
+            !session?.workspaceRoot ||
+            this.workspaceState.matchesRoot(
+              session.workspaceRoot,
+              listedWorkspace.root
+            )
+        );
+        this.syncService.sessions = sync.sessions;
+      }
+      const nextRoot = listedWorkspace?.root || this.workspace.current().root;
+      const switched =
+        !!nextRoot && !this.workspaceState.matchesRoot(previousRoot, nextRoot);
+      return {
+        switched,
+        sessions: sync.sessions,
+        workspace: this.workspace.current(),
+      };
+    })();
+    try {
+      return await this.refreshWorkspacePromise;
+    } finally {
+      this.refreshWorkspacePromise = null;
     }
-    return { switched: false, sessions: sync.sessions, workspace: current };
   }
 
   async listSessions() {
-    return await this.repository.listSessions();
+    const sessions = await this.repository.listSessions();
+    const currentRoot = this.workspace.current().root;
+    if (!currentRoot || !Array.isArray(sessions)) return sessions;
+    return sessions.filter(
+      (session) =>
+        !session?.workspaceRoot ||
+        this.workspaceState.matchesRoot(session.workspaceRoot, currentRoot)
+    );
   }
+
   async loadSession(sessionId) {
     const loaded = await this.repository.loadSession(sessionId);
     return await this.history.decorateLoadedSession(sessionId, loaded);

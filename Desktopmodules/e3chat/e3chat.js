@@ -1052,10 +1052,11 @@
     document
       .getElementById("refresh-workspace")
       .addEventListener("click", async () => {
-        await api.refreshWorkspace();
+        const result = await api.refreshWorkspace();
         await window.E3WorkspaceSidebar.renderSessions({
-          preserveSelection: true,
+          preserveSelection: result?.switched ? false : true,
           loadSelection: true,
+          sessions: Array.isArray(result?.sessions) ? result.sessions : null,
         });
       });
     document

@@ -3,6 +3,7 @@
   const state = {
     activeSessionId: null,
     sessions: [],
+    renderSequence: 0,
   };
 
   function sessionIdOf(session) {
@@ -345,11 +346,13 @@
     const host = document.getElementById("session-list");
     if (!host || !window.e3chat) return;
     const previousActiveId = state.activeSessionId;
+    const renderSequence = ++state.renderSequence;
     host.textContent = "加载中…";
     try {
       const sessions = Array.isArray(options.sessions)
         ? options.sessions
         : await window.e3chat.listSessions();
+      if (renderSequence !== state.renderSequence) return;
       state.sessions = Array.isArray(sessions) ? sessions : [];
       host.innerHTML = "";
       if (!state.sessions.length) {
@@ -378,11 +381,21 @@
       const firstSessionId = state.sessions.length
         ? sessionIdOf(state.sessions[0])
         : null;
-      const nextActiveId = hasExplicitSelection
+      const requestedActiveId = hasExplicitSelection
         ? options.selectSessionId
         : options.preserveSelection && previousActiveId
         ? previousActiveId
         : options.allowNoSelection
+        ? null
+        : firstSessionId;
+      const requestedSessionStillExists = requestedActiveId
+        ? state.sessions.some(
+            (session) => sessionIdOf(session) === String(requestedActiveId)
+          )
+        : false;
+      const nextActiveId = requestedSessionStillExists
+        ? String(requestedActiveId)
+        : options.allowNoSelection || hasExplicitSelection
         ? null
         : firstSessionId;
       setActiveSessionId(nextActiveId);

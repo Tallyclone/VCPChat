@@ -1,0 +1,12 @@
+{
+  "electron.exe": {
+    "method": "gdi",
+    "learned_at": "2026-07-23 11:54:32",
+    "reason": "GDI 截图正常"
+  },
+  "chrome.exe": {
+    "method": "gdi",
+    "learned_at": "2026-07-23 12:03:47",
+    "reason": "GDI 截图正常"
+  }
+}
