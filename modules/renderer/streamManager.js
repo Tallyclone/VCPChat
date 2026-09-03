@@ -1,23 +1,22 @@
 // modules/renderer/streamManager.js
 import { formatMessageTimestamp } from './domBuilder.js';
 import { createContentPipeline, PIPELINE_MODES } from './contentPipeline.js';
+import { createContentRuntime } from '../chat/contentRuntime.js';
+import { createDesktopPushConsumer } from './desktopPushConsumer.js';
+import { createStreamProjectionRuntime } from './streamProjectionRuntime.js';
+import { collectMarkdownCodeDomains } from './markdownCodeDomainScanner.js';
 
-// --- Stream State ---
-const streamingChunkQueues = new Map(); // messageId -> array of original chunk strings
-const streamingTimers = new Map();      // messageId -> intervalId
-const accumulatedStreamText = new Map(); // messageId -> string
-const streamSegmentStates = new Map(); // messageId -> { stableCutoff, stableHtml, stableRenderedCutoff, stableBlocks, stableBlockSeq, lastTailText, lastParagraphBoundary }
-let activeStreamingMessageId = null; // Track the currently active streaming message
-const elementContentLengthCache = new WeakMap(); // 跟踪每个元素的内容长度；WeakMap 避免 morphdom 替换节点后的强引用泄漏
-
-// --- VCPdesktop 流式推送状态 ---
-const desktopPushStates = new Map(); // messageId -> { active, widgetId, buffer, tagBuffer, created, pushTimer, lastPushedLength, lastTokenTime, validated }
-const DESKTOP_PUSH_START_TAG = '<<<[DESKTOP_PUSH]>>>';
-const DESKTOP_PUSH_END_TAG = '<<<[DESKTOP_PUSH_END]>>>';
-const DESKTOP_PUSH_THROTTLE_MS = 100; // 每100ms推送一次累积内容到桌面画布
-const DESKTOP_PUSH_TIMEOUT_MS = 150000; // 150秒超时：未闭合的推送块自动finalize
-const DESKTOP_PUSH_VALID_PREFIXES = ['<!doctype', '<div', '<section', '<article', '<main', '<header', '<nav', '<aside', '<canvas', '<svg', '<style', 'target:','<!--'];
-let desktopWindowAvailable = false; // 缓存桌面窗口是否可用，避免每个token都发IPC
+/** Creates one DOM stream projection owner for one renderer Surface. */
+export function createStreamProjection() {
+const runtime = createStreamProjectionRuntime();
+const {
+    messageRuntimeKeys, streamingChunkQueues, streamingTimers, accumulatedStreamText,
+    streamSegmentStates, activeStreamingMessages, elementContentLengthCache,
+} = runtime;
+// Renderer-local active stream facts. This is not durable history.
+const streamMessageModels = new Map();
+const STREAM_CODE_LINE_SWEEP_DURATION_MS = 2400;
+const STREAM_CODE_MAX_ACTIVE_SWEEPS = 3;
 
 const TOOL_REQUEST_START = '<<<[TOOL_REQUEST]>>>';
 const TOOL_REQUEST_END = '<<<[END_TOOL_REQUEST]>>>';
@@ -28,15 +27,14 @@ const TOOL_CALL_SUMMARY_END = '[本轮工具调用摘要结束]';
 const ROLE_DIVIDER_REGEX = /<<<\[(END_)?ROLE_DIVIDE_(SYSTEM|ASSISTANT|USER)\]>>>/g;
 const DESKTOP_PUSH_START = '<<<[DESKTOP_PUSH]>>>';
 const DESKTOP_PUSH_END = '<<<[DESKTOP_PUSH_END]>>>';
-const CODE_FENCE = '```';
 const THOUGHT_CHAIN_START = '[--- VCP元思考链';
 const THOUGHT_CHAIN_END = '[--- 元思考链结束 ---]';
-const THINK_START_REGEX = /<think(?:ing)?>/ig;
-const THINK_END_REGEX = /<\/think(?:ing)?>/ig;
+const THOUGHT_CHAIN_START_LINE_REGEX = /^[ \t]*\[--- VCP元思考链(?::\s*"[^"]*")?\s*---\][ \t]*(?:\r?\n|$)/gm;
+const THOUGHT_CHAIN_END_LINE_REGEX = /^[ \t]*\[--- 元思考链结束 ---\][ \t]*(?:\r?\n|$)/gm;
+const THINK_START_REGEX = /^[ \t]*<think(?:ing)?>[ \t]*(?:\r?\n|$)/gim;
+const THINK_END_REGEX = /^[ \t]*<\/think(?:ing)?>[ \t]*(?:\r?\n|$)/gim;
 const DAILY_NOTE_START = '<<<DailyNoteStart>>>';
 const DAILY_NOTE_END = '<<<DailyNoteEnd>>>';
-// OpenHerPersona 聊天分条标记：完整出现即成为稳定切点，流式过程中实时分出气泡
-const BURST_MARKER_TOKEN = '<!--brk-->';
 const MARKDOWN_SECTION_BREAK_TOKEN = '---';
 const STREAM_PARAGRAPH_SAFETY_BLOCKS = 1;
 const HTML_ISLAND_MAX_STACK_DEPTH = 128;
@@ -64,7 +62,8 @@ const STREAM_PRESERVED_BLOCK_CLASSES = [
     'vcp-role-divider',
     'mermaid',
     'katex',
-    'vcp-html-preview-container'
+    'vcp-html-preview-container',
+    'vcp-flowlock-bubble'
 ];
 const STREAM_PRESERVED_CHILD_ATTRS = [
     'data-vcp-preserve-children',
@@ -93,6 +92,16 @@ function shouldPreserveStreamElement(fromEl, toEl) {
 
     // 后处理后的代码高亮节点会带 hljs 类，流式下一帧不应反复重写其内部结构。
     if (fromEl.tagName === 'CODE' && fromEl.classList.contains('hljs')) {
+        return true;
+    }
+
+    // 已完成且只高亮过一次的流式代码行是稳定子树。
+    // 保留 Highlight.js 生成的 span，避免下一帧被流式预览中的纯文本覆盖。
+    if (
+        fromEl.classList.contains('vcp-stream-code-line') &&
+        fromEl.dataset.vcpStreamCodeHighlighted === 'true' &&
+        toEl?.dataset?.vcpStreamCodeCompleted === 'true'
+    ) {
         return true;
     }
 
@@ -144,33 +153,109 @@ function preserveDynamicStreamState(fromEl, toEl) {
     if (fromEl.dataset.vcpKey) {
         toEl.dataset.vcpKey = fromEl.dataset.vcpKey;
     }
+
+    if (fromEl.dataset.vcpStreamCodeAnimated === 'true') {
+        toEl.dataset.vcpStreamCodeAnimated = 'true';
+    }
+
+    if (fromEl.dataset.vcpStreamCodeHighlighted === 'true') {
+        toEl.dataset.vcpStreamCodeHighlighted = 'true';
+    }
 }
 
-// --- DOM Cache ---
-const messageDomCache = new Map(); // messageId -> { messageItem, contentDiv }
-
-const scrollThrottleTimers = new Map(); // messageId -> timerId
+// --- Surface-owned runtime projections ---
+const {
+    messageDomCache, scrollThrottleTimers, viewContextCache,
+    pendingDirectRenderMessages, preBufferedChunks, messageInitializationStatus,
+    messageInitializationWaiters, messageContextMap,
+} = runtime;
 const SCROLL_THROTTLE_MS = 100; // 100ms 节流
-const viewContextCache = new Map(); // messageId -> boolean (是否为当前视图)
 let currentViewSignature = null; // 当前视图的签名
 let globalRenderLoopRunning = false;
-const pendingDirectRenderMessages = new Set(); // 非平滑流式：chunk 到达只置脏，由全局 rAF 合帧渲染
-
-// 记录延迟清理定时器，方便切换话题时统一清除
-const delayedCleanupTimers = new Map(); // messageId -> timerId
-
-// --- 新增：预缓冲系统 ---
-const preBufferedChunks = new Map(); // messageId -> array of chunks waiting for initialization
-const messageInitializationStatus = new Map(); // messageId -> 'pending' | 'ready' | 'finalized'
-const pendingFinalizationEvents = new Map(); // messageId -> { finishReason, context, finalPayload }
-
-// --- 新增：消息上下文映射 ---
-const messageContextMap = new Map(); // messageId -> {agentId, groupId, topicId, isGroupMessage}
+let globalRenderLoopFrameHandle = null;
+// 终态投影期间禁止流式帧重新创建 stable/tail 根或覆盖最终 DOM。
+// value 是本次终态调用的唯一令牌，防止重复调用的 finally 释放其他调用持有的锁。
+const terminalProjectingMessages = new Map();
 
 // --- Local Reference Store ---
 let refs = {};
 let contentPipeline = null;
+let contentRuntime = null;
 let transientCleanupRegistered = false;
+let transientCleanupWindow = null;
+let desktopPushConsumer = null;
+let disposed = false;
+const pendingAsyncOperations = new Set();
+// 活动流的运行态仍在、但当前 Surface 的消息 DOM 丢失时，只允许一个补建任务。
+// 该状态只拥有 UI 投影，不修改 durable/transient history。
+const streamDomRecoveryOperations = new Map();
+const ownedTimeouts = new Set();
+const scheduledAnimationFrames = new Set();
+
+function trackAsyncOperation(operation) {
+    const promise = Promise.resolve(operation);
+    pendingAsyncOperations.add(promise);
+    promise.finally(() => pendingAsyncOperations.delete(promise)).catch(() => {});
+    return promise;
+}
+
+function scheduleOwnedTimeout(callback, delay = 0) {
+    const environment = ownerWindow?.() || globalThis;
+    const set = environment.setTimeout?.bind(environment) || setTimeout;
+    const clear = environment.clearTimeout?.bind(environment) || clearTimeout;
+    const record = { id: null, clear };
+    record.id = set(() => {
+        ownedTimeouts.delete(record);
+        if (!disposed) callback();
+    }, delay);
+    ownedTimeouts.add(record);
+    return record;
+}
+
+function clearOwnedTimeout(record) {
+    if (!record) return;
+    record.clear(record.id);
+    ownedTimeouts.delete(record);
+}
+
+const ownerDocument = () => refs.document || refs.chatMessagesDiv?.ownerDocument || null;
+const ownerWindow = () => refs.window || ownerDocument()?.defaultView || null;
+
+function scheduleAnimationFrame(callback) {
+    if (disposed) return null;
+    const environment = ownerWindow();
+    if (!environment) return null;
+    const entry = { handle: null };
+    const invoke = timestamp => {
+        scheduledAnimationFrames.delete(entry);
+        if (!disposed) callback(timestamp);
+    };
+    if (typeof environment.requestAnimationFrame === 'function') {
+        entry.handle = environment.requestAnimationFrame(invoke);
+        entry.cancel = () => environment.cancelAnimationFrame?.(entry.handle);
+    } else {
+        entry.handle = environment.setTimeout(() => invoke(Date.now()), 0);
+        entry.cancel = () => environment.clearTimeout?.(entry.handle);
+    }
+    scheduledAnimationFrames.add(entry);
+    return entry.handle;
+}
+
+function cancelScheduledAnimationFrame(handle) {
+    if (handle === null || handle === undefined) return;
+    for (const entry of scheduledAnimationFrames) {
+        if (entry.handle !== handle) continue;
+        entry.cancel?.();
+        scheduledAnimationFrames.delete(entry);
+        break;
+    }
+}
+
+function cancelScheduledAnimationFrames() {
+    for (const entry of scheduledAnimationFrames) entry.cancel?.();
+    scheduledAnimationFrames.clear();
+    globalRenderLoopFrameHandle = null;
+}
 
 // --- Pre-compiled Regular Expressions for Performance ---
 
@@ -178,13 +263,25 @@ let transientCleanupRegistered = false;
  * Initializes the Stream Manager with necessary dependencies from the main renderer.
  * @param {object} dependencies - An object containing all required functions and references.
  */
-export function initStreamManager(dependencies) {
+function attachStreamProjection(dependencies) {
+    if (disposed) throw new Error('StreamProjection is disposed');
     refs = dependencies;
+    if (!dependencies?.chatMessagesDiv?.querySelector) {
+        throw new TypeError('StreamProjection requires an owning Surface root');
+    }
+    if (typeof dependencies?.viewAuthority?.isCurrent !== 'function') {
+        throw new TypeError('StreamProjection requires an explicit view authority');
+    }
+    if (!dependencies.transientStreamHistory || typeof dependencies.transientStreamHistory.prepare !== 'function' || typeof dependencies.transientStreamHistory.finalize !== 'function') {
+        throw new TypeError('StreamProjection requires an explicit transient history capability');
+    }
 
     // App 级兜底扫帚：页面卸载时释放孤儿流的预缓冲、上下文映射、桌面推送 interval 等 transient 状态。
     // 不挂到 clearChat，避免切换话题时误伤同窗口内其他 agent 的后台流式聊天。
     if (!transientCleanupRegistered) {
-        window.addEventListener('beforeunload', cleanupTransientState);
+        transientCleanupWindow = dependencies.window || dependencies.chatMessagesDiv?.ownerDocument?.defaultView || null;
+        if (!transientCleanupWindow) throw new TypeError('StreamProjection requires an owning window capability');
+        transientCleanupWindow.addEventListener('beforeunload', dispose);
         transientCleanupRegistered = true;
     }
 
@@ -225,20 +322,24 @@ export function initStreamManager(dependencies) {
             return processedText;
         }
     });
+    contentRuntime = typeof createContentRuntime === 'function'
+        ? createContentRuntime({ pipeline: contentPipeline })
+        : {
+            processStream: (text, options = {}) => contentPipeline.process(text, { ...options, mode: PIPELINE_MODES.STREAM_FAST }),
+            extractChunkText: (chunk) => {
+                if (chunk?.error === 'json_parse_error') return '';
+                return chunk?.choices?.[0]?.delta?.content || chunk?.delta?.content || chunk?.content || (typeof chunk === 'string' ? chunk : '') || (chunk?.raw && !chunk?.error ? chunk.raw : '');
+            }
+        };
 
     // Assume morphdom is passed in dependencies, warn if not present.
     if (!refs.morphdom) {
         console.warn('[StreamManager] `morphdom` not provided. Streaming rendering will fall back to inefficient innerHTML updates.');
     }
 
-    // 监听桌面窗口状态，缓存到本地标志位
-    // 这样在流式推送时就不需要每个token都做IPC查询
-    if (refs.electronAPI?.onDesktopStatus) {
-        refs.electronAPI.onDesktopStatus((data) => {
-            desktopWindowAvailable = !!data.connected;
-            console.log(`[StreamManager] Desktop window availability changed: ${desktopWindowAvailable}`);
-        });
-    }
+    desktopPushConsumer?.dispose();
+    desktopPushConsumer = createDesktopPushConsumer({ electronAPI: refs.electronAPI });
+    desktopPushConsumer.start();
 }
 
 function shouldEnableSmoothStreaming() {
@@ -250,6 +351,15 @@ function messageIsFinalized(messageId) {
     // Don't rely on current history, check accumulated state
     const initStatus = messageInitializationStatus.get(messageId);
     return initStatus === 'finalized';
+}
+
+/**
+ * 判断请求是否仍处于等待首块或流式处理中。
+ * 该 Map 是跨 Agent/话题异步请求的运行态真源，不能只依赖单一的 activeStreamingMessageId。
+ */
+function isMessageActive(messageId) {
+    const initStatus = messageInitializationStatus.get(messageId);
+    return initStatus === 'pending' || initStatus === 'ready';
 }
 
 function isThinkingPlaceholderText(text) {
@@ -272,97 +382,7 @@ function getCurrentViewSignature() {
  */
 function isMessageForCurrentView(context) {
     if (!context) return false;
-    
-    const newSignature = getCurrentViewSignature();
-    
-    // 如果视图切换了，清空缓存
-    if (currentViewSignature !== newSignature) {
-        currentViewSignature = newSignature;
-        viewContextCache.clear();
-    }
-    
-    const currentSelectedItem = refs.currentSelectedItemRef.get();
-    const currentTopicId = refs.currentTopicIdRef.get();
-    
-    if (!currentSelectedItem || !currentTopicId) return false;
-    
-    const itemId = context.groupId || context.agentId;
-    return itemId === currentSelectedItem.id && context.topicId === currentTopicId;
-}
-
-async function getHistoryForContext(context) {
-    const { electronAPI } = refs;
-    if (!context) return null;
-    
-    const { agentId, groupId, topicId, isGroupMessage } = context;
-    const itemId = groupId || agentId;
-    
-    if (!itemId || !topicId) return null;
-    
-    try {
-        const historyResult = isGroupMessage
-            ? await electronAPI.getGroupChatHistory(itemId, topicId)
-            : await electronAPI.getChatHistory(itemId, topicId);
-        
-        if (historyResult && !historyResult.error) {
-            return historyResult;
-        }
-    } catch (e) {
-        console.error(`[StreamManager] Failed to get history for context`, context, e);
-    }
-    
-    return null;
-}
-
-// 🟢 历史保存防抖
-const historySaveQueue = new Map(); // context signature -> {context, history, timerId}
-const HISTORY_SAVE_DEBOUNCE = 1000; // 1秒防抖
-
-async function debouncedSaveHistory(context, history) {
-    if (!context || context.topicId === 'assistant_chat' || context.topicId?.startsWith('voicechat_')) {
-        return; // 跳过临时聊天
-    }
-    
-    const signature = `${context.groupId || context.agentId}-${context.topicId}`;
-    
-    // 清除之前的定时器
-    const existing = historySaveQueue.get(signature);
-    if (existing?.timerId) {
-        clearTimeout(existing.timerId);
-    }
-    
-    // 设置新的防抖定时器
-    const timerId = setTimeout(async () => {
-        const queuedData = historySaveQueue.get(signature);
-        if (queuedData) {
-            await saveHistoryForContext(queuedData.context, queuedData.history);
-            historySaveQueue.delete(signature);
-        }
-    }, HISTORY_SAVE_DEBOUNCE);
-    
-    // 使用最新的 history 克隆以避免引用问题
-    historySaveQueue.set(signature, { context, history: [...history], timerId });
-}
-
-async function saveHistoryForContext(context, history) {
-    const { electronAPI } = refs;
-    if (!context || context.isGroupMessage) {
-        // For group messages, the main process (groupchat.js) is the single source of truth for history.
-        // The renderer avoids saving to prevent race conditions and overwriting the correct history.
-        return;
-    }
-    
-    const { agentId, topicId } = context;
-    
-    if (!agentId || !topicId) return;
-    
-    const historyToSave = history.filter(msg => !msg.isThinking);
-    
-    try {
-        await electronAPI.saveChatHistory(agentId, topicId, historyToSave);
-    } catch (e) {
-        console.error(`[StreamManager] Failed to save history for context`, context, e);
-    }
+    return refs.viewAuthority.isCurrent(context) === true;
 }
 
 /**
@@ -371,11 +391,8 @@ async function saveHistoryForContext(context, history) {
  */
 function applyStreamingPreprocessors(text) {
     if (!text) return '';
-    if (!contentPipeline) return text;
-
-    return contentPipeline.process(text, {
-        mode: PIPELINE_MODES.STREAM_FAST
-    }).text;
+    if (!contentRuntime) return text;
+    return contentRuntime.createRenderModel({ content: text, role: 'assistant' }, { mode: PIPELINE_MODES.STREAM_FAST }).text;
 }
 
 function parseStreamTail(text) {
@@ -402,19 +419,19 @@ function ensureStreamingRoots(contentDiv) {
 
     if (!stableRoot || !tailRoot) {
         contentDiv.innerHTML = '';
-        stableRoot = document.createElement('div');
+        stableRoot = ownerDocument().createElement('div');
         stableRoot.className = 'vcp-stream-stable-root';
-        stableBlocksRoot = document.createElement('div');
+        stableBlocksRoot = ownerDocument().createElement('div');
         stableBlocksRoot.className = 'vcp-stream-stable-blocks-root';
         stableRoot.appendChild(stableBlocksRoot);
-        tailRoot = document.createElement('div');
+        tailRoot = ownerDocument().createElement('div');
         tailRoot.className = 'vcp-stream-tail-root';
         contentDiv.appendChild(stableRoot);
         contentDiv.appendChild(tailRoot);
     } else if (!stableBlocksRoot) {
         // 兼容旧的 stableRoot 结构：后续追加式固化只写入 stableBlocksRoot。
         // 如果 stableRoot 已有旧内容，先原样搬入 blocksRoot，避免切换实现时丢失已渲染 DOM。
-        stableBlocksRoot = document.createElement('div');
+        stableBlocksRoot = ownerDocument().createElement('div');
         stableBlocksRoot.className = 'vcp-stream-stable-blocks-root';
         while (stableRoot.firstChild) {
             stableBlocksRoot.appendChild(stableRoot.firstChild);
@@ -431,8 +448,10 @@ function getOrCreateStreamSegmentState(messageId) {
         state = {
             // 已判定为稳定的源码前缀终点；tail 从这里开始渲染。
             stableCutoff: 0,
-            // 兼容旧路径/调试用：记录最近一次稳定 HTML 片段或前缀。
-            stableHtml: '',
+            // 平滑模式只展示已由队列消费的文本前缀；非平滑模式会直接推进到接收文本末尾。
+            visibleTextLength: 0,
+            // O(1) 维护待展示字符数，避免每帧 reduce 扫描完整队列。
+            queuedChars: 0,
             // 已实际追加固化到 stableBlocksRoot 的源码终点。
             // 下一步切换为追加式固化时，只渲染 [stableRenderedCutoff, stableCutoff)。
             stableRenderedCutoff: 0,
@@ -440,8 +459,7 @@ function getOrCreateStreamSegmentState(messageId) {
             stableBlocks: [],
             stableBlockSeq: 0,
             lastTailText: '',
-            lastParagraphBoundary: 0,
-            burstBubbleCount: 0
+            lastParagraphBoundary: 0
         };
         streamSegmentStates.set(messageId, state);
     }
@@ -464,7 +482,6 @@ function resetStableBlockState(segmentState) {
     segmentState.stableRenderedCutoff = 0;
     segmentState.stableBlocks = [];
     segmentState.stableBlockSeq = 0;
-    segmentState.stableHtml = '';
 }
 
 function appendStableBlockFragment(stableBlocksRoot, segmentState, sourceText, html, options = {}) {
@@ -475,7 +492,7 @@ function appendStableBlockFragment(stableBlocksRoot, segmentState, sourceText, h
         settings = null
     } = options;
 
-    const blockEl = document.createElement('div');
+    const blockEl = ownerDocument().createElement('div');
     const blockRecord = createStableBlockRecord(
         segmentState,
         segmentState.stableRenderedCutoff,
@@ -494,7 +511,6 @@ function appendStableBlockFragment(stableBlocksRoot, segmentState, sourceText, h
     stableBlocksRoot.appendChild(blockEl);
     segmentState.stableBlocks.push(blockRecord);
     segmentState.stableRenderedCutoff = blockRecord.end;
-    segmentState.stableHtml += html || '';
 
     if (typeof refs.renderPostProcessedHtml === 'function') {
         const enrichResult = refs.renderPostProcessedHtml(blockEl, html, {
@@ -502,7 +518,9 @@ function appendStableBlockFragment(stableBlocksRoot, segmentState, sourceText, h
             settings,
             renderSessionId: null,
             runHeavy: true,
-            includeAttachments: false
+            includeAttachments: false,
+            // stable block 在终态会被整树替换，脚本只允许在规范终态执行一次。
+            processScripts: false
         });
         if (enrichResult && typeof enrichResult.catch === 'function') {
             enrichResult.catch(error => console.error('[StreamManager] Stable block enrichment failed:', error));
@@ -523,147 +541,101 @@ function appendNewStableRange(stableBlocksRoot, segmentState, textForRendering, 
         resetStableBlockState(segmentState);
     }
 
-    const appendedBlocks = [];
+    const sourceText = textForRendering.slice(segmentState.stableRenderedCutoff, nextStableCutoff);
+    if (!sourceText) return [];
 
-    while (segmentState.stableRenderedCutoff < nextStableCutoff) {
-        const currentOffset = segmentState.stableRenderedCutoff;
-        const markerIndex = findNextLineOnlyToken(textForRendering, BURST_MARKER_TOKEN, currentOffset);
-        const effectiveMarkerIndex = markerIndex !== -1 && markerIndex < nextStableCutoff ? markerIndex : -1;
-        const sliceEnd = effectiveMarkerIndex === -1 ? nextStableCutoff : effectiveMarkerIndex;
-        const sourceText = textForRendering.slice(currentOffset, sliceEnd);
-
-        if (sourceText) {
-            const html = parseFullStreamContent(sourceText);
-            const blockRecord = appendStableBlockFragment(stableBlocksRoot, segmentState, sourceText, html, options);
-            if (blockRecord) appendedBlocks.push(blockRecord);
-        }
-
-        if (effectiveMarkerIndex === -1) {
-            break;
-        }
-
-        // 独立行 <!--brk--> 作为稳定切点和气泡边界参与源码进度，
-        // 但不渲染进 stable block，避免后续为了分条再解包/搬运已稳定 DOM。
-        segmentState.stableRenderedCutoff = effectiveMarkerIndex + BURST_MARKER_TOKEN.length;
-    }
-
-    return appendedBlocks;
+    const renderSourceText = typeof refs.processAssistantScopedHtmlContent === 'function'
+        ? refs.processAssistantScopedHtmlContent(
+            sourceText,
+            options.scopeId || null,
+            options.messageItem || null,
+            { injectStyles: false }
+        )
+        : sourceText;
+    const html = parseFullStreamContent(renderSourceText);
+    const blockRecord = appendStableBlockFragment(stableBlocksRoot, segmentState, sourceText, html, options);
+    return blockRecord ? [blockRecord] : [];
 }
 
-function unwrapStableBlockContainersForBurst(stableBlocksRoot, segmentState) {
-    if (!stableBlocksRoot) return;
+/**
+ * 切换 Agent/话题会重建消息 DOM，但 streamSegmentStates 会继续保留后台流的稳定区状态。
+ * 此时不能重新解析稳定源码，也不能把 stableRenderedCutoff 误当作“新 DOM 已经渲染”；
+ * 直接从每个 block 缓存的 raw HTML 恢复即可，Markdown/AST 解析次数保持不变。
+ */
+function restoreStableBlocksForRecreatedDom(stableBlocksRoot, segmentState, options = {}) {
+    if (!stableBlocksRoot || segmentState.stableBlocks.length === 0) return false;
 
-    const blockEls = Array.from(stableBlocksRoot.querySelectorAll(':scope > .vcp-stream-stable-block'));
-    if (blockEls.length === 0) return;
+    const recordsAreMountedHere = segmentState.stableBlocks.every((record) => {
+        return record.element?.isConnected && record.element.parentNode === stableBlocksRoot;
+    });
+    if (recordsAreMountedHere) return false;
 
-    for (const blockEl of blockEls) {
-        const parent = blockEl.parentNode;
-        if (!parent) continue;
+    // 当前 root 属于新视图。先一次性清空，避免历史批量渲染与首个流式帧交错时留下半恢复结构。
+    stableBlocksRoot.replaceChildren();
 
-        while (blockEl.firstChild) {
-            parent.insertBefore(blockEl.firstChild, blockEl);
-        }
-        blockEl.remove();
-    }
+    for (const record of segmentState.stableBlocks) {
+    const blockEl = ownerDocument().createElement('div');
+        blockEl.className = 'vcp-stream-stable-block';
+        blockEl.dataset.vcpStreamStableBlock = 'true';
+        blockEl.dataset.vcpBlockKey = record.id;
+        blockEl.dataset.vcpStableStart = String(record.start);
+        blockEl.dataset.vcpStableEnd = String(record.end);
+        stableBlocksRoot.appendChild(blockEl);
+        record.element = blockEl;
 
-    // burst 分条会重排 stable DOM；后续 stable block 继续追加即可，旧 block 元数据不再依赖 element 引用。
-    for (const block of segmentState.stableBlocks) {
-        block.element = null;
-    }
-}
-
-// 分条流式时给尾部根（"正在打字"的下一条）套上头像行，看起来像新消息正在到来。
-// 收尾阶段会整体重渲染 contentDiv，包装行随之消失。
-function ensureBurstTailRow(contentDiv, tailRoot, messageItem) {
-    if (contentDiv.querySelector('.burst-tail-row')) return;
-    const avatar = messageItem ? messageItem.querySelector('img.chat-avatar') : null;
-    const tailRow = document.createElement('div');
-    tailRow.className = 'burst-row burst-tail-row';
-    if (avatar && avatar.src) {
-        const tailAvatar = document.createElement('img');
-        tailAvatar.className = 'burst-avatar';
-        tailAvatar.src = avatar.src;
-        tailAvatar.alt = '';
-        tailRow.appendChild(tailAvatar);
-    }
-    contentDiv.appendChild(tailRow);
-    tailRow.appendChild(tailRoot);
-}
-
-function createBurstAvatarForMessage(messageItem) {
-    const avatar = messageItem ? messageItem.querySelector('img.chat-avatar') : null;
-    if (!avatar || !avatar.src) return null;
-
-    const burstAvatar = document.createElement('img');
-    burstAvatar.className = 'burst-avatar';
-    burstAvatar.src = avatar.src;
-    burstAvatar.alt = '';
-    return burstAvatar;
-}
-
-function promoteStableBlocksToBurstBubbles(stableBlocksRoot, messageItem) {
-    if (!stableBlocksRoot) return [];
-
-    const wrappers = [];
-    const children = Array.from(stableBlocksRoot.children);
-    let existingBubbleCount = 0;
-
-    for (const child of children) {
-        if (child.classList.contains('burst-row') || child.classList.contains('burst-bubble')) {
-            existingBubbleCount += 1;
-            wrappers.push(child);
+        if (typeof refs.renderPostProcessedHtml === 'function') {
+            const enrichResult = refs.renderPostProcessedHtml(blockEl, record.html, {
+                messageId: options.messageId || null,
+                settings: options.settings || null,
+                renderSessionId: null,
+                runHeavy: true,
+                includeAttachments: false,
+                processScripts: false
+            });
+            if (enrichResult && typeof enrichResult.catch === 'function') {
+                enrichResult.catch(error => console.error('[StreamManager] Restored stable block enrichment failed:', error));
+            }
+        } else {
+            blockEl.innerHTML = record.html;
         }
     }
 
-    const blockEls = children.filter((child) => (
-        child.classList.contains('vcp-stream-stable-block')
-        && child.dataset.vcpBurstWrapped !== 'true'
-    ));
-
-    for (const blockEl of blockEls) {
-        blockEl.dataset.vcpBurstWrapped = 'true';
-        blockEl.classList.add('burst-bubble');
-
-        if (existingBubbleCount === 0) {
-            wrappers.push(blockEl);
-            existingBubbleCount += 1;
-            continue;
-        }
-
-        const row = document.createElement('div');
-        row.className = 'burst-row';
-        const burstAvatar = createBurstAvatarForMessage(messageItem);
-        if (burstAvatar) row.appendChild(burstAvatar);
-        stableBlocksRoot.insertBefore(row, blockEl);
-        row.appendChild(blockEl);
-        wrappers.push(row);
-        existingBubbleCount += 1;
-    }
-
-    return wrappers;
+    return true;
 }
 
 function startsWithAt(text, index, token) {
     return text.startsWith(token, index);
 }
+function findFenceOpeningAt(text, startIndex) {
+    const lineStart = startIndex === 0 ? 0 : text.lastIndexOf('\n', startIndex - 1) + 1;
+    const prefix = text.slice(lineStart, startIndex);
+    if (!/^[ \t]{0,3}$/.test(prefix)) return null;
+    const match = text.slice(startIndex).match(/^(`{3,}|~{3,})([^\n]*)/);
+    if (!match) return null;
+    return { markerChar: match[1][0], markerLength: match[1].length };
+}
 
 function findMatchingFenceEnd(text, startIndex) {
+    const opening = findFenceOpeningAt(text, startIndex);
+    if (!opening) return -1;
     const openEnd = text.indexOf('\n', startIndex);
     if (openEnd === -1) return -1;
 
-    let searchIndex = openEnd + 1;
-    while (searchIndex < text.length) {
-        const closeIndex = text.indexOf(CODE_FENCE, searchIndex);
-        if (closeIndex === -1) return -1;
-
-        const lineStart = closeIndex === 0 ? 0 : text.lastIndexOf('\n', closeIndex - 1) + 1;
-        const prefix = text.slice(lineStart, closeIndex);
-        if (prefix.trim() === '') {
-            const lineEnd = text.indexOf('\n', closeIndex);
-            return lineEnd === -1 ? text.length : lineEnd + 1;
+    let lineStart = openEnd + 1;
+    while (lineStart <= text.length) {
+        const lineEndIndex = text.indexOf('\n', lineStart);
+        const lineEnd = lineEndIndex === -1 ? text.length : lineEndIndex;
+        const line = text.slice(lineStart, lineEnd);
+        const closeMatch = line.match(/^[ \t]{0,3}(`{3,}|~{3,})[ \t]*$/);
+        if (
+            closeMatch &&
+            closeMatch[1][0] === opening.markerChar &&
+            closeMatch[1].length >= opening.markerLength
+        ) {
+            return lineEndIndex === -1 ? text.length : lineEndIndex + 1;
         }
-
-        searchIndex = closeIndex + CODE_FENCE.length;
+        if (lineEndIndex === -1) break;
+        lineStart = lineEndIndex + 1;
     }
 
     return -1;
@@ -678,78 +650,75 @@ function isLineOnlyToken(text, tokenStart, tokenLength) {
 
     return before.trim() === '' && after.trim() === '';
 }
-
-function findNextLineOnlyToken(text, token, startOffset = 0) {
-    let index = Math.max(0, startOffset);
-    while (index < text.length) {
-        const tokenIndex = text.indexOf(token, index);
-        if (tokenIndex === -1) return -1;
-        if (isLineOnlyToken(text, tokenIndex, token.length)) return tokenIndex;
-        index = tokenIndex + token.length;
-    }
-    return -1;
-}
-
-function hasLineOnlyToken(text, token) {
-    return findNextLineOnlyToken(text, token, 0) !== -1;
-}
-
-function findDisplayMathBlockEnd(text, startIndex, delimiter) {
-    if (!isLineOnlyToken(text, startIndex, delimiter.length)) {
+function findDisplayMathBlockEnd(text, startIndex, openDelimiter, closeDelimiter = openDelimiter) {
+    if (!isLineOnlyToken(text, startIndex, openDelimiter.length)) {
         return -1;
     }
 
-    let searchIndex = startIndex + delimiter.length;
+    let searchIndex = startIndex + openDelimiter.length;
     while (searchIndex < text.length) {
-        const closeIndex = text.indexOf(delimiter, searchIndex);
+        const closeIndex = text.indexOf(closeDelimiter, searchIndex);
         if (closeIndex === -1) return -1;
 
-        if (isLineOnlyToken(text, closeIndex, delimiter.length)) {
-            const lineEnd = text.indexOf('\n', closeIndex + delimiter.length);
+        if (isLineOnlyToken(text, closeIndex, closeDelimiter.length)) {
+            const lineEnd = text.indexOf('\n', closeIndex + closeDelimiter.length);
             return lineEnd === -1 ? text.length : lineEnd + 1;
         }
 
-        searchIndex = closeIndex + delimiter.length;
+        searchIndex = closeIndex + closeDelimiter.length;
     }
 
     return -1;
 }
 
-function findConventionalThinkEnd(text, startIndex) {
-    THINK_END_REGEX.lastIndex = startIndex;
-    const match = THINK_END_REGEX.exec(text);
-    THINK_END_REGEX.lastIndex = 0;
+function findLineDelimitedBlockEnd(text, startIndex, endRegex) {
+    endRegex.lastIndex = startIndex;
+    const match = endRegex.exec(text);
+    endRegex.lastIndex = 0;
     return match ? match.index + match[0].length : -1;
 }
 
-function findConventionalThinkStart(text, startIndex) {
-    THINK_START_REGEX.lastIndex = startIndex;
-    const match = THINK_START_REGEX.exec(text);
-    THINK_START_REGEX.lastIndex = 0;
+function findLineDelimitedBlockStart(text, startIndex, startRegex) {
+    startRegex.lastIndex = startIndex;
+    const match = startRegex.exec(text);
+    startRegex.lastIndex = 0;
     return match ? match.index : -1;
 }
 
+function findConventionalThinkEnd(text, startIndex) {
+    return findLineDelimitedBlockEnd(text, startIndex, THINK_END_REGEX);
+}
+
+function findConventionalThinkStart(text, startIndex) {
+    return findLineDelimitedBlockStart(text, startIndex, THINK_START_REGEX);
+}
+
+function findThoughtChainEnd(text, startIndex) {
+    return findLineDelimitedBlockEnd(text, startIndex, THOUGHT_CHAIN_END_LINE_REGEX);
+}
+
+function findThoughtChainStart(text, startIndex) {
+    return findLineDelimitedBlockStart(text, startIndex, THOUGHT_CHAIN_START_LINE_REGEX);
+}
 function findParagraphStableCutoff(text, floorOffset) {
-    const boundaries = [];
+    const recentBoundaries = [];
+    const retainedBoundaryCount = STREAM_PARAGRAPH_SAFETY_BLOCKS + 1;
     let searchIndex = Math.max(0, floorOffset);
 
     while (searchIndex < text.length) {
         const boundaryIndex = text.indexOf('\n\n', searchIndex);
         if (boundaryIndex === -1) break;
-
         const cutoff = boundaryIndex + 2;
         if (cutoff > floorOffset) {
-            boundaries.push(cutoff);
+            recentBoundaries.push(cutoff);
+            if (recentBoundaries.length > retainedBoundaryCount) recentBoundaries.shift();
         }
-
         searchIndex = cutoff;
     }
 
-    if (boundaries.length <= STREAM_PARAGRAPH_SAFETY_BLOCKS) {
-        return floorOffset;
-    }
-
-    return boundaries[boundaries.length - 1 - STREAM_PARAGRAPH_SAFETY_BLOCKS];
+    return recentBoundaries.length < retainedBoundaryCount
+        ? floorOffset
+        : recentBoundaries[0];
 }
 
 function findHtmlTagEnd(text, tagStart) {
@@ -926,18 +895,41 @@ function scanBareDivIslandEnd(text, startIndex) {
     return { end: -1, blocked: true };
 }
 
-function findBareDivIslandStableCutoff(text, startOffset = 0) {
+function findBareDivIslandStableCutoff(text, startOffset = 0, codeDomains = []) {
     if (typeof text !== 'string') {
         return { cutoff: startOffset, blocked: false };
     }
 
     let index = Math.max(0, startOffset);
     let cutoff = startOffset;
+    let codeDomainIndex = 0;
+
+    while (codeDomainIndex < codeDomains.length && codeDomains[codeDomainIndex].end <= index) {
+        codeDomainIndex += 1;
+    }
 
     while (index < text.length) {
         const tagStart = text.indexOf('<', index);
         if (tagStart === -1) {
             break;
+        }
+
+        while (
+            codeDomainIndex < codeDomains.length
+            && codeDomains[codeDomainIndex].end <= tagStart
+        ) {
+            codeDomainIndex += 1;
+        }
+        const containingCodeDomain = codeDomains[codeDomainIndex];
+        if (
+            containingCodeDomain
+            && tagStart >= containingCodeDomain.start
+            && tagStart < containingCodeDomain.end
+        ) {
+            // Markdown code 域中的 <div>/<style>/<script> 都只是字面量，
+            // 不得进入 HTML 岛标签栈或触发递归闭合扫描。
+            index = containingCodeDomain.end;
+            continue;
         }
 
         if (startsWithAt(text, tagStart, '<!--')) {
@@ -984,6 +976,19 @@ function hasLikelyUnclosedHtmlIsland(text, startOffset = 0) {
     return findBareDivIslandStableCutoff(text, startOffset).blocked;
 }
 
+function findToolRequestBlockEnd(text, startIndex) {
+    const contentStart = startIndex + TOOL_REQUEST_START.length;
+
+    // 与完整渲染共享 ESCAPE 感知扫描器：工具参数中的「始ESCAPE」...「末ESCAPE」
+    // 可能包含结束标记文本，不能用简单 indexOf 提前截断请求。
+    if (typeof refs.findToolRequestEnd === 'function') {
+        return refs.findToolRequestEnd(text, contentStart);
+    }
+
+    const endIndex = text.indexOf(TOOL_REQUEST_END, contentStart);
+    return endIndex === -1 ? -1 : endIndex + TOOL_REQUEST_END.length;
+}
+
 function findRoleDividerSectionEnd(text, startIndex) {
     ROLE_DIVIDER_REGEX.lastIndex = startIndex;
     const startMatch = ROLE_DIVIDER_REGEX.exec(text);
@@ -1004,9 +1009,40 @@ function findExplicitStablePrefix(text, startOffset = 0) {
     let stableCutoff = startOffset;
     let paragraphFloor = startOffset;
     let blockedByUnclosedExplicitBlock = false;
+    const codeDomains = collectMarkdownCodeDomains(text, {
+        includeUnclosedInline: true,
+    });
+    let codeDomainIndex = 0;
+
+    while (codeDomainIndex < codeDomains.length && codeDomains[codeDomainIndex].end <= index) {
+        codeDomainIndex += 1;
+    }
 
     while (index < text.length) {
-        if (startsWithAt(text, index, CODE_FENCE)) {
+        while (
+            codeDomainIndex < codeDomains.length
+            && codeDomains[codeDomainIndex].end <= index
+        ) {
+            codeDomainIndex += 1;
+        }
+        const codeDomain = codeDomains[codeDomainIndex];
+        if (codeDomain && index >= codeDomain.start && index < codeDomain.end) {
+            if (!codeDomain.closed) {
+                // 流式未闭合代码域拥有当前 tail。其内部任何 HTML/VCP 标记都只是
+                // 尚未完成的代码字面量，不能据此产生 stable 副作用。
+                blockedByUnclosedExplicitBlock = true;
+                break;
+            }
+            if (codeDomain.kind === 'fence') {
+                stableCutoff = Math.max(stableCutoff, codeDomain.end);
+                paragraphFloor = Math.max(paragraphFloor, codeDomain.end);
+            }
+            index = codeDomain.end;
+            codeDomainIndex += 1;
+            continue;
+        }
+
+        if ((text[index] === '`' || text[index] === '~') && findFenceOpeningAt(text, index)) {
             const fenceEnd = findMatchingFenceEnd(text, index);
             if (fenceEnd === -1) {
                 blockedByUnclosedExplicitBlock = true;
@@ -1031,7 +1067,7 @@ function findExplicitStablePrefix(text, startOffset = 0) {
         }
 
         if (startsWithAt(text, index, '\\[') && isLineOnlyToken(text, index, 2)) {
-            const mathEnd = findDisplayMathBlockEnd(text, index, '\\]');
+            const mathEnd = findDisplayMathBlockEnd(text, index, '\\[', '\\]');
             if (mathEnd === -1) {
                 blockedByUnclosedExplicitBlock = true;
                 break;
@@ -1043,12 +1079,12 @@ function findExplicitStablePrefix(text, startOffset = 0) {
         }
 
         if (startsWithAt(text, index, TOOL_REQUEST_START)) {
-            const endIndex = text.indexOf(TOOL_REQUEST_END, index + TOOL_REQUEST_START.length);
-            if (endIndex === -1) {
+            const requestEnd = findToolRequestBlockEnd(text, index);
+            if (requestEnd === -1) {
                 blockedByUnclosedExplicitBlock = true;
                 break;
             }
-            stableCutoff = endIndex + TOOL_REQUEST_END.length;
+            stableCutoff = requestEnd;
             paragraphFloor = stableCutoff;
             index = stableCutoff;
             continue;
@@ -1102,15 +1138,16 @@ function findExplicitStablePrefix(text, startOffset = 0) {
             continue;
         }
 
-        if (startsWithAt(text, index, THOUGHT_CHAIN_START)) {
-            const endIndex = text.indexOf(THOUGHT_CHAIN_END, index + THOUGHT_CHAIN_START.length);
-            if (endIndex === -1) {
+        const thoughtChainStart = findThoughtChainStart(text, index);
+        if (thoughtChainStart === index) {
+            const thoughtChainEnd = findThoughtChainEnd(text, index);
+            if (thoughtChainEnd === -1) {
                 blockedByUnclosedExplicitBlock = true;
                 break;
             }
-            stableCutoff = endIndex + THOUGHT_CHAIN_END.length;
-            paragraphFloor = stableCutoff;
-            index = stableCutoff;
+            stableCutoff = thoughtChainEnd;
+            paragraphFloor = thoughtChainEnd;
+            index = thoughtChainEnd;
             continue;
         }
 
@@ -1123,17 +1160,6 @@ function findExplicitStablePrefix(text, startOffset = 0) {
             stableCutoff = endIndex + DAILY_NOTE_END.length;
             paragraphFloor = stableCutoff;
             index = stableCutoff;
-            continue;
-        }
-
-        if (startsWithAt(text, index, BURST_MARKER_TOKEN)) {
-            if (isLineOnlyToken(text, index, BURST_MARKER_TOKEN.length)) {
-                // 只有独立行的 <!--brk--> 才是 OpenHerPersona 分条触发器；
-                // 行内出现的注释只按普通 Markdown/HTML 内容处理，避免误切分。
-                stableCutoff = index + BURST_MARKER_TOKEN.length;
-                paragraphFloor = stableCutoff;
-            }
-            index += BURST_MARKER_TOKEN.length;
             continue;
         }
 
@@ -1168,7 +1194,7 @@ function findExplicitStablePrefix(text, startOffset = 0) {
         return stableCutoff;
     }
 
-    const divIslandResult = findBareDivIslandStableCutoff(text, paragraphFloor);
+    const divIslandResult = findBareDivIslandStableCutoff(text, paragraphFloor, codeDomains);
     if (divIslandResult.cutoff > stableCutoff) {
         stableCutoff = divIslandResult.cutoff;
         paragraphFloor = divIslandResult.cutoff;
@@ -1187,7 +1213,7 @@ function findExplicitStablePrefix(text, startOffset = 0) {
  */
 function getCachedMessageDom(messageId) {
     let cached = messageDomCache.get(messageId);
-    
+
     if (cached) {
         // 验证缓存是否仍然有效（元素还在 DOM 中）
         if (cached.messageItem.isConnected) {
@@ -1196,20 +1222,119 @@ function getCachedMessageDom(messageId) {
         // 缓存失效，删除
         messageDomCache.delete(messageId);
     }
-    
+
     // 重新查询并缓存
-    const { chatMessagesDiv } = refs;
-    const messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
-    
+    const messageItem = refs.chatMessagesDiv?.querySelector?.(`.message-item[data-message-id="${messageId}"]`);
+
     if (!messageItem) return null;
-    
+
     const contentDiv = messageItem.querySelector('.md-content');
     if (!contentDiv) return null;
-    
+
     cached = { messageItem, contentDiv };
     messageDomCache.set(messageId, cached);
-    
+
     return cached;
+}
+
+function requestStreamDomRecovery(messageId) {
+    const recoveryKey = String(messageId);
+    const existingRecovery = streamDomRecoveryOperations.get(recoveryKey);
+    if (existingRecovery) return existingRecovery;
+
+    const context = messageContextMap.get(messageId);
+    const streamMessageModel = streamMessageModels.get(messageId);
+    const expectedRuntimeKey = messageRuntimeKeys.get(recoveryKey);
+    if (
+        disposed
+        || !context
+        || !streamMessageModel
+        || !expectedRuntimeKey
+        || !isMessageActive(messageId)
+        || !isMessageForCurrentView(context)
+        || terminalProjectingMessages.has(recoveryKey)
+    ) {
+        return null;
+    }
+
+    const recovery = (async () => {
+        // 历史加载或其他投影可能已经在本微任务开始前恢复了节点。
+        const alreadyRestored = getCachedMessageDom(messageId);
+        if (alreadyRestored) return alreadyRestored.messageItem;
+
+        const accumulatedText = accumulatedStreamText.get(messageId) || '';
+        const hasVisibleContent = accumulatedText.trim() !== '';
+        const recoveryMessage = {
+            ...streamMessageModel,
+            ...context,
+            id: messageId,
+            content: hasVisibleContent ? accumulatedText : (streamMessageModel.content || '思考中...'),
+            isThinking: !hasVisibleContent,
+            timestamp: streamMessageModel.timestamp || Date.now(),
+            streamOperationId: context.streamOperationId || streamMessageModel.streamOperationId || null,
+        };
+        const render = refs.chatDomRenderer?.renderMessage
+            ? refs.chatDomRenderer.renderMessage.bind(refs.chatDomRenderer)
+            : refs.renderMessage;
+        if (typeof render !== 'function') return null;
+
+        const recoveredItem = await render(recoveryMessage, false);
+        const stillOwnsRecovery = (
+            !disposed
+            && messageRuntimeKeys.get(recoveryKey) === expectedRuntimeKey
+            && isMessageActive(messageId)
+            && isMessageForCurrentView(messageContextMap.get(messageId) || context)
+            && !terminalProjectingMessages.has(recoveryKey)
+        );
+
+        if (!stillOwnsRecovery) {
+            // 异步补建期间发生导航、重试或终态切换；该任务不再拥有当前投影。
+            recoveredItem?.remove?.();
+            messageDomCache.delete(messageId);
+            return null;
+        }
+
+        // 补建期间历史批次也可能投影同一个活动消息。以补建返回节点为优先，
+        // 否则采用最后一个（最新楼层）节点，并原子移除其余副本。这样后续
+        // stable/tail 恢复始终只绑定一个外层气泡，不会散落到历史上方。
+        const matchingItems = Array.from(
+            refs.chatMessagesDiv?.querySelectorAll?.(`.message-item[data-message-id="${messageId}"]`) || []
+        );
+        const messageItem = recoveredItem?.isConnected
+            ? recoveredItem
+            : matchingItems.at(-1);
+        if (!messageItem) return null;
+
+        for (const duplicate of matchingItems) {
+            if (duplicate !== messageItem) duplicate.remove();
+        }
+
+        const contentDiv = messageItem.querySelector?.('.md-content');
+        if (!contentDiv) return null;
+
+        messageItem.classList.add('streaming');
+        messageItem.classList.toggle('thinking', !hasVisibleContent);
+        messageDomCache.set(messageId, { messageItem, contentDiv });
+        return messageItem;
+    })();
+
+    const trackedRecovery = trackAsyncOperation(recovery);
+    streamDomRecoveryOperations.set(recoveryKey, trackedRecovery);
+    trackedRecovery
+        .then(messageItem => {
+            if (messageItem?.isConnected && !terminalProjectingMessages.has(recoveryKey)) {
+                renderStreamFrame(messageId);
+            }
+        })
+        .catch(error => {
+            console.error(`[StreamManager] Failed to recover stream DOM for ${messageId}:`, error);
+        })
+        .finally(() => {
+            if (streamDomRecoveryOperations.get(recoveryKey) === trackedRecovery) {
+                streamDomRecoveryOperations.delete(recoveryKey);
+            }
+        });
+    return trackedRecovery;
 }
 
 /**
@@ -1223,7 +1348,7 @@ function setupEmoticonHandlers(img) {
         this.onload = null;
         this.onerror = null;
     };
-    
+
     img.onerror = function() {
         // If a fix was already attempted, make it visible (as a broken image) and stop.
         if (this.dataset.emoticonFixAttempted === 'true') {
@@ -1233,7 +1358,7 @@ function setupEmoticonHandlers(img) {
             return;
         }
         this.dataset.emoticonFixAttempted = 'true';
-        
+
         const fixedSrc = refs.emoticonUrlFixer.fixEmoticonUrl(this.src);
         if (fixedSrc !== this.src) {
             this.src = fixedSrc; // This will re-trigger either onload or onerror
@@ -1263,88 +1388,264 @@ function processStreamTailImages(container) {
     });
 }
 
+function highlightCompletedStreamingCodeLine(lineElement) {
+    if (!lineElement || lineElement.dataset.vcpStreamCodeHighlighted === 'true') return;
+    const syntaxHighlighter = refs.hljs || ownerWindow()?.hljs;
+    if (!syntaxHighlighter) return;
+
+    const codeElement = lineElement.closest('code');
+    const languageClass = codeElement
+        ? Array.from(codeElement.classList).find(className => className.startsWith('language-'))
+        : '';
+    const language = languageClass ? languageClass.slice('language-'.length) : '';
+    const lineText = lineElement.textContent === '\u200b'
+        ? ''
+        : (lineElement.textContent || '');
+
+    try {
+        let highlightedHtml = '';
+
+        if (lineText && language && syntaxHighlighter.getLanguage?.(language)) {
+            highlightedHtml = syntaxHighlighter.highlight(lineText, {
+                language,
+                ignoreIllegals: true
+            }).value;
+        } else if (lineText) {
+            // 没有语言标记时也只在该行完成时自动检测一次，而不是每帧重复检测。
+            highlightedHtml = syntaxHighlighter.highlightAuto(lineText).value;
+        }
+
+        if (highlightedHtml) {
+            lineElement.innerHTML = highlightedHtml;
+        }
+
+        lineElement.dataset.vcpStreamCodeHighlighted = 'true';
+    } catch (error) {
+        // 高亮失败不影响流式显示；仍标记为已尝试，避免每帧重复抛错。
+        lineElement.dataset.vcpStreamCodeHighlighted = 'true';
+    }
+}
+
+function playStreamingCodeLineSweep(lineElement, delayMs = 0) {
+    if (!lineElement || typeof lineElement.animate !== 'function') return;
+    if (ownerWindow()?.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+
+    const isLightTheme = ownerDocument()?.body?.classList.contains('light-theme');
+    const baseColor = isLightTheme ? '#333333' : '#abb2bf';
+    const colorSweep = isLightTheme
+        ? `linear-gradient(90deg, transparent 0%, transparent 24%, #0077b6 37%, #6f42c1 46%, #d63384 54%, #b26a00 63%, #238636 70%, transparent 82%, transparent 100%)`
+        : `linear-gradient(90deg, transparent 0%, transparent 24%, #61dafb 37%, #c678dd 46%, #ff79c6 54%, #e5c07b 63%, #98c379 70%, transparent 82%, transparent 100%)`;
+    const baseLayer = `linear-gradient(${baseColor}, ${baseColor})`;
+
+    // 双层文字背景：彩色层移动，基色层始终铺满文字。
+    // 不使用 background-color，避免 Chromium 在嵌套 hljs span 上短暂绘制矩形色块。
+    lineElement.style.backgroundImage = `${colorSweep}, ${baseLayer}`;
+    lineElement.style.backgroundSize = '210% 100%, 100% 100%';
+    lineElement.style.backgroundRepeat = 'no-repeat, no-repeat';
+    lineElement.classList.add('vcp-stream-code-line--sweeping');
+    lineElement.style.webkitBackgroundClip = 'text';
+    lineElement.style.backgroundClip = 'text';
+    lineElement.style.webkitTextFillColor = 'transparent';
+    lineElement.style.color = 'transparent';
+
+    const animation = lineElement.animate([
+        { backgroundPosition: '110% 50%, 0 0' },
+        { backgroundPosition: '78% 50%, 0 0', offset: 0.16 },
+        { backgroundPosition: '52% 50%, 0 0', offset: 0.36 },
+        { backgroundPosition: '18% 50%, 0 0', offset: 0.64 },
+        { backgroundPosition: '-12% 50%, 0 0', offset: 0.84 },
+        { backgroundPosition: '-45% 50%, 0 0' }
+    ], {
+        duration: STREAM_CODE_LINE_SWEEP_DURATION_MS,
+        delay: delayMs,
+        easing: 'cubic-bezier(0.22, 0.61, 0.36, 1)',
+        fill: 'both'
+    });
+
+    animation.addEventListener('finish', () => {
+        if (!lineElement.isConnected) return;
+        lineElement.style.removeProperty('background-image');
+        lineElement.style.removeProperty('background-size');
+        lineElement.style.removeProperty('background-repeat');
+        lineElement.style.removeProperty('-webkit-background-clip');
+        lineElement.style.removeProperty('background-clip');
+        lineElement.style.removeProperty('-webkit-text-fill-color');
+        lineElement.style.removeProperty('color');
+        lineElement.classList.remove('vcp-stream-code-line--sweeping');
+    }, { once: true });
+}
+
+/**
+ * 只处理刚由“输入中”变为“已完成”的稳定行节点。
+ * 行 DOM 已由 parseStreamTailMarkdown 生成并由 morphdom 按 key 复用，这里不再重建 DOM 或运行 hljs。
+ */
+function decorateStreamingCodeLines(container) {
+    if (!container) return;
+
+    const newCompletedLines = Array.from(container.querySelectorAll(
+        '.vcp-stream-code-line[data-vcp-stream-code-completed="true"]:not([data-vcp-stream-code-animated="true"])'
+    ));
+
+    if (newCompletedLines.length === 0) return;
+
+    // 每条新完成行只执行一次语法高亮，并保留其高亮子树。
+    // 所有行立即标记为已处理；突发大块只动画最新几行，避免同时创建大量长动画。
+    newCompletedLines.forEach(lineElement => {
+        highlightCompletedStreamingCodeLine(lineElement);
+        lineElement.dataset.vcpStreamCodeAnimated = 'true';
+    });
+
+    const linesToAnimate = newCompletedLines.slice(-STREAM_CODE_MAX_ACTIVE_SWEEPS);
+
+    // 输出速度很快时，结束更旧的扫光并立即露出其语法色，避免动画队列落后于代码。
+    const activeSweeps = Array.from(container.querySelectorAll('.vcp-stream-code-line--sweeping'));
+    const excessActiveCount = Math.max(
+        0,
+        activeSweeps.length + linesToAnimate.length - STREAM_CODE_MAX_ACTIVE_SWEEPS
+    );
+    activeSweeps.slice(0, excessActiveCount).forEach(lineElement => {
+        lineElement.getAnimations().forEach(animation => animation.finish());
+    });
+
+    // 不再逐行延迟；所有本帧新完成行立即开始，最多并发三条。
+    linesToAnimate.forEach(lineElement => {
+        playStreamingCodeLineSweep(lineElement, 0);
+    });
+}
+
+function ensureStreamMessageAtFinalFloor(messageItem) {
+    const root = refs.chatMessagesDiv;
+    if (!messageItem?.isConnected || messageItem.parentNode !== root) return;
+
+    // 话题时间气泡不是消息楼层；活动 assistant 流必须位于所有已投影
+    // message-item 之后。历史渐进批次可能在任意异步边界继续挂载，
+    // 因此每个有效流帧都重新声明这一顺序不变量。
+    let following = messageItem.nextElementSibling;
+    while (following && !following.classList?.contains('message-item')) {
+        following = following.nextElementSibling;
+    }
+    if (following) root.appendChild(messageItem);
+}
+
 /**
  * Renders a single frame of the streaming message using morphdom for efficient DOM updates.
  * This version performs minimal processing to keep it fast and avoid destroying JS state.
  * @param {string} messageId The ID of the message.
  */
 function renderStreamFrame(messageId) {
+    if (terminalProjectingMessages.has(String(messageId))) return;
+
+    // 导航会改变整个 Surface 的投影权威。签名变化时统一失效缓存，
+    // 避免后台流在 reconcile 前沿用旧话题命中结果写入当前 root。
+    const nextViewSignature = getCurrentViewSignature();
+    if (currentViewSignature !== nextViewSignature) {
+        currentViewSignature = nextViewSignature;
+        viewContextCache.clear();
+    }
+
     // 🟢 优先使用缓存
     let isForCurrentView = viewContextCache.get(messageId);
-    
+
     // 如果没有缓存（可能是旧消息），回退到实时检查
     if (isForCurrentView === undefined) {
         const context = messageContextMap.get(messageId);
         isForCurrentView = isMessageForCurrentView(context);
         viewContextCache.set(messageId, isForCurrentView);
     }
-    
+
     if (!isForCurrentView) return;
 
-    // 🟢 使用缓存的 DOM 引用
+    // 🟢 使用缓存的 DOM 引用。活动流属于当前视图但 DOM 丢失时，
+    // 启动单实例异步补建；后续网络块不必等待导航或刷新才能重新出现。
     const cachedDom = getCachedMessageDom(messageId);
-    if (!cachedDom) return;
+    if (!cachedDom) {
+        requestStreamDomRecovery(messageId);
+        return;
+    }
 
     const { contentDiv, messageItem } = cachedDom;
-    const { stableRoot, stableBlocksRoot, tailRoot } = ensureStreamingRoots(contentDiv);
+    ensureStreamMessageAtFinalFloor(messageItem);
+    const receivedText = accumulatedStreamText.get(messageId) || "";
     const segmentState = getOrCreateStreamSegmentState(messageId);
+    const visibleTextLength = shouldEnableSmoothStreaming()
+        ? Math.min(receivedText.length, Math.max(0, segmentState.visibleTextLength))
+        : receivedText.length;
+    const textForRendering = receivedText.slice(0, visibleTextLength);
 
-    const textForRendering = accumulatedStreamText.get(messageId) || "";
-    let nextStableCutoff = findExplicitStablePrefix(textForRendering, segmentState.stableCutoff);
-
-    // burst 流式开始后，stable 区只在下一个独立行 brk 到达时继续推进。
-    // 否则普通段落 stable 会把“正在打字的当前气泡”提前固化成新的 stable block，
-    // 再被原子提升为独立气泡，表现为“所有 stable 都自动分成气泡”。
-    if ((segmentState.burstBubbleCount > 0 || contentDiv.classList.contains('burst-streaming'))
-        && nextStableCutoff > segmentState.stableCutoff
-        && !hasLineOnlyToken(textForRendering.slice(segmentState.stableCutoff, nextStableCutoff), BURST_MARKER_TOKEN)) {
-        nextStableCutoff = segmentState.stableCutoff;
+    // 等待首个可见 token 时，“思考中”是活动流的规范投影，不能为了建立
+    // 空 stable/tail 根而清空它。切回会话及高速切换后的 reconcile 都会
+    // 经过这里，因此必须在任何 innerHTML 替换之前短路。
+    if (textForRendering.trim() === '') {
+        let thinkingIndicator = contentDiv.querySelector('.thinking-indicator');
+        if (!thinkingIndicator) {
+            contentDiv.replaceChildren();
+            thinkingIndicator = ownerDocument().createElement('span');
+            thinkingIndicator.className = 'thinking-indicator';
+            thinkingIndicator.append('思考中');
+            const dots = ownerDocument().createElement('span');
+            dots.className = 'thinking-indicator-dots';
+            dots.textContent = '...';
+            thinkingIndicator.appendChild(dots);
+            contentDiv.appendChild(thinkingIndicator);
+        }
+        messageItem.classList.add('streaming', 'thinking');
+        return;
     }
+
+    messageItem.classList.add('streaming');
+    messageItem.classList.remove('thinking');
+    const { stableRoot, stableBlocksRoot, tailRoot } = ensureStreamingRoots(contentDiv);
+    const streamMessageModel = streamMessageModels.get(messageId);
+    const streamRenderOptions = {
+        messageId,
+        settings: refs.globalSettingsRef?.get?.(),
+        messageRole: streamMessageModel?.role || 'assistant',
+        depth: Number.isFinite(streamMessageModel?.depth) ? streamMessageModel.depth : 0,
+        scopeId: messageItem.id || null,
+        messageItem
+    };
+
+    // 切回仍在流式输出的会话时，消息 DOM 已重建而稳定区状态仍在。
+    // 在计算/追加新稳定范围前恢复旧 blocks，避免只看得到新的 tail。
+    restoreStableBlocksForRecreatedDom(stableBlocksRoot, segmentState, streamRenderOptions);
+
+    // 消息级 CSS 必须基于完整可见源码统一重算。稳定块与 tail 随后只剥离
+    // 各自片段里的 style，不再分别覆盖同一个消息 scope 样式节点。
+    if (typeof refs.processAssistantScopedHtmlContent === 'function') {
+        refs.processAssistantScopedHtmlContent(
+            textForRendering,
+            streamRenderOptions.scopeId,
+            streamRenderOptions.messageItem
+        );
+    }
+
+    const nextStableCutoff = findExplicitStablePrefix(textForRendering, segmentState.stableCutoff);
 
     // 移除思考指示器
     const streamingIndicator = contentDiv.querySelector('.streaming-indicator, .thinking-indicator');
     if (streamingIndicator) streamingIndicator.remove();
 
     if (nextStableCutoff > segmentState.stableCutoff) {
-        const stableText = textForRendering.slice(0, nextStableCutoff);
-        const newStableText = textForRendering.slice(segmentState.stableRenderedCutoff, nextStableCutoff);
-        const hasBurstMarkerInStable = hasLineOnlyToken(stableText, BURST_MARKER_TOKEN);
-        const hasBurstMarkerInNewStable = hasLineOnlyToken(newStableText, BURST_MARKER_TOKEN);
         segmentState.stableCutoff = nextStableCutoff;
-
-        appendNewStableRange(stableBlocksRoot, segmentState, textForRendering, nextStableCutoff, {
-            messageId,
-            settings: refs.globalSettingsRef?.get?.()
-        });
-
-        // OpenHerPersona 聊天分条：一旦稳定区出现 brk，立即进入 burst-streaming。
-        // 流式路径不再解包已稳定 DOM，也不再对 stableBlocksRoot 做全量 split；
-        // 而是按独立行 brk 在源码层切分 stable block，并把每个 stable block 原子提升为气泡。
-        // 这样避免 stable -> burst 之间的 live DOM 拆包/重包中间态，降低透明闪烁和复杂后处理节点抖动。
-        try {
-            let bubbles = [];
-            if (hasBurstMarkerInStable || hasBurstMarkerInNewStable) {
-                contentDiv.classList.add('burst-streaming');
-                if (messageItem) messageItem.dataset.burstRevealed = 'true';
-                bubbles = promoteStableBlocksToBurstBubbles(stableBlocksRoot, messageItem);
-                ensureBurstTailRow(contentDiv, tailRoot, messageItem);
-            }
-            if (bubbles.length > 0) {
-                bubbles.forEach((bubble, index) => {
-                    if (index >= segmentState.burstBubbleCount) {
-                        bubble.classList.add('burst-pending');
-                        bubble.style.animationDelay = '0ms';
-                    }
-                });
-                segmentState.burstBubbleCount = bubbles.length;
-            }
-        } catch (error) {
-            console.warn('[StreamManager] burst bubble split failed:', error);
-        }
+        appendNewStableRange(
+            stableBlocksRoot,
+            segmentState,
+            textForRendering,
+            nextStableCutoff,
+            streamRenderOptions
+        );
     }
 
     const tailText = textForRendering.slice(segmentState.stableCutoff);
-    const rawHtml = parseStreamTail(tailText);
+    const renderTailText = typeof refs.processAssistantScopedHtmlContent === 'function'
+        ? refs.processAssistantScopedHtmlContent(
+            tailText,
+            streamRenderOptions.scopeId,
+            streamRenderOptions.messageItem,
+            { injectStyles: false }
+        )
+        : tailText;
+    const rawHtml = parseStreamTail(renderTailText);
 
     if (refs.morphdom) {
         try {
@@ -1359,7 +1660,7 @@ function renderStreamFrame(messageId) {
                 skipFromChildren: function(fromEl, toEl) {
                     return shouldSkipStreamChildren(fromEl, toEl);
                 },
-                
+
                 onBeforeElUpdated: function(fromEl, toEl) {
                 // 跳过相同节点
                 if (fromEl.isEqualNode(toEl)) {
@@ -1372,7 +1673,7 @@ function renderStreamFrame(messageId) {
                 if (shouldPreserveStreamElement(fromEl, toEl)) {
                     return false;
                 }
-                
+
                 // 🟢 关键修复：保留正在进行的动画类，防止 morphdom 在下一帧将其移除
                 // 因为 toEl 是从 marked 重新生成的，不包含这些动态添加的动画类
                 if (fromEl.classList.contains('vcp-stream-element-fade-in')) {
@@ -1387,20 +1688,20 @@ function renderStreamFrame(messageId) {
                     const oldLength = elementContentLengthCache.get(fromEl) || fromEl.textContent.length;
                     const newLength = toEl.textContent.length;
                     const lengthDiff = newLength - oldLength;
-                    
+
                     // 如果内容增长超过阈值（比如20个字符），触发微动画
                     if (lengthDiff > 20) {
                         // 使用脉冲动画而不是滑入动画
                         fromEl.classList.add('vcp-stream-content-pulse');
-                        setTimeout(() => {
+                        scheduleOwnedTimeout(() => {
                             fromEl.classList.remove('vcp-stream-content-pulse');
                         }, 300);
                     }
-                    
+
                     // 更新缓存
                     elementContentLengthCache.set(fromEl, newLength);
                 }
-                
+
                 // 🟢 保留按钮状态
                 if (fromEl.tagName === 'BUTTON' && fromEl.dataset.vcpInteractive === 'true') {
                     if (fromEl.disabled) {
@@ -1409,17 +1710,17 @@ function renderStreamFrame(messageId) {
                         toEl.textContent = fromEl.textContent; // 保留"✓"标记
                     }
                 }
-                
+
                 // 🟢 保留媒体播放状态
                 if ((fromEl.tagName === 'VIDEO' || fromEl.tagName === 'AUDIO') && !fromEl.paused) {
                     return false; // 不更新正在播放的媒体
                 }
-                
+
                 // 🟢 保留输入焦点
-                if (fromEl === document.activeElement) {
-                    requestAnimationFrame(() => toEl.focus());
+                if (fromEl === ownerDocument()?.activeElement) {
+                    scheduleAnimationFrame(() => toEl.focus());
                 }
-                
+
                 // 🟢 简化图片逻辑：只保留状态，不再做 URL 对比
                 if (fromEl.tagName === 'IMG') {
                     // 保留加载状态标记
@@ -1429,7 +1730,7 @@ function renderStreamFrame(messageId) {
                     if (fromEl.dataset.emoticonFixAttempted) {
                         toEl.dataset.emoticonFixAttempted = 'true';
                     }
-                    
+
                     // 保留事件处理器
                     if (fromEl.onerror && !toEl.onerror) {
                         toEl.onerror = fromEl.onerror;
@@ -1437,21 +1738,21 @@ function renderStreamFrame(messageId) {
                     if (fromEl.onload && !toEl.onload) {
                         toEl.onload = fromEl.onload;
                     }
-                    
+
                     // 保留可见性状态
                     if (fromEl.style.visibility) {
                         toEl.style.visibility = fromEl.style.visibility;
                     }
-                    
+
                     // 🟢 如果图片已成功加载，不要更新它
                     if (fromEl.complete && fromEl.naturalWidth > 0) {
                         return false;
                     }
                 }
-                
+
                 return true;
             },
-            
+
             onBeforeNodeDiscarded: function(node) {
                 // 防止删除标记为永久保留的元素
                 if (node.classList?.contains('keep-alive')) {
@@ -1459,38 +1760,47 @@ function renderStreamFrame(messageId) {
                 }
                 return true;
             },
-            
+
             onNodeAdded: function(node) {
-                // 增强：包含更多常见的块级元素，确保列表、表格等都能触发横向渐入
+                // 新块级节点使用当前全局动效预设；关闭动效时不创建动画层。
                 if (node.nodeType === 1 && STREAM_BLOCK_TAG_REGEX.test(node.tagName)) {
-                    // 确保新节点应用横向渐入类
-                    node.classList.add('vcp-stream-element-fade-in');
-                    
-                    // 初始化长度缓存用于后续的脉冲检测
+                    const animationSettings = refs.globalSettingsRef?.get?.() || {};
+                    const animationPreset = animationSettings.streamAnimationPreset || 'slide-left';
+                    const rawDuration = Number(animationSettings.streamAnimationDurationMs);
+                    const animationDuration = Number.isFinite(rawDuration)
+                        ? Math.min(2000, Math.max(100, rawDuration))
+                        : 500;
+
+                    if (animationPreset !== 'none') {
+                        node.classList.add('vcp-stream-element-fade-in');
+
+                        // 清理时间跟随设置时长，额外保留一帧级缓冲供 morphdom 继承动态类。
+                        scheduleOwnedTimeout(() => {
+                            node?.classList?.remove('vcp-stream-element-fade-in');
+                        }, animationDuration + 100);
+                    }
+
+                    // 初始化长度缓存用于后续的脉冲检测。
                     elementContentLengthCache.set(node, node.textContent.length);
-                    
-                    // 动画结束后清理类名，但保留一小段时间确保渲染稳定
-                    setTimeout(() => {
-                        if (node && node.classList) {
-                            node.classList.remove('vcp-stream-element-fade-in');
-                        }
-                    }, 1000);
                 }
                 return node;
             }
         });
         } catch (error) {
-            // 🟢 捕获不完整 HTML 导致的 morphdom 异常
-            // 在流式输出过程中，这是预期内的行为，静默忽略即可
-            // 等待下一个 chunk 到达后，内容变得完整，渲染会自动恢复正常
-            console.debug('[StreamManager] morphdom skipped frame due to incomplete HTML, waiting for more chunks...');
+            // 增量 diff 失败时不能只等待下一 chunk：当前帧的 dirty 标记已经被消费，
+            // 而工具请求后端可能长时间等待回执，不会继续产生可触发重绘的新文本。
+            // 直接使用同一份已经过流式隔离/HTML 封印的 rawHtml 重建 tail，
+            // 保证首块为 TOOL_REQUEST 时不会保持空白直到导航或终态。
+            tailRoot.innerHTML = rawHtml;
+            console.debug('[StreamManager] morphdom rejected a stream frame; replaced the sealed tail directly.', error);
         }
     } else {
         tailRoot.innerHTML = rawHtml;
     }
 
-    processStreamTailImages(stableRoot);
+    // stable block 在追加/恢复后的重后处理中已处理图片；每帧只扫描会变化的 tail。
     processStreamTailImages(tailRoot);
+    decorateStreamingCodeLines(tailRoot);
     segmentState.lastTailText = tailText;
 }
 
@@ -1501,33 +1811,40 @@ function throttledScrollToBottom(messageId) {
     if (scrollThrottleTimers.has(messageId)) {
         return; // 节流期间，跳过
     }
-    
+
     refs.uiHelper.scrollToBottom();
-    
-    const timerId = setTimeout(() => {
+
+    const timerId = scheduleOwnedTimeout(() => {
         scrollThrottleTimers.delete(messageId);
     }, SCROLL_THROTTLE_MS);
-    
+
     scrollThrottleTimers.set(messageId, timerId);
 }
 
 function processAndRenderSmoothChunk(messageId) {
     const queue = streamingChunkQueues.get(messageId);
+    const segmentState = getOrCreateStreamSegmentState(messageId);
     let shouldRender = false;
 
     if (queue && queue.length > 0) {
         const globalSettings = refs.globalSettingsRef.get();
         const minChunkSize = globalSettings.minChunkBufferSize !== undefined && globalSettings.minChunkBufferSize >= 1 ? globalSettings.minChunkBufferSize : 1;
-        const queuedChars = queue.reduce((total, chunk) => total + chunk.length, 0);
+        const queuedChars = Math.max(0, segmentState.queuedChars);
         const isFinalized = messageIsFinalized(messageId);
         const adaptiveTarget = Math.ceil(queuedChars / (isFinalized ? 8 : 15));
         const drainTarget = Math.max(minChunkSize, adaptiveTarget, isFinalized ? 80 : 0);
 
         // 自适应排空：队列越深，每帧消费越多；finalize 后加速追平，避免剩余文本瞬移。
+        // 使用 head 批量 splice，避免逐项 shift 导致数组反复搬移。
         let processedChars = 0;
-        while (queue.length > 0 && processedChars < drainTarget) {
-            processedChars += queue.shift().length;
+        let consumedChunks = 0;
+        while (consumedChunks < queue.length && processedChars < drainTarget) {
+            processedChars += queue[consumedChunks].length;
+            consumedChunks += 1;
         }
+        if (consumedChunks > 0) queue.splice(0, consumedChunks);
+        segmentState.queuedChars = Math.max(0, segmentState.queuedChars - processedChars);
+        segmentState.visibleTextLength += processedChars;
 
         shouldRender = true;
     }
@@ -1539,18 +1856,30 @@ function processAndRenderSmoothChunk(messageId) {
 
     if (!shouldRender) return;
 
+    // Capture bottom-follow before the DOM mutation. Measuring only after the
+    // tail grows confuses a large stream frame with deliberate user scrolling.
+    const context = messageContextMap.get(messageId);
+    const isForCurrentView = isMessageForCurrentView(context);
+    const scrollFollowSnapshot = isForCurrentView
+        ? refs.uiHelper.captureChatScrollFollow?.()
+        : null;
+
     // Render the current state of the accumulated text using our lightweight method.
     renderStreamFrame(messageId);
-    
-    // Scroll if the message is in the current view.
-    const context = messageContextMap.get(messageId);
-    if (isMessageForCurrentView(context)) {
-        throttledScrollToBottom(messageId);
+
+    if (isForCurrentView && scrollFollowSnapshot?.followBottom) {
+        refs.uiHelper.scrollToBottom({
+            force: true,
+            immediate: true,
+            expectedGeneration: scrollFollowSnapshot.generation
+        });
     }
 }
 
 function renderChunkDirectlyToDOM(messageId, textToAppend) {
     // 非平滑流式不再每个网络 chunk 立即渲染；只标记为 dirty，由全局 rAF 循环按 TARGET_FPS 合帧。
+    const segmentState = getOrCreateStreamSegmentState(messageId);
+    segmentState.visibleTextLength = (accumulatedStreamText.get(messageId) || '').length;
     pendingDirectRenderMessages.add(messageId);
     if (!streamingTimers.has(messageId)) {
         streamingTimers.set(messageId, true);
@@ -1558,15 +1887,38 @@ function renderChunkDirectlyToDOM(messageId, textToAppend) {
     }
 }
 
-export async function startStreamingMessage(message, passedMessageItem = null) {
+function conversationIdentityMatches(context, identity = {}) {
+    if (!context || !identity) return false;
+    const itemType = context.isGroupMessage ? 'group' : 'agent';
+    const itemId = context.isGroupMessage ? context.groupId : context.agentId;
+    return itemType === identity.itemType
+        && itemId === identity.itemId
+        && context.topicId === identity.topicId;
+}
+
+async function startStreamingMessage(message, passedMessageItem = null) {
+    if (disposed) return null;
     const messageId = message.id;
-    
+    const streamOperationId = message.streamOperationId || message.context?.streamOperationId || null;
+    const previousRuntimeKey = messageRuntimeKeys.get(String(messageId));
+    const nextRuntimeKey = streamOperationId ? `${streamOperationId}::${messageId}` : String(messageId);
+    const stillOwnsOperation = () => (
+        !disposed && messageRuntimeKeys.get(String(messageId)) === nextRuntimeKey
+    );
+    if (previousRuntimeKey && previousRuntimeKey !== nextRuntimeKey) {
+        // Keep the old key active while discardStreamingMessage clears every
+        // operation-owned map; only then publish the retry's new owner key.
+        discardStreamingMessage(messageId);
+    }
+    messageRuntimeKeys.set(String(messageId), nextRuntimeKey);
+
     // 🟢 修复：如果消息已在处理中，且 isThinking 状态没变，直接返回现有状态
     const currentStatus = messageInitializationStatus.get(messageId);
     const cached = getCachedMessageDom(messageId);
     const isCurrentlyThinking = cached?.messageItem?.classList.contains('thinking');
 
-    if ((currentStatus === 'pending' || currentStatus === 'ready') && (isCurrentlyThinking === !!message.isThinking)) {
+    if ((currentStatus === 'pending' || currentStatus === 'ready') && cached
+        && (isCurrentlyThinking === !!message.isThinking)) {
         console.debug(`[StreamManager] Message ${messageId} already initialized (${currentStatus}) with same thinking state, skipping re-init`);
         return cached?.messageItem || null;
     }
@@ -1580,79 +1932,94 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
         agentName: message.name || message.context?.agentName,
         avatarUrl: message.avatarUrl || message.context?.avatarUrl,
         avatarColor: message.avatarColor || message.context?.avatarColor,
+        streamOperationId,
     };
-    
+
     // Validate context
     if (!context.topicId || (!context.agentId && !context.groupId)) {
         console.error(`[StreamManager] Invalid context for message ${messageId}`, context);
         return null;
     }
-    
+
     messageContextMap.set(messageId, context);
-    
+    streamMessageModels.set(messageId, {
+        ...message,
+        id: messageId,
+        agentId: context.agentId,
+        groupId: context.groupId,
+        topicId: context.topicId,
+        isGroupMessage: context.isGroupMessage,
+        streamOperationId,
+    });
+
     // 🟢 关键修复：如果消息已经初始化过，不要重新设为 pending，避免阻塞后续 chunk
     if (!currentStatus || currentStatus === 'finalized') {
         messageInitializationStatus.set(messageId, 'pending');
     }
-    
-    activeStreamingMessageId = messageId;
-    
-    const { chatMessagesDiv, electronAPI, currentChatHistoryRef, uiHelper } = refs;
-    const isForCurrentView = isMessageForCurrentView(context);
-    // 🟢 缓存视图检查结果
-    viewContextCache.set(messageId, isForCurrentView);
-    
-    // Get the correct history for this message's context
-    let historyForThisMessage;
-    // For assistant chat, always use a temporary in-memory history
-    if (context.topicId === 'assistant_chat' || context.topicId?.startsWith('voicechat_')) {
-        historyForThisMessage = currentChatHistoryRef.get();
-    } else if (isForCurrentView) {
-        // For current view, use in-memory history
-        historyForThisMessage = currentChatHistoryRef.get();
-    } else {
-        // For background chats, load from disk
-        historyForThisMessage = await getHistoryForContext(context);
-        if (!historyForThisMessage) {
-            console.error(`[StreamManager] Could not load history for background message ${messageId}`, context);
-            messageInitializationStatus.set(messageId, 'finalized');
-            return null;
-        }
+
+    activeStreamingMessages.set(messageId, context);
+
+    const { chatMessagesDiv, electronAPI, uiHelper } = refs;
+    const nextViewSignature = getCurrentViewSignature();
+    if (currentViewSignature !== nextViewSignature) {
+        currentViewSignature = nextViewSignature;
+        viewContextCache.clear();
     }
-    
+    const isForCurrentView = isMessageForCurrentView(context);
+    const shouldProjectToDom = isForCurrentView;
+    // 🟢 缓存视图检查结果
+    viewContextCache.set(messageId, shouldProjectToDom);
+
+    try {
+        await refs.transientStreamHistory.prepare(message, context, { visible: isForCurrentView });
+    } catch (error) {
+        console.error(`[StreamManager] Could not prepare transient history for ${messageId}`, context, error);
+        if (stillOwnsOperation()) discardStreamingMessage(messageId);
+        return null;
+    }
+    // 同消息重试可能在历史读取期间替换 operation。旧初始化恢复后不得写入新 operation 的动态键空间。
+    if (!stillOwnsOperation()) return null;
+
     // Only manipulate DOM for current view
     let messageItem = null;
-    if (isForCurrentView) {
+    if (shouldProjectToDom) {
         messageItem = passedMessageItem || chatMessagesDiv.querySelector(`.message-item[data-message-id="${message.id}"]`);
         if (!messageItem) {
-            const placeholderMessage = { 
-                ...message, 
+            const placeholderMessage = {
+                ...message,
                 content: message.content || '思考中...', // Show thinking text initially
                 isThinking: true, // Mark as thinking
-                timestamp: message.timestamp || Date.now(), 
-                isGroupMessage: message.isGroupMessage || false 
+                timestamp: message.timestamp || Date.now(),
+                isGroupMessage: message.isGroupMessage || false
             };
-            messageItem = refs.renderMessage(placeholderMessage, false);
+            messageItem = refs.chatDomRenderer
+                ? await refs.chatDomRenderer.renderMessage(placeholderMessage, false)
+                : refs.renderMessage(placeholderMessage, false);
+            if (!stillOwnsOperation()) return null;
             if (!messageItem) {
                 console.error(`[StreamManager] Failed to render message item for ${message.id}`);
-                messageInitializationStatus.set(messageId, 'finalized');
+                discardStreamingMessage(messageId);
                 return null;
             }
         }
-        // Add streaming class and remove thinking class when we have a valid messageItem
+        // 流所有权建立后保持准确的等待态。首个可见 token 到达时，
+        // renderStreamFrame 才会原子移除 thinking 并建立 stable/tail 根。
         if (messageItem && messageItem.classList) {
             messageItem.classList.add('streaming');
-            messageItem.classList.remove('thinking');
+            const initialVisibleText = accumulatedStreamText.get(messageId) || '';
+            messageItem.classList.toggle('thinking', initialVisibleText.trim() === '');
+            const contentDiv = messageItem.querySelector('.md-content');
+            if (contentDiv) messageDomCache.set(messageId, { messageItem, contentDiv });
         }
     }
-    
+
     // Initialize streaming state
     if (shouldEnableSmoothStreaming()) {
         if (!streamingChunkQueues.has(messageId)) {
             streamingChunkQueues.set(messageId, []);
         }
     }
-    
+
     // 🟢 使用更明确的覆盖逻辑
     const existingText = accumulatedStreamText.get(messageId);
     const shouldSkipGroupThinkingSeed = context.isGroupMessage === true && message.isThinking === true;
@@ -1660,80 +2027,46 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
     const shouldOverwrite = !existingText
         || existingText === '思考中...'
         || newText.length > existingText.length;
-    
+
     if (shouldOverwrite) {
         accumulatedStreamText.set(messageId, newText);
     }
-    
-    // Prepare placeholder for history
-    const placeholderForHistory = {
-        ...message,
-        content: shouldSkipGroupThinkingSeed ? '' : (message.content || ''),
-        isThinking: false,
-        timestamp: message.timestamp || Date.now(),
-        isGroupMessage: context.isGroupMessage,
-        name: context.agentName,
-        agentId: context.agentId
-    };
-    
-    // Update the appropriate history
-    const historyIndex = historyForThisMessage.findIndex(m => m.id === message.id);
-    if (historyIndex === -1) {
-        historyForThisMessage.push(placeholderForHistory);
-    } else {
-        historyForThisMessage[historyIndex] = { ...historyForThisMessage[historyIndex], ...placeholderForHistory };
+    const initialSegmentState = getOrCreateStreamSegmentState(messageId);
+    if (!shouldEnableSmoothStreaming()) {
+        initialSegmentState.visibleTextLength = (accumulatedStreamText.get(messageId) || '').length;
+    } else if (initialSegmentState.visibleTextLength === 0 && newText) {
+        // 初始化种子属于已展示内容，不应重新进入平滑队列。
+        initialSegmentState.visibleTextLength = newText.length;
     }
-    
-    // Save the history
-    if (isForCurrentView) {
-        // Update in-memory reference for current view
-        currentChatHistoryRef.set([...historyForThisMessage]);
-        window.updateSendButtonState?.();
-    }
-    
-    // 🟢 使用防抖保存
-    if (context.topicId !== 'assistant_chat' && !context.topicId.startsWith('voicechat_')) {
-        debouncedSaveHistory(context, historyForThisMessage);
-    }
-    
+
     // Initialization is complete, message is ready to process chunks.
     // 如果 end/error 事件在异步初始化期间已经到达，不能把状态从 finalized 回退到 ready。
     if (messageInitializationStatus.get(messageId) !== 'finalized') {
         messageInitializationStatus.set(messageId, 'ready');
     }
-    
+
     // Process any chunks that were pre-buffered during initialization.
     const bufferedChunks = preBufferedChunks.get(messageId);
     if (bufferedChunks && bufferedChunks.length > 0 && messageInitializationStatus.get(messageId) === 'ready') {
         console.debug(`[StreamManager] Processing ${bufferedChunks.length} pre-buffered chunks for message ${messageId}`);
         for (const chunkData of bufferedChunks) {
-            appendStreamChunk(messageId, chunkData.chunk, chunkData.context);
+            appendStreamChunk(messageId, chunkData.chunk, chunkData.context, chunkData.streamOperationId);
         }
         preBufferedChunks.delete(messageId);
     }
-    
-    const deferredFinalization = pendingFinalizationEvents.get(messageId);
-    if (deferredFinalization) {
-        pendingFinalizationEvents.delete(messageId);
-        console.warn(`[StreamManager] Replaying deferred finalization for message ${messageId}.`);
-        setTimeout(() => {
-            finalizeStreamedMessage(
-                messageId,
-                deferredFinalization.finishReason,
-                deferredFinalization.context,
-                deferredFinalization.finalPayload
-            );
-        }, 0);
-    }
-    
-    if (isForCurrentView) {
+
+    const initializationWaiters = messageInitializationWaiters.get(messageId) || [];
+    messageInitializationWaiters.delete(messageId);
+    initializationWaiters.forEach(resolve => resolve(true));
+
+    if (shouldProjectToDom) {
         // 如果从思考转为非思考，立即触发一次渲染以清理占位符
         if (!message.isThinking && isCurrentlyThinking) {
             renderStreamFrame(messageId);
         }
         uiHelper.scrollToBottom();
     }
-    
+
     return messageItem;
 }
 
@@ -1748,9 +2081,17 @@ function startGlobalRenderLoop() {
     globalRenderLoopRunning = true;
     lastFrameTime = 0; // 重置时间戳
 
+    const scheduleNextRenderLoopFrame = () => {
+        globalRenderLoopFrameHandle = scheduleAnimationFrame((timestamp) => {
+            globalRenderLoopFrameHandle = null;
+            renderLoop(timestamp);
+        });
+    };
+
     function renderLoop(currentTime) {
         if (streamingTimers.size === 0) {
             globalRenderLoopRunning = false;
+            globalRenderLoopFrameHandle = null;
             return;
         }
 
@@ -1763,7 +2104,7 @@ function startGlobalRenderLoop() {
         }
         const elapsed = currentTime - lastFrameTime;
         if (elapsed < FRAME_INTERVAL) {
-            requestAnimationFrame(renderLoop);
+            scheduleNextRenderLoopFrame();
             return;
         }
 
@@ -1771,10 +2112,19 @@ function startGlobalRenderLoop() {
 
         // 处理所有活动的流式消息
         for (const [messageId, _] of streamingTimers) {
+            if (terminalProjectingMessages.has(String(messageId))) {
+                streamingTimers.delete(messageId);
+                continue;
+            }
             processAndRenderSmoothChunk(messageId);
 
             const currentQueue = streamingChunkQueues.get(messageId);
-            if ((!currentQueue || currentQueue.length === 0) && messageIsFinalized(messageId)) {
+            const hasDirectWork = pendingDirectRenderMessages.has(messageId);
+            const stillTracked = messageInitializationStatus.has(messageId);
+            if (
+                ((!currentQueue || currentQueue.length === 0) && messageIsFinalized(messageId))
+                || (!stillTracked && !hasDirectWork && (!currentQueue || currentQueue.length === 0))
+            ) {
                 streamingTimers.delete(messageId);
 
                 const storedContext = messageContextMap.get(messageId);
@@ -1789,10 +2139,10 @@ function startGlobalRenderLoop() {
             }
         }
 
-        requestAnimationFrame(renderLoop);
+        scheduleNextRenderLoopFrame();
     }
 
-    requestAnimationFrame(renderLoop);
+    scheduleNextRenderLoopFrame();
 }
 
 /**
@@ -1806,19 +2156,16 @@ function intelligentChunkSplit(text) {
         return [text];
     }
 
-    // 使用 matchAll 更快
     const regex = /[\u4e00-\u9fa5]+|[a-zA-Z0-9]+|[^\u4e00-\u9fa5a-zA-Z0-9\s]+|\s+/g;
-    const semanticUnits = [...text.matchAll(regex)].map(m => m[0]);
 
-    // 将语义单元合并为合理大小的chunk
+    // 单遍扫描并直接合并，避免 matchAll 先展开完整匹配数组。
     const chunks = [];
     let currentChunk = '';
-
-    for (const unit of semanticUnits) {
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+        const unit = match[0];
         if (currentChunk.length + unit.length > MAX_CHUNK_SIZE) {
-            if (currentChunk) { // Avoid pushing empty strings
-                chunks.push(currentChunk);
-            }
+            if (currentChunk) chunks.push(currentChunk);
             currentChunk = unit;
         } else {
             currentChunk += unit;
@@ -1841,199 +2188,26 @@ function intelligentChunkSplit(text) {
  * 3. 在逐字符级别做工具结果块检测会与推送标签检测产生字符竞争bug
  */
 function processDesktopPushToken(messageId, textToAppend) {
-    let state = desktopPushStates.get(messageId);
-    if (!state) {
-        state = { active: false, widgetId: null, buffer: '', tagBuffer: '', created: false, validated: false, pushTimer: null, lastPushedLength: 0, lastTokenTime: null, backtickContext: false };
-        desktopPushStates.set(messageId, state);
-    }
-
-    const electronAPI = refs.electronAPI;
-    const canPush = desktopWindowAvailable && electronAPI?.desktopPush;
-
-    let remainingText = textToAppend;
-    let outputText = '';
-
-    for (let i = 0; i < remainingText.length; i++) {
-        const char = remainingText[i];
-
-        if (!state.active) {
-            state.tagBuffer += char;
-
-            if (DESKTOP_PUSH_START_TAG.startsWith(state.tagBuffer)) {
-                if (state.tagBuffer === DESKTOP_PUSH_START_TAG) {
-                    // 🟢 加固：检查开始标签前是否有反引号包裹
-                    // 检查 outputText 末尾是否刚输出了一个反引号
-                    const precedingChar = outputText.length > 0 ? outputText[outputText.length - 1] : '';
-                    if (precedingChar === '`') {
-                        // 被反引号包裹，不视为推送标签，直接输出原文
-                        state.backtickContext = true;
-                        outputText += state.tagBuffer;
-                        state.tagBuffer = '';
-                        continue;
-                    }
-                    
-                    // 匹配到开始标签，进入active状态但延迟创建挂件
-                    state.active = true;
-                    state.backtickContext = false;
-                    state.widgetId = 'dw-' + Date.now().toString(36) + Math.random().toString(36).substring(2, 5);
-                    state.buffer = '';
-                    state.created = false;
-                    state.validated = false; // 二级验证：等待内容前缀确认
-                    state.tagBuffer = '';
-                    state.lastPushedLength = 0;
-                }
-            } else {
-                outputText += state.tagBuffer;
-                state.tagBuffer = '';
-            }
-        } else {
-            // 在推送块内
-            state.tagBuffer += char;
-
-            if (DESKTOP_PUSH_END_TAG.startsWith(state.tagBuffer)) {
-                if (state.tagBuffer === DESKTOP_PUSH_END_TAG) {
-                    // 结束标签
-                    if (state.pushTimer) { clearInterval(state.pushTimer); state.pushTimer = null; }
-
-                    if (canPush && state.created) {
-                        if (state.isReplaceMode) {
-                            // 替换模式：解析 target/replace 的「始ESCAPE」「末ESCAPE」或旧版「始」「末」
-                            const targetMatch = state.buffer.match(/target:(?:「始ESCAPE」([\s\S]*?)「末ESCAPE」|「始」([\s\S]*?)「末」)/);
-                            const replaceMatch = state.buffer.match(/replace:(?:「始ESCAPE」([\s\S]*?)「末ESCAPE」|「始」([\s\S]*?)「末」)/);
-                            
-                            if (targetMatch && replaceMatch) {
-                                const targetSelector = (targetMatch[1] || targetMatch[2] || '').trim();
-                                const replaceContent = (replaceMatch[1] || replaceMatch[2] || '').trim();
-                                electronAPI.desktopPush({
-                                    action: 'replace',
-                                    targetSelector: targetSelector,
-                                    content: replaceContent
-                                });
-                                console.log(`[DesktopPush] Replace: "${targetSelector}" → ${replaceContent.substring(0, 50)}...`);
-                            } else {
-                                console.warn(`[DesktopPush] Replace mode but couldn't parse target/replace fields from buffer:`, state.buffer.substring(0, 100));
-                            }
-                        } else {
-                            // 创建模式：最终推送 + finalize
-                            electronAPI.desktopPush({ action: 'append', widgetId: state.widgetId, content: state.buffer });
-                            electronAPI.desktopPush({ action: 'finalize', widgetId: state.widgetId });
-                            console.log(`[DesktopPush] Widget finalized: ${state.widgetId}`);
-                        }
-                    }
-
-                    state.active = false; state.tagBuffer = ''; state.buffer = '';
-                    state.widgetId = null; state.created = false; state.validated = false;
-                    state.isReplaceMode = false; state.lastPushedLength = 0;
-                }
-            } else {
-                // 不是结束标签，内容追加到buffer
-                state.buffer += state.tagBuffer;
-                state.tagBuffer = '';
-
-                // 🟢 性能优化：仅更新时间戳，超时检查由 pushTimer interval 负责
-                // 这样每个 token 只需一次赋值操作，避免频繁 clearTimeout/setTimeout
-                state.lastTokenTime = Date.now();
-
-                // 二级验证：buffer积累到一定量后检查前缀是否合法
-                // 只在前30个有效字符内做验证，避免延迟过大
-                if (!state.validated && state.buffer.trim().length >= 5) {
-                    const trimmedBuffer = state.buffer.trim().toLowerCase();
-                    const isValid = DESKTOP_PUSH_VALID_PREFIXES.some(prefix => trimmedBuffer.startsWith(prefix));
-                    
-                    if (isValid) {
-                        state.validated = true;
-                        
-                        // 判断是否为替换模式（target:「始」...「末」开头）
-                        const isReplaceMode = trimmedBuffer.startsWith('target:');
-                        state.isReplaceMode = isReplaceMode;
-                        
-                        if (isReplaceMode) {
-                            console.log(`[DesktopPush] Replace mode detected, waiting for target and replace fields...`);
-                            state.created = true; // 标记为已处理，但不创建新挂件
-                            // 替换模式不需要定时推送，等到结束标签时一次性解析并替换
-                        } else {
-                            console.log(`[DesktopPush] Content validated with prefix: ${trimmedBuffer.substring(0, 15)}...`);
-                            
-                            // 创建模式：验证通过后才创建挂件
-                            if (canPush) {
-                                electronAPI.desktopPush({
-                                    action: 'create', widgetId: state.widgetId,
-                                    options: { x: 200, y: 150, width: 400, height: 300 }
-                                });
-                                state.created = true;
-                                
-                                // 启动定时推送 + 内置空闲超时检测
-                                state.lastTokenTime = Date.now();
-                                state.pushTimer = setInterval(() => {
-                                    // 推送新内容
-                                    if (state.buffer.length > state.lastPushedLength) {
-                                        electronAPI.desktopPush({
-                                            action: 'append', widgetId: state.widgetId, content: state.buffer
-                                        });
-                                        state.lastPushedLength = state.buffer.length;
-                                    }
-                                    
-                                    // 🟢 空闲超时检测：如果距离上次token超过150秒，自动finalize
-                                    // 不需要单独的setTimeout，复用已有的interval，零额外开销
-                                    if (state.lastTokenTime && (Date.now() - state.lastTokenTime > DESKTOP_PUSH_TIMEOUT_MS)) {
-                                        console.warn(`[DesktopPush] Widget ${state.widgetId} idle timeout (no new tokens for ${DESKTOP_PUSH_TIMEOUT_MS / 1000}s), auto-finalizing`);
-                                        clearInterval(state.pushTimer); state.pushTimer = null;
-                                        if (state.created && !state.isReplaceMode && electronAPI?.desktopPush) {
-                                            electronAPI.desktopPush({ action: 'append', widgetId: state.widgetId, content: state.buffer });
-                                            electronAPI.desktopPush({ action: 'finalize', widgetId: state.widgetId });
-                                        }
-                                        state.active = false; state.tagBuffer = ''; state.buffer = '';
-                                        state.widgetId = null; state.created = false; state.validated = false;
-                                        state.isReplaceMode = false; state.lastPushedLength = 0; state.lastTokenTime = null;
-                                    }
-                                }, DESKTOP_PUSH_THROTTLE_MS);
-                            }
-                        }
-
-                        // 🟢 替换模式也需要空闲超时保护
-                        // 替换模式没有 pushTimer，需要单独的超时机制
-                        if (state.isReplaceMode && canPush) {
-                            state.lastTokenTime = Date.now();
-                            // 替换模式用一个轻量级的检查 interval
-                            state.pushTimer = setInterval(() => {
-                                if (state.lastTokenTime && (Date.now() - state.lastTokenTime > DESKTOP_PUSH_TIMEOUT_MS)) {
-                                    console.warn(`[DesktopPush] Replace mode idle timeout, discarding`);
-                                    clearInterval(state.pushTimer); state.pushTimer = null;
-                                    state.active = false; state.tagBuffer = ''; state.buffer = '';
-                                    state.widgetId = null; state.created = false; state.validated = false;
-                                    state.isReplaceMode = false; state.lastPushedLength = 0; state.lastTokenTime = null;
-                                }
-                            }, 5000); // 替换模式检查频率低一些：5秒一次
-                        }
-                    } else if (state.buffer.trim().length >= 30) {
-                        // 验证失败：30字符内未匹配到合法前缀，丢弃该推送块
-                        console.warn(`[DesktopPush] Invalid content prefix, discarding push block: "${trimmedBuffer.substring(0, 30)}..."`);
-                        state.active = false; state.tagBuffer = ''; state.buffer = '';
-                        state.widgetId = null; state.created = false; state.validated = false; state.lastPushedLength = 0;
-                    }
-                    // 5-30字符之间继续等待更多内容
-                }
-            }
-        }
-    }
-
-    return outputText;
+    return desktopPushConsumer?.processToken(messageId, textToAppend) ?? textToAppend;
 }
-/**
- * 清理消息的桌面推送状态
- */
+
+/** Releases the Desktop canvas state owned by one stream message. */
 function cleanupDesktopPushState(messageId) {
-    const state = desktopPushStates.get(messageId);
-    if (state?.pushTimer) {
-        clearInterval(state.pushTimer);
-        state.pushTimer = null;
-    }
-    desktopPushStates.delete(messageId);
+    desktopPushConsumer?.cleanupMessage(messageId);
 }
 
-export function appendStreamChunk(messageId, chunkData, context) {
+function appendStreamChunk(messageId, chunkData, context, streamOperationId = null) {
+    if (disposed) return false;
+    const publishedRuntimeKey = messageRuntimeKeys.get(String(messageId));
+    const incomingRuntimeKey = streamOperationId
+        ? `${streamOperationId}::${messageId}`
+        : String(messageId);
+    // 必须在预缓冲之前验证生产者；否则旧 operation 的迟到块会进入新重试的缓冲区。
+    if (streamOperationId && publishedRuntimeKey && publishedRuntimeKey !== incomingRuntimeKey) {
+        return false;
+    }
     const initStatus = messageInitializationStatus.get(messageId);
-    
+
     if (!initStatus || initStatus === 'pending') {
         if (!preBufferedChunks.has(messageId)) {
             preBufferedChunks.set(messageId, []);
@@ -2041,8 +2215,8 @@ export function appendStreamChunk(messageId, chunkData, context) {
             console.debug(`[StreamManager] Started pre-buffering for message ${messageId}`);
         }
         const buffer = preBufferedChunks.get(messageId);
-        buffer.push({ chunk: chunkData, context });
-        
+        buffer.push({ chunk: chunkData, context, streamOperationId });
+
         // 防止缓冲区无限增长 - 如果超过1000个chunks，可能有问题
         if (buffer.length > 1000) {
             console.warn(`[StreamManager] Pre-buffer overflow for ${messageId}, discarding old chunks.`);
@@ -2051,46 +2225,38 @@ export function appendStreamChunk(messageId, chunkData, context) {
         }
         return;
     }
-    
+
     if (initStatus === 'finalized') {
         console.warn(`[StreamManager] Received chunk for already finalized message ${messageId}. Ignoring.`);
         return;
     }
-    
+
+    const activeContext = messageContextMap.get(messageId);
+    if (streamOperationId && activeContext?.streamOperationId && activeContext.streamOperationId !== streamOperationId) return false;
     // Extract text from chunk
     // 如果检测到 JSON 解析错误，直接过滤掉，不显示给用户
     if (chunkData?.error === 'json_parse_error') {
         console.warn(`[StreamManager] 过滤掉 JSON 解析错误的 chunk for messageId: ${messageId}`, chunkData.raw);
         return;
     }
-    
-    let textToAppend = "";
-    if (chunkData?.choices?.[0]?.delta?.content) {
-        textToAppend = chunkData.choices[0].delta.content;
-    } else if (chunkData?.delta?.content) {
-        textToAppend = chunkData.delta.content;
-    } else if (typeof chunkData?.content === 'string') {
-        textToAppend = chunkData.content;
-    } else if (typeof chunkData === 'string') {
-        textToAppend = chunkData;
-    } else if (chunkData?.raw && !chunkData?.error) {
-        // 只有在没有错误标记时才显示 raw 数据
-        textToAppend = chunkData.raw;
-    }
-    
+
+    const textToAppend = contentRuntime
+        ? contentRuntime.extractChunkText(chunkData)
+        : '';
+
     if (!textToAppend) return;
 
     // --- VCPdesktop 流式推送拦截 ---
     // 在累积到 accumulatedStreamText 之前，先过滤桌面推送语法
     // 返回不属于推送块的正常文本（推送块内容被拦截转发到桌面画布）
-    const normalText = processDesktopPushToken(messageId, textToAppend);
-    
+    processDesktopPushToken(messageId, textToAppend);
+
     // Always maintain accumulated text（只累积正常文本，推送块内容不进入聊天气泡）
     // 但开始/结束标签本身会被累积（用于transformSpecialBlocks的转义封印显示占位符）
     let currentAccumulated = accumulatedStreamText.get(messageId) || "";
     currentAccumulated += textToAppend; // 保留完整文本用于最终渲染
     accumulatedStreamText.set(messageId, currentAccumulated);
-    
+
     // Update context if provided
     if (context) {
         const storedContext = messageContextMap.get(messageId);
@@ -2100,20 +2266,22 @@ export function appendStreamChunk(messageId, chunkData, context) {
             messageContextMap.set(messageId, storedContext);
         }
     }
-    
+
     if (shouldEnableSmoothStreaming()) {
         const queue = streamingChunkQueues.get(messageId);
         if (queue) {
             // 🟢 新代码：智能分块
             const semanticChunks = intelligentChunkSplit(textToAppend);
+            const segmentState = getOrCreateStreamSegmentState(messageId);
             for (const chunk of semanticChunks) {
                 queue.push(chunk);
+                segmentState.queuedChars += chunk.length;
             }
         } else {
             renderChunkDirectlyToDOM(messageId, textToAppend);
             return;
         }
-        
+
         // 🟢 使用全局循环替代单独的定时器
         if (!streamingTimers.has(messageId)) {
             streamingTimers.set(messageId, true); // 只是标记，不存储实际的 timerId
@@ -2124,68 +2292,76 @@ export function appendStreamChunk(messageId, chunkData, context) {
     }
 }
 
-export async function finalizeStreamedMessage(messageId, finishReason, context, finalPayload = null) {
-    const initStatusAtFinalize = messageInitializationStatus.get(messageId);
-    if (!initStatusAtFinalize || initStatusAtFinalize === 'pending') {
-        console.warn(`[StreamManager] Finalization arrived before message initialization completed for ${messageId}. Deferring. status=${initStatusAtFinalize || 'missing'}`);
-        pendingFinalizationEvents.set(messageId, { finishReason, context, finalPayload });
-        return;
+/**
+ * Applies the terminal message model and DOM projection without writing durable history.
+ * The StreamCoordinator owns the production commit point.
+ */
+async function projectStreamTerminalInternal(messageId, finishReason, context, finalPayload = null) {
+    if (disposed) return null;
+    const expectedOperationId = finalPayload?.streamOperationId || context?.streamOperationId || null;
+    const activeContext = messageContextMap.get(messageId);
+    if (expectedOperationId && activeContext?.streamOperationId && activeContext.streamOperationId !== expectedOperationId) return null;
+    // 原子停止流式帧；最终 DOM 投影期间不允许旧帧重新创建 stable/tail 根。
+    streamingTimers.delete(messageId);
+    pendingDirectRenderMessages.delete(messageId);
+    if (streamingTimers.size === 0 && globalRenderLoopFrameHandle !== null) {
+        cancelScheduledAnimationFrame(globalRenderLoopFrameHandle);
+        globalRenderLoopFrameHandle = null;
+        globalRenderLoopRunning = false;
+    }
+    let initStatusAtFinalize = messageInitializationStatus.get(messageId);
+    if (initStatusAtFinalize === 'pending') {
+        console.warn(`[StreamManager] Finalization is waiting for message initialization: ${messageId}`);
+        const initialized = await new Promise(resolve => {
+            const waiters = messageInitializationWaiters.get(messageId) || [];
+            waiters.push(resolve);
+            messageInitializationWaiters.set(messageId, waiters);
+        });
+        if (!initialized) return null;
+        initStatusAtFinalize = messageInitializationStatus.get(messageId);
+    }
+    if (!initStatusAtFinalize) {
+        console.warn(`[StreamManager] Finalization ignored because message initialization is absent: ${messageId}`);
+        discardStreamingMessage(messageId);
+        return null;
     }
 
-    // With the global render loop, we no longer need to manually drain the queue here or clear timers.
-    // The loop will continue to process chunks until the queue is empty and the message is finalized, then clean itself up.
-    if (activeStreamingMessageId === messageId) {
-        activeStreamingMessageId = null;
-    }
-    
+    // 终态入口已原子停止该消息的帧调度；不再排空平滑队列。
+    // 下方直接使用生产端规范终稿（缺失时才回退累计文本）完成最终 DOM 投影。
+    activeStreamingMessages.delete(messageId);
+
     // 🟢 清理节流定时器
     const scrollTimer = scrollThrottleTimers.get(messageId);
     if (scrollTimer) {
-        clearTimeout(scrollTimer);
+        clearOwnedTimeout(scrollTimer);
         scrollThrottleTimers.delete(messageId);
     }
-    
+
     messageInitializationStatus.set(messageId, 'finalized');
-    
+
     // Get the stored context for this message
     const storedContext = messageContextMap.get(messageId) || context;
     if (!storedContext) {
         console.error(`[StreamManager] No context available for message ${messageId}`);
+        discardStreamingMessage(messageId);
         return;
     }
-    
+
     const { chatMessagesDiv, uiHelper } = refs;
     const isForCurrentView = isMessageForCurrentView(storedContext);
-    
-    // Get the correct history
-    let historyForThisMessage;
-    // For assistant chat, always use the in-memory history from the ref
-    if (storedContext.topicId === 'assistant_chat' || storedContext.topicId?.startsWith('voicechat_')) {
-        historyForThisMessage = refs.currentChatHistoryRef.get();
-    } else {
-        // For all other chats, always fetch the latest history from the source of truth
-        // to avoid race conditions with the UI state (currentChatHistoryRef).
-        historyForThisMessage = await getHistoryForContext(storedContext);
-        if (!historyForThisMessage) {
-            console.error(`[StreamManager] Could not load history for finalization`, storedContext);
-            return;
-        }
-    }
-    
-    // Find and update the message
+    const shouldProjectToDom = isForCurrentView;
+
     const accumulatedText = accumulatedStreamText.get(messageId) || "";
     const payloadFullResponse = typeof finalPayload?.fullResponse === 'string' ? finalPayload.fullResponse : "";
     const payloadError = typeof finalPayload?.error === 'string' ? finalPayload.error.trim() : "";
     const streamedTextIsUsable = accumulatedText.trim() !== "" && !isThinkingPlaceholderText(accumulatedText);
     const payloadResponseIsUsable = payloadFullResponse.trim() !== "" && !isThinkingPlaceholderText(payloadFullResponse);
 
-    let finalFullText = accumulatedText;
-    
-    // --- Consistency Logic: Choose the most complete text available ---
-    // If the main process payload has more content (as in error recovery) or is explicitly marked as recovery, prefer it.
-    if (payloadResponseIsUsable && (payloadFullResponse.length > accumulatedText.length || payloadFullResponse.includes('[!WARNING]'))) {
-        finalFullText = payloadFullResponse;
-    }
+    // 终态 payload 是生产端给出的规范完整响应；有可用 payload 时不再按长度猜测权威来源。
+    // payload 缺失时才回退到渲染端累计文本。
+    let finalFullText = payloadResponseIsUsable
+        ? payloadFullResponse
+        : (streamedTextIsUsable ? accumulatedText : "");
 
     if (!finalFullText || isThinkingPlaceholderText(finalFullText)) {
         if (payloadError) {
@@ -2194,36 +2370,66 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
             finalFullText = "";
         }
     }
-    const messageIndex = historyForThisMessage.findIndex(msg => msg.id === messageId);
-    
-    if (messageIndex === -1) {
+    let transientModel;
+    try {
+        transientModel = await refs.transientStreamHistory.finalize({
+            messageId,
+            context: storedContext,
+            content: finalFullText,
+            finishReason,
+            visible: isForCurrentView,
+        });
+    } catch (error) {
+        console.error(`[StreamManager] Could not finalize transient history for ${messageId}`, storedContext, error);
+        discardStreamingMessage(messageId);
+        return null;
+    }
+    if (!transientModel) {
         // If it's an assistant chat and the message is not found,
         // it's likely the window was reset. Ignore gracefully.
         if (storedContext && storedContext.topicId === 'assistant_chat') {
             console.warn(`[StreamManager] Message ${messageId} not found in assistant history, likely due to reset. Ignoring.`);
-            // Clean up just in case
-            streamingChunkQueues.delete(messageId);
-            accumulatedStreamText.delete(messageId);
+            discardStreamingMessage(messageId);
             return;
         }
         console.error(`[StreamManager] Message ${messageId} not found in history`, storedContext);
+        discardStreamingMessage(messageId);
         return;
     }
-    
-    const message = historyForThisMessage[messageIndex];
-    message.content = finalFullText;
-    message.finishReason = finishReason;
-    message.isThinking = false;
-    if (message.isGroupMessage && storedContext) {
-        message.name = storedContext.agentName || message.name;
-        message.agentId = storedContext.agentId || message.agentId;
-    }
-    
-    // Update UI if it's the current view
-    if (isForCurrentView) {
-        refs.currentChatHistoryRef.set([...historyForThisMessage]);
 
-        const messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
+    const { message, history: historyForThisMessage } = transientModel;
+
+    // Update UI if it's the current view
+    if (shouldProjectToDom) {
+        // 如果流帧补建已在终态到达前启动，先等待它退出。终态锁会使旧补建
+        // 放弃其节点，随后由这里使用规范终稿建立唯一的最终投影。
+        const pendingRecovery = streamDomRecoveryOperations.get(String(messageId));
+        if (pendingRecovery) await Promise.allSettled([pendingRecovery]);
+
+        let messageItem = messageDomCache.get(messageId)?.messageItem;
+        if (!messageItem?.isConnected) {
+            messageDomCache.delete(messageId);
+            messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
+        }
+
+        if (!messageItem) {
+            const finalMessage = {
+                ...message,
+                ...storedContext,
+                id: messageId,
+                content: finalFullText,
+                isThinking: false,
+                finishReason,
+                streamOperationId: storedContext.streamOperationId || expectedOperationId || null,
+            };
+            const render = refs.chatDomRenderer?.renderMessage
+                ? refs.chatDomRenderer.renderMessage.bind(refs.chatDomRenderer)
+                : refs.renderMessage;
+            if (typeof render === 'function') {
+                messageItem = await render(finalMessage, false);
+            }
+        }
+
         if (messageItem) {
             messageItem.classList.remove('streaming', 'thinking');
 
@@ -2234,11 +2440,19 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
                 const preparedFinal = typeof refs.prepareFinalTextForRender === 'function'
                     ? refs.prepareFinalTextForRender(messageId, finalFullText, message.role || 'assistant', historyForThisMessage)
                     : { text: finalFullText, role: message.role || 'assistant', depth: 0 };
-                const rawHtml = parseFullStreamContent(preparedFinal.text, {
+                const finalRenderText = preparedFinal.role === 'assistant'
+                    && typeof refs.processAssistantScopedHtmlContent === 'function'
+                    ? refs.processAssistantScopedHtmlContent(
+                        preparedFinal.text,
+                        messageItem.id || null,
+                        messageItem
+                    )
+                    : preparedFinal.text;
+                const rawHtml = parseFullStreamContent(finalRenderText, {
                     messageRole: preparedFinal.role,
                     depth: preparedFinal.depth
                 });
-                
+
                 if (typeof refs.renderPostProcessedHtml === 'function') {
                     await refs.renderPostProcessedHtml(contentDiv, rawHtml, {
                         messageId,
@@ -2252,7 +2466,7 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
                     // Perform the final, high-quality render using the original global refresh method.
                     // This ensures images, KaTeX, code highlighting, etc., are all processed correctly.
                     refs.setContentAndProcessImages(contentDiv, rawHtml, messageId);
-                    
+
                     // Step 1: Run synchronous processors (KaTeX, hljs, etc.)
                     refs.processRenderedContent(contentDiv);
 
@@ -2261,7 +2475,7 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
                     }
 
                     // Step 2: Defer TreeWalker-based highlighters to ensure DOM is stable
-                    setTimeout(() => {
+                    scheduleOwnedTimeout(() => {
                         if (contentDiv && contentDiv.isConnected) {
                             refs.runTextHighlights(contentDiv);
                         }
@@ -2273,10 +2487,10 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
                     }
                 }
             }
-            
+
             const nameTimeBlock = messageItem.querySelector('.name-time-block');
             if (nameTimeBlock && !nameTimeBlock.querySelector('.message-timestamp')) {
-                const timestampDiv = document.createElement('div');
+                const timestampDiv = ownerDocument().createElement('div');
                 timestampDiv.classList.add('message-timestamp');
                 timestampDiv.textContent = formatMessageTimestamp(message.timestamp || Date.now());
                 nameTimeBlock.appendChild(timestampDiv);
@@ -2285,96 +2499,219 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
             uiHelper.scrollToBottom();
         }
 
-        window.updateSendButtonState?.();
     }
-    
-    // 🟢 使用防抖保存
-    if (storedContext.topicId !== 'assistant_chat') {
-        debouncedSaveHistory(storedContext, historyForThisMessage);
-    }
-    
+
     // Cleanup
-        streamingChunkQueues.delete(messageId);
-        pendingDirectRenderMessages.delete(messageId);
-        accumulatedStreamText.delete(messageId);
-        streamSegmentStates.delete(messageId);
-        cleanupDesktopPushState(messageId);
-        
-        // Delayed cleanup
-        const existingCleanupTimer = delayedCleanupTimers.get(messageId);
-        if (existingCleanupTimer) {
-            clearTimeout(existingCleanupTimer);
+    streamingChunkQueues.delete(messageId);
+    pendingDirectRenderMessages.delete(messageId);
+    accumulatedStreamText.delete(messageId);
+    streamSegmentStates.delete(messageId);
+    refs.transientStreamHistory.discard?.(messageId);
+    cleanupDesktopPushState(messageId);
+
+    // Terminal means ownership has ended; no delayed cache lease survives `done`.
+    streamDomRecoveryOperations.delete(String(messageId));
+    messageDomCache.delete(messageId);
+    messageInitializationStatus.delete(messageId);
+    preBufferedChunks.delete(messageId);
+    messageContextMap.delete(messageId);
+    viewContextCache.delete(messageId);
+    messageRuntimeKeys.delete(String(messageId));
+    streamMessageModels.delete(messageId);
+
+    // 调用方（例如 Flowlock）需要基于真正落盘的完整文本解析最终控制协议。
+    return {
+        messageId,
+        context: storedContext,
+        content: finalFullText,
+        finishReason,
+        history: historyForThisMessage,
+    };
+}
+
+async function projectStreamTerminal(messageId, finishReason, context, finalPayload = null) {
+    const terminalKey = String(messageId);
+    if (terminalProjectingMessages.has(terminalKey)) return null;
+    const terminalToken = Object.freeze({});
+    terminalProjectingMessages.set(terminalKey, terminalToken);
+    try {
+        return await projectStreamTerminalInternal(
+            messageId,
+            finishReason,
+            context,
+            finalPayload
+        );
+    } finally {
+        // 仅释放本调用持有的锁，重复/迟到终态不能解锁另一个正在投影的终态。
+        if (terminalProjectingMessages.get(terminalKey) === terminalToken) {
+            terminalProjectingMessages.delete(terminalKey);
         }
-        const cleanupTimerId = setTimeout(() => {
-            messageDomCache.delete(messageId);
-            messageInitializationStatus.delete(messageId);
-            preBufferedChunks.delete(messageId);
-            messageContextMap.delete(messageId);
-            viewContextCache.delete(messageId);
-            delayedCleanupTimers.delete(messageId);
-        }, 5000);
-        delayedCleanupTimers.set(messageId, cleanupTimerId);
     }
-    
-    export function cleanupTransientState() {
+}
+
+function discardStreamingMessage(messageId) {
+    if (disposed) return false;
+    terminalProjectingMessages.delete(String(messageId));
+    streamDomRecoveryOperations.delete(String(messageId));
+    const scrollTimer = scrollThrottleTimers.get(messageId);
+    if (scrollTimer) clearOwnedTimeout(scrollTimer);
+    scrollThrottleTimers.delete(messageId);
+    streamingChunkQueues.delete(messageId);
+    streamingTimers.delete(messageId);
+    pendingDirectRenderMessages.delete(messageId);
+    if (streamingTimers.size === 0 && globalRenderLoopFrameHandle !== null) {
+        cancelScheduledAnimationFrame(globalRenderLoopFrameHandle);
+        globalRenderLoopFrameHandle = null;
+        globalRenderLoopRunning = false;
+    }
+    accumulatedStreamText.delete(messageId);
+    streamSegmentStates.delete(messageId);
+    messageDomCache.delete(messageId);
+    preBufferedChunks.delete(messageId);
+    messageInitializationStatus.delete(messageId);
+    const initializationWaiters = messageInitializationWaiters.get(messageId) || [];
+    messageInitializationWaiters.delete(messageId);
+    initializationWaiters.forEach(resolve => resolve(false));
+    refs.transientStreamHistory.discard?.(messageId);
+    messageContextMap.delete(messageId);
+    viewContextCache.delete(messageId);
+    cleanupDesktopPushState(messageId);
+    activeStreamingMessages.delete(messageId);
+    messageRuntimeKeys.delete(String(messageId));
+}
+
+async function dispose() {
+        if (disposed) return;
+        disposed = true;
+        if (transientCleanupRegistered) {
+            transientCleanupWindow?.removeEventListener('beforeunload', dispose);
+            transientCleanupRegistered = false;
+            transientCleanupWindow = null;
+        }
+        cancelScheduledAnimationFrames();
         // 清理所有流式消息相关状态
         for (const timerId of scrollThrottleTimers.values()) {
-            clearTimeout(timerId);
+            clearOwnedTimeout(timerId);
         }
         scrollThrottleTimers.clear();
-    
-        for (const state of desktopPushStates.values()) {
-            if (state?.pushTimer) {
-                clearInterval(state.pushTimer);
-            }
-        }
-        desktopPushStates.clear();
-    
-        for (const timerId of delayedCleanupTimers.values()) {
-            clearTimeout(timerId);
-        }
-        delayedCleanupTimers.clear();
-    
-        for (const timerId of historySaveQueue.values()) {
-            if (timerId?.timerId) {
-                clearTimeout(timerId.timerId);
-            }
-        }
-        historySaveQueue.clear();
-    
+        for (const timeout of ownedTimeouts) clearOwnedTimeout(timeout);
+        cancelScheduledAnimationFrames();
+
+        desktopPushConsumer?.dispose();
+        desktopPushConsumer = null;
+
+
         streamingChunkQueues.clear();
         streamingTimers.clear();
         pendingDirectRenderMessages.clear();
         accumulatedStreamText.clear();
         streamSegmentStates.clear();
+        streamDomRecoveryOperations.clear();
         messageDomCache.clear();
         preBufferedChunks.clear();
         messageInitializationStatus.clear();
-        pendingFinalizationEvents.clear();
+        for (const waiters of messageInitializationWaiters.values()) waiters.forEach(resolve => resolve(false));
+        messageInitializationWaiters.clear();
+        refs.transientStreamHistory.dispose?.();
         messageContextMap.clear();
         viewContextCache.clear();
-    
-        activeStreamingMessageId = null;
+        streamMessageModels.clear();
+
+        activeStreamingMessages.clear();
+        messageRuntimeKeys.clear();
+        terminalProjectingMessages.clear();
         currentViewSignature = null;
         globalRenderLoopRunning = false;
-    
+        await Promise.allSettled([...pendingAsyncOperations]);
+
         console.debug('[StreamManager] Transient state cleared');
     }
 
-// Expose to global scope for classic scripts
-window.streamManager = {
-    initStreamManager,
-    startStreamingMessage,
+function getActiveStreamingMessageId() {
+    const active = [...activeStreamingMessages.entries()];
+    for (let index = active.length - 1; index >= 0; index -= 1) {
+        const [messageId, context] = active[index];
+        if (isMessageForCurrentView(context)) return messageId;
+    }
+    return null;
+}
+
+function getActiveStreamingContext() {
+    const messageId = getActiveStreamingMessageId();
+    return messageId ? activeStreamingMessages.get(messageId) || null : null;
+}
+
+function snapshotConversation(identity) {
+    if (disposed) return Object.freeze([]);
+    const snapshots = [];
+    for (const [messageId, context] of activeStreamingMessages.entries()) {
+        if (!conversationIdentityMatches(context, identity)) continue;
+        snapshots.push(Object.freeze({
+            conversation: Object.freeze({
+                itemType: context.isGroupMessage ? 'group' : 'agent',
+                itemId: context.isGroupMessage ? context.groupId : context.agentId,
+                topicId: context.topicId,
+            }),
+            message: Object.freeze({ ...(streamMessageModels.get(messageId) || { id: messageId }) }),
+            messageId,
+            streamOperationId: context.streamOperationId || null,
+            context: Object.freeze({ ...context }),
+            phase: messageInitializationStatus.get(messageId) || 'active',
+            accumulatedText: accumulatedStreamText.get(messageId) || '',
+        }));
+    }
+    return Object.freeze(snapshots);
+}
+
+async function reconcileConversation(identity) {
+    if (disposed) return Object.freeze([]);
+    const snapshots = snapshotConversation(identity);
+    for (const snapshot of snapshots) {
+        const context = messageContextMap.get(snapshot.messageId) || snapshot.context;
+        viewContextCache.set(snapshot.messageId, isMessageForCurrentView(context));
+        await startStreamingMessage({ ...snapshot.message, ...context, content: snapshot.message.content || '' });
+        if (isMessageForCurrentView(context)) {
+            renderStreamFrame(snapshot.messageId);
+        }
+    }
+    return snapshots;
+}
+
+function getStreamDiagnostics() {
+    const activeMessageId = getActiveStreamingMessageId();
+    return Object.freeze({
+        activeMessageId,
+        activeMessageIds: Object.freeze(activeStreamingMessages.displayKeys()),
+        initialization: messageInitializationStatus.size,
+        activeInitializations: [...messageInitializationStatus.values()]
+            .filter(status => status === 'pending' || status === 'ready').length,
+        contexts: messageContextMap.size,
+        pendingHistory: refs.transientStreamHistory?.pendingCount || 0,
+        prebuffered: preBufferedChunks.size,
+        pendingFinalizations: messageInitializationWaiters.size,
+        chunkQueues: streamingChunkQueues.size,
+        renderTimers: streamingTimers.size,
+        delayedCleanupTimers: ownedTimeouts.size + scheduledAnimationFrames.size,
+        desktopPushStates: desktopPushConsumer?.getStateCount() || 0,
+    });
+}
+
+return Object.freeze({
+    attachStreamProjection,
+    dispose,
+    startStreamingMessage: (...args) => trackAsyncOperation(startStreamingMessage(...args)),
     appendStreamChunk,
-    finalizeStreamedMessage,
-    cleanupTransientState,
-    getActiveStreamingMessageId: () => activeStreamingMessageId,
-    getActiveStreamingContext: () => {
-        if (!activeStreamingMessageId) return null;
-        return messageContextMap.get(activeStreamingMessageId) || null;
-    },
+    projectStreamTerminal: (...args) => trackAsyncOperation(projectStreamTerminal(...args)),
+    discardStreamingMessage,
+    getDiagnostics: getStreamDiagnostics,
+    isMessageActive,
+    getActiveStreamingMessageId,
+    getActiveStreamingContext,
+    snapshotConversation,
+    reconcileConversation: (...args) => trackAsyncOperation(reconcileConversation(...args)),
     isMessageInitialized: (messageId) => {
         // Check if message is being tracked by streamManager
         return messageInitializationStatus.has(messageId);
     }
-};
+});
+}

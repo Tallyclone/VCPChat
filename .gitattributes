@@ -1,3 +1,4 @@
 dist/win-unpacked/resources/app.asar filter=lfs diff=lfs merge=lfs -text
 dist/win-unpacked/VCP聊天客户端.exe filter=lfs diff=lfs merge=lfs -text
 VCPDistributedServer/Plugin/RhinoVCP/RhinoVCPDaemon.exe filter=lfs diff=lfs merge=lfs -text
+vendor/webawesome-runtime/** -text -whitespace

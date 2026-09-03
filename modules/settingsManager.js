@@ -39,9 +39,13 @@ const settingsManager = (() => {
 
     // --- Private Variables ---
     let electronAPI = null;
+    let initialized = false;
+    let modelsUpdatedDisposer = null;
     let uiHelper = null;
     let refs = {}; // To hold references to currentSelectedItem, etc.
     let mainRendererFunctions = {}; // To call back to renderer.js functions if needed
+    let messageRenderer = null;
+    let getGlobalSettings = () => ({});
 
     // DOM Elements
     let agentSettingsContainer, groupSettingsContainer, selectItemPromptForSettings;
@@ -56,6 +60,24 @@ const settingsManager = (() => {
     let openModelSelectBtn, modelSelectModal, modelList, modelSearchInput, refreshModelsBtn;
     let topicSummaryModelInput, openTopicSummaryModelSelectBtn; // New elements for topic summary model
     let agentTtsVoicePrimarySelect, agentTtsRegexPrimaryInput, agentTtsVoiceSecondarySelect, agentTtsRegexSecondaryInput, refreshTtsModelsBtn, agentTtsSpeedSlider, ttsSpeedValueSpan;
+    let agentTtsDirectorPromptInput, addAgentTtsDirectorPromptBtn, fillAgentTtsDirectorTemplateBtn, agentTtsDirectorPromptsContainer;
+    let currentAgentTtsDirectorPrompts = [];
+    let agentTtsPrimarySelectController = null;
+    let agentTtsSecondarySelectController = null;
+    const TTS_DIRECTOR_TEMPLATE = `【角色】
+写清人物的身份、年龄、性格底色、外形气质与说话习惯。
+
+【场景】
+交代此刻发生了什么、和谁说话、情绪处在什么位置。
+
+【指导】
+像导演一样下达演绎要领：
+- 语速与顿挫：
+- 气息与虚实：
+- 停顿与重音：
+- 共鸣位置：
+- 音色质感：
+- 情绪起伏：`;
     let stripRegexListContainer;
 
     // --- New Regex Modal Elements ---
@@ -65,15 +87,41 @@ const settingsManager = (() => {
     // A private variable to hold the regex rules for the currently edited agent
     let currentAgentRegexes = [];
     let currentModelSelectCallback = null;
+    // 保留模型选择器本次打开时的目标。收藏模型会刷新列表，不能在刷新时
+    // 错误地退回到 Agent 模型输入框。
+    let currentModelSelectTarget = null;
     const sectionControllers = new Map();
     let lastPersistedCollapseStateSignature = '';
     let scheduleStickyButtonsRefresh = () => { };
+    let agentSettingsPopulateToken = 0;
+    let agentSettingsPopulateQueue = Promise.resolve();
     const initializedCollapseStateAgents = new Set();
     const promptModeFallbackLabels = {
         original: '文本',
         modular: '模块',
         preset: '预置'
     };
+
+    function syncRangeProgress(rangeInput) {
+        if (!rangeInput) return;
+        const min = Number(rangeInput.min || 0);
+        const max = Number(rangeInput.max || 100);
+        const value = Number(rangeInput.value || min);
+        const progress = max > min ? ((value - min) / (max - min)) * 100 : 0;
+        rangeInput.style.setProperty('--vcp-ui-range-progress', `${Math.max(0, Math.min(100, progress))}%`);
+    }
+
+    function reportSettingsSaveResult(form, success, error = '') {
+        form?.dispatchEvent(new CustomEvent('vcp-settings-save-result', {
+            detail: { success: Boolean(success), error }
+        }));
+    }
+
+    function reportSettingsDeleteResult(form, success, { cancelled = false, error = '' } = {}) {
+        form?.dispatchEvent(new CustomEvent('vcp-settings-delete-result', {
+            detail: { success: Boolean(success), cancelled: Boolean(cancelled), error }
+        }));
+    }
 
     /**
      * Displays the appropriate settings view (agent, group, or default prompt)
@@ -122,44 +170,74 @@ const settingsManager = (() => {
      * @param {string} agentId - The ID of the agent.
      * @param {object} agentConfig - The configuration object for the agent.
      */
-    async function populateAgentSettingsForm(agentId, agentConfig) {
-        if (groupSettingsContainer) groupSettingsContainer.style.display = 'none';
-        if (agentSettingsContainer) agentSettingsContainer.style.display = '';
+    function populateAgentSettingsForm(agentId, agentConfig) {
+        const populateToken = ++agentSettingsPopulateToken;
 
-        if (!agentConfig || agentConfig.error) {
-            uiHelper.showToastNotification(`加载Agent配置失败: ${agentConfig?.error || '未知错误'}`, 'error');
-            if (agentSettingsContainer) agentSettingsContainer.style.display = 'none';
-            selectItemPromptForSettings.textContent = `加载 ${agentId} 配置失败。`;
-            selectItemPromptForSettings.style.display = 'block';
-            return;
+        // 新增提示词编辑器只是尚未提交到列表的临时草稿，不属于 Agent 配置。
+        // 表单 DOM 会被所有 Agent 复用，因此切换 Agent 时必须立即清空，否则 A 的
+        // 草稿会继续显示在 B 的设置中，并可能被误添加、误保存到 B。
+        if (agentTtsDirectorPromptInput && editingAgentIdInput?.value !== agentId) {
+            agentTtsDirectorPromptInput.value = '';
+            agentTtsDirectorPromptInput.closest('.tts-director-composer')?.classList.remove('is-editing');
+            resizeTtsDirectorEditor(agentTtsDirectorPromptInput, false);
         }
 
-        editingAgentIdInput.value = agentId;
-        agentNameInput.value = agentConfig.name || agentId;
-
-        // Initialize PromptManager (Singleton Pattern)
-        const systemPromptContainer = document.getElementById('systemPromptContainer');
-        if (systemPromptContainer && window.PromptManager) {
-            if (!promptManager) {
-                promptManager = new window.PromptManager();
-                await promptManager.init({
-                    containerElement: systemPromptContainer,
-                    electronAPI: electronAPI
-                });
-            } else {
-                // Save current state before switching context
-                await promptManager.saveCurrentModeData();
+        // 所有 Agent 共用同一套表单和 PromptManager。串行切换上下文，并让较新的请求淘汰
+        // 尚未开始写 DOM 的旧请求，避免异步初始化/保存交错后把 A 的内容显示或保存到 B。
+        const populateTask = async () => {
+            if (populateToken !== agentSettingsPopulateToken) {
+                console.debug(`[SettingsManager] Skipping stale settings population for agent ${agentId}.`);
+                return { stale: true };
             }
 
-            await promptManager.updateAgentContext(agentId, agentConfig);
-        }
+            if (groupSettingsContainer) groupSettingsContainer.style.display = 'none';
+            if (agentSettingsContainer) agentSettingsContainer.style.display = '';
 
-        agentModelInput.value = agentConfig.model || '';
-        agentTemperatureInput.value = agentConfig.temperature !== undefined ? agentConfig.temperature : 0.7;
-        agentContextTokenLimitInput.value = agentConfig.contextTokenLimit !== undefined ? agentConfig.contextTokenLimit : 4000;
-        agentMaxOutputTokensInput.value = agentConfig.maxOutputTokens !== undefined ? agentConfig.maxOutputTokens : 1000;
-        agentTopPInput.value = agentConfig.top_p !== undefined ? agentConfig.top_p : '';
-        agentTopKInput.value = agentConfig.top_k !== undefined ? agentConfig.top_k : '';
+            if (!agentConfig || agentConfig.error) {
+                uiHelper.showToastNotification(`加载Agent配置失败: ${agentConfig?.error || '未知错误'}`, 'error');
+                if (agentSettingsContainer) agentSettingsContainer.style.display = 'none';
+                selectItemPromptForSettings.textContent = `加载 ${agentId} 配置失败。`;
+                selectItemPromptForSettings.style.display = 'block';
+                return;
+            }
+
+            // Initialize PromptManager (Singleton Pattern)
+            const systemPromptContainer = document.getElementById('systemPromptContainer');
+            if (systemPromptContainer && window.PromptManager) {
+                if (!promptManager) {
+                    promptManager = new window.PromptManager();
+                    await promptManager.init({
+                        containerElement: systemPromptContainer,
+                        electronAPI: electronAPI
+                    });
+                } else if (promptManager.getAgentId?.()) {
+                    // 保存的目标由 PromptManager 自身上下文决定，而不是可变的表单 ID。
+                    await promptManager.saveCurrentModeData();
+                }
+
+                if (populateToken !== agentSettingsPopulateToken) {
+                    console.debug(`[SettingsManager] Aborting stale prompt context switch for agent ${agentId}.`);
+                    return { stale: true };
+                }
+
+                await promptManager.updateAgentContext(agentId, agentConfig);
+            }
+
+            if (populateToken !== agentSettingsPopulateToken) {
+                console.debug(`[SettingsManager] Aborting stale settings render for agent ${agentId}.`);
+                return { stale: true };
+            }
+
+            // 只有提示词上下文已成功切到目标 Agent 后，才发布表单所代表的 Agent ID。
+            editingAgentIdInput.value = agentId;
+            agentNameInput.value = agentConfig.name || agentId;
+
+            agentModelInput.value = agentConfig.model || '';
+        agentTemperatureInput.value = agentConfig.temperature === null ? '' : (agentConfig.temperature !== undefined ? agentConfig.temperature : 0.7);
+        agentContextTokenLimitInput.value = agentConfig.contextTokenLimit === null ? '' : (agentConfig.contextTokenLimit !== undefined ? agentConfig.contextTokenLimit : 4000);
+        agentMaxOutputTokensInput.value = agentConfig.maxOutputTokens === null ? '' : (agentConfig.maxOutputTokens !== undefined ? agentConfig.maxOutputTokens : 1000);
+        agentTopPInput.value = agentConfig.top_p === null ? '' : (agentConfig.top_p !== undefined ? agentConfig.top_p : '');
+        agentTopKInput.value = agentConfig.top_k === null ? '' : (agentConfig.top_k !== undefined ? agentConfig.top_k : '');
 
         const streamOutput = agentConfig.streamOutput !== undefined ? agentConfig.streamOutput : true;
         document.getElementById('agentStreamOutputTrue').checked = streamOutput === true || String(streamOutput) === 'true';
@@ -224,20 +302,53 @@ const settingsManager = (() => {
         // Populate bilingual TTS settings
         await populateTtsModels(agentConfig.ttsVoicePrimary, agentConfig.ttsVoiceSecondary);
 
+        // 音色查询是异步边界。等待期间若用户切换到了其他 Agent，旧任务不能再把
+        // TTS 正则、导演提示词列表和其他共享状态写回当前表单。
+        if (populateToken !== agentSettingsPopulateToken) {
+            console.debug(`[SettingsManager] Aborting stale TTS settings render for agent ${agentId}.`);
+            return { stale: true };
+        }
+
         agentTtsRegexPrimaryInput.value = agentConfig.ttsRegexPrimary || '';
         agentTtsRegexSecondaryInput.value = agentConfig.ttsRegexSecondary || '';
+        currentAgentTtsDirectorPrompts = Array.isArray(agentConfig.ttsDirectorPrompts)
+            ? agentConfig.ttsDirectorPrompts.map(item => String(item || '').trim()).filter(Boolean)
+            : [];
+        renderTtsDirectorPrompts();
 
         agentTtsSpeedSlider.value = agentConfig.ttsSpeed !== undefined ? agentConfig.ttsSpeed : 1.0;
         ttsSpeedValueSpan.textContent = parseFloat(agentTtsSpeedSlider.value).toFixed(1);
+        syncRangeProgress(agentTtsSpeedSlider);
 
         // Load and render regex rules
         currentAgentRegexes = JSON.parse(JSON.stringify(agentConfig.stripRegexes || [])); // Deep copy
         renderRegexList();
 
-        // Restore collapse states after dynamic content is ready
-        restoreCollapseStates(agentConfig);
-        updateAllSectionSummaries();
-        scheduleStickyButtonsRefresh();
+            // Restore collapse states after dynamic content is ready
+            restoreCollapseStates(agentConfig);
+            updateAllSectionSummaries();
+            scheduleStickyButtonsRefresh();
+            document.dispatchEvent(new CustomEvent('vcp-settings-surface-updated', {
+                detail: { kind: 'agent', root: agentSettingsForm }
+            }));
+        };
+
+        const queuedTask = agentSettingsPopulateQueue
+            .catch(error => {
+                console.error('[SettingsManager] Previous settings population failed:', error);
+            })
+            .then(populateTask);
+
+        agentSettingsPopulateQueue = queuedTask;
+        return queuedTask;
+    }
+
+    function parseOptionalNumberInput(input, parser) {
+        const rawValue = input?.value?.trim() ?? '';
+        if (rawValue === '') return null;
+
+        const parsedValue = parser(rawValue);
+        return Number.isFinite(parsedValue) ? parsedValue : null;
     }
 
     /**
@@ -250,6 +361,13 @@ const settingsManager = (() => {
         if (!agentId) {
             console.error("[SettingsManager] Cannot save agent settings: agentId is missing.");
             uiHelper.showToastNotification("保存失败：未指定 Agent ID", 'error');
+            reportSettingsSaveResult(agentSettingsForm, false, 'missing-agent-id');
+            return;
+        }
+        if (promptManager?.getAgentId?.() && promptManager.getAgentId() !== agentId) {
+            console.warn(`[SettingsManager] Blocked save for ${agentId}: PromptManager is bound to ${promptManager.getAgentId()}.`);
+            uiHelper.showToastNotification('Agent 正在切换，请稍后再保存。', 'warning');
+            reportSettingsSaveResult(agentSettingsForm, false, 'agent-switching');
             return;
         }
 
@@ -257,7 +375,18 @@ const settingsManager = (() => {
         let systemPromptData = {};
         if (promptManager) {
             await promptManager.saveCurrentModeData();
+            if (editingAgentIdInput.value !== agentId || promptManager.getAgentId?.() !== agentId) {
+                console.debug(`[SettingsManager] Aborting stale save after prompt persistence for ${agentId}.`);
+                reportSettingsSaveResult(agentSettingsForm, false, 'stale-agent');
+                return;
+            }
+
             const currentPrompt = await promptManager.getCurrentSystemPrompt();
+            if (editingAgentIdInput.value !== agentId || promptManager.getAgentId?.() !== agentId) {
+                console.debug(`[SettingsManager] Aborting stale save after prompt read for ${agentId}.`);
+                reportSettingsSaveResult(agentSettingsForm, false, 'stale-agent');
+                return;
+            }
             systemPromptData.systemPrompt = currentPrompt; // Keep for compatibility
         }
 
@@ -265,16 +394,17 @@ const settingsManager = (() => {
             name: agentNameInput.value.trim(),
             ...systemPromptData,
             model: agentModelInput.value.trim() || 'gemini-pro',
-            temperature: parseFloat(agentTemperatureInput.value),
-            contextTokenLimit: parseInt(agentContextTokenLimitInput.value),
-            maxOutputTokens: parseInt(agentMaxOutputTokensInput.value),
-            top_p: parseFloat(agentTopPInput.value) || undefined,
-            top_k: parseInt(agentTopKInput.value) || undefined,
+            temperature: parseOptionalNumberInput(agentTemperatureInput, Number.parseFloat),
+            contextTokenLimit: parseOptionalNumberInput(agentContextTokenLimitInput, value => Number.parseInt(value, 10)),
+            maxOutputTokens: parseOptionalNumberInput(agentMaxOutputTokensInput, value => Number.parseInt(value, 10)),
+            top_p: parseOptionalNumberInput(agentTopPInput, Number.parseFloat),
+            top_k: parseOptionalNumberInput(agentTopKInput, value => Number.parseInt(value, 10)),
             streamOutput: document.getElementById('agentStreamOutputTrue').checked,
             ttsVoicePrimary: agentTtsVoicePrimarySelect.value,
             ttsRegexPrimary: agentTtsRegexPrimaryInput.value.trim(),
             ttsVoiceSecondary: agentTtsVoiceSecondarySelect.value,
             ttsRegexSecondary: agentTtsRegexSecondaryInput.value.trim(),
+            ttsDirectorPrompts: [...currentAgentTtsDirectorPrompts],
             ttsSpeed: parseFloat(agentTtsSpeedSlider.value),
             stripRegexes: currentAgentRegexes,
             avatarBorderColor: agentAvatarBorderColorInput.value,
@@ -289,6 +419,7 @@ const settingsManager = (() => {
 
         if (!newConfig.name) {
             uiHelper.showToastNotification("Agent名称不能为空！", 'error');
+            reportSettingsSaveResult(agentSettingsForm, false, 'missing-name');
             return;
         }
 
@@ -304,6 +435,7 @@ const settingsManager = (() => {
 
                 if (avatarResult.error) {
                     uiHelper.showToastNotification(`保存Agent头像失败: ${avatarResult.error}`, 'error');
+                    reportSettingsSaveResult(agentSettingsForm, false, avatarResult.error);
                     // 如果头像保存失败，视情况决定是否继续保存其他配置。这里选择报错并中断。
                     return;
                 } else {
@@ -315,8 +447,8 @@ const settingsManager = (() => {
                                 electronAPI.saveAvatarColor({ type: 'agent', id: agentId, color: avgColor })
                                     .then((saveColorResult) => {
                                         if (saveColorResult && saveColorResult.success) {
-                                            if (refs.currentSelectedItemRef.get().id === agentId && refs.currentSelectedItemRef.get().type === 'agent' && window.messageRenderer) {
-                                                window.messageRenderer.setCurrentItemAvatarColor(avgColor);
+                                            if (refs.currentSelectedItemRef.get().id === agentId && refs.currentSelectedItemRef.get().type === 'agent' && messageRenderer) {
+                                                messageRenderer.setCurrentItemAvatarColor(avgColor);
                                             }
                                         } else {
                                             console.warn(`Failed to save agent ${agentId} avatar color:`, saveColorResult?.error);
@@ -332,51 +464,65 @@ const settingsManager = (() => {
             } catch (readError) {
                 console.error("读取Agent头像文件失败:", readError);
                 uiHelper.showToastNotification(`读取Agent头像文件失败: ${readError.message}`, 'error');
+                reportSettingsSaveResult(agentSettingsForm, false, readError.message);
                 return; // 中断保存
             }
         }
 
-        const result = await electronAPI.saveAgentConfig(agentId, newConfig);
+        let result;
+        try {
+            result = await electronAPI.saveAgentConfig(agentId, newConfig);
+        } catch (error) {
+            console.error('[SettingsManager] Failed to save agent settings:', error);
+            uiHelper.showToastNotification(`保存Agent设置时出错: ${error.message}`, 'error');
+            reportSettingsSaveResult(agentSettingsForm, false, error.message);
+            return;
+        }
         const saveButton = agentSettingsForm.querySelector('button[type="submit"]');
 
         if (result.success) {
             if (saveButton) uiHelper.showSaveFeedback(saveButton, true, '已保存!', '保存 Agent 设置');
-            await window.itemListManager.loadItems();
+            try {
+                await window.itemListManager.loadItems();
 
-            const currentSelectedItem = refs.currentSelectedItemRef.get();
-            if (currentSelectedItem.id === agentId && currentSelectedItem.type === 'agent') {
-                const updatedAgentConfig = await electronAPI.getAgentConfig(agentId);
+                const currentSelectedItem = refs.currentSelectedItemRef.get();
+                if (currentSelectedItem.id === agentId && currentSelectedItem.type === 'agent') {
+                    const updatedAgentConfig = await electronAPI.getAgentConfig(agentId);
                 
-                // ⚠️ 检查是否返回错误对象
-                if (updatedAgentConfig && updatedAgentConfig.error) {
-                    console.error(`[SettingsManager] Failed to get updated agent config:`, updatedAgentConfig.error);
-                    uiHelper.showToastNotification(`无法刷新Agent配置: ${updatedAgentConfig.error}`, 'warning');
-                    // 仍然更新名称，但不更新其他可能缺失的属性
-                    currentSelectedItem.name = newConfig.name;
-                    selectedItemNameForSettingsSpan.textContent = newConfig.name;
-                    if (mainRendererFunctions.updateChatHeader) {
-                        mainRendererFunctions.updateChatHeader(`与 ${newConfig.name} 聊天中`);
-                    }
-                } else if (updatedAgentConfig) {
-                    currentSelectedItem.name = newConfig.name;
-                    if (currentSelectedItem.config) {
-                        currentSelectedItem.config = updatedAgentConfig;
-                    } else {
-                        Object.assign(currentSelectedItem, updatedAgentConfig);
-                    }
+                    // ⚠️ 检查是否返回错误对象
+                    if (updatedAgentConfig && updatedAgentConfig.error) {
+                        console.error(`[SettingsManager] Failed to get updated agent config:`, updatedAgentConfig.error);
+                        uiHelper.showToastNotification(`无法刷新Agent配置: ${updatedAgentConfig.error}`, 'warning');
+                        // 仍然更新名称，但不更新其他可能缺失的属性
+                        refs.currentSelectedItemRef.set({ ...currentSelectedItem, name: newConfig.name });
+                        selectedItemNameForSettingsSpan.textContent = newConfig.name;
+                        if (mainRendererFunctions.updateChatHeader) {
+                            mainRendererFunctions.updateChatHeader(`与 ${newConfig.name} 聊天中`);
+                        }
+                    } else if (updatedAgentConfig) {
+                        const nextSelectedItem = currentSelectedItem.config
+                            ? { ...currentSelectedItem, name: newConfig.name, config: updatedAgentConfig }
+                            : { ...currentSelectedItem, ...updatedAgentConfig, name: newConfig.name };
+                        refs.currentSelectedItemRef.set(nextSelectedItem);
 
-                    // Update other UI parts via callbacks or direct calls if modules are passed in
-                    if (mainRendererFunctions.updateChatHeader) {
-                        mainRendererFunctions.updateChatHeader(`与 ${newConfig.name} 聊天中`);
+                        // Update other UI parts via callbacks or direct calls if modules are passed in
+                        if (mainRendererFunctions.updateChatHeader) {
+                            mainRendererFunctions.updateChatHeader(`与 ${newConfig.name} 聊天中`);
+                        }
+                        if (messageRenderer) {
+                            messageRenderer.setCurrentItemAvatar(updatedAgentConfig.avatarUrl);
+                            messageRenderer.setCurrentItemAvatarColor(updatedAgentConfig.avatarCalculatedColor || null);
+                        }
+                        selectedItemNameForSettingsSpan.textContent = newConfig.name;
                     }
-                    if (window.messageRenderer) {
-                        window.messageRenderer.setCurrentItemAvatar(updatedAgentConfig.avatarUrl);
-                        window.messageRenderer.setCurrentItemAvatarColor(updatedAgentConfig.avatarCalculatedColor || null);
-                    }
-                    selectedItemNameForSettingsSpan.textContent = newConfig.name;
                 }
+            } catch (projectionError) {
+                console.error('[SettingsManager] Agent settings saved, but UI projection failed:', projectionError);
+                uiHelper.showToastNotification(`Agent设置已保存，但界面刷新失败: ${projectionError.message || projectionError}`, 'warning');
             }
+            reportSettingsSaveResult(agentSettingsForm, true);
         } else {
+            reportSettingsSaveResult(agentSettingsForm, false, result.error || 'save-failed');
             if (saveButton) uiHelper.showSaveFeedback(saveButton, false, '保存失败', '保存 Agent 设置');
             uiHelper.showToastNotification(`保存Agent设置失败: ${result.error}`, 'error');
         }
@@ -389,13 +535,20 @@ const settingsManager = (() => {
         const currentSelectedItem = refs.currentSelectedItemRef.get();
         if (!currentSelectedItem.id) {
             uiHelper.showToastNotification("没有选中的项目可删除。", 'info');
+            reportSettingsDeleteResult(agentSettingsForm, false, { error: 'missing-selection' });
             return;
         }
 
         const itemTypeDisplay = currentSelectedItem.type === 'group' ? '群组' : 'Agent';
         const itemName = currentSelectedItem.name || '当前选中的项目';
 
-        if (await uiHelper.showConfirmDialog(`您确定要删除 ${itemTypeDisplay} "${itemName}" 吗？其所有聊天记录和设置都将被删除，此操作不可撤销！`, '删除确认', '删除', '取消', true)) {
+        const confirmed = await uiHelper.showConfirmDialog(`您确定要删除 ${itemTypeDisplay} "${itemName}" 吗？其所有聊天记录和设置都将被删除，此操作不可撤销！`, '删除确认', '删除', '取消', true);
+        if (!confirmed) {
+            reportSettingsDeleteResult(agentSettingsForm, false, { cancelled: true });
+            return;
+        }
+
+        try {
             let result;
             if (currentSelectedItem.type === 'agent') {
                 result = await electronAPI.deleteAgent(currentSelectedItem.id);
@@ -404,6 +557,7 @@ const settingsManager = (() => {
             }
 
             if (result && result.success) {
+                reportSettingsDeleteResult(agentSettingsForm, true);
                 // Reset state in renderer via refs
                 refs.currentSelectedItemRef.set({ id: null, type: null, name: null, avatarUrl: null, config: null });
                 refs.currentTopicIdRef.set(null);
@@ -414,8 +568,13 @@ const settingsManager = (() => {
                     mainRendererFunctions.onItemDeleted();
                 }
             } else {
+                reportSettingsDeleteResult(agentSettingsForm, false, { error: result?.error || 'unknown-error' });
                 uiHelper.showToastNotification(`删除${itemTypeDisplay}失败: ${result?.error || '未知错误'}`, 'error');
             }
+        } catch (error) {
+            console.error('[SettingsManager] Failed to delete item:', error);
+            reportSettingsDeleteResult(agentSettingsForm, false, { error: error.message });
+            uiHelper.showToastNotification(`删除${itemTypeDisplay}时出错: ${error.message}`, 'error');
         }
     }
 
@@ -449,50 +608,65 @@ const settingsManager = (() => {
      * @param {string} currentPrimaryVoice - The currently selected primary voice.
      * @param {string} currentSecondaryVoice - The currently selected secondary voice.
      */
+    function ensureThemedTtsSelects() {
+        if (!window.VCPUI || document.documentElement.dataset.uiMode !== 'next') return;
+        try {
+            agentTtsPrimarySelectController = window.VCPUI.enhance(
+                'Select',
+                agentTtsVoicePrimarySelect,
+                { label: '主语言模型', size: 'md' }
+            );
+            agentTtsSecondarySelectController = window.VCPUI.enhance(
+                'Select',
+                agentTtsVoiceSecondarySelect,
+                { label: '副语言模型', size: 'md' }
+            );
+            agentTtsPrimarySelectController?.refresh?.();
+            agentTtsSecondarySelectController?.refresh?.();
+        } catch (error) {
+            console.warn('[SettingsManager] Failed to apply themed TTS Select proxy:', error);
+        }
+    }
+
     async function populateTtsModels(currentPrimaryVoice, currentSecondaryVoice) {
         if (!agentTtsVoicePrimarySelect || !agentTtsVoiceSecondarySelect) return;
 
-        const globalSettings = window.globalSettings || {};
+        ensureThemedTtsSelects();
+        const globalSettings = getGlobalSettings();
         const isNetworkMode = globalSettings.voiceMode === 'network';
+        const commitOptions = (select, options, selectedValue = '') => {
+            const current = [...select.options];
+            const nextFlatOptions = options.flatMap(node => (
+                node.tagName === 'OPTGROUP' ? [...node.querySelectorAll('option')] : [node]
+            ));
+            const sameStructure = current.length === nextFlatOptions.length
+                && nextFlatOptions.every((option, index) => (
+                    current[index]?.value === option.value
+                    && current[index]?.textContent === option.textContent
+                    && current[index]?.disabled === option.disabled
+                    && current[index]?.parentElement?.label === option.parentElement?.label
+                ));
+            if (!sameStructure) select.replaceChildren(...options);
+            select.value = selectedValue || '';
+        };
 
         try {
-            // Clear existing options
-            agentTtsVoicePrimarySelect.innerHTML = '<option value="">不使用语音</option>';
-            agentTtsVoiceSecondarySelect.innerHTML = '<option value="">不使用</option>';
-
             let optionList = [];
 
-            if (isNetworkMode && electronAPI.loadWebindexModels) {
-                const webindexPayload = await electronAPI.loadWebindexModels();
-
-                if (Array.isArray(webindexPayload?.mergedVoiceOptions) && webindexPayload.mergedVoiceOptions.length) {
-                    optionList = webindexPayload.mergedVoiceOptions;
-                } else if (Array.isArray(webindexPayload?.models) && webindexPayload.models.length) {
-                    const firstItem = webindexPayload.models[0];
-                    if (firstItem && Array.isArray(firstItem?.mergedVoiceOptions)) {
-                        optionList = webindexPayload.models.flatMap(model => Array.isArray(model?.mergedVoiceOptions) ? model.mergedVoiceOptions : []);
-                    } else {
-                        optionList = webindexPayload.models;
-                    }
-                } else {
-                    const defaults = Array.isArray(webindexPayload?.defaults) ? webindexPayload.defaults : [];
-                    const remoteVoices = Array.isArray(webindexPayload?.remoteVoices) ? webindexPayload.remoteVoices : [];
-                    optionList = [...defaults, ...remoteVoices];
-                }
+            // 本地与网络模式统一由当前 TTS 引擎返回音色。网络模式直接返回
+            // MiMo 固定预置音色，不再读取旧供应商遗留的 webindexmodel.json。
+            const models = await electronAPI.sovitsGetModels();
+            if (Array.isArray(models)) {
+                optionList = models;
             } else {
-                const localModels = await electronAPI.sovitsGetModels();
-                if (Array.isArray(localModels)) {
-                    optionList = localModels;
-                } else {
-                    optionList = localModels && typeof localModels === 'object'
-                        ? Object.keys(localModels).map(modelName => ({
-                            id: modelName,
-                            voice: modelName,
-                            displayName: modelName,
-                            type: 'local'
-                        }))
-                        : [];
-                }
+                optionList = models && typeof models === 'object'
+                    ? Object.keys(models).map(modelName => ({
+                        id: modelName,
+                        voice: modelName,
+                        displayName: modelName,
+                        type: isNetworkMode ? 'preset' : 'local'
+                    }))
+                    : [];
             }
 
             const seenVoices = new Set();
@@ -512,43 +686,170 @@ const settingsManager = (() => {
                     return true;
                 });
 
-            if (optionList.length > 0) {
-                optionList.forEach(item => {
-                    const optionValue = item.voice || item.id;
-                    const optionLabel = item.displayName || item.voice || item.id;
+            // Build the complete option trees off-DOM and commit each Select
+            // once. Clearing before the async model lookup exposed an
+            // intermediate option set to the Next Web Awesome proxy. Repeated
+            // settings visits then made the custom element retain discarded
+            // wa-option instances and listeners.
+            const createOption = (value, label, { disabled = false, selected = false } = {}) => {
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = label;
+                option.disabled = disabled;
+                option.selected = selected;
+                return option;
+            };
+            const createOptionGroups = (emptyLabel, selectedValue) => {
+                const nodes = [createOption('', emptyLabel)];
+                if (!isNetworkMode) {
+                    optionList.forEach(item => {
+                        const optionValue = item.voice || item.id;
+                        nodes.push(createOption(optionValue, item.displayName || optionValue, {
+                            selected: optionValue === selectedValue
+                        }));
+                    });
+                    return nodes;
+                }
 
-                    const primaryOption = document.createElement('option');
-                    primaryOption.value = optionValue;
-                    primaryOption.textContent = optionLabel;
-                    if (optionValue === currentPrimaryVoice) {
-                        primaryOption.selected = true;
-                    }
-                    agentTtsVoicePrimarySelect.appendChild(primaryOption);
-
-                    const secondaryOption = document.createElement('option');
-                    secondaryOption.value = optionValue;
-                    secondaryOption.textContent = optionLabel;
-                    if (optionValue === currentSecondaryVoice) {
-                        secondaryOption.selected = true;
-                    }
-                    agentTtsVoiceSecondarySelect.appendChild(secondaryOption);
+                const groupDefinitions = [
+                    ['preset', 'MiMo 预置音色'],
+                    ['voicedesign', 'MiMo 自然语言控制'],
+                    ['voiceclone', 'MiMo 克隆音色（AppData/mimotts）']
+                ];
+                groupDefinitions.forEach(([type, label]) => {
+                    const items = optionList.filter(item => item.type === type);
+                    if (!items.length) return;
+                    const group = document.createElement('optgroup');
+                    group.label = label;
+                    items.forEach(item => {
+                        const optionValue = item.voice || item.id;
+                        group.appendChild(createOption(
+                            optionValue,
+                            item.displayName || optionValue,
+                            { selected: optionValue === selectedValue }
+                        ));
+                    });
+                    nodes.push(group);
                 });
-            } else {
-                const disabledOption = isNetworkMode
-                    ? '<option value="" disabled>未找到网络音色，请先获取列表并刷新 webindexmodel.json</option>'
-                    : '<option value="" disabled>未找到模型,请启动Sovits</option>';
-                agentTtsVoicePrimarySelect.innerHTML += disabledOption;
-                agentTtsVoiceSecondarySelect.innerHTML += disabledOption;
+                return nodes;
+            };
+            const primaryOptions = createOptionGroups('不使用语音', currentPrimaryVoice);
+            const secondaryOptions = createOptionGroups('不使用', currentSecondaryVoice);
+            if (optionList.length === 0) {
+                const emptyLabel = isNetworkMode
+                    ? '未找到 MiMo 音色'
+                    : '未找到模型,请启动Sovits';
+                primaryOptions.push(createOption('', emptyLabel, { disabled: true }));
+                secondaryOptions.push(createOption('', emptyLabel, { disabled: true }));
             }
+            commitOptions(agentTtsVoicePrimarySelect, primaryOptions, currentPrimaryVoice);
+            commitOptions(agentTtsVoiceSecondarySelect, secondaryOptions, currentSecondaryVoice);
+            ensureThemedTtsSelects();
         } catch (error) {
             console.error('Failed to get TTS models:', error);
-            const errorOption = isNetworkMode
-                ? '<option value="" disabled>获取网络音色失败</option>'
-                : '<option value="" disabled>获取模型失败</option>';
-            agentTtsVoicePrimarySelect.innerHTML = errorOption;
-            agentTtsVoiceSecondarySelect.innerHTML = errorOption;
+            const errorLabel = isNetworkMode ? '获取网络音色失败' : '获取模型失败';
+            const primaryErrorOption = document.createElement('option');
+            const secondaryErrorOption = document.createElement('option');
+            primaryErrorOption.value = '';
+            secondaryErrorOption.value = '';
+            primaryErrorOption.disabled = true;
+            secondaryErrorOption.disabled = true;
+            primaryErrorOption.textContent = errorLabel;
+            secondaryErrorOption.textContent = errorLabel;
+            commitOptions(agentTtsVoicePrimarySelect, [primaryErrorOption]);
+            commitOptions(agentTtsVoiceSecondarySelect, [secondaryErrorOption]);
+            ensureThemedTtsSelects();
             uiHelper.showToastNotification(isNetworkMode ? '获取网络音色失败' : '获取Sovits语音模型失败', 'error');
         }
+    }
+
+    function resizeTtsDirectorEditor(editor, expanded = editor === document.activeElement) {
+        if (!editor) return;
+        if (!expanded) {
+            editor.style.height = '';
+            editor.rows = 1;
+            return;
+        }
+        editor.rows = 4;
+        editor.style.height = 'auto';
+        editor.style.height = `${Math.min(Math.max(editor.scrollHeight, 132), 360)}px`;
+    }
+
+    function bindTtsDirectorEditor(editor, onInput) {
+        editor.addEventListener('focus', () => {
+            editor.closest('.tts-director-item, .tts-director-composer')?.classList.add('is-editing');
+            resizeTtsDirectorEditor(editor, true);
+            scheduleStickyButtonsRefresh();
+        });
+        editor.addEventListener('input', () => {
+            onInput?.(editor.value);
+            resizeTtsDirectorEditor(editor, true);
+            updateSectionSummary('tts');
+            scheduleStickyButtonsRefresh();
+        });
+        editor.addEventListener('blur', () => {
+            editor.closest('.tts-director-item, .tts-director-composer')?.classList.remove('is-editing');
+            resizeTtsDirectorEditor(editor, false);
+            scheduleStickyButtonsRefresh();
+        });
+    }
+
+    function renderTtsDirectorPrompts() {
+        if (!agentTtsDirectorPromptsContainer) return;
+        agentTtsDirectorPromptsContainer.replaceChildren();
+
+        currentAgentTtsDirectorPrompts.forEach((prompt, index) => {
+            const row = document.createElement('div');
+            row.className = 'tts-director-item';
+
+            const editor = document.createElement('textarea');
+            editor.className = 'tts-director-editor';
+            editor.rows = 1;
+            editor.value = prompt;
+            editor.setAttribute('aria-label', `导演提示词 ${index + 1}`);
+            bindTtsDirectorEditor(editor, value => {
+                currentAgentTtsDirectorPrompts[index] = value;
+            });
+            editor.addEventListener('blur', () => {
+                const value = editor.value.trim();
+                if (value) {
+                    currentAgentTtsDirectorPrompts[index] = value;
+                } else {
+                    currentAgentTtsDirectorPrompts.splice(index, 1);
+                    renderTtsDirectorPrompts();
+                }
+            });
+
+            const removeButton = document.createElement('button');
+            removeButton.type = 'button';
+            removeButton.className = 'small-button tts-director-action-button';
+            removeButton.textContent = '−';
+            removeButton.title = '删除该导演提示词';
+            removeButton.setAttribute('aria-label', `删除导演提示词 ${index + 1}`);
+            removeButton.addEventListener('mousedown', event => event.preventDefault());
+            removeButton.addEventListener('click', () => {
+                currentAgentTtsDirectorPrompts.splice(index, 1);
+                renderTtsDirectorPrompts();
+            });
+
+            row.append(editor, removeButton);
+            agentTtsDirectorPromptsContainer.appendChild(row);
+        });
+        updateSectionSummary('tts');
+        scheduleStickyButtonsRefresh();
+    }
+
+    function addTtsDirectorPrompt() {
+        const prompt = agentTtsDirectorPromptInput?.value?.trim() || '';
+        if (!prompt) {
+            uiHelper.showToastNotification('请先填写自然语言导演提示词。', 'warning');
+            agentTtsDirectorPromptInput?.focus();
+            return;
+        }
+        currentAgentTtsDirectorPrompts.push(prompt);
+        agentTtsDirectorPromptInput.value = '';
+        renderTtsDirectorPrompts();
+        agentTtsDirectorPromptInput.focus();
     }
 
     /**
@@ -616,11 +917,22 @@ const settingsManager = (() => {
 
     // --- Public API ---
     return {
+        configureCapabilities: ({ settings = null } = {}) => {
+            getGlobalSettings = typeof settings?.get === 'function'
+                ? () => settings.get() || {}
+                : () => ({});
+        },
         init: (options) => {
+            if (initialized) {
+                console.warn('[SettingsManager] Ignored duplicate initialization.');
+                return;
+            }
+            initialized = true;
             electronAPI = options.electronAPI;
             uiHelper = options.uiHelper;
             refs = options.refs;
             mainRendererFunctions = options.mainRendererFunctions;
+            messageRenderer = options.messageRenderer || null;
 
             // DOM Elements (Always present)
             agentSettingsContainer = options.elements.agentSettingsContainer;
@@ -657,6 +969,10 @@ const settingsManager = (() => {
             refreshTtsModelsBtn = document.getElementById('refreshTtsModelsBtn');
             agentTtsSpeedSlider = options.elements.agentTtsSpeedSlider;
             ttsSpeedValueSpan = options.elements.ttsSpeedValueSpan;
+            agentTtsDirectorPromptInput = document.getElementById('agentTtsDirectorPromptInput');
+            addAgentTtsDirectorPromptBtn = document.getElementById('addAgentTtsDirectorPromptBtn');
+            fillAgentTtsDirectorTemplateBtn = document.getElementById('fillAgentTtsDirectorTemplateBtn');
+            agentTtsDirectorPromptsContainer = document.getElementById('agentTtsDirectorPromptsContainer');
 
             // 🟢 监听模态框就绪事件，动态绑定延迟加载的元素
             document.addEventListener('modal-ready', (e) => {
@@ -709,22 +1025,14 @@ const settingsManager = (() => {
                 deleteItemBtn.addEventListener('click', handleDeleteCurrentItem);
             }
             if (agentAvatarInput) {
-                agentAvatarInput.addEventListener('change', (event) => {
-                    const file = event.target.files[0];
-                    if (file) {
-                        uiHelper.openAvatarCropper(file, (croppedFileResult) => {
+                window.VCPAvatarPicker?.bindInput({
+                    input: agentAvatarInput,
+                    preview: agentAvatarPreview,
+                    cropType: 'agent',
+                    onError: (error) => console.error('[SettingsManager] Agent avatar crop failed:', error),
+                    onCommit: async (croppedFileResult, previewUrl) => {
                             mainRendererFunctions.setCroppedFile('agent', croppedFileResult);
                             if (agentAvatarPreview) {
-                                const previewUrl = URL.createObjectURL(croppedFileResult);
-                                agentAvatarPreview.src = previewUrl;
-                                agentAvatarPreview.style.display = 'block';
-
-                                // 上传新头像后移除 no-avatar 类
-                                const avatarWrapper = agentAvatarPreview.closest('.agent-avatar-wrapper');
-                                if (avatarWrapper) {
-                                    avatarWrapper.classList.remove('no-avatar');
-                                }
-
                                 // 只对用户上传的真实头像进行颜色提取，不对默认头像提取
                                 // 裁切完成后立即计算颜色并填充到输入框
                                 // 使用与全局设置相同的getDominantAvatarColor函数以保持一致性
@@ -784,11 +1092,7 @@ const settingsManager = (() => {
                                     });
                                 }
                             }
-                        }, 'agent');
-                    } else {
-                        if (agentAvatarPreview) agentAvatarPreview.style.display = 'none';
-                        mainRendererFunctions.setCroppedFile('agent', null);
-                    }
+                    },
                 });
             }
 
@@ -802,7 +1106,7 @@ const settingsManager = (() => {
                 refreshModelsBtn.addEventListener('click', handleRefreshModels);
             }
             if (electronAPI.onModelsUpdated) {
-                electronAPI.onModelsUpdated(async (models) => {
+                modelsUpdatedDisposer = electronAPI.onModelsUpdated(async (models) => {
                     console.log('[SettingsManager] Received models-updated event. Repopulating list.');
                     let hotModelIds = [];
                     let favoriteModelIds = [];
@@ -815,31 +1119,71 @@ const settingsManager = (() => {
                         }
                     } catch (e) { /* ignore */ }
                     populateModelList(models, currentModelSelectCallback, hotModelIds, favoriteModelIds);
-                    uiHelper.showToastNotification('模型列表已刷新', 'success');
+                    const available = Array.isArray(models) && models.length > 0;
+                    uiHelper.showToastNotification(available ? '模型列表已刷新' : '模型服务暂不可用',
+                        available ? 'success' : 'error');
                 });
             }
+
+            window.addEventListener('pagehide', () => {
+                modelsUpdatedDisposer?.();
+                modelsUpdatedDisposer = null;
+                promptManager?.destroy?.();
+                promptManager = null;
+            }, { once: true });
 
             if (agentTtsSpeedSlider && ttsSpeedValueSpan) {
                 agentTtsSpeedSlider.addEventListener('input', () => {
                     ttsSpeedValueSpan.textContent = parseFloat(agentTtsSpeedSlider.value).toFixed(1);
+                    syncRangeProgress(agentTtsSpeedSlider);
+                });
+                syncRangeProgress(agentTtsSpeedSlider);
+            }
+
+            if (addAgentTtsDirectorPromptBtn) {
+                addAgentTtsDirectorPromptBtn.addEventListener('mousedown', event => event.preventDefault());
+                addAgentTtsDirectorPromptBtn.addEventListener('click', addTtsDirectorPrompt);
+            }
+            if (fillAgentTtsDirectorTemplateBtn) {
+                fillAgentTtsDirectorTemplateBtn.addEventListener('click', () => {
+                    const existing = agentTtsDirectorPromptInput.value.trim();
+                    agentTtsDirectorPromptInput.value = existing
+                        ? `${existing}\n\n${TTS_DIRECTOR_TEMPLATE}`
+                        : TTS_DIRECTOR_TEMPLATE;
+                    agentTtsDirectorPromptInput.focus();
+                    resizeTtsDirectorEditor(agentTtsDirectorPromptInput, true);
+                });
+            }
+            if (agentTtsDirectorPromptInput) {
+                bindTtsDirectorEditor(agentTtsDirectorPromptInput);
+                agentTtsDirectorPromptInput.addEventListener('keydown', event => {
+                    if (event.key !== 'Enter' || !(event.ctrlKey || event.metaKey)) return;
+                    event.preventDefault();
+                    addTtsDirectorPrompt();
                 });
             }
 
             if (refreshTtsModelsBtn) {
                 refreshTtsModelsBtn.addEventListener('click', async () => {
-                    const isNetworkMode = (window.globalSettings || {}).voiceMode === 'network';
-                    uiHelper.showToastNotification(isNetworkMode ? '正在刷新网络音色列表...' : '正在刷新语音模型...', 'info');
+                    const isNetworkMode = getGlobalSettings().voiceMode === 'network';
+                    uiHelper.showToastNotification(isNetworkMode ? '正在刷新 MiMo 预置音色并扫描 AppData/mimotts...' : '正在刷新语音模型...', 'info');
                     try {
                         if (electronAPI.sovitsGetModels) {
                             await electronAPI.sovitsGetModels(true);
                         }
                         await populateTtsModels(agentTtsVoicePrimarySelect.value, agentTtsVoiceSecondarySelect.value);
-                        uiHelper.showToastNotification(isNetworkMode ? '网络音色列表已刷新' : '语音模型列表已刷新', 'success');
+                        uiHelper.showToastNotification(isNetworkMode ? 'MiMo 模式与克隆音频列表已刷新' : '语音模型列表已刷新', 'success');
                     } catch (e) {
                         uiHelper.showToastNotification(isNetworkMode ? '刷新网络音色失败' : '刷新语音模型失败', 'error');
                     }
                 });
             }
+
+            // 将 TTS 原生 Select 升级为主题化 WebAwesome 代理。
+            // VCPUI API 就绪不等于 wa-select 已完成注册；组件包加载完成后
+            // 必须再尝试一次，才能从 native controller 升级为 WA proxy。
+            ensureThemedTtsSelects();
+            window.addEventListener('vcp-webawesome-loaded', ensureThemedTtsSelects, { once: true });
 
             // 创建正则设置UI
             createStripRegexUI();
@@ -902,15 +1246,29 @@ const settingsManager = (() => {
             await handleOpenModelSelect(targetInputElement);
         },
         triggerAgentSave: async (overrideAgentId) => {
-            // 触发Agent设置保存（不含头像）
-            // 支持传入锁定的agentId，防止异步操作期间DOM状态变化导致写入错误Agent
-            const agentId = overrideAgentId || editingAgentIdInput.value;
+            // 触发Agent设置保存（不含头像）。override 只能用于验证当前上下文，
+            // 不能把当前共享 DOM 的内容强行写入一个已切走的 Agent。
+            const formAgentId = editingAgentIdInput.value;
+            const agentId = overrideAgentId || formAgentId;
             if (!agentId) return;
+            if (agentId !== formAgentId || (promptManager?.getAgentId?.() && promptManager.getAgentId() !== agentId)) {
+                console.debug(`[SettingsManager] Skipping stale triggerAgentSave for ${agentId}; current form is ${formAgentId || 'none'}.`);
+                return { success: false, stale: true };
+            }
 
             let systemPromptData = {};
             if (promptManager) {
                 await promptManager.saveCurrentModeData();
+                if (editingAgentIdInput.value !== agentId || promptManager.getAgentId?.() !== agentId) {
+                    console.debug(`[SettingsManager] Aborting stale triggerAgentSave after prompt persistence for ${agentId}.`);
+                    return { success: false, stale: true };
+                }
+
                 const currentPrompt = await promptManager.getCurrentSystemPrompt();
+                if (editingAgentIdInput.value !== agentId || promptManager.getAgentId?.() !== agentId) {
+                    console.debug(`[SettingsManager] Aborting stale triggerAgentSave after prompt read for ${agentId}.`);
+                    return { success: false, stale: true };
+                }
                 systemPromptData.systemPrompt = currentPrompt;
             }
 
@@ -918,16 +1276,17 @@ const settingsManager = (() => {
                 name: agentNameInput.value.trim(),
                 ...systemPromptData,
                 model: agentModelInput.value.trim() || 'gemini-pro',
-                temperature: parseFloat(agentTemperatureInput.value),
-                contextTokenLimit: parseInt(agentContextTokenLimitInput.value),
-                maxOutputTokens: parseInt(agentMaxOutputTokensInput.value),
-                top_p: parseFloat(agentTopPInput.value) || undefined,
-                top_k: parseInt(agentTopKInput.value) || undefined,
+                temperature: parseOptionalNumberInput(agentTemperatureInput, Number.parseFloat),
+                contextTokenLimit: parseOptionalNumberInput(agentContextTokenLimitInput, value => Number.parseInt(value, 10)),
+                maxOutputTokens: parseOptionalNumberInput(agentMaxOutputTokensInput, value => Number.parseInt(value, 10)),
+                top_p: parseOptionalNumberInput(agentTopPInput, Number.parseFloat),
+                top_k: parseOptionalNumberInput(agentTopKInput, value => Number.parseInt(value, 10)),
                 streamOutput: document.getElementById('agentStreamOutputTrue').checked,
                 ttsVoicePrimary: agentTtsVoicePrimarySelect.value,
                 ttsRegexPrimary: agentTtsRegexPrimaryInput.value.trim(),
                 ttsVoiceSecondary: agentTtsVoiceSecondarySelect.value,
                 ttsRegexSecondary: agentTtsRegexSecondaryInput.value.trim(),
+                ttsDirectorPrompts: [...currentAgentTtsDirectorPrompts],
                 ttsSpeed: parseFloat(agentTtsSpeedSlider.value),
                 stripRegexes: currentAgentRegexes
             };
@@ -1062,12 +1421,13 @@ const settingsManager = (() => {
                     models = await electronAPI.getCachedModels();
                 }
             }
-
+            currentModelSelectTarget = targetInputElement || null;
             currentModelSelectCallback = (modelId) => {
-                if (targetInputElement) {
-                    targetInputElement.value = modelId;
-                    targetInputElement.dispatchEvent(new Event('input', { bubbles: true }));
-                    targetInputElement.dispatchEvent(new Event('change', { bubbles: true }));
+                const activeTarget = currentModelSelectTarget;
+                if (activeTarget?.isConnected) {
+                    activeTarget.value = modelId;
+                    activeTarget.dispatchEvent(new Event('input', { bubbles: true }));
+                    activeTarget.dispatchEvent(new Event('change', { bubbles: true }));
                 }
                 uiHelper.closeModal('modelSelectModal');
                 updateSectionSummary('model');
@@ -1163,8 +1523,9 @@ const settingsManager = (() => {
                 if (electronAPI.toggleFavoriteModel) {
                     const result = await electronAPI.toggleFavoriteModel(model.id);
                     if (result && result.favorited !== undefined) {
-                        // 重新拉取一次整个列表的逻辑，保持UI一致性
-                        handleOpenModelSelect(document.getElementById('agentModel') || null); // Note: targetInputElement context is somewhat lost here, ideally we should just refresh the view
+                        // 刷新列表时沿用本次打开选择器的目标，避免从“话题总结模型”
+                        // 打开后因收藏操作而错误切换到 Agent 模型输入框。
+                        handleOpenModelSelect(currentModelSelectTarget);
                     }
                 }
             });
@@ -1814,9 +2175,9 @@ function setupParamsCollapsible() {
     }
 
     function buildParamsSummary() {
-        const temperature = agentTemperatureInput?.value || '0.7';
-        const contextLimit = agentContextTokenLimitInput?.value || '4000';
-        const maxOutput = agentMaxOutputTokensInput?.value || '1000';
+        const temperature = agentTemperatureInput?.value || '未设置';
+        const contextLimit = agentContextTokenLimitInput?.value || '未设置';
+        const maxOutput = agentMaxOutputTokensInput?.value || '未设置';
         const topP = agentTopPInput?.value || '未设置';
         const topK = agentTopKInput?.value || '未设置';
         const streamOutput = document.getElementById('agentStreamOutputTrue')?.checked ? '流式' : '非流式';
@@ -1841,12 +2202,14 @@ function setupParamsCollapsible() {
             || '不使用';
         const secondaryRegex = agentTtsRegexSecondaryInput?.value?.trim() || '无';
         const speed = agentTtsSpeedSlider?.value || '1.0';
+        const directorPromptCount = currentAgentTtsDirectorPrompts.filter(item => String(item || '').trim()).length;
 
         return [
             `主语言: ${primaryVoice}`,
             `主语言正则: ${primaryRegex}`,
             `副语言: ${secondaryVoice}`,
             `副语言正则: ${secondaryRegex}`,
+            `导演提示词: ${directorPromptCount} 条`,
             `语速: ${speed}`
         ].join('\n');
     }
@@ -1936,6 +2299,8 @@ function setupParamsCollapsible() {
             avatar.className = 'agent-settings-summary-avatar';
             avatar.src = summaryValue.avatarSrc || 'assets/default_avatar.png';
             avatar.alt = '';
+            avatar.width = 30;
+            avatar.height = 30;
 
             const label = document.createElement('span');
             label.className = 'agent-settings-summary-label';
@@ -1966,11 +2331,10 @@ function setupParamsCollapsible() {
             return;
         }
 
-        if (currentSelectedItem.config) {
-            currentSelectedItem.config.uiCollapseStates = { ...collapseStates };
-        } else {
-            currentSelectedItem.uiCollapseStates = { ...collapseStates };
-        }
+        const nextSelectedItem = currentSelectedItem.config
+            ? { ...currentSelectedItem, config: { ...currentSelectedItem.config, uiCollapseStates: { ...collapseStates } } }
+            : { ...currentSelectedItem, uiCollapseStates: { ...collapseStates } };
+        refs.currentSelectedItemRef.set(nextSelectedItem);
     }
 
     async function persistCollapseStatesForCurrentSelection() {

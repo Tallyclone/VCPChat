@@ -158,9 +158,12 @@ document.addEventListener('DOMContentLoaded', () => {
         visualizerColor: { r: 0, g: 195, b: 255 },
         particles: [],
         PARTICLE_COUNT: 45,
-        BASS_THRESHOLD: 0.35,
-        BASS_BOOST: 1.04,
-        BASS_DECAY: 0.98,
+        COVER_MID_START_RATIO: 0.12,
+        COVER_MID_END_RATIO: 0.42,
+        COVER_PULSE_FLOOR: 0.22,
+        COVER_PULSE_INTENSITY: 0.13,
+        COVER_PULSE_SMOOTHING: 0.45,
+        coverPulseEnergy: 0,
         bassScale: 1.0,
 
         // --- Lyrics State ---
@@ -382,7 +385,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         app.deviceSelect.onchange = () => app.configureOutput();
         app.wasapiSwitch.onchange = () => { if (!app.wasapiSwitch._programmaticUpdate) app.configureOutput(); };
-        app.eqSwitch.onchange = () => { if (!app.eqSwitch._programmaticUpdate) app.sendEqSettings(); };
+        app.eqSwitch.onchange = () => {
+            app.updateEqSectionState();
+            if (!app.eqSwitch._programmaticUpdate) app.sendEqSettings();
+        };
         app.eqTypeSelect.onchange = () => {
             app.firTapsSelect.style.display = app.eqTypeSelect.value === 'FIR' ? 'block' : 'none';
             app.sendEqSettings();
@@ -759,7 +765,9 @@ document.addEventListener('DOMContentLoaded', () => {
         Promise.resolve().then(() => app.wasapiSwitch._programmaticUpdate = false);
         if (s.eq_enabled !== undefined) {
             app.eqEnabled = s.eq_enabled; app.eqSwitch._programmaticUpdate = true;
-            app.eqSwitch.checked = s.eq_enabled; Promise.resolve().then(() => app.eqSwitch._programmaticUpdate = false);
+            app.eqSwitch.checked = s.eq_enabled;
+            app.updateEqSectionState();
+            Promise.resolve().then(() => app.eqSwitch._programmaticUpdate = false);
         }
         if (s.eq_type !== undefined) app.eqTypeSelect.value = s.eq_type;
         if (s.dither_enabled !== undefined) {

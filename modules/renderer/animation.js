@@ -10,9 +10,6 @@ const CDN_TO_LOCAL_MAP = {
     'https://unpkg.com/animejs': 'vendor/anime.min.js',
 };
 
-import * as visibilityOptimizer from './visibilityOptimizer.js';
-import { createPausableRAF, createPausableTimerAPI, registerCanvasAnimation } from './visibilityOptimizer.js';
-
 // 🔥 全局跟踪已加载的脚本，防止跨消息重复加载
 if (!window._vcp_loaded_scripts) {
     window._vcp_loaded_scripts = new Set();
@@ -58,6 +55,7 @@ function replaceCdnUrls(scriptContent) {
 }
 
 const trackedThreeInstances = new Map();
+const visibilityOwnerByContent = new WeakMap();
 let isThreePatched = false;
 
 function patchThreeJS() {
@@ -102,6 +100,11 @@ function patchThreeJS() {
         renderer.dispose = function() {
             if (this._disposed) return;
             this._disposed = true;
+            // This observer is owned by the renderer. Disconnect it before
+            // releasing GPU resources so a detached canvas cannot retain the
+            // document or re-register itself after teardown.
+            this._vcpMutationObserver?.disconnect?.();
+            this._vcpMutationObserver = null;
             if (originalDispose) {
                 return originalDispose.call(this);
             }
@@ -111,6 +114,7 @@ function patchThreeJS() {
             if (document.body.contains(renderer.domElement)) {
                 const contentDiv = renderer.domElement.closest('.md-content');
                 if (contentDiv) {
+                    const visibilityOptimizer = visibilityOwnerByContent.get(contentDiv);
                     if (!trackedThreeInstances.has(contentDiv)) {
                         trackedThreeInstances.set(contentDiv, []);
                     }
@@ -135,6 +139,8 @@ function patchThreeJS() {
                 observer.disconnect();
             }
         });
+
+        renderer._vcpMutationObserver = observer;
 
         observer.observe(document.body, { childList: true, subtree: true });
 
@@ -167,7 +173,8 @@ function loadScript(src, onLoad, onError) {
     document.head.appendChild(scriptEl);
 }
 
-function processScripts(containerElement) {
+function processScripts(containerElement, visibilityOptimizer) {
+    if (visibilityOptimizer) visibilityOwnerByContent.set(containerElement, visibilityOptimizer);
     const messageItem = containerElement.closest('.message-item');
 
     // Separate scripts by type
@@ -229,16 +236,19 @@ function processScripts(containerElement) {
                     const canvases = containerElement.querySelectorAll('canvas');
                     canvases.forEach(canvas => {
                         if (messageItem) {
-                            registerCanvasAnimation(messageItem, { canvas });
+                            visibilityOptimizer?.registerCanvasAnimation?.(messageItem, { canvas });
                         }
                     });
 
                     // 2. 创建可暂停的 rAF 与 timer 包装器
                     const pausableRAF = messageItem
-                        ? createPausableRAF(messageItem)
+                        ? visibilityOptimizer?.createPausableRAF?.(messageItem) || window.requestAnimationFrame
                         : window.requestAnimationFrame;
                     const pausableTimerAPI = messageItem
-                        ? createPausableTimerAPI(messageItem)
+                        ? visibilityOptimizer?.createPausableTimerAPI?.(messageItem) || {
+                            setTimeout: window.setTimeout.bind(window), clearTimeout: window.clearTimeout.bind(window),
+                            setInterval: window.setInterval.bind(window), clearInterval: window.clearInterval.bind(window)
+                        }
                         : {
                             setTimeout: window.setTimeout.bind(window),
                             clearTimeout: window.clearTimeout.bind(window),
@@ -254,6 +264,8 @@ function processScripts(containerElement) {
                     window[tempTimerId] = pausableTimerAPI;
 
                     const tempDocId = `_vcp_doc_${Math.random().toString(36).slice(2, 11)}`;
+                    const tempContainerId = `_vcp_container_${Math.random().toString(36).slice(2, 11)}`;
+                    window[tempContainerId] = containerElement;
                     const virtualCurrentScript = {
                         tagName: 'SCRIPT',
                         nodeName: 'SCRIPT',
@@ -275,16 +287,79 @@ function processScripts(containerElement) {
                                 return virtualCurrentScript;
                             }
 
+                            // 消息内脚本默认只能命中当前消息中的节点，避免多个消息包含
+                            // 相同 id / data-vdoc-island 时 document.querySelector 总是选中
+                            // 页面里的第一个副本。当前消息没有匹配项时才回退到真实 document，
+                            // 以兼容脚本查询 body、head 或应用级全局节点。
+                            if (prop === 'querySelector') {
+                                return function(selector) {
+                                    try {
+                                        if (containerElement.matches?.(selector)) {
+                                            return containerElement;
+                                        }
+
+                                        const localMatch = containerElement.querySelector(selector);
+                                        if (localMatch) {
+                                            return localMatch;
+                                        }
+                                    } catch (error) {
+                                        // 让原生 document 重新处理并抛出非法选择器异常。
+                                    }
+
+                                    return target.querySelector(selector);
+                                };
+                            }
+
+                            if (prop === 'querySelectorAll') {
+                                return function(selector) {
+                                    try {
+                                        const localMatches = Array.from(containerElement.querySelectorAll(selector));
+                                        if (containerElement.matches?.(selector)) {
+                                            localMatches.unshift(containerElement);
+                                        }
+
+                                        if (localMatches.length > 0) {
+                                            localMatches.item = (index) => localMatches[index] || null;
+                                            return localMatches;
+                                        }
+                                    } catch (error) {
+                                        // 让原生 document 重新处理并抛出非法选择器异常。
+                                    }
+
+                                    return target.querySelectorAll(selector);
+                                };
+                            }
+
+                            if (prop === 'getElementById') {
+                                return function(id) {
+                                    const escapedId = window.CSS?.escape
+                                        ? window.CSS.escape(String(id))
+                                        : String(id).replace(/(["\\])/g, '\\$1');
+                                    const localMatch = containerElement.querySelector(`#${escapedId}`);
+                                    return localMatch || target.getElementById(id);
+                                };
+                            }
+
                             if (prop === 'getElementsByTagName') {
                                 return function(tagName) {
-                                    const elements = Array.from(target.getElementsByTagName(tagName));
-                                    if (String(tagName).toLowerCase() === 'script') {
+                                    const normalizedTagName = String(tagName).toLowerCase();
+
+                                    // script 查询保留原有兼容行为，库代码可能依赖 currentScript
+                                    // 或通过最后一个 script 标签寻找自身。
+                                    if (normalizedTagName === 'script') {
+                                        const elements = Array.from(target.getElementsByTagName(tagName));
                                         const scripts = [...elements, virtualCurrentScript];
                                         scripts.item = (index) => scripts[index] || null;
                                         return scripts;
                                     }
-                                    elements.item = (index) => elements[index] || null;
-                                    return elements;
+
+                                    const localElements = Array.from(containerElement.getElementsByTagName(tagName));
+                                    if (localElements.length > 0) {
+                                        localElements.item = (index) => localElements[index] || null;
+                                        return localElements;
+                                    }
+
+                                    return target.getElementsByTagName(tagName);
                                 };
                             }
 
@@ -325,7 +400,9 @@ function processScripts(containerElement) {
     const setInterval = __vcpTimerAPI.setInterval;
     const clearInterval = __vcpTimerAPI.clearInterval;
     
-    const container = document.querySelector('.message-item[data-message-id="${messageItem?.dataset.messageId}"] .md-content');
+    // 直接绑定本次处理所属的内容根，不再通过消息 ID 和全局 document 反查。
+    // 因此 script 位于 DIV 岛内部、岛外或辅助 Surface 时语义完全一致。
+    const container = window['${tempContainerId}'];
     try {
         ${scriptContent}
     } catch (e) {
@@ -342,6 +419,7 @@ function processScripts(containerElement) {
                         delete window[tempRafId];
                         delete window[tempTimerId];
                         delete window[tempDocId];
+                        delete window[tempContainerId];
                     }, 0);
 
                 } catch (e) {
@@ -388,14 +466,15 @@ function processScripts(containerElement) {
     }
 }
 
-export function processAnimationsInContent(containerElement) {
+export function processAnimationsInContent(containerElement, visibilityOptimizer = null) {
     if (!containerElement) return;
-    processScripts(containerElement);
+    processScripts(containerElement, visibilityOptimizer);
 }
 
 
 export function cleanupAnimationsInContent(contentDiv) {
     if (!contentDiv) return;
+    visibilityOwnerByContent.delete(contentDiv);
 
     if (window.anime) {
         const animatedElements = contentDiv.querySelectorAll('*');

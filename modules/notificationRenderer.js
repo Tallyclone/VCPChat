@@ -1,6 +1,24 @@
 // modules/notificationRenderer.js
 
 var notificationRendererApi = window.chatAPI || window.electronAPI;
+let filterManagerCapability = null;
+let notificationLifecycleOwner = null;
+
+function checkMessageFilter(messageTitle) {
+    return filterManagerCapability?.checkMessageFilter?.(messageTitle) || null;
+}
+
+function scheduleNotificationTimeout(callback, delay) {
+    return notificationLifecycleOwner?.timeout
+        ? notificationLifecycleOwner.timeout(callback, delay)
+        : setTimeout(callback, delay);
+}
+
+function listenNotification(target, type, handler, options) {
+    if (notificationLifecycleOwner?.add) return notificationLifecycleOwner.add(target, type, handler, options);
+    target?.addEventListener?.(type, handler, options);
+    return true;
+}
 
 /**
  * @typedef {Object} VCPLogStatus
@@ -34,6 +52,170 @@ function updateVCPLogStatus(statusUpdate, vcpLogConnectionStatusDiv) {
 }
 
 const handledToolApprovalRequestIds = new Set();
+const TOOL_CHANGE_DIFF_MATRIX_LIMIT = 120000;
+
+function formatToolChangePreviewValue(value) {
+    if (typeof value === 'string') return value;
+    if (typeof value === 'undefined') return '';
+    try {
+        const serialized = JSON.stringify(value, null, 2);
+        return typeof serialized === 'string' ? serialized : String(value ?? '');
+    } catch (error) {
+        return String(value ?? '');
+    }
+}
+
+function buildToolChangeDiff(beforeValue, afterValue) {
+    const beforeLines = formatToolChangePreviewValue(beforeValue).split('\n');
+    const afterLines = formatToolChangePreviewValue(afterValue).split('\n');
+    const matrixSize = (beforeLines.length + 1) * (afterLines.length + 1);
+
+    if (matrixSize > TOOL_CHANGE_DIFF_MATRIX_LIMIT) {
+        return [
+            ...beforeLines.map(text => ({ type: 'delete', text })),
+            ...afterLines.map(text => ({ type: 'add', text }))
+        ];
+    }
+
+    const lengths = Array.from(
+        { length: beforeLines.length + 1 },
+        () => new Uint32Array(afterLines.length + 1)
+    );
+
+    for (let beforeIndex = beforeLines.length - 1; beforeIndex >= 0; beforeIndex -= 1) {
+        for (let afterIndex = afterLines.length - 1; afterIndex >= 0; afterIndex -= 1) {
+            lengths[beforeIndex][afterIndex] = beforeLines[beforeIndex] === afterLines[afterIndex]
+                ? lengths[beforeIndex + 1][afterIndex + 1] + 1
+                : Math.max(lengths[beforeIndex + 1][afterIndex], lengths[beforeIndex][afterIndex + 1]);
+        }
+    }
+
+    const diff = [];
+    let beforeIndex = 0;
+    let afterIndex = 0;
+    while (beforeIndex < beforeLines.length && afterIndex < afterLines.length) {
+        if (beforeLines[beforeIndex] === afterLines[afterIndex]) {
+            diff.push({ type: 'context', text: beforeLines[beforeIndex] });
+            beforeIndex += 1;
+            afterIndex += 1;
+        } else if (lengths[beforeIndex + 1][afterIndex] >= lengths[beforeIndex][afterIndex + 1]) {
+            diff.push({ type: 'delete', text: beforeLines[beforeIndex] });
+            beforeIndex += 1;
+        } else {
+            diff.push({ type: 'add', text: afterLines[afterIndex] });
+            afterIndex += 1;
+        }
+    }
+    while (beforeIndex < beforeLines.length) {
+        diff.push({ type: 'delete', text: beforeLines[beforeIndex++] });
+    }
+    while (afterIndex < afterLines.length) {
+        diff.push({ type: 'add', text: afterLines[afterIndex++] });
+    }
+    return diff;
+}
+
+function openToolChangeAuditModal(approvalData, options = {}) {
+    const changePreview = approvalData?.changePreview;
+    if (!changePreview || typeof changePreview !== 'object' || Array.isArray(changePreview)) return false;
+
+    const uiHelper = window.uiHelperFunctions;
+    uiHelper?.openModal?.('toolChangeAuditModal');
+
+    const modal = document.getElementById('toolChangeAuditModal');
+    const beforeElement = document.getElementById('toolChangeAuditBefore');
+    const afterElement = document.getElementById('toolChangeAuditAfter');
+    const diffElement = document.getElementById('toolChangeAuditDiff');
+    const reasonInput = document.getElementById('toolChangeAuditReason');
+    const wrapToggle = document.getElementById('toolChangeAuditWrapToggle');
+    if (!modal || !beforeElement || !afterElement || !diffElement || !reasonInput || !wrapToggle) return false;
+
+    const beforeText = formatToolChangePreviewValue(changePreview.target);
+    const afterText = formatToolChangePreviewValue(changePreview.replace);
+    const diff = buildToolChangeDiff(changePreview.target, changePreview.replace);
+    const additions = diff.filter(line => line.type === 'add').length;
+    const deletions = diff.filter(line => line.type === 'delete').length;
+
+    document.getElementById('toolChangeAuditToolName').textContent = approvalData.toolName || '未知工具';
+    document.getElementById('toolChangeAuditMaid').textContent = approvalData.maid || '未知助手';
+    document.getElementById('toolChangeAuditRequestId').textContent = approvalData.requestId || '—';
+    document.getElementById('toolChangeAuditTimestamp').textContent = approvalData.timestamp || '—';
+    document.getElementById('toolChangeAuditStatus').textContent = '等待审核';
+    document.getElementById('toolChangeAuditSummary').textContent =
+        `检测到 ${additions} 行新增、${deletions} 行删除。请确认变更内容后再决定是否执行。`;
+    beforeElement.textContent = beforeText || '（空内容）';
+    afterElement.textContent = afterText || '（空内容）';
+    reasonInput.value = typeof options.reason === 'string' ? options.reason : '';
+    diffElement.replaceChildren();
+
+    const setWrapEnabled = (enabled) => {
+        modal.classList.toggle('is-wrap-enabled', enabled);
+        wrapToggle.classList.toggle('active', enabled);
+        wrapToggle.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+        wrapToggle.title = enabled
+            ? '关闭代码与差异内容的自动换行'
+            : '开启代码与差异内容的自动换行';
+    };
+    setWrapEnabled(false);
+    wrapToggle.onclick = event => {
+        event.stopPropagation();
+        setWrapEnabled(wrapToggle.getAttribute('aria-pressed') !== 'true');
+    };
+
+    diff.forEach((line) => {
+        const row = document.createElement('div');
+        row.className = `tool-change-audit-diff-line is-${line.type}`;
+
+        const marker = document.createElement('span');
+        marker.className = 'tool-change-audit-diff-marker';
+        marker.textContent = line.type === 'add' ? '+' : line.type === 'delete' ? '−' : ' ';
+
+        const content = document.createElement('span');
+        content.className = 'tool-change-audit-diff-text';
+        content.textContent = line.text || ' ';
+
+        row.append(marker, content);
+        diffElement.appendChild(row);
+    });
+
+    const close = () => uiHelper?.closeModal?.('toolChangeAuditModal');
+    const decide = (approved) => {
+        if (handledToolApprovalRequestIds.has(approvalData.requestId)) {
+            close();
+            return;
+        }
+        const accepted = options.onDecision?.(approved, reasonInput.value);
+        if (accepted !== false) close();
+    };
+
+    document.getElementById('closeToolChangeAuditModal').onclick = close;
+    document.getElementById('cancelToolChangeAudit').onclick = close;
+    document.getElementById('rejectToolChangeAudit').onclick = () => decide(false);
+    document.getElementById('approveToolChangeAudit').onclick = () => decide(true);
+    modal.onclick = event => {
+        if (event.target === modal) close();
+    };
+    modal.onkeydown = event => {
+        if (event.key !== 'Escape') return;
+        event.preventDefault();
+        event.stopPropagation();
+        close();
+    };
+
+    requestAnimationFrame(() => reasonInput.focus());
+    return true;
+}
+
+function clearPersistentNotifications({ container = document.getElementById('notificationsList') } = {}) {
+    if (!container) return { success: false, removed: 0 };
+    let removed = 0;
+    container.querySelectorAll('.notification-item').forEach(item => {
+        if (item.dataset.protectedNotification === 'tool-approval') return;
+        item.remove();
+        removed += 1;
+    });
+    return { success: true, removed };
+}
 
 function sendToolApprovalResponse(requestId, approved, reason = '') {
     if (!requestId || !notificationRendererApi || typeof notificationRendererApi.sendVCPLogMessage !== 'function') {
@@ -66,7 +248,7 @@ function sendToolApprovalResponse(requestId, approved, reason = '') {
  */
 function renderVCPLogNotification(logData, originalRawMessage = null, notificationsListUl, themeColors = {}) {
     if (logData && typeof logData === 'object' && logData.type === 'tool_approval_request' && logData.data && typeof logData.data === 'object') {
-        const autoApprovalResult = window.filterManager?.checkToolAutoApproval?.(logData.data);
+        const autoApprovalResult = (filterManagerCapability || window.filterManager)?.checkToolAutoApproval?.(logData.data);
         if (autoApprovalResult && autoApprovalResult.action === 'approve') {
             const sent = sendToolApprovalResponse(logData.data.requestId, true);
             const autoApprovalLog = {
@@ -243,6 +425,10 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
     // --- End Content Parsing ---
 
     const isToolApprovalRequest = logData && logData.type === 'tool_approval_request';
+    const hasToolChangePreview = isToolApprovalRequest
+        && logData.data?.changePreview
+        && typeof logData.data.changePreview === 'object'
+        && !Array.isArray(logData.data.changePreview);
 
     // Function to populate a notification element (either toast or list item)
     const populateNotificationElement = (element, isToast) => {
@@ -298,16 +484,33 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
             const approvalActions = document.createElement('div');
             approvalActions.classList.add('notification-actions');
 
-            const finishApproval = (approved) => {
+            const finishApproval = (approved, suppliedReason = reasonInput.value) => {
                 const requestId = logData.data.requestId;
-                if (handledToolApprovalRequestIds.has(requestId)) return;
+                if (handledToolApprovalRequestIds.has(requestId)) return false;
 
-                const sent = sendToolApprovalResponse(requestId, approved, reasonInput.value);
-                if (!sent) return;
+                const sent = sendToolApprovalResponse(requestId, approved, suppliedReason);
+                if (!sent) return false;
 
                 handledToolApprovalRequestIds.add(requestId);
                 dismissToolApprovalNotifications(requestId);
+                return true;
             };
+
+            if (hasToolChangePreview) {
+                const auditBtn = document.createElement('button');
+                auditBtn.type = 'button';
+                auditBtn.textContent = '审计';
+                auditBtn.classList.add('vcp-btn', 'vcp-btn-audit');
+                auditBtn.setAttribute('aria-label', `审计 ${logData.data.toolName || '工具'} 的内容变更`);
+                auditBtn.onclick = (event) => {
+                    event.stopPropagation();
+                    openToolChangeAuditModal(logData.data, {
+                        reason: reasonInput.value,
+                        onDecision: (approved, reason) => finishApproval(approved, reason)
+                    });
+                };
+                approvalActions.appendChild(auditBtn);
+            }
 
             const allowBtn = document.createElement('button');
             allowBtn.textContent = '允许';
@@ -361,7 +564,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
                     const originalMarkup = copyButton.innerHTML;
                     copyButton.textContent = '已复制!';
                     copyButton.disabled = true;
-                    setTimeout(() => {
+                    scheduleNotificationTimeout(() => {
                         copyButton.textContent = originalText;
                         copyButton.innerHTML = originalMarkup;
                         copyButton.disabled = false;
@@ -371,7 +574,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
                     const originalText = copyButton.textContent;
                     const originalMarkup = copyButton.innerHTML;
                     copyButton.textContent = '错误!';
-                    setTimeout(() => {
+                    scheduleNotificationTimeout(() => {
                         copyButton.textContent = originalText;
                         copyButton.innerHTML = originalMarkup;
                     }, 1500);
@@ -386,7 +589,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
 
                 element.style.opacity = '0';
                 element.style.transform = 'translateX(100%)'; // Assuming this is the desired animation for list items
-                setTimeout(() => {
+                scheduleNotificationTimeout(() => {
                     if (element.parentNode) {
                         element.parentNode.removeChild(element);
                     }
@@ -399,13 +602,13 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
         toastElement.classList.add('exiting');
         
         // 设置一个fallback timeout，确保元素一定会被移除
-        const fallbackTimeout = setTimeout(() => {
+        const fallbackTimeout = scheduleNotificationTimeout(() => {
             if (toastElement.parentNode) {
                 toastElement.parentNode.removeChild(toastElement);
             }
         }, 500); // 500ms后强制移除，即使transition没有完成
         
-        toastElement.addEventListener('transitionend', () => {
+        listenNotification(toastElement, 'transitionend', () => {
             clearTimeout(fallbackTimeout); // 如果transition正常完成，清除fallback
             if (toastElement.parentNode) {
                 toastElement.parentNode.removeChild(toastElement);
@@ -424,12 +627,18 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
                 control.disabled = true;
             });
 
+            const auditModal = document.getElementById('toolChangeAuditModal');
+            if (auditModal?.classList.contains('active')
+                && document.getElementById('toolChangeAuditRequestId')?.textContent === String(requestId)) {
+                window.uiHelperFunctions?.closeModal?.('toolChangeAuditModal');
+            }
+
             if (approvalElement.classList.contains('floating-toast-notification')) {
                 closeToastNotification(approvalElement);
             } else {
                 approvalElement.style.opacity = '0';
                 approvalElement.style.transform = 'translateX(100%)';
-                setTimeout(() => approvalElement.remove(), 500);
+                scheduleNotificationTimeout(() => approvalElement.remove(), 500);
             }
         });
     };
@@ -454,7 +663,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
         populateNotificationElement(toastBubble, true);
 
         toastContainer.prepend(toastBubble);
-        setTimeout(() => toastBubble.classList.add('visible'), 50);
+        scheduleNotificationTimeout(() => toastBubble.classList.add('visible'), 50);
         
         // 增强自动消失逻辑，支持自定义停留时间
         let autoDismissDelay = 7000; // 默认7秒
@@ -462,8 +671,8 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
         // 审核类通知永不自动消失
         if (isToolApprovalRequest) {
             autoDismissDelay = Infinity;
-        } else if (typeof window.checkMessageFilter === 'function') {
-            const filterResult = window.checkMessageFilter(titleText);
+        } else {
+            const filterResult = checkMessageFilter(titleText);
             if (filterResult && filterResult.duration !== undefined) {
                 autoDismissDelay = filterResult.duration === 0 ? Infinity : filterResult.duration * 1000;
             }
@@ -474,7 +683,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
             // 永久显示，不设置自动消失定时器
             autoDismissTimeout = null;
         } else {
-            autoDismissTimeout = setTimeout(() => {
+            autoDismissTimeout = scheduleNotificationTimeout(() => {
                 if (toastBubble.parentNode && toastBubble.classList.contains('visible') && !toastBubble.classList.contains('exiting')) {
                     closeToastNotification(toastBubble);
                 }
@@ -500,7 +709,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
         populateNotificationElement(listItemBubble, false);
         notificationsListUl.prepend(listItemBubble);
         // Apply 'visible' class for potential animations on list items if defined in CSS
-        setTimeout(() => listItemBubble.classList.add('visible'), 50);
+        scheduleNotificationTimeout(() => listItemBubble.classList.add('visible'), 50);
     } else {
         console.warn('Notifications sidebar UL not found. Persistent notification not added.');
     }
@@ -509,12 +718,24 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
 // 添加窗口焦点变化监听，清理残留的通知元素
 let focusCleanupInitialized = false;
 
-function initializeFocusCleanup() {
+function initializeFocusCleanup(options = {}) {
     if (focusCleanupInitialized) return;
     focusCleanupInitialized = true;
+    notificationLifecycleOwner = options.owner || notificationLifecycleOwner;
+
+    const cleanupExpiredToasts = (maxAgeMs) => {
+        const toastContainer = document.getElementById('floating-toast-notifications-container');
+        if (!toastContainer) return;
+        toastContainer.querySelectorAll('.floating-toast-notification').forEach(toast => {
+            if (toast.dataset.protectedNotification === 'tool-approval') return;
+            const createdAt = Number(toast.dataset.createdAt || Date.now());
+            if (!toast.dataset.createdAt) toast.dataset.createdAt = String(createdAt);
+            if (Date.now() - createdAt > maxAgeMs) toast.parentNode?.removeChild(toast);
+        });
+    };
 
     // 当窗口重新获得焦点时，清理所有可能残留的通知元素
-    window.addEventListener('focus', () => {
+    const onFocus = () => {
         const toastContainer = document.getElementById('floating-toast-notifications-container');
         if (toastContainer) {
             // 查找所有添加了 exiting 类但仍在 DOM 中的元素
@@ -546,39 +767,29 @@ function initializeFocusCleanup() {
                 }
             });
         }
-    });
+    };
+    if (notificationLifecycleOwner?.add) notificationLifecycleOwner.add(window, 'focus', onFocus);
+    else window.addEventListener('focus', onFocus);
 
     // 定期清理机制，每30秒检查一次
-    setInterval(() => {
-        const toastContainer = document.getElementById('floating-toast-notifications-container');
-        if (toastContainer) {
-            const allToasts = toastContainer.querySelectorAll('.floating-toast-notification');
-            allToasts.forEach(toast => {
-                if (toast.dataset.protectedNotification === 'tool-approval') return;
-
-                if (toast.dataset.createdAt) {
-                    const createdAt = parseInt(toast.dataset.createdAt);
-                    const now = Date.now();
-                    if (now - createdAt > 15000) { // 超过15秒强制清理
-                        console.log('[NotificationRenderer] 定期清理超时的通知元素');
-                        if (toast.parentNode) {
-                            toast.parentNode.removeChild(toast);
-                        }
-                    }
-                }
-            });
-        }
-    }, 30000); // 每30秒检查一次
+    const scheduleCleanup = () => {
+        cleanupExpiredToasts(15000);
+        if (notificationLifecycleOwner?.timeout) notificationLifecycleOwner.timeout(scheduleCleanup, 30000);
+        else scheduleNotificationTimeout(scheduleCleanup, 30000);
+    };
+    scheduleCleanup();
 }
 
 // Expose functions to be used by renderer.js
 window.notificationRenderer = {
     updateVCPLogStatus,
     renderVCPLogNotification,
-    initializeFocusCleanup
+    initializeFocusCleanup,
+    clearPersistentNotifications,
+    buildToolChangeDiff,
+    openToolChangeAuditModal,
+    configureCapabilities({ filterManager = null, listenerOwner = null } = {}) {
+        filterManagerCapability = filterManager;
+        notificationLifecycleOwner = listenerOwner;
+    }
 };
-
-// Make globalSettings accessible for do not disturb mode check
-if (typeof window.globalSettings === 'undefined') {
-    window.globalSettings = {};
-}

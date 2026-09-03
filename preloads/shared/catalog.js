@@ -47,6 +47,7 @@ function createCatalog(ops) {
         openImageInNewWindow: command((imageUrl, imageTitle) => ops.send('open-image-in-new-window', imageUrl, imageTitle)),
         openTextInNewWindow: query((textContent, windowTitle, theme) => ops.invoke('display-text-content-in-viewer', textContent, windowTitle, theme)),
         sendOpenExternalLink: command((url) => ops.send('open-external-link', url)),
+        openPythonAttachmentInTextEditor: query((fileUrl) => ops.invoke('open-python-attachment-in-text-editor', fileUrl)),
         onThemeUpdated: subscription(ops.subscribe('theme-updated', (_event, theme) => theme)),
         getCurrentTheme: query(() => ops.invoke('get-current-theme')),
         setTheme: command((theme) => ops.send('set-theme', theme)),
@@ -202,7 +203,8 @@ function createCatalog(ops) {
         saveCanvasFile: command((file) => ops.send('save-canvas-file', file)),
         onCanvasLoadData: subscription(ops.subscribe('canvas-load-data', (_event, data) => data)),
         onCanvasFileChanged: subscription(ops.subscribe('canvas-file-changed', (_event, file) => file)),
-        onExternalFileChanged: subscription(ops.subscribe('external-file-changed', (_event, file) => file)),
+        onCanvasEditProposal: subscription(ops.subscribe('canvas-edit-proposal', (_event, proposal) => proposal)),
+        sendCanvasEditDecision: command((decision) => ops.send('canvas-edit-decision', decision)),
         onCanvasContentUpdate: subscription(ops.subscribe('canvas-content-update', (_event, data) => data)),
         onLoadCanvasFileByPath: subscription(ops.subscribe('load-canvas-file-by-path', (_event, filePath) => filePath)),
         onCanvasWindowClosed: subscription(ops.subscribe('canvas-window-closed', () => undefined)),
@@ -321,6 +323,21 @@ function createCatalog(ops) {
         desktopIconsetListIcons: query((params) => ops.invoke('desktop-iconset-list-icons', params)),
         desktopIconsetGetIconData: query((relativePath) => ops.invoke('desktop-iconset-get-icon-data', relativePath)),
         desktopLaunchVchatApp: query((appAction) => ops.invoke('desktop-launch-vchat-app', appAction)),
+        desktopCreateEmbeddedVchatApp: query((appAction, requestId = '') => ops.invoke(
+            'embedded-vchat-app:create',
+            requestId ? { requestId, action: appAction } : appAction
+        )),
+        desktopCloseEmbeddedVchatApp: query((appAction, requestId = '') => ops.invoke(
+            'embedded-vchat-app:close',
+            requestId ? { requestId, action: appAction } : appAction
+        )),
+        desktopDetachEmbeddedVchatApp: query((appAction, point, requestId = '') => ops.invoke(
+            'embedded-vchat-app:detach',
+            requestId ? { requestId, action: appAction, point } : appAction,
+            requestId ? undefined : point
+        )),
+        desktopCancelEmbeddedVchatAppTask: query((requestId) => ops.invoke('embedded-vchat-app:cancel', requestId)),
+        getMainLifecycleSnapshot: query(() => ops.invoke('lifecycle:get-main-snapshot')),
         desktopSelectWallpaper: query(() => ops.invoke('desktop-select-wallpaper')),
         desktopReadWallpaperThumbnail: query((filePath) => ops.invoke('desktop-read-wallpaper-thumbnail', filePath)),
         setAlwaysOnBottom: query((enabled) => ops.invoke('desktop-set-always-on-bottom', enabled)),

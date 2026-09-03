@@ -26,7 +26,7 @@ window.GroupSettingsMarkup = (() => {
                         <div class="group-settings-identity-shell">
                             <div class="agent-identity-main group-identity-main">
                                 <div class="agent-avatar-wrapper group-avatar-wrapper">
-                                    <img id="groupAvatarPreview" src="assets/default_group_avatar.png" alt="群组头像预览" class="agent-avatar-display group-avatar-display" style="display: block;">
+                                    <img id="groupAvatarPreview" src="assets/default_group_avatar.png" alt="群组头像预览" class="agent-avatar-display group-avatar-display" width="76" height="76" style="display: block;">
                                     <label for="groupAvatarInput" class="avatar-upload-overlay">
                                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                             <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
@@ -67,6 +67,12 @@ window.GroupSettingsMarkup = (() => {
                                     <option value="naturerandom">自然随机</option>
                                     <option value="invite_only">邀请发言</option>
                                 </select>
+                            </div>
+
+                            <div id="sequentialOrderContainer" class="group-settings-field-shell" style="display: none;">
+                                <label class="group-settings-field-label">顺序发言次序</label>
+                                <div class="group-settings-helper-text">拖拽成员调整发言顺序。新加入且尚未排序的成员会自动追加到末尾。</div>
+                                <div id="sequentialSpeakerOrderList" class="sequential-speaker-order-list" role="list" aria-label="顺序发言次序"></div>
                             </div>
 
                             <div id="memberTagsContainer" class="group-settings-field-shell" style="display: none;">
