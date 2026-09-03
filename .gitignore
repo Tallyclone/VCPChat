@@ -83,3 +83,8 @@ VCPChat-Setup.exe
 
 # 独立的 VChat Music Next 音频引擎源码，不由主仓库跟踪
 /vchat_music_next/
+
+# 运行期产物：托管 bootstrap 的 AppData 备份快照与 audio_engine 本地设置
+# 二者均未被本仓库或 upstream 跟踪，属本机运行状态，不应进入版本库
+/AppData_sync_backups/
+/audio_engine/AppData/
