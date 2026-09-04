@@ -241,7 +241,18 @@ function collectDoctorReport({
     }
 
     const audioExecutable = platform === 'win32' ? 'audio_server.exe' : 'audio_server';
-    const audioPath = path.join(root, 'audio_engine', 'bin', `${platform}-${arch}`, audioExecutable);
+    const audioRoot = path.join(root, 'audio_engine');
+    const platformAudioPath = path.join(audioRoot, 'bin', `${platform}-${arch}`, audioExecutable);
+    const legacyAudioPath = path.join(audioRoot, audioExecutable);
+    // 与 main.js 的 startAudioEngine 对齐：仓库自带的 legacy 二进制只覆盖 win32 / linux-x64。
+    const legacyAudioMatchesPlatform = platform === 'win32' || (platform === 'linux' && arch === 'x64');
+    const hasPlatformAudio = fs.existsSync(platformAudioPath);
+    const audioPath = hasPlatformAudio
+        ? platformAudioPath
+        : legacyAudioMatchesPlatform ? legacyAudioPath : platformAudioPath;
+    const audioPassMessage = hasPlatformAudio
+        ? 'Rust audio runtime 存在且权限可用。'
+        : '仓库自带的 legacy Rust audio runtime 可用；未构建当前平台专属副本。';
     if (!fs.existsSync(audioPath)) {
         checks.push(check('audio-runtime', CHECK_STATUS.WARN, '当前平台的 Rust audio runtime 不存在；音乐播放会降级。', {
             code: ERROR_CODES.AUDIO_RUNTIME_MISSING,
@@ -251,7 +262,7 @@ function collectDoctorReport({
     } else {
         const executable = platform === 'win32' || canAccess(audioPath, fs.constants.X_OK);
         checks.push(executable
-            ? check('audio-runtime', CHECK_STATUS.PASS, 'Rust audio runtime 存在且权限可用。', { path: audioPath })
+            ? check('audio-runtime', CHECK_STATUS.PASS, audioPassMessage, { path: audioPath })
             : check('audio-runtime', CHECK_STATUS.WARN, 'Rust audio runtime 不可执行；音乐播放会降级。', {
                 code: ERROR_CODES.AUDIO_RUNTIME_INVALID,
                 path: audioPath,
