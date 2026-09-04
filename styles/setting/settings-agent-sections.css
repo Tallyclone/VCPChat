@@ -103,6 +103,7 @@
 
 #agentSettingsContainer .system-prompt-container .blocks-container,
 #agentSettingsContainer .system-prompt-container .warehouse-container,
+#agentSettingsContainer .system-prompt-container .preview-container,
 #agentSettingsContainer .system-prompt-container .preview-text {
     background-color: transparent !important;
     background-image: none !important;
@@ -195,7 +196,7 @@
     height: 26px;
     border-radius: 999px;
     background-color: transparent;
-    transition: background-color 0.18s ease, box-shadow 0.18s ease;
+    transition: background-color var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard), box-shadow var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard);
     z-index: -1;
     pointer-events: none;
 }
@@ -216,7 +217,7 @@
     font-weight: 500;
     line-height: 24px;
     z-index: 1;
-    transition: color 0.18s ease;
+    transition: color var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard);
 }
 
 #agentSettingsContainer .agent-settings-section-summary {
@@ -264,8 +265,11 @@
     gap: 14px;
     align-items: center;
     margin-top: 8px;
-    margin-left: -6px;
-    max-width: calc(100% + 6px);
+    margin-right: 6px;
+    margin-left: 6px;
+    width: auto;
+    max-width: none;
+    justify-self: stretch;
     box-sizing: border-box;
     padding: 8px 12px 8px 16px;
     border-radius: 18px;
@@ -286,7 +290,7 @@
     line-height: 1.2;
 }
 
-body.light-theme #agentSettingsContainer #identitySummary.summary-with-avatar {
+body[data-vcp-theme="light"] #agentSettingsContainer #identitySummary.summary-with-avatar {
     background: linear-gradient(
         180deg,
         color-mix(in srgb, var(--user-bubble-bg) 18%, rgba(255, 255, 255, 0.52)),
@@ -304,7 +308,7 @@ body.light-theme #agentSettingsContainer #identitySummary.summary-with-avatar {
         inset 0 0 1px rgba(0, 0, 0, 0.06);
 }
 
-body:not(.light-theme) #agentSettingsContainer #identitySummary.summary-with-avatar {
+body[data-vcp-theme="dark"] #agentSettingsContainer #identitySummary.summary-with-avatar {
     background: linear-gradient(
         180deg,
         color-mix(in srgb, var(--user-bubble-bg) 58%, rgba(255, 255, 255, 0.08)),
@@ -344,19 +348,19 @@ body:not(.light-theme) #agentSettingsContainer #identitySummary.summary-with-ava
     background-color: color-mix(in srgb, var(--highlight-text) 12%, transparent);
 }
 
-body.light-theme #agentSettingsContainer .agent-settings-section-header:hover::before {
+body[data-vcp-theme="light"] #agentSettingsContainer .agent-settings-section-header:hover::before {
     background-color: color-mix(in srgb, var(--highlight-text) 14%, rgba(255, 255, 255, 0.7));
 }
 
-body.light-theme #agentSettingsContainer .agent-settings-collapsible-container:not(.collapsed) .agent-settings-section-header::before {
+body[data-vcp-theme="light"] #agentSettingsContainer .agent-settings-collapsible-container:not(.collapsed) .agent-settings-section-header::before {
     background-color: color-mix(in srgb, var(--highlight-text) 14%, rgba(255, 255, 255, 0.7));
 }
 
-body:not(.light-theme) #agentSettingsContainer .agent-settings-section-header:hover::before {
+body[data-vcp-theme="dark"] #agentSettingsContainer .agent-settings-section-header:hover::before {
     background-color: color-mix(in srgb, var(--highlight-text) 18%, rgba(255, 255, 255, 0.04));
 }
 
-body:not(.light-theme) #agentSettingsContainer .agent-settings-collapsible-container:not(.collapsed) .agent-settings-section-header::before {
+body[data-vcp-theme="dark"] #agentSettingsContainer .agent-settings-collapsible-container:not(.collapsed) .agent-settings-section-header::before {
     background-color: color-mix(in srgb, var(--highlight-text) 18%, rgba(255, 255, 255, 0.04));
 }
 
@@ -377,7 +381,7 @@ body:not(.light-theme) #agentSettingsContainer .agent-settings-collapsible-conta
     justify-content: center;
     z-index: 2;
     cursor: pointer;
-    transition: color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+    transition: color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), transform var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 #agentSettingsContainer .agent-settings-toggle-btn::before {
@@ -386,7 +390,7 @@ body:not(.light-theme) #agentSettingsContainer .agent-settings-collapsible-conta
     inset: 2px;
     border-radius: 999px;
     background-color: transparent;
-    transition: background-color 0.2s ease;
+    transition: background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 #agentSettingsContainer .agent-settings-toggle-btn:hover {
@@ -395,16 +399,16 @@ body:not(.light-theme) #agentSettingsContainer .agent-settings-collapsible-conta
     box-shadow: none;
 }
 
-body:not(.light-theme) #agentSettingsContainer .agent-settings-toggle-btn:hover::before {
+body[data-vcp-theme="dark"] #agentSettingsContainer .agent-settings-toggle-btn:hover::before {
     background-color: color-mix(in srgb, var(--highlight-text) 20%, rgba(255, 255, 255, 0.05));
 }
 
-body.light-theme #agentSettingsContainer .agent-settings-toggle-btn:hover::before {
+body[data-vcp-theme="light"] #agentSettingsContainer .agent-settings-toggle-btn:hover::before {
     background-color: color-mix(in srgb, var(--highlight-text) 16%, rgba(255, 255, 255, 0.74));
 }
 
 #agentSettingsContainer .agent-settings-toggle-btn .toggle-icon {
-    transition: transform 0.24s ease;
+    transition: transform var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 #agentSettingsContainer .agent-settings-collapsible-container.collapsed .agent-settings-toggle-btn .toggle-icon {
@@ -416,7 +420,7 @@ body.light-theme #agentSettingsContainer .agent-settings-toggle-btn:hover::befor
     opacity: 1;
     overflow: hidden;
     padding: 0 0 2px !important;
-    transition: max-height 0.28s ease, opacity 0.22s ease, padding 0.22s ease;
+    transition: max-height var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), opacity var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), padding var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 #agentSettingsContainer .agent-settings-collapsible-container:not(.collapsed) .agent-settings-section-content {
@@ -493,7 +497,6 @@ body.light-theme #agentSettingsContainer .agent-settings-toggle-btn:hover::befor
     margin-bottom: 8px;
 }
 
-
 /* ========================================
    MiMo Director Prompt Editor
    Collapsed one-line summaries with focused expansion.
@@ -538,13 +541,12 @@ body.light-theme #agentSettingsContainer .agent-settings-toggle-btn:hover::befor
 #agentSettingsContainer .tts-director-template-button:active {
     transform: translateY(1px);
 }
-
 #agentSettingsContainer .tts-director-composer,
 #agentSettingsContainer .tts-director-item {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 34px;
-    align-items: start;
-    gap: 8px;
+    grid-template-columns: minmax(0, 1fr) 28px;
+    align-items: center;
+    gap: 6px;
     min-width: 0;
 }
 
@@ -559,6 +561,8 @@ body.light-theme #agentSettingsContainer .agent-settings-toggle-btn:hover::befor
     box-sizing: border-box;
     display: block;
     width: 100%;
+    min-width: 0;
+    max-width: 100%;
     height: 38px;
     min-height: 38px;
     max-height: 38px;
@@ -571,8 +575,10 @@ body.light-theme #agentSettingsContainer .agent-settings-toggle-btn:hover::befor
     color: var(--primary-text);
     font: inherit;
     line-height: 20px;
-    white-space: pre;
-    text-overflow: ellipsis;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    text-overflow: clip;
     transition:
         min-height 0.2s ease,
         max-height 0.2s ease,
@@ -602,17 +608,53 @@ body.light-theme #agentSettingsContainer .agent-settings-toggle-btn:hover::befor
 #agentSettingsContainer .tts-director-item.is-editing {
     margin-bottom: 3px;
 }
-
 #agentSettingsContainer .tts-director-action-button {
     position: static !important;
-    width: 34px !important;
-    height: 38px !important;
-    min-width: 34px;
-    min-height: 38px;
+    align-self: center;
+    width: 28px !important;
+    height: 28px !important;
+    min-width: 28px !important;
+    min-height: 28px !important;
+    max-width: 28px;
+    max-height: 28px;
     padding: 0 !important;
-    border-radius: 8px !important;
-    font-size: 1.25em;
-    line-height: 1;
+    border: 1px solid color-mix(in srgb, var(--secondary-text) 24%, transparent) !important;
+    border-radius: 50% !important;
+    background: transparent !important;
+    background-image: none !important;
+    color: var(--secondary-text) !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    font: 500 17px/1 system-ui, sans-serif;
+    opacity: 0.76;
+    transform: none;
+    transition:
+        color var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard),
+        border-color var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard),
+        background-color var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard),
+        opacity var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard);
+}
+
+#agentSettingsContainer .tts-director-action-button:hover,
+#agentSettingsContainer .tts-director-action-button:focus-visible {
+    opacity: 1;
+    color: var(--highlight-text) !important;
+    border-color: color-mix(in srgb, var(--highlight-text) 48%, transparent) !important;
+    background: color-mix(in srgb, var(--highlight-text) 9%, transparent) !important;
+    outline: none;
+}
+
+#agentSettingsContainer .tts-director-item .tts-director-action-button {
+    color: var(--vcp-ui-danger, #ef4444) !important;
+    border-color: color-mix(in srgb, var(--vcp-ui-danger, #ef4444) 30%, transparent) !important;
+}
+
+#agentSettingsContainer .tts-director-item .tts-director-action-button:hover,
+#agentSettingsContainer .tts-director-item .tts-director-action-button:focus-visible {
+    color: var(--vcp-ui-danger, #ef4444) !important;
+    border-color: color-mix(in srgb, var(--vcp-ui-danger, #ef4444) 58%, transparent) !important;
+    background: color-mix(in srgb, var(--vcp-ui-danger, #ef4444) 9%, transparent) !important;
 }
 
 #agentSettingsContainer .tts-director-help {
@@ -633,6 +675,25 @@ body:not(.light-theme) #agentSettingsContainer .tts-director-editor {
 
 
 /* Theme-aware WebAwesome proxy for Agent TTS voice Selects. */
+#agentSettingsContainer #ttsContent .model-input-container {
+    align-items: center;
+}
+
+#agentSettingsContainer #ttsContent .model-input-container > select {
+    height: 38px !important;
+    min-height: 38px !important;
+    max-height: 38px !important;
+}
+
+#agentSettingsContainer #ttsContent #refreshTtsModelsBtn {
+    width: 38px !important;
+    height: 38px !important;
+    min-width: 38px;
+    min-height: 38px;
+    padding: 0 !important;
+    align-self: center;
+}
+
 #agentSettingsContainer .model-input-container > wa-select.vcp-ui-select-proxy {
     width: 100%;
     min-width: 0;
@@ -685,15 +746,62 @@ body:not(.light-theme) #agentSettingsContainer .tts-director-editor {
 #agentSettingsContainer wa-select.vcp-ui-select-proxy::part(expand-icon) {
     color: var(--vcp-ui-text-2, var(--secondary-text));
 }
+@keyframes agent-tts-select-listbox-enter {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
 
 #agentSettingsContainer wa-select.vcp-ui-select-proxy::part(listbox) {
-    max-height: min(360px, 60vh);
+    width: 100%;
+    max-height: min(320px, calc(100vh - 24px));
     padding: 5px;
+    box-sizing: border-box;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
     border: 1px solid var(--vcp-ui-border, var(--border-color));
     border-radius: var(--vcp-ui-radius-md, 10px);
     color: var(--vcp-ui-text-0, var(--primary-text));
     background: var(--vcp-ui-bg-1, var(--secondary-bg));
     box-shadow: var(--vcp-ui-shadow-lg, 0 14px 34px rgba(0, 0, 0, 0.28));
+}
+
+#agentSettingsContainer wa-select.vcp-ui-select-proxy[open]::part(listbox) {
+    animation: agent-tts-select-listbox-enter 150ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #agentSettingsContainer wa-select.vcp-ui-select-proxy[open]::part(listbox) {
+        animation: none;
+    }
+}
+
+#agentSettingsContainer wa-select.vcp-ui-select-proxy::part(listbox)::-webkit-scrollbar {
+    width: 8px;
+}
+
+#agentSettingsContainer wa-select.vcp-ui-select-proxy::part(listbox)::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#agentSettingsContainer wa-select.vcp-ui-select-proxy::part(listbox)::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--secondary-text) 42%, transparent);
+    background-clip: padding-box;
+}
+
+#agentSettingsContainer wa-select.vcp-ui-select-proxy::part(listbox)::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, var(--secondary-text) 66%, transparent);
+    background-clip: padding-box;
 }
 
 #agentSettingsContainer wa-select.vcp-ui-select-proxy wa-option {
@@ -713,4 +821,163 @@ body:not(.light-theme) #agentSettingsContainer .tts-director-editor {
 #agentSettingsContainer wa-select.vcp-ui-select-proxy wa-option[selected] {
     color: var(--vcp-ui-on-accent, white);
     background: var(--vcp-ui-accent, var(--highlight-text));
+}
+
+/* Narrow-sidebar fixes and flat Uiux-style controls. */
+#tabContentSettings.active,
+#agentSettingsContainer,
+#agentSettingsForm {
+    min-height: 0;
+}
+
+#agentSettingsContainer .agent-settings-section-header {
+    min-height: 0 !important;
+    overflow: visible !important;
+}
+
+#agentSettingsContainer .agent-settings-section-title {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 20px;
+}
+
+#agentSettingsContainer .agent-settings-section-summary {
+    min-width: 0;
+    overflow: visible;
+    line-height: 20px;
+}
+
+#agentSettingsContainer .agent-settings-section-summary {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    max-height: none;
+}
+
+#agentSettingsContainer #identitySummary.summary-with-avatar {
+    min-height: 46px;
+    box-sizing: border-box;
+    background: var(--vcp-ui-bg-1, var(--input-bg)) !important;
+    border: 1px solid var(--vcp-ui-border, var(--border-color));
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+#agentSettingsContainer .agent-settings-card-shell,
+#agentSettingsContainer .agent-identity-container,
+#agentSettingsContainer .agent-params-collapsible-container,
+#agentSettingsContainer .strip-regex-container {
+    background: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+#agentSettingsContainer .strip-regex-container :is(button, .small-button),
+#agentSettingsContainer #refreshTtsModelsBtn,
+#agentSettingsContainer #resetAvatarColorsBtn {
+    background: var(--vcp-ui-fill-0, var(--input-bg)) !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+#agentSettingsForm > .form-actions {
+    border-top: none !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding-top: 8px !important;
+}
+
+/* Restore the compact-tab guards from the pre-sync workspace. */
+#tabContentSettings .settings-header-bar,
+#tabContentSettings #globalSettingsBtn {
+    display: none !important;
+}
+
+#agentSettingsContainer .agent-settings-section-header {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    align-content: start;
+}
+
+#tabContentSettings #agentSettingsForm > .agent-settings-section {
+    overflow: visible !important;
+}
+
+#agentSettingsContainer .agent-settings-collapsible-container.collapsed .agent-settings-section-header {
+    min-height: 42px !important;
+    padding-top: 3px !important;
+    padding-bottom: 5px !important;
+}
+
+#agentSettingsContainer .agent-settings-collapsible-container.collapsed .agent-settings-section-summary {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 20px !important;
+    max-height: none !important;
+    overflow: visible !important;
+    clip: auto !important;
+    clip-path: none !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+}
+
+#agentSettingsContainer #identitySummary.summary-with-avatar {
+    display: flex !important;
+    width: auto !important;
+    max-width: none !important;
+    min-height: 46px !important;
+    margin-top: 6px !important;
+    margin-right: 6px !important;
+    margin-left: 6px !important;
+    justify-self: stretch !important;
+    box-sizing: border-box !important;
+    background: var(--vcp-ui-bg-1, var(--input-bg)) !important;
+    background-image: none !important;
+    border: 1px solid var(--vcp-ui-border, var(--border-color)) !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+#agentSettingsContainer .slider-container > .vcp-uiux-range,
+#agentSettingsContainer .slider-container {
+    min-width: 0 !important;
+}
+
+#agentSettingsContainer .slider-container > #agentTtsSpeed,
+#agentSettingsContainer .slider-container > input[type="range"] {
+    flex: 1 1 auto;
+    min-width: 0;
+    appearance: none;
+    height: 20px;
+    margin: 0;
+    accent-color: var(--vcp-ui-accent, var(--highlight-text));
+}
+
+#agentSettingsContainer .slider-container > #agentTtsSpeed::-webkit-slider-runnable-track,
+#agentSettingsContainer .slider-container > input[type="range"]::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 999px;
+    background: var(--vcp-ui-fill-2, var(--border-color));
+}
+
+#agentSettingsContainer .slider-container > #agentTtsSpeed::-webkit-slider-thumb,
+#agentSettingsContainer .slider-container > input[type="range"]::-webkit-slider-thumb {
+    width: 16px;
+    height: 16px;
+    margin-top: -6px;
+    appearance: none;
+    border: 2px solid var(--vcp-ui-accent, var(--highlight-text));
+    border-radius: 50%;
+    background: var(--vcp-ui-bg-1, var(--input-bg));
 }

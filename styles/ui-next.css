@@ -35,18 +35,28 @@ html body {
     --next-backdrop-filter: var(--next-theme-backdrop-filter, blur(18px) saturate(1.28) brightness(1.03));
     --next-surface-backdrop-filter: var(--next-theme-surface-backdrop-filter, none);
     background-color: var(--primary-bg, var(--next-shell-bg));
-    /* 新版 UI 下壁纸只铺在右侧主面板/通知栏/启动台，关掉 body 的全屏铺底，
-       让顶栏与侧栏显示干净的 shell-bg + material sheen，不再对壁纸做无效覆盖。
-       !important 是因为 styles/themes.css 的 body 壁纸规则是 unlayered，
-       跨层压制需要显式提权。 */
+}
+
+/* Wallpaper scope is an appearance decision, not a theme-content decision.
+   Themes continue to own --chat-wallpaper-* and may recommend a scope through
+   --vcp-theme-wallpaper-scope; AppearanceEngine publishes the resolved mode. */
+html[data-vcp-wallpaper-scope="panel"] body {
     background-image: none !important;
 }
 
-html body.light-theme {
+html[data-vcp-wallpaper-scope="global"] body {
+    background-image: var(--next-wallpaper) !important;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: cover;
+    background-attachment: fixed;
+}
+
+html body[data-vcp-theme="light"] {
     --next-wallpaper: var(--chat-wallpaper-light, var(--chat-wallpaper-dark, none));
 }
 
-html body.dark-theme {
+html body[data-vcp-theme="dark"] {
     --next-shell-bg: var(--next-theme-shell-bg-dark, color-mix(in srgb, var(--secondary-bg, #17191d) 38%, transparent));
     --next-surface: var(--next-theme-surface-dark, color-mix(in srgb, var(--secondary-bg, #22252b) 32%, transparent));
     --next-chat-surface: var(--next-theme-chat-surface-dark, color-mix(in srgb, var(--next-surface) 72%, transparent));
@@ -82,6 +92,16 @@ html .next-ui-navigation-material {
     -webkit-backdrop-filter: var(--next-backdrop-filter);
 }
 
+/* A theme is allowed to publish an opaque shell color for panel mode. Global
+   wallpaper mode must still expose the body wallpaper beneath the navigation
+   material, otherwise switching scope appears to remove the wallpaper. */
+html[data-vcp-wallpaper-scope="global"] .next-ui-navigation-material {
+    /* Global wallpaper needs local glass, not a viewport-sized filter. A
+       full-screen backdrop-filter would blur the wallpaper behind the chat
+       canvas as well as behind navigation. */
+    display: none;
+}
+
 html body.next-ui-internal-app-open:has(
     #nextUiInternalAppHost[data-active-app-id="vchat-app-notes"],
     #nextUiInternalAppHost[data-active-app-id="vchat-app-translator"],
@@ -107,6 +127,16 @@ html .next-ui-topbar {
     -webkit-app-region: drag;
 }
 
+html[data-vcp-wallpaper-scope="global"] .next-ui-topbar {
+    background-color: var(
+        --panel-bg,
+        color-mix(in srgb, var(--next-shell-bg) var(--vcp-material-opacity, 68%), transparent)
+    );
+    background-image: var(--next-material-sheen);
+    backdrop-filter: var(--next-backdrop-filter);
+    -webkit-backdrop-filter: var(--next-backdrop-filter);
+}
+
 .next-ui-tab-strip,
 .next-ui-dynamic-tabs,
 .next-ui-topbar-actions {
@@ -124,10 +154,20 @@ html .next-ui-topbar {
 
 html .next-ui-chat-presentation-switcher {
     top: calc(100% + 6px);
-    right: 0;
+    right: -28px;
     left: auto;
     transform: translateY(-5px) scale(0.97);
     transform-origin: right top;
+}
+
+/* 覆盖按钮与整颗胶囊之间的移动路径，避免穿过 6px 间隙时收起。 */
+html .next-ui-chat-presentation-switcher::before {
+    right: 0;
+    bottom: 100%;
+    left: auto;
+    width: 100%;
+    height: 8px;
+    transform: none;
 }
 
 html .next-ui-chat-presentation-switcher.is-open {
@@ -178,7 +218,7 @@ html .next-ui-window-button {
     color: var(--next-muted);
     font-size: 15px;
     white-space: nowrap;
-    transition: color 120ms ease, background-color 120ms ease, font-weight 120ms ease;
+    transition: color var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard), background-color var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard), font-weight var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard);
 }
 
 html #nextUiHomeTab {
@@ -234,7 +274,7 @@ html #nextUiHomeTab > span:last-child {
     border-radius: 9999px;
     background: color-mix(in srgb, var(--next-text) 16%, transparent);
     opacity: 1;
-    transition: opacity 120ms ease;
+    transition: opacity var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard);
 }
 
 /* No divider before the home brand chip itself; every dynamic tab (including
@@ -369,7 +409,7 @@ html .next-ui-embedded-app-status {
 }
 
 html .next-ui-embedded-app-status .vcp-ui-icon {
-    animation: next-ui-embedded-spin 0.9s linear infinite;
+    animation: next-ui-embedded-spin var(--vcp-motion-duration-spinner) var(--vcp-motion-ease-linear) infinite;
 }
 
 html .next-ui-embedded-app-status.is-error {
@@ -412,7 +452,7 @@ html .next-ui-window-button {
     place-items: center;
     border-radius: 0;
     flex: 0 0 46px;
-    transition: background-color 150ms ease, color 150ms ease;
+    transition: background-color var(--vcp-motion-duration-standard) var(--vcp-motion-ease-standard), color var(--vcp-motion-duration-standard) var(--vcp-motion-ease-standard);
 }
 
 html .next-ui-topbar-actions {
@@ -492,10 +532,27 @@ html .next-ui-main-panel {
     -webkit-backdrop-filter: var(--next-surface-backdrop-filter);
 }
 
-/* Frontend plugins keep their upstream Classic DOM and behavior. The Next
-   shell only provides the geometry needed for the shared wallpaper video to
-   remain visible behind the main panel. */
-html #vchat-dynamic-wallpaper-video {
+html[data-vcp-wallpaper-scope="global"] .next-ui-main-panel {
+    /* Global mode keeps the chat wallpaper sharp. Readability comes from a
+       lightweight color veil, never from a panel-wide backdrop blur. */
+    background-color: transparent !important;
+    background-image: linear-gradient(
+        color-mix(in srgb, var(--primary-bg) 24%, transparent),
+        color-mix(in srgb, var(--primary-bg) 24%, transparent)
+    ) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* Frontend wallpaper plugins retain their upstream DOM and behavior. The
+   resolved wallpaper scope supplies one shared geometry contract for video,
+   image and isolated web wallpaper planes. */
+html[data-vcp-wallpaper-scope="panel"] :is(
+    #vchat-dynamic-wallpaper-video,
+    #vcp-we-wallpaper-video,
+    #vcp-we-wallpaper-image,
+    #vcp-we-wallpaper-web
+) {
     top: var(--next-topbar-height, 44px);
     right: 0;
     bottom: 0;
@@ -505,7 +562,36 @@ html #vchat-dynamic-wallpaper-video {
     border-radius: var(--vcp-ui-shell-radius) 0 0 0;
 }
 
-html body.vchat-dynamic-wallpaper-visible .next-ui-main-panel {
+html[data-vcp-wallpaper-scope="global"] :is(
+    #vchat-dynamic-wallpaper-video,
+    #vcp-we-wallpaper-video,
+    #vcp-we-wallpaper-image,
+    #vcp-we-wallpaper-web
+) {
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+}
+
+/* Wallpaper plugins historically use z-index:-1 because Classic paints its
+   surfaces directly over the body. In the Next shell that places a global
+   wallpaper behind the body's own canvas. Lift only the non-interactive
+   wallpaper planes into the shell's bottom stacking level; navigation and
+   workspace content are painted later/above them. */
+html :is(
+    #vchat-dynamic-wallpaper-video,
+    #vcp-we-wallpaper-video,
+    #vcp-we-wallpaper-image,
+    #vcp-we-wallpaper-web
+) {
+    z-index: 0 !important;
+}
+
+html body:is(
+    .vchat-dynamic-wallpaper-visible,
+    .vcp-we-wallpaper-visible
+) .next-ui-main-panel {
     background-color: transparent;
     background-image: linear-gradient(
         color-mix(in srgb, var(--next-surface) 34%, transparent),
@@ -517,6 +603,82 @@ html .sidebar {
     background: transparent;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
+    /* The workspace owns the rounded boundary. A legacy theme-side shadow
+       extending to the right is visible only through that rounded cutout,
+       where Chromium clips it into a false triangular corner. It is painted
+       output rather than a DOM box, which is why the DevTools picker cannot
+       select the artifact. Keep the radius and sidebar material; suppress only
+       the obsolete outer projection in the canonical shell. */
+    box-shadow: none !important;
+}
+
+html[data-vcp-wallpaper-scope="global"] .sidebar {
+    position: relative;
+    z-index: 1;
+    /* The continuous container material below already paints both the sidebar
+       and rounded-corner reveal. Theme styles are intentionally unlayered, so
+       this structural no-double-paint rule must explicitly outrank them.
+       Theme appearance still flows into the shared plane through --panel-bg,
+       --next-material-sheen and --next-backdrop-filter. */
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* Paint the sidebar and the main panel's rounded-corner cutout as one
+   continuous material surface. Because this is a single compositing plane,
+   the revealed corner and sidebar cannot diverge in color or blur sampling. */
+html[data-vcp-wallpaper-scope="global"] .container::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    z-index: 0;
+    width: calc(var(--next-sidebar-width, 260px) + var(--vcp-ui-shell-radius));
+    pointer-events: none;
+    background-color: var(
+        --panel-bg,
+        color-mix(in srgb, var(--next-shell-bg) var(--vcp-material-opacity, 68%), transparent)
+    );
+    background-image: var(--next-material-sheen);
+    backdrop-filter: var(--next-backdrop-filter);
+    -webkit-backdrop-filter: var(--next-backdrop-filter);
+
+    /* One compositing surface, two visible regions:
+       1. the full sidebar rectangle;
+       2. only the exterior crescent of the main panel's top-left radius.
+       The unused extension below the corner stays transparent, preventing the
+       previous full-height material stripe. */
+    -webkit-mask-image:
+        linear-gradient(#000 0 0),
+        radial-gradient(
+            circle var(--vcp-ui-shell-radius) at 100% 100%,
+            transparent calc(100% - 0.75px),
+            #000 100%
+        );
+    -webkit-mask-size:
+        var(--next-sidebar-width, 260px) 100%,
+        var(--vcp-ui-shell-radius) var(--vcp-ui-shell-radius);
+    -webkit-mask-position:
+        left top,
+        right top;
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-composite: source-over;
+
+    mask-image:
+        linear-gradient(#000 0 0),
+        radial-gradient(
+            circle var(--vcp-ui-shell-radius) at 100% 100%,
+            transparent calc(100% - 0.75px),
+            #000 100%
+        );
+    mask-size:
+        var(--next-sidebar-width, 260px) 100%,
+        var(--vcp-ui-shell-radius) var(--vcp-ui-shell-radius);
+    mask-position:
+        left top,
+        right top;
+    mask-repeat: no-repeat;
+    mask-composite: add;
 }
 
 html .sidebar:not(.avatar-only) {
@@ -531,6 +693,7 @@ html .sidebar.avatar-only {
 
 html #resizerLeft,
 html #resizerRight {
+    position: relative;
     width: 4px;
     margin: 0 -2px;
     background: transparent;
@@ -538,6 +701,7 @@ html #resizerRight {
     -webkit-backdrop-filter: none;
     z-index: 5;
 }
+
 
 html .main-content {
     position: relative;
@@ -618,8 +782,8 @@ html .next-ui-sidebar-control-icon {
     inset: 50% auto auto 50%;
     transform: translate(-50%, -50%);
     transition:
-        opacity 140ms ease,
-        transform 180ms ease;
+        opacity var(--vcp-motion-duration-standard) var(--vcp-motion-ease-standard),
+        transform var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard);
 }
 
 html .next-ui-sidebar-brand {
@@ -751,7 +915,7 @@ html .main-content.next-ui-empty-state-active[data-chat-empty="true"][data-chat-
 .next-ui-empty-brand {
     width: 100%;
     filter: drop-shadow(0 18px 34px rgba(0, 0, 0, 0.12));
-    animation: next-ui-empty-brand-breathe 5.5s ease-in-out infinite;
+    animation: next-ui-empty-brand-breathe var(--vcp-motion-duration-ambient) var(--vcp-motion-ease-standard) infinite;
 }
 
 .next-ui-empty-brand-svg {
@@ -784,7 +948,7 @@ html .main-content.next-ui-empty-state-active[data-chat-empty="true"][data-chat-
     stroke-linecap: round;
     stroke-linejoin: round;
     stroke-dasharray: 150 400;
-    animation: next-ui-empty-brand-flow 6.5s linear infinite;
+    animation: next-ui-empty-brand-flow var(--vcp-motion-duration-flow) var(--vcp-motion-ease-linear) infinite;
 }
 
 .next-ui-empty-brand-cyan {
@@ -816,21 +980,21 @@ html[data-vcp-home-tagline="hidden"] .next-ui-empty-tagline {
     display: none;
 }
 
-html body.light-theme .next-ui-empty-brand-base {
+html body[data-vcp-theme="light"] .next-ui-empty-brand-base {
     fill: color-mix(in srgb, #ffffff 78%, var(--primary-bg));
     stroke: color-mix(in srgb, #94a3b8 50%, var(--next-border));
     filter: drop-shadow(0 2px 8px rgba(71, 85, 105, 0.1));
 }
 
-html body.light-theme .next-ui-empty-brand-flow {
+html body[data-vcp-theme="light"] .next-ui-empty-brand-flow {
     stroke-width: 3px;
 }
 
-html body.light-theme .next-ui-empty-brand-cyan {
+html body[data-vcp-theme="light"] .next-ui-empty-brand-cyan {
     filter: drop-shadow(0 0 6px var(--next-empty-flow-glow-strong));
 }
 
-html body.light-theme .next-ui-empty-brand-pink {
+html body[data-vcp-theme="light"] .next-ui-empty-brand-pink {
     filter: drop-shadow(0 0 6px var(--next-empty-flow-glow-soft));
 }
 
@@ -885,6 +1049,18 @@ html .notifications-sidebar.active {
     box-sizing: border-box;
 }
 
+/* Notification cards are a Next UI material consumer. The appearance engine
+   maps Theme/Solid and Vibrancy/Mica/Acrylic/Liquid Glass onto these same
+   shell outputs; the legacy notification theme remains untouched. */
+html .notifications-list .notification-item {
+    background-color: var(--next-shell-bg);
+    background-image: var(--next-material-sheen);
+    background-size: auto;
+    background-blend-mode: normal;
+    backdrop-filter: var(--next-backdrop-filter);
+    -webkit-backdrop-filter: var(--next-backdrop-filter);
+}
+
 html body.next-ui-launchpad-open .container {
     display: none;
 }
@@ -921,10 +1097,25 @@ html .next-ui-launchpad {
     background-attachment: scroll;
 }
 
-body.light-theme .next-ui-launchpad {
+html[data-vcp-wallpaper-scope="global"] .next-ui-launchpad {
+    background-color: transparent !important;
+    background-image: linear-gradient(
+        color-mix(in srgb, var(--primary-bg) 28%, transparent),
+        color-mix(in srgb, var(--primary-bg) 28%, transparent)
+    ) !important;
+}
+
+body[data-vcp-theme="light"] .next-ui-launchpad {
     background-image:
         linear-gradient(color-mix(in srgb, var(--vcp-ui-bg-0, var(--next-surface)) 55%, transparent), color-mix(in srgb, var(--vcp-ui-bg-0, var(--next-surface)) 55%, transparent)),
         var(--next-wallpaper);
+}
+
+html[data-vcp-wallpaper-scope="global"] body[data-vcp-theme="light"] .next-ui-launchpad {
+    background-image: linear-gradient(
+        color-mix(in srgb, var(--primary-bg) 34%, transparent),
+        color-mix(in srgb, var(--primary-bg) 34%, transparent)
+    ) !important;
 }
 
 html body.next-ui-launchpad-open .next-ui-launchpad {
@@ -988,10 +1179,10 @@ html body.next-ui-launchpad-open .next-ui-launchpad {
     transform: translateX(-34%) scale(0.98);
     mask-image: linear-gradient(90deg, transparent 0%, transparent 18%, rgba(0, 0, 0, 0.08) 32%, rgba(0, 0, 0, 0.3) 50%, rgba(0, 0, 0, 0.7) 70%, #000 90%);
     -webkit-mask-image: linear-gradient(90deg, transparent 0%, transparent 18%, rgba(0, 0, 0, 0.08) 32%, rgba(0, 0, 0, 0.3) 50%, rgba(0, 0, 0, 0.7) 70%, #000 90%);
-    animation: next-ui-nova-reveal 1.35s 0.25s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    animation: next-ui-nova-reveal var(--vcp-motion-duration-reveal) var(--vcp-motion-delay-reveal) var(--vcp-motion-ease-emphasized) forwards;
 }
 
-body.light-theme .next-ui-nova-panel::before {
+body[data-vcp-theme="light"] .next-ui-nova-panel::before {
     background-image:
         radial-gradient(circle at 74% 50%, color-mix(in srgb, var(--next-empty-flow-primary) 24%, transparent), transparent 56%),
         url("../assets/nova_button_light.png");
@@ -1073,7 +1264,7 @@ body.light-theme .next-ui-nova-panel::before {
     line-height: 1;
     text-decoration: none;
     cursor: pointer;
-    transition: transform 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+    transition: transform var(--vcp-motion-duration-standard) var(--vcp-motion-ease-standard), background-color var(--vcp-motion-duration-standard) var(--vcp-motion-ease-standard), box-shadow var(--vcp-motion-duration-standard) var(--vcp-motion-ease-standard);
 }
 
 .next-ui-nova-link:hover {
@@ -1148,7 +1339,7 @@ body.light-theme .next-ui-nova-panel::before {
     color: #ffffff;
     background: #4f5cf0;
     box-shadow: var(--next-shadow);
-    transition: transform 160ms ease, box-shadow 160ms ease;
+    transition: transform var(--vcp-motion-duration-standard) var(--vcp-motion-ease-standard), box-shadow var(--vcp-motion-duration-standard) var(--vcp-motion-ease-standard);
 }
 
 .next-ui-app-icon svg {
@@ -1301,7 +1492,7 @@ body.light-theme .next-ui-nova-panel::before {
             drop-shadow(0 0 6px var(--next-empty-flow-glow-soft));
     }
 
-    html body.light-theme .next-ui-empty-brand-base {
+    html body[data-vcp-theme="light"] .next-ui-empty-brand-base {
         filter:
             drop-shadow(0 0 4px var(--next-empty-flow-glow-strong))
             drop-shadow(0 0 4px var(--next-empty-flow-glow-soft));

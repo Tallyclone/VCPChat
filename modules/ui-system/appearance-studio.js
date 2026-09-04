@@ -81,6 +81,7 @@
         'typography',
         'fontScale',
         'contentWidth',
+        'wallpaperScope',
         'sidebarRowHeight',
         'sidebarAvatarSize',
         'customRadius',
@@ -105,6 +106,7 @@
                 typography: 'humanist',
                 fontScale: 'normal',
                 contentWidth: 'full',
+                wallpaperScope: 'theme',
                 sidebarRowHeight: 46,
                 sidebarAvatarSize: 32,
                 customRadius: 10,
@@ -127,6 +129,7 @@
                 typography: 'system',
                 fontScale: 'small',
                 contentWidth: 'centered',
+                wallpaperScope: 'theme',
                 sidebarRowHeight: 40,
                 sidebarAvatarSize: 26,
                 customRadius: 6,
@@ -149,6 +152,7 @@
                 typography: 'serif',
                 fontScale: 'large',
                 contentWidth: 'centered',
+                wallpaperScope: 'theme',
                 sidebarRowHeight: 52,
                 sidebarAvatarSize: 38,
                 customRadius: 14,
@@ -177,6 +181,7 @@
             typography: 'humanist',
             fontScale: 'normal',
             contentWidth: 'full',
+            wallpaperScope: 'theme',
             sidebarRowHeight: 46,
             sidebarAvatarSize: 32,
             customRadius: 10,
@@ -195,6 +200,7 @@
         typography: 'appearanceTypography',
         fontScale: 'appearanceFontScale',
         contentWidth: 'appearanceContentWidth',
+        wallpaperScope: 'appearanceWallpaperScope',
         sidebarRowHeight: 'appearanceSidebarRowHeight',
         sidebarAvatarSize: 'appearanceSidebarAvatarSize',
         sidebarRadius: 'appearanceSidebarRadius',
@@ -206,6 +212,7 @@
         radius: Object.freeze({ square: '直角 · 0px', small: '小圆角 · 6px', medium: '中圆角 · 10px', round: '大圆角 · 14px', custom: '自定义圆角' }),
         typography: Object.freeze({ system: '系统字体', humanist: '人文字体', serif: '衬线字体' }),
         contentWidth: Object.freeze({ full: '全宽阅读区', centered: '居中阅读区' }),
+        wallpaperScope: Object.freeze({ theme: '壁纸跟随主题', panel: '内容区壁纸', global: '全局壁纸' }),
         messageWidth: Object.freeze({ normal: '标准消息宽度', wide: '宽屏消息宽度' }),
         homeVisual: Object.freeze({ shown: '显示主页视觉文字', hidden: '隐藏主页视觉文字' }),
         surface: Object.freeze({ solid: '纯色表面', translucent: '主题材质', custom: '自定义磨砂' }),
@@ -251,6 +258,11 @@
 
     const clone = value => JSON.parse(JSON.stringify(value));
     const api = () => window.chatAPI || window.electronAPI;
+    const toOps = (value, prefix = []) => Object.entries(value || {}).flatMap(([key, next]) => {
+        const path = [...prefix, key];
+        return next && typeof next === 'object' && !Array.isArray(next) ? toOps(next, path) : [{ op: 'set', path, value: next }];
+    });
+    const saveSettingsPatch = patch => api()?.saveSettings?.({ __vcpSettingsOps: toOps(patch) });
     function normalizeHomeTaglineText(value, fallback = DEFAULT_HOME_TAGLINE) {
         const normalized = typeof value === 'string' ? value.trim().slice(0, 120) : '';
         return normalized || fallback;
@@ -427,6 +439,7 @@
                 SUMMARY_LABELS.themeMode[state.themeMode],
                 SUMMARY_LABELS.typography[state.profile.typography],
                 SUMMARY_LABELS.contentWidth[state.profile.contentWidth],
+                SUMMARY_LABELS.wallpaperScope[state.profile.wallpaperScope],
                 SUMMARY_LABELS.messageWidth[state.messageWidth],
                 SUMMARY_LABELS.surface[state.profile.surface]
             ].join(' · ');
@@ -492,9 +505,9 @@
         const trigger = document.getElementById('openAppearanceStudioFromSettings');
         if (!card || !form || !trigger) return;
         if (!card.dataset.appearanceSummaryBound) {
-            const bindSummary = (target, type, handler) => moduleScope
-                ? moduleScope.listen(target, type, handler, undefined, `appearance-settings-summary:${type}`)
-                : target.addEventListener(type, handler);
+            const bindSummary = (target, type, handler, options) => moduleScope
+                ? moduleScope.listen(target, type, handler, options, `appearance-settings-summary:${type}`)
+                : target.addEventListener(type, handler, options);
             bindSummary(form, 'change', event => {
                 if (event.target.matches('input[name="appearanceSidebarRadiusChoice"]')) {
                     const compatibilityControl = document.getElementById('appearanceSidebarRadius');
@@ -504,7 +517,16 @@
                     syncSettingsSummary();
                 }
             });
-            bindSummary(form, 'input', event => {
+            // 回填快照（applySettings）写值只派发不冒泡的 vcp-uiux-sync；
+            // 若快照回填落在开模态的 rAF 绑定同步之后，摘要会滞留 base
+            // 默认文案且再无事件兜底。捕获监听能在祖先上收到不冒泡事件，
+            // 使回填写值后的摘要无条件重同步（消除开模态竞态）。
+            bindSummary(form, 'vcp-uiux-sync', event => {
+                if (event.target.matches?.('[id^="appearance"], #showHomeVisualBrand, #showHomeVisualTagline, #homeVisualTagline, input[name="chatPresentationMode"]')) {
+                    syncSettingsSummary();
+                }
+            }, true);
+        bindSummary(form, 'input', event => {
                 if (event.target.id === 'appearanceCustomRadius') {
                     const output = document.getElementById('appearanceCustomRadiusValue');
                     if (output) output.value = `${event.target.value}px`;
@@ -598,8 +620,9 @@
                             <div><h3 id="vcpAppearanceLayoutTitle">页面布局</h3><p>选择主页结构与聊天内容的占用方式</p></div>
                             <button type="button" class="vcp-appearance-studio-reset" data-reset-section="layout" aria-label="重置页面布局" title="重置本节"><span class="vcp-ui-icon">refresh</span></button>
                         </div>
-                        <div class="vcp-appearance-mini-options" role="group" aria-label="阅读区、消息宽度和主页视觉文字">
+                        <div class="vcp-appearance-mini-options" role="group" aria-label="阅读区、壁纸范围、消息宽度和主页视觉文字">
                             <div class="vcp-appearance-mini-item"><h4>阅读区布局</h4><div class="vcp-appearance-segmented"><button type="button" data-appearance-key="contentWidth" data-appearance-value="full">全宽画布</button><button type="button" data-appearance-key="contentWidth" data-appearance-value="centered">居中阅读</button></div><p class="vcp-appearance-mini-helper">控制整个聊天阅读区</p></div>
+                            <div class="vcp-appearance-mini-item"><h4>壁纸范围</h4><div class="vcp-appearance-segmented"><button type="button" data-appearance-key="wallpaperScope" data-appearance-value="theme">主题</button><button type="button" data-appearance-key="wallpaperScope" data-appearance-value="panel">内容区</button><button type="button" data-appearance-key="wallpaperScope" data-appearance-value="global">全局</button></div><p class="vcp-appearance-mini-helper">主题可声明建议范围，用户也可强制覆盖</p></div>
                             <div class="vcp-appearance-mini-item"><h4>消息宽度</h4><div class="vcp-appearance-segmented"><button type="button" data-appearance-key="messageWidth" data-appearance-value="normal">标准</button><button type="button" data-appearance-key="messageWidth" data-appearance-value="wide">宽屏</button></div><p class="vcp-appearance-mini-helper">控制单条消息的最大宽度</p></div>
                             <div class="vcp-appearance-mini-item vcp-appearance-mini-item-wide"><h4>主页视觉文字</h4><div class="vcp-appearance-segmented"><button type="button" data-appearance-key="homeVisual" data-appearance-value="shown">显示</button><button type="button" data-appearance-key="homeVisual" data-appearance-value="hidden">隐藏</button></div><p class="vcp-appearance-mini-helper">控制空会话中的 VCPCHAT 标识</p></div>
                         </div>
@@ -875,6 +898,11 @@
             link.id = 'vcpAppearanceThemePreview';
             link.rel = 'stylesheet';
             link.dataset.appearanceThemePreview = 'true';
+            link.addEventListener('load', () => {
+                if (draft?.profile.wallpaperScope === 'theme') {
+                    getAppearance()?.refreshWallpaperScope?.({ source: 'appearance-theme-preview' });
+                }
+            });
             document.head.append(link);
         }
         link.href = new URL(`styles/themes/${encodeURIComponent(fileName)}`, document.baseURI).href;
@@ -999,6 +1027,7 @@
             draft.themeMode = defaults.themeMode;
         } else if (section === 'layout') {
             draft.profile.contentWidth = defaults.profile.contentWidth;
+            draft.profile.wallpaperScope = defaults.profile.wallpaperScope;
             draft.messageWidth = defaults.messageWidth;
             draft.homeVisual = defaults.homeVisual;
             draft.homeTagline = defaults.homeTagline;
@@ -1118,7 +1147,7 @@
         } : null;
         let settingsPersisted = false;
         try {
-            const result = await api()?.saveSettings?.({
+            const result = await saveSettingsPatch({
                 appearanceProfile: nextState.profile,
                 chatPresentationMode: nextState.presentation,
                 enableWideChatLayout: nextState.messageWidth === 'wide',
@@ -1174,7 +1203,7 @@
         } catch (error) {
             if (settingsPersisted && persistedSnapshot) {
                 try {
-                    const rollbackResult = await api()?.saveSettings?.(persistedSnapshot);
+                    const rollbackResult = await saveSettingsPatch(persistedSnapshot);
                     if (!rollbackResult?.success) throw new Error(rollbackResult?.error || '设置回写失败');
                 } catch (rollbackError) {
                     console.error('[AppearanceStudio] Failed to restore persisted settings:', rollbackError);
@@ -1362,7 +1391,7 @@
             MATERIAL_FIELDS.forEach(field => {
                 draft.profile[field] = MATERIAL_DEFAULTS[field];
             });
-            await preview({ appearanceOnly: true });
+            try { await preview({ appearanceOnly: true }); } catch (error) { console.error('[AppearanceStudio] Preview failed while editing sidebar height:', error); }
             return;
         }
         const materialEffect = target.dataset.materialEffect;
@@ -1370,7 +1399,7 @@
             draft.profile.surface = 'custom';
             draft.profile.surfaceEffect = materialEffect;
             Object.assign(draft.profile, MATERIAL_EFFECTS[materialEffect].values);
-            await preview({ appearanceOnly: true });
+            try { await preview({ appearanceOnly: true }); } catch (error) { console.error('[AppearanceStudio] Preview failed while editing avatar size:', error); }
             return;
         }
         if (target.matches('[data-reset-all]')) {
@@ -1383,7 +1412,10 @@
         if (presetId && PRESETS[presetId]) {
             const preset = PRESETS[presetId];
             draft = {
-                profile: clone(preset.profile),
+                profile: {
+                    ...clone(preset.profile),
+                    wallpaperScope: draft.profile.wallpaperScope
+                },
                 presentation: preset.presentation,
                 messageWidth: draft.messageWidth,
                 homeVisual: draft.homeVisual,
@@ -1435,7 +1467,7 @@
             syncControls();
             return;
         }
-        const control = event.target.closest('input[type="range"][data-appearance-key]');
+        const control = event.target.closest('input[data-appearance-key]');
         if (!control || saving || !draft) return;
         const key = control.dataset.appearanceKey;
         if (key === 'sidebarRowHeight') {
@@ -1448,7 +1480,7 @@
                 draft.profile.sidebarAvatarSize = nextAutoAvatar;
             }
             draft.profile.sidebarAvatarSize = Math.min(draft.profile.sidebarAvatarSize, nextRowHeight - 4);
-            await preview({ appearanceOnly: true });
+            try { await preview({ appearanceOnly: true }); } catch (error) { console.error('[AppearanceStudio] Preview failed while editing radius:', error); }
             return;
         }
         if (key === 'sidebarAvatarSize') {
@@ -1470,7 +1502,7 @@
         const value = Math.min(config.max, Math.max(config.min, Number(control.value)));
         draft.profile[key] = value;
         draft.profile.surface = 'custom';
-        await preview({ appearanceOnly: true });
+        try { await preview({ appearanceOnly: true }); } catch (error) { console.error('[AppearanceStudio] Preview failed while editing appearance value:', error); }
     }
 
     function handleKeydown(event) {
