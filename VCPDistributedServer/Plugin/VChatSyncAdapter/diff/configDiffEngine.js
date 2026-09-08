@@ -617,10 +617,11 @@ async function diffConfig(relativePath, parsedJson, localIndex, context = {}) {
       context
     );
   }
+  const operationAction = isNewRuntimeItemConfig ? "create" : "update";
   const operation = {
     operation_id: operationId(
       context.deviceId || "unknown_device",
-      `config.${dto.schema}.update`,
+      `config.${dto.schema}.${operationAction}`,
       {
         item_type: "config",
         item_id: dto.entity_id,
@@ -631,7 +632,7 @@ async function diffConfig(relativePath, parsedJson, localIndex, context = {}) {
     ),
     device_id: context.deviceId,
     entity_type: dto.schema,
-    action: "update",
+    action: operationAction,
     entity_id: dto.entity_id,
     payload: {
       dto_version: dto.dto_version,
