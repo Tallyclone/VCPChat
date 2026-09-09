@@ -1,0 +1,16 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "VChatDeviceContext",
+  "displayName": "VChat 设备请求上下文",
+  "version": "1.0.0",
+  "description": "为 VChat 主进程发往 VCPToolBox 聊天端点的请求附加当前分布式 ServerName。",
+  "author": "VCPChat",
+  "pluginType": "service",
+  "entryPoint": {
+    "type": "nodejs",
+    "script": "index.js"
+  },
+  "communication": {
+    "protocol": "direct"
+  }
+}

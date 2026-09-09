@@ -663,7 +663,11 @@ function groupEvents(events) {
       entityDeleteEvents.push(event);
     } else if (
       event.entity_type === "topic" &&
-      ["create", "update", "upsert"].includes(event.action)
+      // "baseline" comes from bootstrapManager.buildBaselineEvents(); it is
+      // semantically an upsert (center is authoritative). Without it every
+      // topic baseline event fell through to unsupportedEvents and aborted
+      // join_existing/merge_existing at the first topic.
+      ["create", "update", "upsert", "baseline"].includes(event.action)
     ) {
       const identity = topicIdentityFromTopicEvent(event);
       if (!identity.item_type || !identity.item_id || !identity.topic_id) {
@@ -826,15 +830,31 @@ async function projectEvents(events, context) {
       }
 
       if (unsupportedEvents.length > 0) {
+        // Include entity_type/action in the message: for baseline projections
+        // event.seq is a synthetic counter from buildBaselineEvents(), not a
+        // real change_log seq, so the number alone is not diagnosable.
+        const describe = (item) =>
+          `${item.entity_type || "?"}/${item.action || "?"}`;
+        const kinds = [...new Set(unsupportedEvents.map(describe))];
         if (context.logger && context.logger.warn) {
           context.logger.warn("projector skipped unsupported events", {
             count: unsupportedEvents.length,
+            seq: event.seq,
+            kinds,
+            baseline_seq: event.baseline_seq === true,
+            entity_id: event.entity_id,
+            item_type: event.item_type,
+            item_id: event.item_id,
+            topic_id: event.topic_id,
           });
         }
         const error = new Error(
-          `unsupported projector event at seq ${event.seq}`
+          `unsupported projector event at seq ${event.seq} (${kinds.join(
+            ", "
+          )})`
         );
         error.failedSeq = event.seq;
+        error.unsupportedKinds = kinds;
         throw error;
       }
 

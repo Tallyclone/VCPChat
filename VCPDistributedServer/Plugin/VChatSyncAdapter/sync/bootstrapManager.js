@@ -6,6 +6,7 @@ const { projectEvents } = require("../projector/appDataProjector");
 const { checksumJson, checksumBuffer } = require("../core/hash");
 const { safeConfigDto } = require("../core/safeConfigDto");
 const { schemaForPath, mergeProjectedConfig } = require("../core/configSchema");
+
 const {
   collectAttachmentRefs,
   uploadLocalAttachment,
@@ -306,8 +307,13 @@ async function backupAppData(config, label, logger) {
         if (!relativePath) return true;
         const normalized = relativePath.replace(/\\/g, "/");
         const baseName = path.basename(normalized);
+        // Exclude sync/ working directory
         if (normalized === "sync" || normalized.startsWith("sync/"))
           return false;
+        // Exclude databases/ — derived index rebuilt from AppData JSON, contains CDS lock files
+        if (normalized === "databases" || normalized.startsWith("databases/"))
+          return false;
+        // Exclude temporary/backup files
         if (/\.backup-[^/]*$/i.test(baseName)) return false;
         if (/\.tmp(?:-|$)/i.test(baseName)) return false;
         if (/^(?:state|local_index)\.json\.tmp/i.test(baseName)) return false;
@@ -352,6 +358,43 @@ async function pauseRuntimeServices(runtime, reason) {
       reason,
       stopped,
     });
+  }
+}
+
+// Restart the services paused by pauseRuntimeServices() when a bootstrap
+// operation aborts. index.js injects runtime.resumeRuntimeServices so this
+// module never has to require("../index.js") (that would be circular and
+// previously produced "startRuntimeServicesIfActive is not a function").
+async function resumeRuntimeServicesAfterFailure(
+  runtime,
+  reason,
+  originalError,
+  logger
+) {
+  if (!runtime || runtime.runtimeServicesStarted) return;
+  const resume = runtime.resumeRuntimeServices;
+  if (typeof resume !== "function") {
+    if (logger && logger.warn) {
+      logger.warn("runtime resume hook unavailable after bootstrap failure", {
+        reason,
+        originalError: originalError && originalError.message,
+      });
+    }
+    return;
+  }
+  try {
+    await resume();
+  } catch (resumeError) {
+    if (logger && logger.error) {
+      logger.error(
+        "failed to resume runtime services after bootstrap failure",
+        {
+          reason,
+          originalError: originalError && originalError.message,
+          resumeError: resumeError.message,
+        }
+      );
+    }
   }
 }
 
@@ -1157,127 +1200,149 @@ async function uploadSameNameAgentMergeAttachments(
 async function joinExisting(runtime) {
   const { config, centerClient, localIndex, writeIntentLock, logger } = runtime;
   await pauseRuntimeServices(runtime, "join_existing");
-  await backupAppData(config, "join-existing", logger);
-  const exported = await centerClient.exportBootstrap();
-  const baseline = exported.baseline || {};
-  const events = Array.isArray(exported.changes) ? exported.changes : [];
-  const projectionEvents =
-    events.length > 0 ? events : buildBaselineEvents(baseline);
-  const projection = await projectEvents(projectionEvents, {
-    config,
-    localIndex,
-    writeIntentLock,
-    logger,
-    centerClient,
-  });
-  if (projection.failedSeq)
-    throw new Error(
-      `join_existing projection failed at seq ${projection.failedSeq}`
+  try {
+    await backupAppData(config, "join-existing", logger);
+    const exported = await centerClient.exportBootstrap();
+    const baseline = exported.baseline || {};
+    const events = Array.isArray(exported.changes) ? exported.changes : [];
+    const projectionEvents =
+      events.length > 0 ? events : buildBaselineEvents(baseline);
+    const projection = await projectEvents(projectionEvents, {
+      config,
+      localIndex,
+      writeIntentLock,
+      logger,
+      centerClient,
+    });
+    if (projection.failedSeq)
+      throw new Error(
+        `join_existing projection failed at seq ${projection.failedSeq}`
+      );
+    runtime.state.mode = "active";
+    runtime.state.last_applied_seq = exported.latest_seq || 0;
+    runtime.state.bootstrap_completed_at = new Date().toISOString();
+    await runtime.writeState(runtime.state);
+    return {
+      ok: true,
+      mode: "active",
+      latest_seq: runtime.state.last_applied_seq,
+      projection,
+      baseline_projection: events.length === 0,
+    };
+  } catch (error) {
+    // Resume services on failure to avoid leaving adapter in half-dead state
+    await resumeRuntimeServicesAfterFailure(
+      runtime,
+      "join_existing",
+      error,
+      logger
     );
-  runtime.state.mode = "active";
-  runtime.state.last_applied_seq = exported.latest_seq || 0;
-  runtime.state.bootstrap_completed_at = new Date().toISOString();
-  await runtime.writeState(runtime.state);
-  return {
-    ok: true,
-    mode: "active",
-    latest_seq: runtime.state.last_applied_seq,
-    projection,
-    baseline_projection: events.length === 0,
-  };
+    throw error;
+  }
 }
 
 async function mergeExisting(runtime) {
   const { config, centerClient, localIndex, writeIntentLock, logger } = runtime;
   await pauseRuntimeServices(runtime, "merge_existing");
-  await backupAppData(config, "merge-existing", logger);
-  const local = await buildLocalManifest(config, {
-    logger,
-    allowConflicts: true,
-  });
-  const exported = await centerClient.exportBootstrap();
-  const center = exported.baseline || {};
-  const messageDiff = diffByKey(
-    local.messages,
-    center.messages || [],
-    (row) => `${row.item_type}:${row.item_id}:${row.topic_id}:${row.id}`,
-    (row) => row.checksum || checksumJson(row.message || {})
-  );
-  const configDiff = diffByKey(
-    local.configs,
-    center.configs || [],
-    (row) => row.entity_id || row.relative_path || row.schema,
-    (row) =>
-      row.checksum ||
-      checksumJson(row.safe_projection_json || row.payload || {})
-  );
-  const attachmentDiff = diffByKey(
-    local.attachments,
-    center.attachments || [],
-    (row) => row.hash,
-    (row) => row.hash
-  );
-  const sameNameAgentMerge = buildSameNameAgentMerge(local, center);
-  const sameNameAttachmentUpload = await uploadSameNameAgentMergeAttachments(
-    sameNameAgentMerge,
-    { config, centerClient, localIndex, logger }
-  );
-  const projectionEvents = [
-    ...buildBaselineEvents(center),
-    ...sameNameAgentMerge.events,
-  ];
-  const projection = await projectEvents(projectionEvents, {
-    config,
-    localIndex,
-    writeIntentLock,
-    logger,
-    centerClient,
-  });
-  if (projection.failedSeq) {
-    throw new Error(
-      `merge_existing projection failed at seq ${projection.failedSeq}`
+  try {
+    await backupAppData(config, "merge-existing", logger);
+    const local = await buildLocalManifest(config, {
+      logger,
+      allowConflicts: true,
+    });
+    const exported = await centerClient.exportBootstrap();
+    const center = exported.baseline || {};
+    const messageDiff = diffByKey(
+      local.messages,
+      center.messages || [],
+      (row) => `${row.item_type}:${row.item_id}:${row.topic_id}:${row.id}`,
+      (row) => row.checksum || checksumJson(row.message || {})
     );
+    const configDiff = diffByKey(
+      local.configs,
+      center.configs || [],
+      (row) => row.entity_id || row.relative_path || row.schema,
+      (row) =>
+        row.checksum ||
+        checksumJson(row.safe_projection_json || row.payload || {})
+    );
+    const attachmentDiff = diffByKey(
+      local.attachments,
+      center.attachments || [],
+      (row) => row.hash,
+      (row) => row.hash
+    );
+    const sameNameAgentMerge = buildSameNameAgentMerge(local, center);
+    const sameNameAttachmentUpload = await uploadSameNameAgentMergeAttachments(
+      sameNameAgentMerge,
+      { config, centerClient, localIndex, logger }
+    );
+    const projectionEvents = [
+      ...buildBaselineEvents(center),
+      ...sameNameAgentMerge.events,
+    ];
+    const projection = await projectEvents(projectionEvents, {
+      config,
+      localIndex,
+      writeIntentLock,
+      logger,
+      centerClient,
+    });
+    if (projection.failedSeq) {
+      throw new Error(
+        `merge_existing projection failed at seq ${projection.failedSeq}`
+      );
+    }
+
+    runtime.state.mode = "active";
+    runtime.state.last_applied_seq = exported.latest_seq || 0;
+    runtime.state.bootstrap_completed_at = new Date().toISOString();
+    runtime.state.merge_completed_at = new Date().toISOString();
+    await runtime.writeState(runtime.state);
+
+    const report = {
+      ok: true,
+      mode: "active",
+      merge_mode: "merge_existing_center_baseline_applied",
+      generated_at: new Date().toISOString(),
+      latest_seq: runtime.state.last_applied_seq,
+      local_counts: {
+        messages: local.messages.length,
+        configs: local.configs.length,
+        attachments: local.attachments.length,
+      },
+      center_counts: {
+        messages: (center.messages || []).length,
+        configs: (center.configs || []).length,
+        attachments: (center.attachments || []).length,
+      },
+      projection,
+      diffs: {
+        messages: messageDiff,
+        configs: configDiff,
+        attachments: attachmentDiff,
+      },
+      normalized_id_conflicts: local.conflicts,
+      same_name_agent_merge: sameNameAgentMerge.remaps,
+      same_name_agent_attachment_upload: sameNameAttachmentUpload,
+      default_action:
+        "center_baseline_then_local_same_name_history_attachment_remap",
+    };
+    await fs.ensureDir(config.syncDir);
+    await fs.writeJson(path.join(config.syncDir, "merge_report.json"), report, {
+      spaces: 2,
+    });
+    return report;
+  } catch (error) {
+    // Resume services on failure to avoid leaving adapter in half-dead state
+    await resumeRuntimeServicesAfterFailure(
+      runtime,
+      "merge_existing",
+      error,
+      logger
+    );
+    throw error;
   }
-
-  runtime.state.mode = "active";
-  runtime.state.last_applied_seq = exported.latest_seq || 0;
-  runtime.state.bootstrap_completed_at = new Date().toISOString();
-  runtime.state.merge_completed_at = new Date().toISOString();
-  await runtime.writeState(runtime.state);
-
-  const report = {
-    ok: true,
-    mode: "active",
-    merge_mode: "merge_existing_center_baseline_applied",
-    generated_at: new Date().toISOString(),
-    latest_seq: runtime.state.last_applied_seq,
-    local_counts: {
-      messages: local.messages.length,
-      configs: local.configs.length,
-      attachments: local.attachments.length,
-    },
-    center_counts: {
-      messages: (center.messages || []).length,
-      configs: (center.configs || []).length,
-      attachments: (center.attachments || []).length,
-    },
-    projection,
-    diffs: {
-      messages: messageDiff,
-      configs: configDiff,
-      attachments: attachmentDiff,
-    },
-    normalized_id_conflicts: local.conflicts,
-    same_name_agent_merge: sameNameAgentMerge.remaps,
-    same_name_agent_attachment_upload: sameNameAttachmentUpload,
-    default_action:
-      "center_baseline_then_local_same_name_history_attachment_remap",
-  };
-  await fs.ensureDir(config.syncDir);
-  await fs.writeJson(path.join(config.syncDir, "merge_report.json"), report, {
-    spaces: 2,
-  });
-  return report;
 }
 
 module.exports = {

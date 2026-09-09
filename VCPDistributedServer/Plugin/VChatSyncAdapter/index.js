@@ -512,6 +512,9 @@ async function startAdapter(app, pluginConfig, projectBasePath) {
     watcher: null,
     runtimeServicesStarted: false,
     startedAt: new Date().toISOString(),
+    // Injected resume hook so bootstrapManager can restart paused services
+    // after a failed bootstrap without creating a circular require.
+    resumeRuntimeServices: async () => startRuntimeServicesIfActive(),
   };
 
   async function startRuntimeServicesIfActive() {
