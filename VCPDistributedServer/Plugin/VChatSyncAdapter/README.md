@@ -223,6 +223,7 @@ GET  /api/vchat-sync-adapter/status
 POST /api/vchat-sync-adapter/bootstrap/bootstrap_primary
 POST /api/vchat-sync-adapter/bootstrap/join_existing
 POST /api/vchat-sync-adapter/bootstrap/merge_existing
+POST /api/vchat-sync-adapter/bootstrap/agent
 GET  /api/vchat-sync-adapter/bootstrap/manifest
 GET  /api/vchat-sync-adapter/bootstrap/conflicts
 ```

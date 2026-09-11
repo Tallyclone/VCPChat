@@ -6,6 +6,7 @@ const { projectEvents } = require("../projector/appDataProjector");
 const { checksumJson, checksumBuffer } = require("../core/hash");
 const { safeConfigDto } = require("../core/safeConfigDto");
 const { schemaForPath, mergeProjectedConfig } = require("../core/configSchema");
+const { isPlaceholderMessage } = require("../diff/historyDiffEngine");
 
 const {
   collectAttachmentRefs,
@@ -157,7 +158,6 @@ async function addSettingsUserAvatarAttachment(
     { source: "settings.userAvatarUrl" }
   );
 }
-
 function stableMessageId(identity, message, index) {
   const contentForHash =
     typeof message.content === "string"
@@ -430,7 +430,7 @@ async function buildLocalManifest(config, options = {}) {
       if (!Array.isArray(history)) return;
       let changed = false;
       history.forEach((message, index) => {
-        if (!message || typeof message !== "object") return;
+        if (isPlaceholderMessage(message, { allowMissingId: true })) return;
         if (!message.id) {
           message.id = stableMessageId(identity, message, index);
           changed = true;
@@ -698,177 +698,191 @@ async function bootstrapPrimary(runtime, options = {}) {
     logger,
   } = runtime;
   await pauseRuntimeServices(runtime, "bootstrap_primary");
-  await backupAppData(config, "bootstrap-primary", logger);
-  const manifest = await buildLocalManifest(config, { logger });
-  if (!manifest.ok) return manifest;
-
-  // Keep the sync center strictly empty until /bootstrap/import runs.
-  // Uploading attachment files first writes attachments/change_log rows and makes
-  // bootstrap_primary fail with "center is not empty".
-  const response = await centerClient.importBootstrap({
-    ...manifest,
-    mode: "bootstrap_primary",
-  });
-
-  const attachmentUploadErrors = [];
-  for (const attachment of manifest.attachments) {
-    const absolutePath = path.join(
-      config.appDataPath,
-      attachment.relative_path || ""
-    );
-    if (!attachment.relative_path || !(await fs.pathExists(absolutePath)))
-      continue;
-    try {
-      await uploadLocalAttachment(
-        attachment.relative_path,
-        absolutePath,
-        localIndex,
-        centerClient,
-        config,
-        attachment.settings_user_avatar
-          ? {
-              avatarIdentity: { owner_type: "user", owner_id: "user_avatar" },
-              avatarOperationRelativePath: attachment.relative_path,
-              avatarOperationMetadata: { source: "settings.userAvatarUrl" },
-            }
-          : {}
-      );
-    } catch (error) {
-      attachmentUploadErrors.push({
-        relative_path: attachment.relative_path,
-        error: error.message,
-      });
-      if (logger && logger.warn) {
-        logger.warn(
-          "bootstrap attachment upload failed after baseline import",
-          {
-            relativePath: attachment.relative_path,
-            error: error.message,
-          }
-        );
-      }
+  try {
+    await backupAppData(config, "bootstrap-primary", logger);
+    const manifest = await buildLocalManifest(config, { logger });
+    if (!manifest.ok) {
+      const error = new Error("bootstrap_primary manifest validation failed");
+      error.result = manifest;
+      throw error;
     }
-  }
 
-  const themeUploadErrors = [];
-  for (const themePackage of await scanThemePackages(config)) {
-    for (const asset of themePackage.assets || []) {
-      if (!asset.absolute_path || !(await fs.pathExists(asset.absolute_path)))
+    // Keep the sync center strictly empty until /bootstrap/import runs.
+    // Uploading attachment files first writes attachments/change_log rows and makes
+    // bootstrap_primary fail with "center is not empty".
+    const response = await centerClient.importBootstrap({
+      ...manifest,
+      mode: "bootstrap_primary",
+    });
+
+    const attachmentUploadErrors = [];
+    for (const attachment of manifest.attachments) {
+      const absolutePath = path.join(
+        config.appDataPath,
+        attachment.relative_path || ""
+      );
+      if (!attachment.relative_path || !(await fs.pathExists(absolutePath)))
         continue;
       try {
-        await uploadThemeAsset(centerClient, themePackage, asset, config);
+        await uploadLocalAttachment(
+          attachment.relative_path,
+          absolutePath,
+          localIndex,
+          centerClient,
+          config,
+          attachment.settings_user_avatar
+            ? {
+                avatarIdentity: { owner_type: "user", owner_id: "user_avatar" },
+                avatarOperationRelativePath: attachment.relative_path,
+                avatarOperationMetadata: { source: "settings.userAvatarUrl" },
+              }
+            : {}
+        );
       } catch (error) {
-        themeUploadErrors.push({
-          theme_id: themePackage.theme_id,
-          asset_hash: asset.asset_hash,
-          relative_path: asset.relative_path,
+        attachmentUploadErrors.push({
+          relative_path: attachment.relative_path,
           error: error.message,
         });
         if (logger && logger.warn) {
           logger.warn(
-            "bootstrap theme asset upload failed after baseline import",
+            "bootstrap attachment upload failed after baseline import",
             {
-              theme_id: themePackage.theme_id,
-              asset_hash: asset.asset_hash,
-              relativePath: asset.relative_path,
+              relativePath: attachment.relative_path,
               error: error.message,
             }
           );
         }
       }
     }
-  }
 
-  const baselineIndex = await recordBootstrapPrimaryBaseline(
-    localIndex,
-    manifest,
-    response,
-    logger,
-    config
-  );
-
-  // 回写权威配置: 从 Center 返回的 authoritative_configs 中获取带有完整 order_rank 的配置写回磁盘
-  if (Array.isArray(response.authoritative_configs)) {
-    for (const authCfg of response.authoritative_configs) {
-      const relativePath = authCfg.relative_path || authCfg.entity_id;
-      if (!relativePath) continue;
-      const snapshot = authCfg.safe_projection_json || authCfg.payload;
-      if (!snapshot) continue;
-      const filePath = path.join(config.appDataPath, relativePath);
-      try {
-        let mergedContent = snapshot;
-        if (await fs.pathExists(filePath)) {
-          const existing = await fs.readJson(filePath).catch(() => null);
-          const schema = schemaForPath(relativePath);
-          if (schema && schema !== "skip" && existing) {
-            mergedContent = mergeProjectedConfig(existing, snapshot, {
-              schema,
-              profile: authCfg.profile || "bootstrap",
-              projection_fields: authCfg.projection_fields,
-              deleted_fields: authCfg.deleted_fields || [],
-            });
-          }
-        }
-        await atomicWriteJson(filePath, mergedContent, { logger });
-        const checksum = checksumJson(snapshot);
-        await localIndex.setFile(relativePath, {
-          kind: "config",
-          checksum,
-          last_known_checksum: checksum,
-          local_projection_checksum: checksum,
-          last_applied_seq: response.latest_seq || 0,
-          pending_operation_id: null,
-          pending_status: null,
-          snapshot_json: snapshot,
-          bootstrap_baseline: true,
-          updated_at: new Date().toISOString(),
-        });
-      } catch (writeErr) {
-        if (logger && logger.warn) {
-          logger.warn("bootstrap authoritative config write-back failed", {
-            relativePath,
-            error: writeErr.message,
+    const themeUploadErrors = [];
+    for (const themePackage of await scanThemePackages(config)) {
+      for (const asset of themePackage.assets || []) {
+        if (!asset.absolute_path || !(await fs.pathExists(asset.absolute_path)))
+          continue;
+        try {
+          await uploadThemeAsset(centerClient, themePackage, asset, config);
+        } catch (error) {
+          themeUploadErrors.push({
+            theme_id: themePackage.theme_id,
+            asset_hash: asset.asset_hash,
+            relative_path: asset.relative_path,
+            error: error.message,
           });
+          if (logger && logger.warn) {
+            logger.warn(
+              "bootstrap theme asset upload failed after baseline import",
+              {
+                theme_id: themePackage.theme_id,
+                asset_hash: asset.asset_hash,
+                relativePath: asset.relative_path,
+                error: error.message,
+              }
+            );
+          }
         }
       }
     }
-  }
 
-  const state = runtime.state;
-  state.mode = "active";
-  state.last_applied_seq = response.latest_seq || 0;
-  state.bootstrap_completed_at = new Date().toISOString();
-  await runtime.writeState(state);
-  const postBootstrapScan = await scanAppData(
-    config.appDataPath,
-    localIndex,
-    offlineQueue,
-    writeIntentLock,
-    logger,
-    {
-      mode: "active",
-      deviceId: config.deviceId,
-      centerClient,
-      config,
+    const baselineIndex = await recordBootstrapPrimaryBaseline(
+      localIndex,
+      manifest,
+      response,
+      logger,
+      config
+    );
+
+    // 回写权威配置: 从 Center 返回的 authoritative_configs 中获取带有完整 order_rank 的配置写回磁盘
+    if (Array.isArray(response.authoritative_configs)) {
+      for (const authCfg of response.authoritative_configs) {
+        const relativePath = authCfg.relative_path || authCfg.entity_id;
+        if (!relativePath) continue;
+        const snapshot = authCfg.safe_projection_json || authCfg.payload;
+        if (!snapshot) continue;
+        const filePath = path.join(config.appDataPath, relativePath);
+        try {
+          let mergedContent = snapshot;
+          if (await fs.pathExists(filePath)) {
+            const existing = await fs.readJson(filePath).catch(() => null);
+            const schema = schemaForPath(relativePath);
+            if (schema && schema !== "skip" && existing) {
+              mergedContent = mergeProjectedConfig(existing, snapshot, {
+                schema,
+                profile: authCfg.profile || "bootstrap",
+                projection_fields: authCfg.projection_fields,
+                deleted_fields: authCfg.deleted_fields || [],
+              });
+            }
+          }
+          await atomicWriteJson(filePath, mergedContent, { logger });
+          const checksum = checksumJson(snapshot);
+          await localIndex.setFile(relativePath, {
+            kind: "config",
+            checksum,
+            last_known_checksum: checksum,
+            local_projection_checksum: checksum,
+            last_applied_seq: response.latest_seq || 0,
+            pending_operation_id: null,
+            pending_status: null,
+            snapshot_json: snapshot,
+            bootstrap_baseline: true,
+            updated_at: new Date().toISOString(),
+          });
+        } catch (writeErr) {
+          if (logger && logger.warn) {
+            logger.warn("bootstrap authoritative config write-back failed", {
+              relativePath,
+              error: writeErr.message,
+            });
+          }
+        }
+      }
     }
-  );
-  return {
-    ok: true,
-    mode: "active",
-    import: response,
-    attachment_upload_errors: attachmentUploadErrors,
-    theme_upload_errors: themeUploadErrors,
-    baseline_index: baselineIndex,
-    post_bootstrap_scan: postBootstrapScan.summary,
-    manifest_summary: {
-      messages: manifest.messages.length,
-      configs: manifest.configs.length,
-      attachments: manifest.attachments.length,
-      avatars: (manifest.avatars || []).length,
-      themes: manifest.themes.length,
-      rewritten: manifest.rewritten.length,
-    },
-  };
+
+    const state = runtime.state;
+    state.mode = "active";
+    state.last_applied_seq = response.latest_seq || 0;
+    state.bootstrap_completed_at = new Date().toISOString();
+    await runtime.writeState(state);
+    const postBootstrapScan = await scanAppData(
+      config.appDataPath,
+      localIndex,
+      offlineQueue,
+      writeIntentLock,
+      logger,
+      {
+        mode: "active",
+        deviceId: config.deviceId,
+        centerClient,
+        config,
+      }
+    );
+    return {
+      ok: true,
+      mode: "active",
+      import: response,
+      attachment_upload_errors: attachmentUploadErrors,
+      theme_upload_errors: themeUploadErrors,
+      baseline_index: baselineIndex,
+      post_bootstrap_scan: postBootstrapScan.summary,
+      manifest_summary: {
+        messages: manifest.messages.length,
+        configs: manifest.configs.length,
+        attachments: manifest.attachments.length,
+        avatars: (manifest.avatars || []).length,
+        themes: manifest.themes.length,
+        rewritten: manifest.rewritten.length,
+      },
+    };
+  } catch (error) {
+    await resumeRuntimeServicesAfterFailure(
+      runtime,
+      "bootstrap_primary",
+      error,
+      logger
+    );
+    throw error;
+  }
 }
 
 function buildBaselineEvents(baseline = {}) {
@@ -1197,12 +1211,72 @@ async function uploadSameNameAgentMergeAttachments(
   };
 }
 
+async function exportCompleteBootstrap(centerClient, options = {}) {
+  const first = await centerClient.exportBootstrap(options);
+  const baseline = { ...(first.baseline || {}) };
+  const categories = [
+    "messages",
+    "topics",
+    "configs",
+    "attachments",
+    "message_attachments",
+    "avatars",
+    "themes",
+  ];
+
+  for (const kind of categories) {
+    baseline[kind] = Array.isArray(baseline[kind]) ? [...baseline[kind]] : [];
+    let pageInfo = first.page && first.page[kind];
+    let cursor = pageInfo && pageInfo.next_cursor;
+    const seenCursors = new Set();
+    while (pageInfo && pageInfo.has_more) {
+      if (
+        cursor === undefined ||
+        cursor === null ||
+        seenCursors.has(String(cursor))
+      ) {
+        throw new Error(
+          `bootstrap pagination cursor did not advance for ${kind}`
+        );
+      }
+      seenCursors.add(String(cursor));
+      const page = await centerClient.exportBootstrap({
+        ...options,
+        kind,
+        cursor,
+        limit: pageInfo.limit || options.limit,
+      });
+      const rows = page.baseline && page.baseline[kind];
+      if (Array.isArray(rows)) baseline[kind].push(...rows);
+      const nextPageInfo = page.page && page.page[kind];
+      if (!nextPageInfo) {
+        throw new Error(`bootstrap pagination metadata missing for ${kind}`);
+      }
+      const nextCursor = nextPageInfo.next_cursor;
+      if (
+        nextPageInfo.has_more &&
+        (nextCursor === undefined ||
+          nextCursor === null ||
+          String(nextCursor) === String(cursor))
+      ) {
+        throw new Error(
+          `bootstrap pagination cursor did not advance for ${kind}`
+        );
+      }
+      pageInfo = nextPageInfo;
+      cursor = nextCursor;
+    }
+  }
+
+  return { ...first, baseline };
+}
+
 async function joinExisting(runtime) {
   const { config, centerClient, localIndex, writeIntentLock, logger } = runtime;
   await pauseRuntimeServices(runtime, "join_existing");
   try {
     await backupAppData(config, "join-existing", logger);
-    const exported = await centerClient.exportBootstrap();
+    const exported = await exportCompleteBootstrap(centerClient);
     const baseline = exported.baseline || {};
     const events = Array.isArray(exported.changes) ? exported.changes : [];
     const projectionEvents =
@@ -1250,7 +1324,7 @@ async function mergeExisting(runtime) {
       logger,
       allowConflicts: true,
     });
-    const exported = await centerClient.exportBootstrap();
+    const exported = await exportCompleteBootstrap(centerClient);
     const center = exported.baseline || {};
     const messageDiff = diffByKey(
       local.messages,
@@ -1349,6 +1423,7 @@ module.exports = {
   scanNormalizedIdConflicts,
   buildLocalManifest,
   recordBootstrapPrimaryBaseline,
+  exportCompleteBootstrap,
   bootstrapPrimary,
   joinExisting,
   mergeExisting,

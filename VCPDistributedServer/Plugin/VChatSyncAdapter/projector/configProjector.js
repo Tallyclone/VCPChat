@@ -150,12 +150,24 @@ async function applyConfigEvents(events, context) {
       expireAt: Date.now() + 60000,
     });
     await atomicWriteJson(filePath, next, { logger });
+    const previousFile = localIndex.getFile(relativePath) || {};
     await localIndex.setFile(relativePath, {
+      ...previousFile,
       kind: "config",
       checksum: remoteDtoChecksum,
       last_known_checksum: remoteDtoChecksum,
       local_projection_checksum: expectedChecksum,
       last_applied_seq: event.seq,
+      bootstrap_pending:
+        profile === "bootstrap" ? false : previousFile.bootstrap_pending,
+      bootstrap_checksum:
+        profile === "bootstrap"
+          ? payload.checksum || remoteDtoChecksum
+          : previousFile.bootstrap_checksum,
+      bootstrap_updated_at:
+        profile === "bootstrap"
+          ? new Date().toISOString()
+          : previousFile.bootstrap_updated_at,
       updated_at: new Date().toISOString(),
     });
     written += 1;

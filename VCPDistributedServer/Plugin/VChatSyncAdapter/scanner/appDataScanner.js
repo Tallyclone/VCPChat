@@ -14,6 +14,10 @@ const {
 } = require("../diff/historyDiffEngine");
 const { diffConfig } = require("../diff/configDiffEngine");
 const { diffAttachment } = require("../diff/attachmentDiffEngine");
+const {
+  buildAgentBootstrapOperation,
+  markAgentBootstrapEnqueued,
+} = require("../sync/agentBootstrap");
 const { shouldAdvanceIndexForLocalObservation } = require("../sync/modePolicy");
 
 async function walk(dir, visitor) {
@@ -56,23 +60,43 @@ async function handleFile(
     }
     const diff = await diffHistory(identity, read.value, localIndex, context);
     const mode = context.mode || "uninitialized";
-    const enqueued = await offlineQueue.enqueueMany(diff.operations, { mode });
+    const operations = [...diff.operations];
+    let bootstrapResult = null;
+    if (
+      identity.item_type === "agent" &&
+      operations.some(
+        (operation) =>
+          operation.entity_type === "message" &&
+          (operation.action === "create" || operation.action === "update")
+      )
+    ) {
+      bootstrapResult = await buildAgentBootstrapOperation(
+        identity,
+        localIndex,
+        context,
+        { reason: "first_valid_conversation" }
+      );
+      if (bootstrapResult.operation)
+        operations.unshift(bootstrapResult.operation);
+    }
+    const enqueued = await offlineQueue.enqueueMany(operations, { mode });
     if (shouldAdvanceIndexForLocalObservation(mode)) {
       await applyLocalSnapshot(localIndex, diff, enqueued);
+      await markAgentBootstrapEnqueued(localIndex, bootstrapResult, enqueued);
     } else {
       logger.warn(
         "history diff observed but local index not advanced because mode forbids upload",
         {
           relativePath,
           mode,
-          operations: diff.operations.length,
+          operations: operations.length,
         }
       );
     }
     return {
       relativePath,
       type: "history",
-      operations: diff.operations.length,
+      operations: operations.length,
       skipped: diff.skipped.length,
     };
   }
@@ -106,12 +130,17 @@ async function handleFile(
       operations.length > 0 &&
       enqueued.length > 0
     ) {
+      const previousFile = localIndex.getFile(relativePath) || {};
       await localIndex.setFile(relativePath, {
+        ...previousFile,
         kind: "config",
         checksum: result.checksum,
         last_known_checksum: result.checksum,
         pending_operation_id: result.operation && result.operation.operation_id,
         snapshot_json: read.value,
+        bootstrap_pending:
+          result.bootstrapPending === true ||
+          previousFile.bootstrap_pending === true,
         updated_at: new Date().toISOString(),
       });
     }

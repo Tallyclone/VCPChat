@@ -11,6 +11,10 @@ const {
   parseHistoryIdentity,
 } = require("../utils/pathRules");
 const { readStableJson } = require("../watcher/stableFileReader");
+const {
+  buildAgentBootstrapOperation,
+  markAgentBootstrapEnqueued,
+} = require("./agentBootstrap");
 const { shouldAdvanceIndexForLocalObservation } = require("./modePolicy");
 
 async function walkRecentHistories(appDataRoot, currentDir, maxAgeMs, visitor) {
@@ -75,14 +79,34 @@ function createLocalAudit(
 
     const diff = await diffHistory(identity, read.value, localIndex, context);
     const mode = context.mode || "uninitialized";
-    const enqueued = await offlineQueue.enqueueMany(diff.operations, { mode });
+    const operations = [...diff.operations];
+    let bootstrapResult = null;
+    if (
+      identity.item_type === "agent" &&
+      operations.some(
+        (operation) =>
+          operation.entity_type === "message" &&
+          (operation.action === "create" || operation.action === "update")
+      )
+    ) {
+      bootstrapResult = await buildAgentBootstrapOperation(
+        identity,
+        localIndex,
+        context,
+        { reason: "first_valid_conversation" }
+      );
+      if (bootstrapResult.operation)
+        operations.unshift(bootstrapResult.operation);
+    }
+    const enqueued = await offlineQueue.enqueueMany(operations, { mode });
     if (shouldAdvanceIndexForLocalObservation(mode)) {
       await applyLocalSnapshot(localIndex, diff, enqueued);
+      await markAgentBootstrapEnqueued(localIndex, bootstrapResult, enqueued);
     }
     return {
       relativePath,
       type: "history",
-      operations: diff.operations.length,
+      operations: operations.length,
       enqueued: enqueued.length,
       skipped: diff.skipped.length,
     };

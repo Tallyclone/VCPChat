@@ -3,7 +3,11 @@ const { diffConfig } = require("../diff/configDiffEngine");
 const { itemDeleteOperation } = require("../scanner/deleteEventHandler");
 
 async function main() {
-  const newEntityIndex = { getFile() { return null; } };
+  const newEntityIndex = {
+    getFile() {
+      return null;
+    },
+  };
   const agentPath = "Agents/new-agent/config.json";
   const agentConfig = {
     name: "new agent",
@@ -22,14 +26,20 @@ async function main() {
     deviceId: "device-test",
   });
 
-  assert.strictEqual(agentResult.dto.profile, "bootstrap");
+  assert.strictEqual(agentResult.dto.profile, "runtime");
+  assert.strictEqual(agentResult.bootstrapPending, true);
+  assert.strictEqual(agentResult.operation.action, "update");
   assert.strictEqual(
     agentResult.operation.payload.safe_projection_json.systemPrompt,
-    "full prompt"
+    undefined
   );
   assert.deepStrictEqual(
-    agentResult.operation.payload.safe_projection_json.advancedSystemPrompt.blocks,
-    [{ id: "block-1", content: "full block" }]
+    agentResult.operation.payload.safe_projection_json.advancedSystemPrompt,
+    {
+      hiddenBlocks: {},
+      warehouseOrder: [],
+      viewMode: false,
+    }
   );
   assert.ok(
     agentResult.operations.some(

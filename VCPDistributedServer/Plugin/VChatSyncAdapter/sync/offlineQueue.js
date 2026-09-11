@@ -84,6 +84,13 @@ function createOfflineQueue(config, centerClient, localIndex, logger) {
   let stopped = true;
   let retryMs = config.queueIntervalMs;
   let modeProvider = () => "uninitialized";
+  let queueSerial = Promise.resolve();
+
+  function runSerialized(task) {
+    const run = queueSerial.then(task, task);
+    queueSerial = run.catch(() => {});
+    return run;
+  }
 
   function topicIdOf(topic) {
     return topic && (topic.id || topic.topic_id || topic.topicId);
@@ -440,7 +447,7 @@ function createOfflineQueue(config, centerClient, localIndex, logger) {
     return true;
   }
 
-  async function enqueueMany(operations, options = {}) {
+  async function enqueueManyUnlocked(operations, options = {}) {
     if (!operations || operations.length === 0) return [];
     const mode = options.mode || modeProvider();
     if (!canUploadInMode(mode)) {
@@ -499,6 +506,65 @@ function createOfflineQueue(config, centerClient, localIndex, logger) {
     }
     await writeQueueRows(config.queuePath, rows, logger);
     return enqueued;
+  }
+
+  async function enqueueMany(operations, options = {}) {
+    return runSerialized(() => enqueueManyUnlocked(operations, options));
+  }
+
+  function isTerminalConflictResponse(response) {
+    return Boolean(
+      response &&
+        response.conflict === true &&
+        (response.resolution === "delete_wins" || response.deleted === true)
+    );
+  }
+
+  async function markTerminalConflict(row, response) {
+    if (!row || !row.operation) return;
+    const detail = {
+      resolution: response.resolution || "conflict",
+      deleted: response.deleted === true,
+      conflict: true,
+      seq: response.seq,
+      version: response.version,
+      operation_id: row.operation.operation_id,
+      recorded_at: new Date().toISOString(),
+    };
+    if (row.key && row.operation.entity_type === "message") {
+      const local = localIndex.getMessage(row.key);
+      if (local) {
+        await localIndex.setMessage(row.key, {
+          ...local,
+          pending_operation_id: null,
+          pending_action: null,
+          pending_status: "conflict_delete_wins",
+          terminal_conflict: detail,
+          updated_at: detail.recorded_at,
+        });
+      }
+    } else if (row.key) {
+      const fileKeys = [row.key, row.operation.entity_id].filter(
+        (value, index, values) => value && values.indexOf(value) === index
+      );
+      const fileKey = fileKeys.find((value) => localIndex.getFile(value));
+      const localFile = fileKey ? localIndex.getFile(fileKey) : null;
+      if (localFile) {
+        await localIndex.setFile(fileKey, {
+          ...localFile,
+          pending_operation_id: null,
+          pending_status: "conflict_delete_wins",
+          terminal_conflict: detail,
+          updated_at: detail.recorded_at,
+        });
+      }
+    }
+    logger.warn("queue operation reached terminal conflict", {
+      operation_id: row.operation.operation_id,
+      entity_type: row.operation.entity_type,
+      entity_id: row.operation.entity_id,
+      resolution: detail.resolution,
+    });
   }
 
   async function markSubmitted(row, response) {
@@ -577,7 +643,7 @@ function createOfflineQueue(config, centerClient, localIndex, logger) {
     }
   }
 
-  async function processOnce() {
+  async function processOnceUnlocked() {
     const mode = modeProvider();
     if (!canUploadInMode(mode)) {
       logger.warn("queue processing skipped because mode forbids upload", {
@@ -670,6 +736,11 @@ function createOfflineQueue(config, centerClient, localIndex, logger) {
         row.status = "submitting";
         row.attempts = Number(row.attempts || 0) + 1;
         const response = await centerClient.submitOperation(row.operation);
+        if (isTerminalConflictResponse(response)) {
+          await markTerminalConflict(row, response);
+          retryMs = config.queueIntervalMs;
+          continue;
+        }
         if (response && response.ok !== false) {
           await markSubmitted(row, response);
           retryMs = config.queueIntervalMs;
@@ -702,6 +773,10 @@ function createOfflineQueue(config, centerClient, localIndex, logger) {
     await writeQueueRows(config.queuePath, remaining, logger);
   }
 
+  async function processOnce() {
+    return runSerialized(() => processOnceUnlocked());
+  }
+
   async function loop() {
     if (stopped) return;
     await processOnce().catch((error) =>
@@ -730,16 +805,18 @@ function createOfflineQueue(config, centerClient, localIndex, logger) {
       timer = null;
     },
     async stats() {
-      const rows = await readQueueLines(config.queuePath, logger);
-      return rows.reduce(
-        (acc, row) => {
-          acc.total += 1;
-          acc[row.status || "pending"] =
-            (acc[row.status || "pending"] || 0) + 1;
-          return acc;
-        },
-        { total: 0 }
-      );
+      return runSerialized(async () => {
+        const rows = await readQueueLines(config.queuePath, logger);
+        return rows.reduce(
+          (acc, row) => {
+            acc.total += 1;
+            acc[row.status || "pending"] =
+              (acc[row.status || "pending"] || 0) + 1;
+            return acc;
+          },
+          { total: 0 }
+        );
+      });
     },
   };
 }

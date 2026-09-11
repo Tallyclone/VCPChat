@@ -16,6 +16,10 @@ const { createCenterClient } = require("./sync/centerClient");
 const { createWriteIntentLock } = require("./sync/writeIntentLock");
 const { createPullLoop } = require("./sync/pullLoop");
 const { canUploadInMode } = require("./sync/modePolicy");
+const {
+  buildAgentBootstrapOperation,
+  markAgentBootstrapEnqueued,
+} = require("./sync/agentBootstrap");
 const { syncLocalThemes } = require("./diff/themeDiffEngine");
 const {
   bootstrapPrimary,
@@ -614,6 +618,89 @@ async function startAdapter(app, pluginConfig, projectBasePath) {
     } catch (error) {
       return res
         .status(error.statusCode || 401)
+        .json({ ok: false, error: error.message });
+    }
+  });
+
+  app.post("/api/vchat-sync-adapter/bootstrap/agent", async (req, res) => {
+    try {
+      requireAdapterAuth(config, req);
+      const agentId = String(
+        (req.body && (req.body.agent_id || req.body.agentId)) || ""
+      ).trim();
+      if (!agentId) {
+        return res
+          .status(400)
+          .json({ ok: false, error: "agent_id is required" });
+      }
+      if (!/^[^/\\]+$/.test(agentId) || agentId === "." || agentId === "..") {
+        return res.status(400).json({ ok: false, error: "invalid agent_id" });
+      }
+      if (!canUploadInMode(runtime.state.mode || "uninitialized")) {
+        return res.status(409).json({
+          ok: false,
+          error: "adapter mode does not allow upload",
+          mode: runtime.state.mode || "uninitialized",
+        });
+      }
+
+      const result = await buildAgentBootstrapOperation(
+        { item_type: "agent", item_id: agentId },
+        localIndex,
+        {
+          config,
+          deviceId: config.deviceId,
+          syncProfileConfig,
+        },
+        { force: true, reason: "manual_set_sync_baseline" }
+      );
+      if (!result.operation) {
+        if (result.reason === "bootstrap_unchanged") {
+          return res.json({
+            ok: true,
+            changed: false,
+            agent_id: agentId,
+            profile: "bootstrap",
+            checksum: result.checksum,
+            reason: result.reason,
+          });
+        }
+        const statusCode = result.reason === "agent_not_found" ? 404 : 400;
+        return res.status(statusCode).json({
+          ok: false,
+          error: result.reason || "agent bootstrap could not be built",
+          detail: result.error || null,
+        });
+      }
+
+      const enqueued = await offlineQueue.enqueueMany([result.operation], {
+        mode: runtime.state.mode,
+      });
+      const marked = await markAgentBootstrapEnqueued(
+        localIndex,
+        result,
+        enqueued
+      );
+      if (!marked) {
+        return res.status(409).json({
+          ok: false,
+          error: "bootstrap operation was not enqueued",
+          operation_id: result.operation.operation_id,
+        });
+      }
+      return res.json({
+        ok: true,
+        agent_id: agentId,
+        profile: "bootstrap",
+        action: result.operation.action,
+        checksum: result.checksum,
+        operation_id: result.operation.operation_id,
+        queued: true,
+      });
+    } catch (error) {
+      logger.error("manual agent bootstrap failed", { error: error.message });
+      return res
+        .status(error.statusCode || 400)
         .json({ ok: false, error: error.message });
     }
   });

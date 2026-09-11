@@ -557,13 +557,15 @@ async function diffConfig(relativePath, parsedJson, localIndex, context = {}) {
   const isNewEntity = !previous;
   const runtimeSchema =
     profile === "runtime" ? parseConfigIdentity(relativePath) : null;
-  const isNewRuntimeItemConfig = Boolean(
-    isNewEntity &&
-      runtimeSchema &&
-      (runtimeSchema.schema === "agent_config" ||
-        runtimeSchema.schema === "group_config")
+  const isNewRuntimeAgentConfig = Boolean(
+    isNewEntity && runtimeSchema && runtimeSchema.schema === "agent_config"
   );
-  const effectiveProfile = isNewRuntimeItemConfig ? "bootstrap" : profile;
+  const isNewRuntimeGroupConfig = Boolean(
+    isNewEntity && runtimeSchema && runtimeSchema.schema === "group_config"
+  );
+  // Agent 的首次 config.json 只是候选配置；出现有效对话后再生成完整
+  // Bootstrap。群组没有等价的单 Agent 对话触发点，继续保持原有行为。
+  const effectiveProfile = isNewRuntimeGroupConfig ? "bootstrap" : profile;
   const dto = safeConfigDto(relativePath, parsedJson, {
     profile: effectiveProfile,
     syncProfileConfig: context.syncProfileConfig,
@@ -588,6 +590,9 @@ async function diffConfig(relativePath, parsedJson, localIndex, context = {}) {
   const changed = !previous || previous.checksum !== checksum;
   const previousSnapshot =
     previous && previous.snapshot_json ? previous.snapshot_json : null;
+  const shouldBuildTopicRuntimeOperations =
+    profile === "runtime" &&
+    (previousSnapshot || isNewRuntimeAgentConfig || isNewRuntimeGroupConfig);
   const additionalOperations = [
     ...buildGroupMemberDeleteOperations(
       relativePath,
@@ -596,7 +601,7 @@ async function diffConfig(relativePath, parsedJson, localIndex, context = {}) {
       context,
       checksum
     ),
-    ...(profile === "runtime" && (previousSnapshot || isNewRuntimeItemConfig)
+    ...(shouldBuildTopicRuntimeOperations
       ? buildTopicRuntimeOperations(
           relativePath,
           parsedJson,
@@ -617,7 +622,7 @@ async function diffConfig(relativePath, parsedJson, localIndex, context = {}) {
       context
     );
   }
-  const operationAction = isNewRuntimeItemConfig ? "create" : "update";
+  const operationAction = isNewRuntimeGroupConfig ? "create" : "update";
   const operation = {
     operation_id: operationId(
       context.deviceId || "unknown_device",
@@ -652,6 +657,7 @@ async function diffConfig(relativePath, parsedJson, localIndex, context = {}) {
     checksum,
     dto,
     operation,
+    bootstrapPending: isNewRuntimeAgentConfig,
     operations: changed
       ? [operation, ...additionalOperations]
       : additionalOperations,

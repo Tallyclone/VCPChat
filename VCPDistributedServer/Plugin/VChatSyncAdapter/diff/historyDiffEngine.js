@@ -2,9 +2,9 @@ const { checksumJson } = require("../core/hash");
 const { messageKey, operationId } = require("../core/identity");
 const { collectAttachmentRefs } = require("../sync/attachmentSync");
 
-function isPlaceholderMessage(message) {
+function isPlaceholderMessage(message, options = {}) {
   if (!message || typeof message !== "object") return true;
-  if (!message.id) return true;
+  if (!message.id && options.allowMissingId !== true) return true;
   if (message.isThinking === true) return true;
   if (message.id === "loading_history") return true;
   if (
