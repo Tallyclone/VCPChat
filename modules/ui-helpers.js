@@ -277,38 +277,62 @@
         if (state) return state;
 
         state = {
+            // 这是用户授予的“持续跟随底部”意图，不是瞬时几何测量结果。
+            // 图片、图表等异步增高可能暂时令滚动条远离底部，但不能据此关闭跟随。
             followBottom: true,
             generation: 0,
             programmatic: false,
+            userScrollActive: false,
             frameId: 0,
-            requestedGeneration: null
+            layoutFrameId: 0,
+            requestedGeneration: null,
+            resizeObserver: null
         };
         chatScrollStates.set(container, state);
 
-        const markUserIntent = () => {
-            state.programmatic = false;
-            state.generation += 1;
+        const cancelPendingScroll = () => {
             if (state.frameId) {
                 cancelAnimationFrame(state.frameId);
                 state.frameId = 0;
-                state.requestedGeneration = null;
             }
+            state.requestedGeneration = null;
+        };
+
+        const markUserIntent = () => {
+            state.programmatic = false;
+            state.userScrollActive = true;
+            state.generation += 1;
+            cancelPendingScroll();
+        };
+
+        const settleUserScrollIntent = () => {
+            const expectedGeneration = state.generation;
+            requestAnimationFrame(() => {
+                // 结算必须仍属于发起它的那次用户操作。比如一次向下滚动排队后，
+                // 用户立刻改为向上滚动，旧结算不得在下一帧重新开启跟随。
+                if (!container.isConnected || state.generation !== expectedGeneration) return;
+                const nearBottom = isChatNearBottom(container);
+                // 用户主动回到底部时重新授权持续跟随；离开底部则保持关闭。
+                state.followBottom = nearBottom;
+                state.userScrollActive = false;
+            });
         };
 
         container.addEventListener('wheel', (event) => {
             markUserIntent();
             if (event.deltaY < 0) {
+                // 向上滚轮是明确的解锁意图。保持 userScrollActive，直到后续
+                // 向下滚动结算；这样该滚轮默认行为产生的近底部 scroll 事件
+                // 不会在同一轮事件中立刻把 followBottom 改回 true。
                 state.followBottom = false;
             } else {
-                requestAnimationFrame(() => {
-                    if (container.isConnected) {
-                        state.followBottom = isChatNearBottom(container);
-                    }
-                });
+                settleUserScrollIntent();
             }
         }, { passive: true });
 
         container.addEventListener('touchstart', markUserIntent, { passive: true });
+        container.addEventListener('touchend', settleUserScrollIntent, { passive: true });
+        container.addEventListener('touchcancel', settleUserScrollIntent, { passive: true });
         container.addEventListener('pointerdown', (event) => {
             // 普通内容点击不改变跟随状态；只把滚动条槽附近的按下视为滚动意图。
             const scrollbarWidth = Math.max(0, container.offsetWidth - container.clientWidth);
@@ -317,11 +341,61 @@
                 markUserIntent();
             }
         }, { passive: true });
+        container.addEventListener('pointerup', () => {
+            if (state.userScrollActive) settleUserScrollIntent();
+        }, { passive: true });
+        container.addEventListener('pointercancel', () => {
+            if (state.userScrollActive) settleUserScrollIntent();
+        }, { passive: true });
 
         container.addEventListener('scroll', () => {
             if (state.programmatic) return;
-            state.followBottom = isChatNearBottom(container);
+
+            if (state.userScrollActive) {
+                // 用户操作期间，scroll 几何只能证明“已经离开底部”，不能覆盖
+                // 更早到达的向上滚轮解锁意图。重新开启统一交给向下滚轮、
+                // touchend 或滚动条 pointerup 的代际保护结算。
+                if (!isChatNearBottom(container)) {
+                    state.followBottom = false;
+                }
+                return;
+            }
+
+            // 兼容键盘 End、无障碍工具等未被上述输入事件标记的原生滚动：
+            // 只有真正到达底部（而非落入 50px 追踪阈值）才重新开启跟随。
+            // 这同时防止小幅向上滚轮产生的 scroll 事件发生近底部竞态。
+            if (getDistanceFromChatBottom(container) <= 1) {
+                state.followBottom = true;
+            }
         }, { passive: true });
+
+        // 统一处理图片、Mermaid、公式、附件及字体加载造成的异步内容增高。
+        // ResizeObserver 观察内容根而非滚动视口；仅在用户的跟随授权仍有效、
+        // 且滚动代际未变化时补滚到底部。
+        const ResizeObserverCtor = window.ResizeObserver;
+        if (typeof ResizeObserverCtor === 'function') {
+            const contentRoot = container.querySelector('#chatMessages') || container.firstElementChild || container;
+            state.resizeObserver = new ResizeObserverCtor(() => {
+                if (!state.followBottom || state.layoutFrameId || !container.isConnected) return;
+                const expectedGeneration = state.generation;
+                state.layoutFrameId = requestAnimationFrame(() => {
+                    state.layoutFrameId = 0;
+                    if (
+                        !container.isConnected
+                        || !state.followBottom
+                        || state.generation !== expectedGeneration
+                    ) {
+                        return;
+                    }
+                    uiHelperFunctions.scrollToBottom({
+                        force: true,
+                        immediate: true,
+                        expectedGeneration
+                    });
+                });
+            });
+            state.resizeObserver.observe(contentRoot);
+        }
 
         return state;
     }
@@ -353,10 +427,15 @@
         state.generation += 1;
         state.followBottom = true;
         state.programmatic = false;
+        state.userScrollActive = false;
         state.requestedGeneration = null;
         if (state.frameId) {
             cancelAnimationFrame(state.frameId);
             state.frameId = 0;
+        }
+        if (state.layoutFrameId) {
+            cancelAnimationFrame(state.layoutFrameId);
+            state.layoutFrameId = 0;
         }
     };
 
@@ -404,8 +483,11 @@
             container.scrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
             requestAnimationFrame(() => {
                 state.programmatic = false;
-                if (container.isConnected) {
-                    state.followBottom = isChatNearBottom(container);
+                // 不用下一帧的几何位置反向撤销跟随授权。图片可能恰好在两帧
+                // 之间完成解码并再次撑高内容；只要用户没有产生新滚动意图，
+                // ResizeObserver 会继续补偿到新的底部。
+                if (container.isConnected && isChatNearBottom(container)) {
+                    state.followBottom = true;
                 }
             });
         };
@@ -956,13 +1038,12 @@
     };
 
     uiHelperFunctions.prepareGroupSettingsDOM = function() {
-        // This function is called early in DOMContentLoaded.
-        // It ensures the container for group settings exists.
-        // The actual content (form fields) will be managed by GroupRenderer.
+        // The host is static in main.html so renderer bindings can capture it
+        // before DOMContentLoaded. Keep this fallback for embedded/legacy hosts.
         if (!document.getElementById('groupSettingsContainer')) {
             const settingsTab = document.getElementById('tabContentSettings');
             if (settingsTab) {
-                const groupContainerHTML = `<div id="groupSettingsContainer" style="display: none;"></div>`;
+                const groupContainerHTML = '<div id="groupSettingsContainer" class="settings-sidebar-surface-view" data-settings-view="group"></div>';
                 settingsTab.insertAdjacentHTML('beforeend', groupContainerHTML);
                 console.log("[UI Helper] groupSettingsContainer placeholder created.");
             } else {
@@ -998,21 +1079,34 @@
     };
 
     uiHelperFunctions.filterAgentList = function(searchTerm) {
-        const lowerCaseSearchTerm = searchTerm.toLowerCase().trim();
+        const lowerCaseSearchTerm = String(searchTerm ?? '').toLowerCase().trim();
         const itemListUl = document.getElementById('agentList'); // Renamed from agentListUl to itemListUl
         if (!itemListUl) return;
         const items = itemListUl.querySelectorAll('li'); // Get all list items
-    
+
+        if (!lowerCaseSearchTerm) {
+            items.forEach(item => { item.style.display = ''; });
+            return;
+        }
+
+        const terms = lowerCaseSearchTerm.split(/\s+/).filter(Boolean);
         items.forEach(item => {
             const nameElement = item.querySelector('.agent-name');
-            if (nameElement) {
-                const name = nameElement.textContent.toLowerCase();
-                if (name.includes(lowerCaseSearchTerm)) {
-                    item.style.display = ''; // Reset to default display style from CSS
-                } else {
-                    item.style.display = 'none';
+            if (!nameElement) return;
+            const name = (nameElement.textContent || '').toLowerCase();
+
+            // Check if all search terms match the name (via substring or ordered-subsequence)
+            const allMatch = terms.every(term => {
+                if (name.includes(term)) return true;
+                // Ordered subsequence matching
+                let termIdx = 0;
+                for (let i = 0; i < name.length && termIdx < term.length; i++) {
+                    if (name[i] === term[termIdx]) termIdx++;
                 }
-            }
+                return termIdx === term.length;
+            });
+
+            item.style.display = allMatch ? '' : 'none';
         });
     };
 

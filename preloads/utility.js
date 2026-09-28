@@ -220,14 +220,12 @@ function createCatalog(ops) {
         onModelsUpdated: subscription(ops.subscribe('models-updated', (_event, models) => models)),
         getAllItems: query(() => ops.invoke('get-all-items')),
         importRegexRules: query((agentId) => ops.invoke('import-regex-rules', agentId)),
-        updateAgentConfig: query((agentId, updates) => ops.invoke('update-agent-config', agentId, updates)),
         getGlobalWarehouse: query(() => ops.invoke('get-global-warehouse')),
         saveGlobalWarehouse: query((data) => ops.invoke('save-global-warehouse', data)),
         loadPresetPrompts: query((presetPath) => ops.invoke('load-preset-prompts', presetPath)),
         loadPresetContent: query((filePath) => ops.invoke('load-preset-content', filePath)),
         selectDirectory: query(() => ops.invoke('select-directory')),
         getActiveSystemPrompt: query((agentId) => ops.invoke('get-active-system-prompt', agentId)),
-        programmaticSetPromptMode: query((agentId, mode) => ops.invoke('programmatic-set-prompt-mode', agentId, mode)),
         onReloadAgentSettings: subscription(ops.subscribe('reload-agent-settings', (_event, data) => data)),
         getAgentTopics: query((agentId) => ops.invoke('get-agent-topics', agentId)),
         createNewTopicForAgent: query((agentId, topicName, isBranch, locked) => ops.invoke('create-new-topic-for-agent', agentId, topicName, isBranch, locked)),
@@ -388,6 +386,8 @@ function createCatalog(ops) {
         configureMusicUpsampling: query((options) => ops.invoke('music-configure-upsampling', options)),
         getMusicLyrics: query((options) => ops.invoke('music-get-lyrics', options)),
         fetchMusicLyrics: query((options) => ops.invoke('music-fetch-lyrics', options)),
+        searchMusicLyricsCandidates: query((options) => ops.invoke('music-search-lyrics-candidates', options)),
+        applyMusicLyricsCandidate: query((options) => ops.invoke('music-apply-lyrics-candidate', options)),
         queueNextMusicTrack: query((track) => ops.invoke('music-queue-next', track)),
         cancelMusicPreload: query(() => ops.invoke('music-cancel-preload')),
         musicLoadIr: query((options) => ops.invoke('music-load-ir', options)),
@@ -473,6 +473,14 @@ function createCatalog(ops) {
         pluginManagerSaveConfigEnv: query((data) => ops.invoke('plugin-manager-save-config-env', data)),
         pluginManagerSetPluginEnabled: query((data) => ops.invoke('plugin-manager-set-plugin-enabled', data)),
         pluginManagerOpenPluginFolder: query((data) => ops.invoke('plugin-manager-open-plugin-folder', data)),
+
+        // ProjectForge 施工图 GUI（只读 + 署名单文件回退）
+        projectForgeListProjects: query((options) => ops.invoke('project-forge:list-projects', options)),
+        projectForgeGetProject: query((projectId) => ops.invoke('project-forge:get-project', projectId)),
+        projectForgeSearchHistory: query((filters) => ops.invoke('project-forge:search-history', filters)),
+        projectForgeGetBatch: query((projectId, batchId) => ops.invoke('project-forge:get-batch', projectId, batchId)),
+        projectForgeGetNode: query((projectId, nodeId) => ops.invoke('project-forge:get-node', projectId, nodeId)),
+        projectForgeRevertFile: query((payload) => ops.invoke('project-forge:revert-file', payload)),
     };
 }
 
@@ -608,6 +616,8 @@ const ALLOWED_KEYS = [
     "configureMusicUpsampling",
     "getMusicLyrics",
     "fetchMusicLyrics",
+    "searchMusicLyricsCandidates",
+    "applyMusicLyricsCandidate",
     "queueNextMusicTrack",
     "cancelMusicPreload",
     "musicLoadIr",
@@ -658,7 +668,13 @@ const ALLOWED_KEYS = [
     "pluginManagerSaveManifest",
     "pluginManagerSaveConfigEnv",
     "pluginManagerSetPluginEnabled",
-    "pluginManagerOpenPluginFolder"
+    "pluginManagerOpenPluginFolder",
+    "projectForgeListProjects",
+    "projectForgeGetProject",
+    "projectForgeSearchHistory",
+    "projectForgeGetBatch",
+    "projectForgeGetNode",
+    "projectForgeRevertFile"
 ];
 
 const ops = createOps();

@@ -1,7 +1,11 @@
+import { collectMarkdownCodeDomains } from './markdownCodeDomainScanner.js';
+
 const TOOL_REQUEST_START_MARKER = '<<<[TOOL_REQUEST]>>>';
 const TOOL_REQUEST_END_MARKER = '<<<[END_TOOL_REQUEST]>>>';
 const TOOL_RESULT_START_MARKER = '[[VCP调用结果信息汇总:';
 const TOOL_RESULT_END_MARKER = 'VCP调用结果结束]]';
+const DESKTOP_PUSH_START_MARKER = '<<<[DESKTOP_PUSH]>>>';
+const DESKTOP_PUSH_END_MARKER = '<<<[DESKTOP_PUSH_END]>>>';
 
 // VCP 后端对协议标记采用语义理解，实际输出偶尔会丢失或多输出尖括号。
 // 这里允许左右各 2–4 个尖括号；中间的协议名称仍保持严格，避免把普通文本误判为结束标记。
@@ -11,6 +15,32 @@ const FIELD_START_REGEX = /(^|\n|,)([ \t]*)([^\s,:：「」{}]+)[ \t]*[:：][ \t
 
 function isBacktickWrappedToolMarker(text, index, marker) {
     return text[index - 1] === '`' || text[index + marker.length] === '`';
+}
+
+function collectProtocolLiteralCodeRanges(text) {
+    if (typeof text !== 'string' || (!text.includes('`') && !text.includes('~'))) {
+        return [];
+    }
+
+    // 未闭合 fenced code 在流式阶段同样拥有当前流尾；其中出现的协议标记
+    // 只是代码字面量，不能建立工具调用或桌面推送隔离边界。
+    //
+    // 行内代码域额外限制为同一行。Markdown code span 虽可容纳换行，但聊天
+    // 正文中的颜文字（如 `(・`ω´・)`）常含不成对反引号；若允许它与数百字后
+    // 工具载荷中的反引号跨行配对，会把真实 TOOL_REQUEST 错误覆盖为代码示例。
+    return collectMarkdownCodeDomains(text).filter(range => (
+        range.kind === 'fence'
+        || !text.slice(range.start, range.end).includes('\n')
+    ));
+}
+
+function isIndexInCodeDomain(index, codeRanges) {
+    return codeRanges.some(range => index >= range.start && index < range.end);
+}
+
+function isLiteralProtocolMarker(text, index, marker, codeRanges) {
+    return isBacktickWrappedToolMarker(text, index, marker)
+        || isIndexInCodeDomain(index, codeRanges);
 }
 
 function getFieldEndMarker(startMarker) {
@@ -203,12 +233,13 @@ function findUnclosedToolRequest(text) {
         return null;
     }
 
+    const codeRanges = collectProtocolLiteralCodeRanges(text);
     let cursor = 0;
     while (cursor < text.length) {
         const startIndex = text.indexOf(TOOL_REQUEST_START_MARKER, cursor);
         if (startIndex === -1) return null;
 
-        if (isBacktickWrappedToolMarker(text, startIndex, TOOL_REQUEST_START_MARKER)) {
+        if (isLiteralProtocolMarker(text, startIndex, TOOL_REQUEST_START_MARKER, codeRanges)) {
             cursor = startIndex + TOOL_REQUEST_START_MARKER.length;
             continue;
         }
@@ -259,13 +290,47 @@ function findUnclosedToolResult(text) {
     return null;
 }
 
+function findUnclosedDesktopPush(text) {
+    if (typeof text !== 'string' || !text.includes(DESKTOP_PUSH_START_MARKER)) {
+        return null;
+    }
+
+    let cursor = 0;
+    while (cursor < text.length) {
+        const startIndex = text.indexOf(DESKTOP_PUSH_START_MARKER, cursor);
+        if (startIndex === -1) return null;
+
+        if (isBacktickWrappedToolMarker(text, startIndex, DESKTOP_PUSH_START_MARKER)) {
+            cursor = startIndex + DESKTOP_PUSH_START_MARKER.length;
+            continue;
+        }
+
+        const endIndex = text.indexOf(
+            DESKTOP_PUSH_END_MARKER,
+            startIndex + DESKTOP_PUSH_START_MARKER.length
+        );
+        if (endIndex === -1) {
+            return {
+                type: 'desktop-push',
+                startIndex,
+                prefix: text.slice(0, startIndex),
+                content: text.slice(startIndex)
+            };
+        }
+
+        cursor = endIndex + DESKTOP_PUSH_END_MARKER.length;
+    }
+
+    return null;
+}
+
 /**
- * 返回流式文本中最早出现的未闭合工具协议块。
- * 工具请求和工具结果载荷均属于不可信数据域；调用方必须在任何 HTML/CSS
+ * 返回流式文本中最早出现的未闭合工具/推送协议块。
+ * 工具请求、工具结果以及桌面推送载荷均属于不可信数据域；调用方必须在任何 HTML/CSS
  * 副作用处理之前，以 startIndex 为边界隔离到当前流尾。
  */
 function findEarliestUnclosedToolBlock(text) {
-    return [findUnclosedToolRequest(text), findUnclosedToolResult(text)]
+    return [findUnclosedToolRequest(text), findUnclosedToolResult(text), findUnclosedDesktopPush(text)]
         .filter(Boolean)
         .sort((a, b) => a.startIndex - b.startIndex)[0] || null;
 }
@@ -275,6 +340,7 @@ function replaceToolRequestBlocks(text, replacer) {
         return text;
     }
 
+    const codeRanges = collectProtocolLiteralCodeRanges(text);
     let result = '';
     let cursor = 0;
 
@@ -285,7 +351,7 @@ function replaceToolRequestBlocks(text, replacer) {
             break;
         }
 
-        if (isBacktickWrappedToolMarker(text, startIndex, TOOL_REQUEST_START_MARKER)) {
+        if (isLiteralProtocolMarker(text, startIndex, TOOL_REQUEST_START_MARKER, codeRanges)) {
             const markerEnd = startIndex + TOOL_REQUEST_START_MARKER.length;
             result += text.slice(cursor, markerEnd);
             cursor = markerEnd;
@@ -332,9 +398,12 @@ export {
     TOOL_REQUEST_END_MARKER,
     TOOL_RESULT_START_MARKER,
     TOOL_RESULT_END_MARKER,
+    DESKTOP_PUSH_START_MARKER,
+    DESKTOP_PUSH_END_MARKER,
     findToolRequestEnd,
     findUnclosedToolRequest,
     findUnclosedToolResult,
+    findUnclosedDesktopPush,
     findEarliestUnclosedToolBlock,
     isBacktickWrappedToolMarker,
     replaceToolRequestBlocks,

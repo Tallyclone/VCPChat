@@ -64,7 +64,7 @@ const { mountAgentPresetSeat } = await import('../modules/uiux/generated/primiti
 const { mountAgentPresetRow } = await import('../modules/uiux/generated/primitives/agent-preset-row.js');
 const { mountLanguageRow } = await import('../modules/uiux/generated/primitives/language-row.js');
 const { mountAgentModelPicker } = await import('../modules/uiux/generated/primitives/agent-model-picker.js');
-const { createPopupSelectController, mountPopupSelectView } = await import('../modules/uiux/generated/primitives/popup-select.js');
+const { createPopupSelectController, mountPopupSelectView, filterOptions } = await import('../modules/uiux/generated/primitives/popup-select.js');
 const { mountDirectoryBrowser } = await import('../modules/uiux/generated/primitives/directory-browser.js');
 const { mountSemanticIcon } = await import('../modules/uiux/generated/primitives/semantic-icon.js');
 const { mountChoice } = await import('../modules/uiux/generated/primitives/choice.js');
@@ -641,6 +641,55 @@ test('Uiux Pill preserves static and native interactive semantics and retracts c
 });
 
 const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+
+test('PopupSelect model search uses case-insensitive whitespace-separated AND terms', () => {
+    const options = [
+        { id: 'deepseek-think', label: 'DeepSeek-R1', detail: 'Thinking model' },
+        { id: 'deepseek-chat', label: 'DeepSeek-V3', detail: 'Chat model' },
+        { id: 'other-think', label: 'Nova-Think', detail: 'Reasoning model' },
+    ];
+
+    assert.deepEqual(
+        filterOptions(options, 'deepseek think').map(option => option.id),
+        ['deepseek-think'],
+    );
+    assert.deepEqual(
+        filterOptions(options, '  DEEPSEEK   THINK  ').map(option => option.id),
+        ['deepseek-think'],
+        'matching ignores case and collapses repeated whitespace into AND terms',
+    );
+    assert.deepEqual(
+        filterOptions(options, 'reasoning deepseek').map(option => option.id),
+        [],
+        'all terms must match the same option',
+    );
+    assert.deepEqual(
+        filterOptions(options, '   ').map(option => option.id),
+        options.map(option => option.id),
+        'blank search preserves every option',
+    );
+});
+
+test('PopupSelect model search ranks boundary-aligned prefix matches and ordered-subsequences via rankByName', () => {
+    const options = [
+        { id: 'gpt-3-5', label: 'gpt-3.5-turbo', detail: 'Legacy' },
+        { id: 'gpt-4', label: 'gpt-4', detail: 'OpenAI model' },
+        { id: 'gpt-4o', label: 'gpt-4o', detail: 'Flagship omni' },
+        { id: 'claude-sonnet', label: 'claude-sonnet', detail: 'General' },
+        { id: 'other-cs', label: 'windows-cs', detail: 'Unrelated' },
+    ];
+
+    const gpt4Results = filterOptions(options, 'gpt4').map(o => o.id);
+    assert.ok(gpt4Results.includes('gpt-4'), 'gpt4 matches gpt-4 via ordered subsequence');
+    assert.ok(gpt4Results.includes('gpt-4o'), 'gpt4 matches gpt-4o via ordered subsequence');
+    assert.ok(!gpt4Results.includes('gpt-3-5'), 'gpt4 does not match gpt-3-5');
+
+    const claudeResults = filterOptions(options, 'claude').map(o => o.id);
+    assert.equal(claudeResults[0], 'claude-sonnet', 'prefix match claude-sonnet ranks first for query claude');
+
+    const csResults = filterOptions(options, 'cs').map(o => o.id);
+    assert.ok(csResults.includes('claude-sonnet'), 'cs matches claude-sonnet via ordered subsequence');
+});
 
 test('Uiux PopupSelect Candidate keeps command wiring injected, owns focus and retracts its overlay', async () => {
     const dom = new JSDOM('<!doctype html><main><div id="host"></div><button id="return-focus">Composer stand-in</button></main>');

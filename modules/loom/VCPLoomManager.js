@@ -25,6 +25,8 @@ const PACKAGE_VERSION = 1;
 const TITLE_BAR_HEIGHT = 44;
 const SAFE_APP_ID = /^[a-z0-9][a-z0-9_-]{1,63}$/;
 const MAX_INJECT_BYTES = 2 * 1024 * 1024;
+const MAX_ICON_SOURCE_BYTES = 128 * 1024;
+const MAX_ICON_CANVAS_COMMANDS = 256;
 const MAX_SHARE_TEXT = 100000;
 const MAX_RUNTIME_SOURCE = 4 * 1024 * 1024;
 const MAX_RENDERED_TEXT = 500000;
@@ -65,6 +67,7 @@ const DEFAULT_MANIFEST = Object.freeze({
     exposeInAppDrawer: true,
     exposeManagerInAppDrawer: true,
     icon: '',
+    iconSource: null,
     emoji: '🕸️',
     window: {
         width: 420,
@@ -140,6 +143,208 @@ function normalizeHeaders(headers) {
     return normalized;
 }
 
+function assertIconSourceSize(value, label) {
+    const text = String(value ?? '');
+    if (Buffer.byteLength(text, 'utf8') > MAX_ICON_SOURCE_BYTES) {
+        throw new Error(`${label} 超过 ${Math.round(MAX_ICON_SOURCE_BYTES / 1024)} KB 限制。`);
+    }
+    return text;
+}
+
+function escapeXml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '\u0026amp;')
+        .replace(/</g, '\u0026lt;')
+        .replace(/>/g, '\u0026gt;')
+        .replace(/"/g, '\u0026quot;')
+        .replace(/'/g, '\u0026apos;');
+}
+
+function finiteIconNumber(value, fallback = 0, min = -8192, max = 8192) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return fallback;
+    return Math.min(max, Math.max(min, number));
+}
+
+function iconDimension(value, fallback = 64) {
+    return Math.round(finiteIconNumber(value, fallback, 16, 1024));
+}
+
+function safeSvgPaint(value, fallback = 'none') {
+    const paint = String(value ?? fallback).trim().slice(0, 128) || fallback;
+    if (/[\u0000-\u001f<>{};]|url\s*\(|javascript:/i.test(paint)) {
+        throw new Error('Canvas 图标包含不安全的颜色或画笔值。');
+    }
+    return paint;
+}
+
+function sanitizeSvgIcon(source) {
+    let svg = assertIconSourceSize(source, 'SVG 图标源码').trim();
+    if (!/^<svg(?:\s|>)/i.test(svg) || !/<\/svg>\s*$/i.test(svg)) {
+        throw new Error('SVG 图标源码必须是完整的 <svg> 文档。');
+    }
+    const blocked = [
+        /<!doctype/i,
+        /<!entity/i,
+        /<\s*(?:script|foreignObject|iframe|object|embed|audio|video|image|use)\b/i,
+        /\son[a-z]+\s*=/i,
+        /\b(?:href|xlink:href)\s*=/i,
+        /\bjavascript\s*:/i,
+        /\bdata\s*:\s*text\/html/i,
+        /url\s*\(/i,
+        /@import/i,
+    ];
+    if (blocked.some((pattern) => pattern.test(svg))) {
+        throw new Error('SVG 图标包含脚本、外部资源或其他不安全内容。');
+    }
+    if (!/\sxmlns\s*=/.test(svg.match(/^<svg\b[^>]*>/i)?.[0] || '')) {
+        svg = svg.replace(/^<svg\b/i, '<svg xmlns="http://www.w3.org/2000/svg"');
+    }
+    return svg;
+}
+
+function sanitizeCssIcon(source) {
+    const css = assertIconSourceSize(source, 'CSS 图标源码').trim();
+    if (!css) throw new Error('CSS 图标源码不能为空。');
+    // CSS 模式只允许单个隔离图标元素的声明列表，不接受选择器或 @ 规则。
+    // 禁止反斜杠可阻止对 url、expression 等关键字进行 CSS 转义绕过。
+    if (
+        /[<>{}@\\]/.test(css)
+        || /url\s*\(|image-set\s*\(|expression\s*\(|javascript\s*:|behavior\s*:|-moz-binding/i.test(css)
+    ) {
+        throw new Error('CSS 图标仅允许不含选择器、外部资源和转义的安全声明。');
+    }
+    return css;
+}
+
+function canvasCommandToSvg(command, index) {
+    if (!isPlainObject(command)) {
+        throw new Error(`Canvas 图标第 ${index + 1} 条指令必须是对象。`);
+    }
+    const op = String(command.op || command.type || '').trim().toLowerCase();
+    const n = (name, fallback = 0) => finiteIconNumber(command[name], fallback);
+    const paintAttrs = (defaultFill = 'none') => {
+        const fill = safeSvgPaint(command.fill, defaultFill);
+        const stroke = safeSvgPaint(command.stroke, 'none');
+        const strokeWidth = finiteIconNumber(command.strokeWidth, 1, 0, 256);
+        const opacity = finiteIconNumber(command.opacity, 1, 0, 1);
+        return ` fill="${escapeXml(fill)}" stroke="${escapeXml(stroke)}" stroke-width="${strokeWidth}" opacity="${opacity}"`;
+    };
+
+    if (op === 'fillrect' || op === 'strokerect' || op === 'rect') {
+        const defaultFill = op === 'fillrect' ? '#000' : 'none';
+        const defaultStroke = op === 'strokerect' ? '#000' : command.stroke;
+        const normalized = defaultStroke === command.stroke
+            ? command
+            : { ...command, stroke: defaultStroke };
+        const attrs = canvasCommandToSvg({ ...normalized, op: 'normalized-rect', fill: normalized.fill ?? defaultFill }, index);
+        return attrs;
+    }
+    if (op === 'normalized-rect') {
+        return `<rect x="${n('x')}" y="${n('y')}" width="${n('width')}" height="${n('height')}" rx="${n('rx')}"${paintAttrs('#000')}/>`;
+    }
+    if (op === 'circle') {
+        return `<circle cx="${n('cx', n('x'))}" cy="${n('cy', n('y'))}" r="${n('r')}"${paintAttrs('#000')}/>`;
+    }
+    if (op === 'ellipse') {
+        return `<ellipse cx="${n('cx', n('x'))}" cy="${n('cy', n('y'))}" rx="${n('rx')}" ry="${n('ry')}"${paintAttrs('#000')}/>`;
+    }
+    if (op === 'line') {
+        return `<line x1="${n('x1')}" y1="${n('y1')}" x2="${n('x2')}" y2="${n('y2')}"${paintAttrs('none')} stroke-linecap="${escapeXml(String(command.lineCap || 'round').slice(0, 16))}"/>`;
+    }
+    if (op === 'path') {
+        const d = String(command.d || '').trim();
+        if (!d || d.length > 16384 || /[^0-9a-zA-Z,.\s+\-]/.test(d)) {
+            throw new Error(`Canvas 图标第 ${index + 1} 条 path 指令无效。`);
+        }
+        return `<path d="${escapeXml(d)}"${paintAttrs('none')} stroke-linecap="round" stroke-linejoin="round"/>`;
+    }
+    if (op === 'polygon' || op === 'polyline') {
+        const points = Array.isArray(command.points)
+            ? command.points.map((point) => Array.isArray(point)
+                ? `${finiteIconNumber(point[0])},${finiteIconNumber(point[1])}`
+                : `${finiteIconNumber(point?.x)},${finiteIconNumber(point?.y)}`
+            ).join(' ')
+            : String(command.points || '');
+        if (!points || points.length > 16384 || /[^0-9,.\s+\-]/.test(points)) {
+            throw new Error(`Canvas 图标第 ${index + 1} 条 ${op} 指令无效。`);
+        }
+        return `<${op} points="${escapeXml(points)}"${paintAttrs(op === 'polygon' ? '#000' : 'none')}/>`;
+    }
+    if (op === 'text') {
+        const text = String(command.text ?? '').slice(0, 256);
+        const fontSize = finiteIconNumber(command.fontSize, 16, 1, 512);
+        const fontWeight = String(command.fontWeight || 'normal').slice(0, 32);
+        const textAnchor = ['start', 'middle', 'end'].includes(command.textAnchor)
+            ? command.textAnchor
+            : 'start';
+        return `<text x="${n('x')}" y="${n('y')}" font-size="${fontSize}" font-weight="${escapeXml(fontWeight)}" text-anchor="${textAnchor}"${paintAttrs('#000')}>${escapeXml(text)}</text>`;
+    }
+    throw new Error(`Canvas 图标不支持指令：${op || '(empty)'}`);
+}
+
+function normalizeIconSource(input) {
+    if (input === undefined || input === null || input === '') return null;
+    if (!isPlainObject(input)) throw new Error('iconSource 必须是对象。');
+    const type = String(input.type || '').trim().toLowerCase();
+    const width = iconDimension(input.width, 64);
+    const height = iconDimension(input.height, 64);
+
+    if (type === 'svg') {
+        return { type, source: sanitizeSvgIcon(input.source ?? input.svg), width, height };
+    }
+    if (type === 'css') {
+        return { type, source: sanitizeCssIcon(input.source ?? input.css), width, height };
+    }
+    if (type === 'canvas') {
+        const commands = input.commands;
+        if (!Array.isArray(commands) || !commands.length) {
+            throw new Error('Canvas 图标 commands 必须是非空数组。');
+        }
+        if (commands.length > MAX_ICON_CANVAS_COMMANDS) {
+            throw new Error(`Canvas 图标最多允许 ${MAX_ICON_CANVAS_COMMANDS} 条指令。`);
+        }
+        // 在保存清单前完成全部指令校验，避免无效图标延迟到 UI 展示时才失败。
+        commands.forEach((command, index) => canvasCommandToSvg(command, index));
+        return {
+            type,
+            width,
+            height,
+            background: safeSvgPaint(input.background, 'transparent'),
+            commands: clone(commands),
+        };
+    }
+    throw new Error('iconSource.type 必须为 svg、css 或 canvas。');
+}
+
+function iconSourceToSvg(iconSource) {
+    if (!iconSource) return '';
+    const width = iconDimension(iconSource.width, 64);
+    const height = iconDimension(iconSource.height, 64);
+    if (iconSource.type === 'svg') return sanitizeSvgIcon(iconSource.source);
+    if (iconSource.type === 'css') {
+        const css = sanitizeCssIcon(iconSource.source);
+        return [
+            `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
+            '<foreignObject width="100%" height="100%">',
+            '<div xmlns="http://www.w3.org/1999/xhtml" class="icon"></div>',
+            `<style>.icon{box-sizing:border-box;width:${width}px;height:${height}px;position:relative;overflow:hidden}${css}</style>`,
+            '</foreignObject></svg>',
+        ].join('');
+    }
+    if (iconSource.type === 'canvas') {
+        const body = iconSource.commands.map(canvasCommandToSvg).join('');
+        const background = safeSvgPaint(iconSource.background, 'transparent');
+        return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="${escapeXml(background)}"/>${body}</svg>`;
+    }
+    throw new Error(`不支持的图标源码类型：${iconSource.type}`);
+}
+
+function iconSourceToDataUrl(iconSource) {
+    const svg = iconSourceToSvg(iconSource);
+    return svg ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}` : '';
+}
+
 function normalizeManifest(input, forcedId = null) {
     const manifest = mergeManifest(input);
     const id = String(forcedId || manifest.id || '').trim().toLowerCase();
@@ -170,7 +375,8 @@ function normalizeManifest(input, forcedId = null) {
         enabled: manifest.enabled !== false,
         exposeInAppDrawer: manifest.exposeInAppDrawer !== false,
         exposeManagerInAppDrawer: manifest.exposeManagerInAppDrawer !== false,
-        icon: String(manifest.icon || '').trim().slice(0, 500),
+        icon: String(manifest.icon || '').trim().slice(0, 4096),
+        iconSource: normalizeIconSource(manifest.iconSource),
         emoji: String(manifest.emoji || '🕸️').trim().slice(0, 8) || '🕸️',
         window: {
             width: clampInteger(manifest.window.width, 420, 320, 3840),
@@ -233,6 +439,7 @@ class VCPLoomManager {
         this.pagePreloadPath = path.join(this.projectRoot, 'preloads', 'loom-page.js');
         this.webCoreRoot = path.join(__dirname, 'webcore');
         this.webAgentSourceCache = null;
+        this.comfyUIMainWorldBridgeSourceCache = null;
         this.mainWindow = options.mainWindow || null;
         this.openChildWindows = options.openChildWindows || [];
         this.managerWindow = null;
@@ -334,8 +541,9 @@ class VCPLoomManager {
     }
 
     resolveIcon(manifest) {
+        if (manifest.iconSource) return iconSourceToDataUrl(manifest.iconSource);
         if (!manifest.icon) return '';
-        if (/^(data:|https?:|file:)/i.test(manifest.icon)) return manifest.icon;
+        if (/^(data:image\/|https?:|file:)/i.test(manifest.icon)) return manifest.icon;
         const candidate = path.resolve(this.appDir(manifest.id), manifest.icon);
         const relative = path.relative(this.appDir(manifest.id), candidate);
         if (relative.startsWith('..') || path.isAbsolute(relative) || !fs.pathExistsSync(candidate)) return '';
@@ -483,6 +691,8 @@ class VCPLoomManager {
         const files = [
             'web-agent-protocol.js',
             'web-agent-page-core.js',
+            // Runtime Core 初始化时从全局读取专用页面适配器，必须先注入。
+            'comfyui-page-adapter.js',
             'web-agent-page-runtime-core.js',
         ];
         this.webAgentSourceCache = await Promise.all(files.map(async (fileName) => ({
@@ -490,6 +700,17 @@ class VCPLoomManager {
             url: `vcp-loom-webcore://${fileName}`,
         })));
         return this.webAgentSourceCache;
+    }
+
+    async getComfyUIMainWorldBridgeSource() {
+        if (this.comfyUIMainWorldBridgeSourceCache) {
+            return this.comfyUIMainWorldBridgeSourceCache;
+        }
+        this.comfyUIMainWorldBridgeSourceCache = await fs.readFile(
+            path.join(this.webCoreRoot, 'comfyui-main-world-bridge.js'),
+            'utf8'
+        );
+        return this.comfyUIMainWorldBridgeSourceCache;
     }
 
     async waitForDocumentReady(instance, generation) {
@@ -520,7 +741,22 @@ class VCPLoomManager {
         }
 
         await this.waitForDocumentReady(instance, generation);
-        const sources = await this.getWebAgentSources();
+        const [sources, comfyUIMainWorldBridgeSource] = await Promise.all([
+            this.getWebAgentSources(),
+            this.getComfyUIMainWorldBridgeSource(),
+        ]);
+        if (generation !== instance.documentGeneration) {
+            const error = new Error('页面已导航，放弃旧文档的 Web Agent 初始化。');
+            error.code = 'LOOM_DOCUMENT_CHANGED';
+            throw error;
+        }
+
+        // LiteGraph 的 app/graph 对象只存在于页面 MAIN World。先安装最小状态桥，
+        // 再启动隔离世界 Runtime；普通页面上该桥会立即无操作返回。
+        await contents.executeJavaScript(
+            `${comfyUIMainWorldBridgeSource}\n//# sourceURL=vcp-loom-webcore://comfyui-main-world-bridge.js`,
+            true
+        );
         if (generation !== instance.documentGeneration) {
             const error = new Error('页面已导航，放弃旧文档的 Web Agent 初始化。');
             error.code = 'LOOM_DOCUMENT_CHANGED';
@@ -611,6 +847,27 @@ class VCPLoomManager {
         };
     }
 
+    async createPersistentWebAgentTarget(appId, target, context = {}) {
+        const instance = await this.ensureWebAgentRuntime(this.getRunningInstance(appId));
+        const serializedTarget = JSON.stringify(target);
+        const serializedContext = JSON.stringify(context);
+        return instance.view.webContents.executeJavaScriptInIsolatedWorld(
+            WEB_AGENT_WORLD_ID,
+            [{
+                code: `(() => {
+                    const runtime = globalThis.__vcpLoomWebAgentRuntime;
+                    if (!runtime) throw new Error('Loom Web Agent Runtime 尚未初始化');
+                    return runtime.createPersistentTarget(
+                        ${serializedTarget},
+                        ${serializedContext}
+                    );
+                })()`,
+                url: 'vcp-loom-webcore://skill/persist-target.js',
+            }],
+            true
+        );
+    }
+
     normalizeLoomActionId(actionId) {
         const input = String(actionId || '').trim();
         const resolved = webAgentCore.protocol.resolveCommand(input);
@@ -652,6 +909,18 @@ class VCPLoomManager {
         if (!isPlainObject(params)) throw new Error('Loom Web Agent 动作 params 必须是对象。');
         if (!isPlainObject(options)) throw new Error('Loom Web Agent 动作 options 必须是对象。');
 
+        // 兼容自然语言工具常用的单数 key，以及历史上误生成的
+        // page_press/press 动作别名；页面运行时统一消费 keys。
+        const normalizedParams = { ...params };
+        if (
+            action === 'page_send_keys'
+            && normalizedParams.keys === undefined
+            && normalizedParams.key !== undefined
+        ) {
+            normalizedParams.keys = normalizedParams.key;
+            delete normalizedParams.key;
+        }
+
         if (!instance.webAgentRuntime) {
             throw new Error('Loom Web Agent 后端运行时尚未初始化。');
         }
@@ -661,9 +930,9 @@ class VCPLoomManager {
                 adapter: 'electron-loom',
                 targetId: instance.view.webContents.id,
                 appId: instance.appId,
-                ...(isPlainObject(params.targetContext) ? params.targetContext : {}),
+                ...(isPlainObject(normalizedParams.targetContext) ? normalizedParams.targetContext : {}),
             },
-            params,
+            params: normalizedParams,
             options,
             metadata: {
                 source: 'LoomController',
@@ -1704,13 +1973,64 @@ class VCPLoomManager {
         return null;
     }
 
+    async openSkillManagerInCanvas(instance = null) {
+        const skillsRoot = path.join(this.appDataRoot, 'LoomSkills');
+        await fs.ensureDir(skillsRoot);
+        const canvasHandlers = require('../ipc/canvasHandlers');
+        await canvasHandlers.createCanvasWindow({
+            rootDir: skillsRoot,
+            context: 'loom-skill',
+            metadata: {
+                appId: instance?.appId || null,
+                title: 'Loom Skill',
+            },
+        });
+        return {
+            success: true,
+            appId: instance?.appId || null,
+            rootDir: skillsRoot,
+            context: 'loom-skill',
+        };
+    }
+
     async navigate(instance, action) {
+        const normalizedAction = String(action || '').trim().toLowerCase();
+        if (!['back', 'forward', 'reload', 'home'].includes(normalizedAction)) {
+            throw new Error(`不支持的 LoomAPP 导航操作：${action || '(empty)'}`);
+        }
+
         const contents = instance.view.webContents;
-        if (contents.isDestroyed()) return;
-        if (action === 'back' && contents.navigationHistory.canGoBack()) contents.navigationHistory.goBack();
-        if (action === 'forward' && contents.navigationHistory.canGoForward()) contents.navigationHistory.goForward();
-        if (action === 'reload') contents.reload();
-        if (action === 'home') await contents.loadURL(instance.manifest.startUrl);
+        if (contents.isDestroyed()) throw new Error('LoomAPP 页面进程不可用。');
+
+        let dispatched = true;
+        if (normalizedAction === 'back') {
+            if (contents.navigationHistory.canGoBack()) {
+                contents.navigationHistory.goBack();
+            } else {
+                dispatched = false;
+            }
+        } else if (normalizedAction === 'forward') {
+            if (contents.navigationHistory.canGoForward()) {
+                contents.navigationHistory.goForward();
+            } else {
+                dispatched = false;
+            }
+        } else if (normalizedAction === 'reload') {
+            contents.reload();
+        } else if (normalizedAction === 'home') {
+            await contents.loadURL(instance.manifest.startUrl);
+        }
+
+        return {
+            ...this.buildShellState(instance),
+            action: normalizedAction,
+            dispatched,
+        };
+    }
+
+    async navigateApp(appId, action) {
+        const instance = this.getRunningInstance(appId);
+        return this.navigate(instance, action);
     }
 
     normalizeNavigationUrl(value) {
@@ -2001,6 +2321,8 @@ class VCPLoomManager {
         handle('loom:get-runtime-source', (_event, appId) => this.readRuntimeSource(appId));
         handle('loom:get-rendered-text', (_event, appId, options) => this.readRenderedText(appId, options));
         handle('loom:get-web-agent-page-info', (_event, appId) => this.getWebAgentPageInfo(appId));
+        handle('loom:create-persistent-web-agent-target', (_event, appId, target, context) =>
+            this.createPersistentWebAgentTarget(appId, target, context));
         handle('loom:execute-web-agent-action', (_event, appId, actionId, params, options) =>
             this.executeWebAgentAction(appId, actionId, params, options));
         handle('loom:create-app', (_event, payload) => this.createApp(payload));
@@ -2015,6 +2337,7 @@ class VCPLoomManager {
         handle('loom:open-manager', () => this.openManager());
         handle('loom:export-app', (_event, appId) => this.exportApp(appId));
         handle('loom:import-app', () => this.importApp());
+        handle('loom:open-skill-manager', () => this.openSkillManagerInCanvas());
         handle('loom:open-app-folder', async (_event, appId) => {
             const error = await shell.openPath(this.appDir(appId));
             if (error) throw new Error(error);
@@ -2048,6 +2371,8 @@ class VCPLoomManager {
                 return this.selectDeviceFromShell(instance, payload);
             } else if (action === 'open-external') {
                 await shell.openExternal(instance.view.webContents.getURL());
+            } else if (action === 'open-skill-manager') {
+                return this.openSkillManagerInCanvas(instance);
             } else {
                 throw new Error(`不支持的壳操作：${action}`);
             }
@@ -2078,4 +2403,7 @@ module.exports = {
     USER_AGENTS,
     LOOM_PAGE_ACTIONS,
     LOOM_ACTIONS,
+    normalizeIconSource,
+    iconSourceToSvg,
+    iconSourceToDataUrl,
 };

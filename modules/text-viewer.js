@@ -1,5 +1,6 @@
 import { createEmoticonUrlFixer } from './renderer/emoticonUrlFixer.js';
 import { replaceMarkdownCodeDomains } from './renderer/markdownCodeDomainScanner.js';
+import { parseJevToolUse } from './renderer/jevToolUse.js';
 import { domToCanvas, domToBlob } from '../vendor/modern-screenshot.js';
 
 const emoticonFixer = createEmoticonUrlFixer();
@@ -298,7 +299,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         return result;
     };
 
-    function transformSpecialBlocksForViewer(text) {
+    function transformSpecialBlocksForViewer(text, restoreCodeDomains = (value) => value) {
         const noteRegex = /<<<DailyNoteStart>>>(.*?)<<<DailyNoteEnd>>>/gs;
         const toolResultRegex = /\[\[VCP调用结果信息汇总:(.*?)VCP调用结果结束\]\]/gs;
         const toolCallSummaryRegex = /\[本轮工具调用摘要:\]([\s\S]*?)\[本轮工具调用摘要结束\]/g;
@@ -341,7 +342,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         };
 
         const renderMarkdownField = (rawText) => {
-            const source = rawText || '';
+            /*
+             * 围栏代码在外层预处理阶段会被占位符保护。特殊块（尤其日记）
+             * 会在外层 Markdown 解析前先独立调用 marked.parse，因此必须在
+             * 此处恢复其字段内的代码域，否则占位符会被固化为普通段落文本。
+             */
+            const source = restoreCodeDomains(rawText || '');
             if (window.marked) {
                 try {
                     return window.marked.parse(source);
@@ -579,7 +585,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
             flushCurrentField();
 
-            let html = `<div class="vcp-tool-result-bubble collapsible" data-vcp-block-type="tool-result">`;
+            // 阅读模式默认展开工具结果，同时保留点击标题折叠/展开的能力。
+            let html = `<div class="vcp-tool-result-bubble collapsible expanded" data-vcp-block-type="tool-result">`;
             html += `<div class="vcp-tool-result-header">`;
             html += `<span class="vcp-tool-result-label">VCP-ToolResult</span>`;
             html += `<span class="vcp-tool-result-name">${escapeHtml(toolName)}</span>`;
@@ -634,6 +641,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         processed = replaceToolRequestBlocks(processed, (match, content) => {
             const detectedToolName = extractMarkedField(content, /tool_name:\s*/i);
             const detectedCommand = extractMarkedField(content, /command:\s*/i);
+            const detectedJev = parseJevToolUse(extractMarkedField(content, /JEV:\s*/i));
             const normalizedToolName = (detectedToolName || '').trim().toLowerCase();
             const normalizedCommand = (detectedCommand || '').trim().toLowerCase();
 
@@ -677,10 +685,23 @@ document.addEventListener('DOMContentLoaded', async () => {
             toolName = toolName.replace(/[「{](?:始|末)(?:[Ee][Ss][Cc][Aa][Pp][Ee])?[」}]/gi, '').replace(/,$/, '').trim();
 
             const escapedFullContent = escapeHtml(content.trim());
-            return `\n\n<div class="vcp-tool-use-bubble" data-vcp-block-type="tool-use">` +
+            const isJevToolUse = !!detectedJev;
+            const bubbleClass = isJevToolUse
+                ? 'vcp-tool-use-bubble vcp-jev-tool-use-bubble expanded'
+                : 'vcp-tool-use-bubble expanded';
+            const blockType = isJevToolUse ? 'jev-tool-use' : 'tool-use';
+            const displayName = isJevToolUse ? detectedJev.displayName : toolName;
+            const label = isJevToolUse
+                ? (displayName ? 'JEVToolUse:' : 'JEVToolUse')
+                : 'VCP-ToolUse:';
+            const nameHtml = displayName
+                ? ` <span class="vcp-tool-name-highlight">${escapeHtml(displayName)}</span>`
+                : '';
+            // 阅读模式以完整阅读为主，工具调用默认展开；JEV 只是兼容分支。
+            return `\n\n<div class="${bubbleClass}" data-vcp-block-type="${blockType}">` +
                 `<div class="vcp-tool-summary">` +
-                `<span class="vcp-tool-label">VCP-ToolUse:</span> ` +
-                `<span class="vcp-tool-name-highlight">${escapeHtml(toolName)}</span>` +
+                `<span class="vcp-tool-label">${label}</span>` +
+                nameHtml +
                 `</div>` +
                 `<div class="vcp-tool-details"><pre>${escapedFullContent}</pre></div>` +
                 `</div>\n\n`;
@@ -859,7 +880,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Step 5: Run other pre-processing on the text (which still has placeholders).
         processed = deIndentHtml(processed);
-        processed = transformSpecialBlocksForViewer(processed);
+
+        /*
+         * 仅为特殊块的内嵌 Markdown 字段按需恢复代码域。普通正文仍保留
+         * 占位符直到 Step 7，避免下面的通用文本修正规则改写代码内容。
+         */
+        const restoreCodeDomains = (value) => {
+            let restored = value;
+            for (const [placeholder, block] of codeBlockMap.entries()) {
+                restored = restored.split(placeholder).join(block);
+            }
+            return restored;
+        };
+        processed = transformSpecialBlocksForViewer(processed, restoreCodeDomains);
         
         // Basic content processors from contentProcessor.js
         processed = processed.replace(/^(\s*```)(?![\r\n])/gm, '$1\n'); // ensureNewlineAfterCodeBlock
@@ -917,11 +950,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         animeJsPatterns.forEach(pattern => {
             processed = processed.replace(pattern, '../vendor/anime.min.js');
         });
-        
-        // 3. 通用 CDN 域名替换（后备方案）
+
+        // 3. Pixi.js CDN 替换
+        const pixiJsPatterns = [
+            /https?:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/pixi\.js\/[^'"`);\s]*/gi,
+            /https?:\/\/cdn\.jsdelivr\.net\/npm\/pixi\.js[@\/][^'"`);\s]*/gi,
+            /https?:\/\/unpkg\.com\/pixi\.js[@\/][^'"`);\s]*/gi,
+        ];
+
+        pixiJsPatterns.forEach(pattern => {
+            processed = processed.replace(pattern, '../vendor/pixi.min.js');
+        });
+
+        // 4. 通用 CDN 域名替换（后备方案）
         const genericCdnPatterns = [
             { pattern: /https?:\/\/[^'"`);\s]*three[^'"`);\s]*\.js/gi, replacement: '../vendor/three.min.js' },
             { pattern: /https?:\/\/[^'"`);\s]*anime[^'"`);\s]*\.js/gi, replacement: '../vendor/anime.min.js' },
+            { pattern: /https?:\/\/[^'"`);\s]*(?:pixi\.js|pixijs|pixi)[^'"`);\s]*\.js/gi, replacement: '../vendor/pixi.min.js' },
         ];
         
         genericCdnPatterns.forEach(({ pattern, replacement }) => {
@@ -1016,29 +1061,35 @@ document.addEventListener('DOMContentLoaded', async () => {
                     newScript.setAttribute(attr.name, attr.value);
                 });
 
-                // 🔥 关键修复：如果有外部库正在加载，等待它们加载完成后再执行内联脚本
-                if (window.__vcpExternalLibsLoading && window.__vcpExternalLibsLoading.length > 0) {
+                // 所有内联脚本统一在局部包装器中执行：
+                // 1. 等待可能异步加载的外部库；
+                // 2. 注入当前阅读内容根节点 container；
+                // 3. 注入全局 Pixi 的局部别名，兼容 AI 常见脚本写法。
+                const hasPendingExternalLibraries =
+                    window.__vcpExternalLibsLoading && window.__vcpExternalLibsLoading.length > 0;
+                if (hasPendingExternalLibraries) {
                     console.log('[TextViewer] ⏳ Waiting for external libraries to load before executing inline script...');
-                    
-                    // 包装内联脚本，等待所有外部库加载完成
-                    const wrappedContent = `
-                        (async function() {
-                            try {
-                                if (window.__vcpExternalLibsLoading) {
-                                    await Promise.all(window.__vcpExternalLibsLoading);
+                }
+
+                const containerSelector = JSON.stringify(`#${scopeId}`);
+                const wrappedContent = `
+                    (async function() {
+                        try {
+                            if (window.__vcpExternalLibsLoading) {
+                                await Promise.all(window.__vcpExternalLibsLoading);
+                                if (${hasPendingExternalLibraries ? 'true' : 'false'}) {
                                     console.log('[TextViewer] ✅ All external libraries loaded, executing inline script.');
                                 }
-                                ${processedContent}
-                            } catch (error) {
-                                console.error('[TextViewer] ❌ Error in wrapped inline script:', error);
                             }
-                        })();
-                    `;
-                    newScript.textContent = wrappedContent;
-                } else {
-                    // 没有外部库需要等待，直接执行
-                    newScript.textContent = processedContent;
-                }
+                            const container = document.querySelector(${containerSelector});
+                            const PIXI = window.PIXI;
+                            ${processedContent}
+                        } catch (error) {
+                            console.error('[TextViewer] ❌ Error in wrapped inline script:', error);
+                        }
+                    })();
+                `;
+                newScript.textContent = wrappedContent;
                 
                 if (oldScript.parentNode) {
                     oldScript.parentNode.replaceChild(newScript, oldScript);
@@ -1053,8 +1104,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- Theme Management ---
     function applyTheme(theme) {
-        const currentTheme = theme || 'dark';
+        const currentTheme = theme === 'light' ? 'light' : 'dark';
+
+        /*
+         * 保留阅读器原有的 light-theme 类，同时同步主消息渲染器使用的
+         * data-vcp-theme 契约。工具块、工具结果和日记组件由此直接复用
+         * messageRenderer.css 的同一套深浅主题样式，不再维护分叉皮肤。
+         */
         document.body.classList.toggle('light-theme', currentTheme === 'light');
+        document.body.dataset.vcpTheme = currentTheme;
+
         const highlightThemeStyle = document.getElementById('highlight-theme-style');
         if (highlightThemeStyle) {
             highlightThemeStyle.href = currentTheme === 'light'
@@ -1626,10 +1685,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                         const bodyStyles = document.body.classList.contains('light-theme')
                             ? 'color: #2c3e50; background-color: #ffffff;'
                             : 'color: #abb2bf; background-color: #282c34;';
-                        finalHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>HTML Preview</title><script src="../vendor/anime.min.js"><\/script><style>body { font-family: sans-serif; padding: 15px; margin: 0; ${bodyStyles} }</style></head><body>${codeContent}</body></html>`;
+                        finalHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>HTML Preview</title><script src="../vendor/anime.min.js"><\/script><script src="../vendor/pixi.min.js"><\/script><script src="../vendor/pixi-unsafe-eval.min.js"><\/script><style>body { font-family: sans-serif; padding: 15px; margin: 0; ${bodyStyles} }</style></head><body>${codeContent}</body></html>`;
                     } else {
-                        // If it's a full document, inject anime.js before the closing </head> tag
-                        finalHtml = finalHtml.replace('</head>', '<script src="../vendor/anime.min.js"><\/script></head>');
+                        // Inject animation runtimes before user HTML executes.
+                        finalHtml = finalHtml.replace('</head>', '<script src="../vendor/anime.min.js"><\/script><script src="../vendor/pixi.min.js"><\/script><script src="../vendor/pixi-unsafe-eval.min.js"><\/script></head>');
                     }
                     // Use srcdoc for better security and reliability
                     iframe.srcdoc = finalHtml;
@@ -1701,6 +1760,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                         </head>
                         <body>
                             <script src="../vendor/three.min.js"><\/script>
+                            <script src="../vendor/pixi.min.js"><\/script>
+                            <script src="../vendor/pixi-unsafe-eval.min.js"><\/script>
                             <script>
                                 // Defer execution until three.js is loaded
                                 window.addEventListener('load', () => {

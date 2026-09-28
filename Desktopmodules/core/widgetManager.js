@@ -37,13 +37,47 @@
     widget.className = "desktop-widget constructing entering";
     widget.dataset.widgetId = widgetId;
 
-    const x = options.x || 100;
-    const y = Math.max(options.y || 100, CONSTANTS.TITLE_BAR_HEIGHT + 4);
     const width = options.width || 320;
     const height = options.height || 200;
 
-    widget.style.left = `${x}px`;
-    widget.style.top = `${y}px`;
+    // 安全视口边界计算（完美防御 100%、125%、150% 等系统 DPI 缩放下的边缘溢出）
+    const winW = window.innerWidth || 1200;
+    const winH = window.innerHeight || 800;
+    const topSafeMargin = (CONSTANTS.TITLE_BAR_HEIGHT || 32) + 12;
+    const bottomSafeMargin = 80; // 预留底部 Dock 栏高度，防止遮挡
+    const rightSafeMargin = 60; // 预留侧栏展开安全距离
+
+    const maxX = Math.max(50, winW - width - rightSafeMargin);
+    const maxY = Math.max(topSafeMargin, winH - height - bottomSafeMargin);
+
+    let finalX = options.x;
+    let finalY = options.y;
+
+    // 若调用方未显式传入坐标（例如在线多挂件流式直推），启动智能多列网格/瀑布流布局算法
+    if (typeof finalX !== "number" || typeof finalY !== "number") {
+      const existingCount = state.widgets ? state.widgets.size : 0;
+      const cardGapX = 24;
+      const cardGapY = 24;
+      const startX = 60;
+      const startY = topSafeMargin + 10;
+
+      // 计算一行最多可容纳的完整列数（基于当前可用逻辑视口，扣除右侧侧栏 80px）
+      const usableWidth = Math.max(width, winW - startX - 80);
+      const cols = Math.max(1, Math.floor(usableWidth / (width + cardGapX)));
+
+      const colIndex = existingCount % cols;
+      const rowIndex = Math.floor(existingCount / cols) % 3; // 最多排 3 行避免遮挡底部 Dock
+
+      finalX = startX + colIndex * (width + cardGapX);
+      finalY = startY + rowIndex * (height + cardGapY);
+    }
+
+    // 严格安全钳制在当前有效可视区域内（保证不飞出外框，不盖住 Dock）
+    finalX = Math.max(20, Math.min(maxX, finalX));
+    finalY = Math.max(topSafeMargin, Math.min(maxY, finalY));
+
+    widget.style.left = `${Math.round(finalX)}px`;
+    widget.style.top = `${Math.round(finalY)}px`;
     widget.style.width = `${width}px`;
     widget.style.height = `${height}px`;
 
@@ -105,7 +139,16 @@
     shadowRoot.appendChild(contentContainer);
 
     widget.appendChild(contentWrapper);
-    domRefs.canvas.appendChild(widget);
+    // 关键防护：确保 canvas 容器存在（防止在 DOMContentLoaded 之前收到早产消息时 domRefs.canvas 仍为 null）
+    const canvasEl =
+      domRefs.canvas || document.getElementById("desktop-canvas");
+    if (canvasEl) {
+      canvasEl.appendChild(widget);
+    } else {
+      console.error(
+        "[Desktop] Critical: #desktop-canvas element not found in DOM!"
+      );
+    }
 
     // 进入动画
     widget.addEventListener(
@@ -149,6 +192,7 @@
       _intervals: [],
       _timeouts: [],
       _windowListeners: [],
+      _pixiApps: [],
     };
 
     // 监听 Shadow DOM 内容变化，自动调整尺寸
@@ -285,6 +329,30 @@
         window.removeEventListener(l.type, l.listener, l.options)
       );
       widgetData._windowListeners = [];
+    }
+
+    // 释放 Pixi.js Application 实例与 WebGL 上下文，防止显存与 Ticker 泄露
+    if (widgetData._pixiApps && widgetData._pixiApps.length > 0) {
+      widgetData._pixiApps.forEach((app) => {
+        try {
+          if (app && !app._destroyed) {
+            if (typeof app.stop === "function") app.stop();
+            if (typeof app.destroy === "function") {
+              app.destroy(true, {
+                children: true,
+                texture: true,
+                textureSource: true,
+              });
+            }
+          }
+        } catch (e) {
+          console.warn(
+            `[Desktop] Failed to clean up Pixi app for widget ${widgetId}:`,
+            e
+          );
+        }
+      });
+      widgetData._pixiApps = [];
     }
 
     state.widgets.delete(widgetId);
@@ -515,6 +583,33 @@
                         };
                     };
 
+                    // Pixi.js v8 支持：暴露 PIXI 变量，并包装 Application 跟踪生命周期
+                    var _createPixiFacade = function() {
+                        var realPixi = _realWindow.PIXI;
+                        if (!realPixi) return realPixi;
+                        var RealApp = realPixi.Application;
+                        if (!RealApp) return realPixi;
+
+                        function SandboxedPixiApp() {
+                            var app = Reflect.construct(RealApp, arguments, new.target === SandboxedPixiApp ? RealApp : new.target);
+                            if (_widgetData) {
+                                _widgetData._pixiApps = _widgetData._pixiApps || [];
+                                _widgetData._pixiApps.push(app);
+                            }
+                            return app;
+                        }
+                        SandboxedPixiApp.prototype = RealApp.prototype;
+                        Object.setPrototypeOf(SandboxedPixiApp, RealApp);
+
+                        return new Proxy(realPixi, {
+                            get: function(target, prop, receiver) {
+                                if (prop === 'Application') return SandboxedPixiApp;
+                                return Reflect.get(target, prop, receiver);
+                            }
+                        });
+                    };
+                    var PIXI = _createPixiFacade();
+
                     var setInterval = function(fn, delay) {
                         var id = _realWindow.setInterval(_wrap(fn), delay);
                         if (_widgetData) _widgetData._intervals.push(id);
@@ -567,6 +662,7 @@
                             if (prop === 'clearInterval') return clearInterval;
                             if (prop === 'setTimeout') return setTimeout;
                             if (prop === 'clearTimeout') return clearTimeout;
+                            if (prop === 'PIXI') return PIXI;
                             
                             if (prop === 'requestAnimationFrame') {
                                 return function(callback) {
@@ -706,6 +802,21 @@
       if (oldScript.src) {
         // 外部脚本：判断是否为本地/同源
         const scriptUrl = oldScript.src;
+
+        // 若为已全局注入的核心库（如 Pixi、Three、Anime 等），直接跳过冗余加载
+        if (
+          /(?:pixi(?:\.min)?\.js|pixi-unsafe-eval|three(?:\.min)?\.js|anime(?:\.min)?\.js)/i.test(
+            scriptUrl
+          ) &&
+          _hasPreloadedCoreLibrary(scriptUrl)
+        ) {
+          console.log(
+            `[Desktop] Preloaded core library detected, skipping script tag: ${scriptUrl}`
+          );
+          oldScript.remove();
+          return;
+        }
+
         const isLocalOrSameOrigin = _isLocalScript(scriptUrl);
 
         if (isLocalOrSameOrigin) {
@@ -798,6 +909,18 @@
       // URL 解析失败，保守地视为本地
       return true;
     }
+  }
+
+  /**
+   * 检查当前页面是否已全局预加载了指定库
+   * @param {string} url
+   * @returns {boolean}
+   */
+  function _hasPreloadedCoreLibrary(url) {
+    if (/pixi/i.test(url) && window.PIXI) return true;
+    if (/three/i.test(url) && window.THREE) return true;
+    if (/anime/i.test(url) && window.anime) return true;
+    return false;
   }
 
   // ============================================================

@@ -41,6 +41,7 @@ audio_engine/bin/**
 
 # Reports and logs
 **/reports/
+test-results/
 
 # 临时忽略的文件（本地修改，不提交）
 .npmrc
@@ -92,3 +93,11 @@ VCPChat-Setup.exe
 # 二者均未被本仓库或 upstream 跟踪，属本机运行状态，不应进入版本库
 /AppData_sync_backups/
 /audio_engine/AppData/
+
+# Python runtime / test caches
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.mypy_cache/
+.coverage
+coverage.xml

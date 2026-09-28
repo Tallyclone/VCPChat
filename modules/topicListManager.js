@@ -546,6 +546,7 @@ window.topicListManager = (() => {
         }
 
         cleanupProgressiveTopicRendering();
+        const loadGeneration = topicListRenderGeneration;
 
         let topicListUl = topicListContainer.querySelector('.topic-list');
         if (topicListUl) {
@@ -602,6 +603,12 @@ window.topicListManager = (() => {
             itemConfigFull = await electronAPI.getAgentConfig(currentSelectedItem.id);
         } else if (currentSelectedItem.type === 'group') {
             itemConfigFull = await electronAPI.getAgentGroupConfig(currentSelectedItem.id);
+        }
+
+        if (loadGeneration !== topicListRenderGeneration ||
+            currentSelectedItemRef.get()?.id !== currentSelectedItem.id ||
+            currentSelectedItemRef.get()?.type !== currentSelectedItem.type) {
+            return;
         }
 
         if (itemConfigFull && !itemConfigFull.error) {
@@ -663,6 +670,12 @@ window.topicListManager = (() => {
 
             if (searchQuery.prioritizeUnread) {
                 topicsToProcess = await prioritizeUnreadTopics(topicsToProcess, currentSelectedItem);
+            }
+
+            if (loadGeneration !== topicListRenderGeneration ||
+                currentSelectedItemRef.get()?.id !== currentSelectedItem.id ||
+                currentSelectedItemRef.get()?.type !== currentSelectedItem.type) {
+                return;
             }
 
             displayedTopics = [...topicsToProcess];
@@ -889,6 +902,8 @@ window.topicListManager = (() => {
             topicListUl.sortableInstance.destroy();
         }
 
+        const targetItemId = itemId;
+        const targetItemType = itemType;
         topicListUl.sortableInstance = new Sortable(topicListUl, {
             animation: 150,
             ghostClass: 'sortable-ghost-topic',
@@ -916,21 +931,21 @@ window.topicListManager = (() => {
                 const orderedTopicIds = topicItems.map(item => item.dataset.topicId);
                 try {
                     let result;
-                    if (itemType === 'agent') {
-                        result = await electronAPI.saveTopicOrder(itemId, orderedTopicIds);
-                    } else if (itemType === 'group') {
-                        result = await electronAPI.saveGroupTopicOrder(itemId, orderedTopicIds);
+                    if (targetItemType === 'agent') {
+                        result = await electronAPI.saveTopicOrder(targetItemId, orderedTopicIds);
+                    } else if (targetItemType === 'group') {
+                        result = await electronAPI.saveGroupTopicOrder(targetItemId, orderedTopicIds);
                     }
 
                     if (result && result.success) {
                         // UI reflects sort.
                     } else {
-                        console.error(`Failed to save topic order for ${itemType} ${itemId}:`, result?.error);
+                        console.error(`Failed to save topic order for ${targetItemType} ${targetItemId}:`, result?.error);
                         uiHelper.showToastNotification(`保存话题顺序失败: ${result?.error || '未知错误'}`, 'error');
                         loadTopicList();
                     }
                 } catch (error) {
-                    console.error(`Error calling saveTopicOrder for ${itemType} ${itemId}:`, error);
+                    console.error(`Error calling saveTopicOrder for ${targetItemType} ${targetItemId}:`, error);
                     uiHelper.showToastNotification(`调用保存话题顺序API时出错: ${error.message}`, 'error');
                     loadTopicList();
                 }
@@ -945,6 +960,51 @@ window.topicListManager = (() => {
         const menu = document.createElement('div');
         menu.id = 'topicContextMenu';
         menu.classList.add('context-menu');
+
+        // 冻结话题域目标；标题生成允许即时保存，但绝不能跨项目串写。
+        const targetItemId = itemFullConfig.id;
+        const targetItemType = itemType;
+        const targetTopicId = topic.id;
+        // "生成话题名" 菜单项：Agent 和 Group 话题均支持
+        const regenerateTitleOption = document.createElement('div');
+        regenerateTitleOption.classList.add('context-menu-item');
+        regenerateTitleOption.innerHTML = `<i class="fas fa-magic"></i> 生成话题名`;
+        regenerateTitleOption.onclick = async () => {
+            closeTopicContextMenu();
+            if (regenerateTitleOption.dataset.loading === 'true') return;
+
+            regenerateTitleOption.dataset.loading = 'true';
+            regenerateTitleOption.classList.add('disabled');
+            try {
+                // 根据话题类型调用对应的 IPC
+                const result = targetItemType === 'agent'
+                    ? await electronAPI.regenerateAgentTopicTitle(targetItemId, targetTopicId)
+                    : await electronAPI.regenerateGroupTopicTitle(targetItemId, targetTopicId);
+
+                if (result?.success && result.newTitle) {
+                    // 原话题已保存；离开原项目后不再投影到当前界面，也不误报失败。
+                    if (currentSelectedItemRef.get()?.id !== targetItemId ||
+                        currentSelectedItemRef.get()?.type !== targetItemType) return;
+                    topic.name = result.newTitle;
+                    const topicInFullConfig = itemFullConfig.topics?.find(candidate => candidate.id === topic.id);
+                    if (topicInFullConfig) topicInFullConfig.name = result.newTitle;
+
+                    const titleDisplayElement = topicItemElement.querySelector('.topic-title-display, .topic-name');
+                    if (titleDisplayElement) titleDisplayElement.textContent = result.newTitle;
+                    uiHelper.showToastNotification(`话题名已更新为"${result.newTitle}"`, 'success');
+                } else {
+                    // 失败时不修改 topic、itemFullConfig 或 DOM，保留旧标题。
+                    uiHelper.showToastNotification(`生成话题名失败: ${result?.error || 'AI 未返回有效标题'}`, 'error');
+                }
+            } catch (error) {
+                // 请求异常时同样不触碰旧标题。
+                console.error('[TopicListManager] 生成话题名失败:', error);
+                uiHelper.showToastNotification(`生成话题名失败: ${error.message}`, 'error');
+            } finally {
+                regenerateTitleOption.dataset.loading = 'false';
+                regenerateTitleOption.classList.remove('disabled');
+            }
+        };
 
         const editTitleOption = document.createElement('div');
         editTitleOption.classList.add('context-menu-item');
@@ -969,6 +1029,7 @@ window.topicListManager = (() => {
             inputField.onclick = (e) => e.stopPropagation();
 
             const confirmButton = document.createElement('button');
+            confirmButton.type = 'button';
             confirmButton.innerHTML = '✓';
             confirmButton.classList.add('topic-title-edit-confirm');
             confirmButton.onclick = async (e) => {
@@ -976,10 +1037,10 @@ window.topicListManager = (() => {
                 const newTitle = inputField.value.trim();
                 if (newTitle && newTitle !== originalTitle) {
                     let saveResult;
-                    if (itemType === 'agent') {
-                        saveResult = await electronAPI.saveAgentTopicTitle(itemFullConfig.id, topic.id, newTitle);
-                    } else if (itemType === 'group') {
-                        saveResult = await electronAPI.saveGroupTopicTitle(itemFullConfig.id, topic.id, newTitle);
+                    if (targetItemType === 'agent') {
+                        saveResult = await electronAPI.saveAgentTopicTitle(targetItemId, targetTopicId, newTitle);
+                    } else if (targetItemType === 'group') {
+                        saveResult = await electronAPI.saveGroupTopicTitle(targetItemId, targetTopicId, newTitle);
                     }
                     if (saveResult && saveResult.success) {
                         topic.name = newTitle;
@@ -997,6 +1058,7 @@ window.topicListManager = (() => {
             };
 
             const cancelButton = document.createElement('button');
+            cancelButton.type = 'button';
             cancelButton.innerHTML = '✗';
             cancelButton.classList.add('topic-title-edit-cancel');
             cancelButton.onclick = (e) => {
@@ -1021,6 +1083,7 @@ window.topicListManager = (() => {
             });
         };
         menu.appendChild(editTitleOption);
+        menu.appendChild(regenerateTitleOption);
 
         const copyTopicIdOption = document.createElement('div');
         copyTopicIdOption.classList.add('context-menu-item');
@@ -1060,7 +1123,7 @@ window.topicListManager = (() => {
         toggleLockOption.onclick = async () => {
             closeTopicContextMenu();
             try {
-                const result = await electronAPI.toggleTopicLock(itemFullConfig.id, topic.id);
+                const result = await electronAPI.toggleTopicLock(targetItemId, targetTopicId);
                 if (result.success) {
                     topic.locked = result.locked;
                     uiHelper.showToastNotification(result.message, 'success');
@@ -1084,7 +1147,7 @@ window.topicListManager = (() => {
         toggleUnreadOption.onclick = async () => {
             closeTopicContextMenu();
             try {
-                const result = await electronAPI.setTopicUnread(itemFullConfig.id, topic.id, !isUnread);
+                const result = await electronAPI.setTopicUnread(targetItemId, targetTopicId, !isUnread);
                 if (result.success) {
                     topic.unread = result.unread;
                     if (result.unreadSource) {
@@ -1117,7 +1180,7 @@ window.topicListManager = (() => {
             closeTopicContextMenu();
 
             // 活动 Flowlock Session 仍依赖该话题的历史目录，运行期间禁止删除。
-            if (itemType === 'agent' && window.flowlockManager?.isTopicLocked?.(itemFullConfig.id, topic.id)) {
+            if (targetItemType === 'agent' && window.flowlockManager?.isTopicLocked?.(targetItemId, targetTopicId)) {
                 uiHelper.showToastNotification('该话题正在心流锁中运行，请先停止对应 Agent 的心流锁。', 'warning');
                 return;
             }
@@ -1132,18 +1195,20 @@ window.topicListManager = (() => {
             );
             if (confirmed) {
                 let result;
-                if (itemType === 'agent') {
-                    result = await electronAPI.deleteTopic(itemFullConfig.id, topic.id);
-                } else if (itemType === 'group') {
-                    result = await electronAPI.deleteGroupTopic(itemFullConfig.id, topic.id);
+                if (targetItemType === 'agent') {
+                    result = await electronAPI.deleteTopic(targetItemId, targetTopicId);
+                } else if (targetItemType === 'group') {
+                    result = await electronAPI.deleteGroupTopic(targetItemId, targetTopicId);
                 }
 
                 if (result && result.success) {
-                    if (currentTopicIdRef.get() === topic.id) {
+                    if (currentSelectedItemRef.get()?.id === targetItemId &&
+                        currentSelectedItemRef.get()?.type === targetItemType &&
+                        currentTopicIdRef.get() === targetTopicId) {
                         mainRendererFunctions.handleTopicDeletion(result.remainingTopics, {
-                            id: itemFullConfig.id,
-                            type: itemType,
-                            topicId: topic.id,
+                            id: targetItemId,
+                            type: targetItemType,
+                            topicId: targetTopicId,
                             fallbackTopicId: itemFullConfig.topics?.find(candidate => candidate.id !== topic.id)?.id || null,
                         });
                     }

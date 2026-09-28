@@ -182,6 +182,7 @@
         box-shadow: none;
         backdrop-filter: none;
         -webkit-backdrop-filter: none;
+        transition: border-color 0.15s ease, background-color 0.15s ease;
     }
 
     html .vcp-ui-scope #groupSettingsContainer :is(input[type="text"], select) {
@@ -189,7 +190,7 @@
         min-height: 34px;
         max-height: 34px;
         padding: 0 var(--vcp-ui-space-3);
-        border-radius: 16px;
+        border-radius: var(--vcp-settings-radius, 8px);
     }
 
     html .vcp-ui-scope #groupSettingsContainer select {
@@ -200,22 +201,23 @@
     html .vcp-ui-scope #groupSettingsContainer textarea {
         min-height: 96px;
         padding: var(--vcp-ui-space-2) var(--vcp-ui-space-3);
-        border-radius: var(--vcp-ui-radius-md);
+        border-radius: var(--vcp-settings-radius, 8px);
     }
 
     html .vcp-ui-scope #groupSettingsContainer :is(input[type="text"], select, textarea):hover {
-        border-color: var(--vcp-ui-control-focus);
+        border-color: color-mix(in srgb, var(--highlight-text, var(--vcp-ui-control-focus)) 45%, var(--vcp-ui-control-border));
         box-shadow: none;
     }
 
     html .vcp-ui-scope #groupSettingsContainer :is(input[type="text"], select, textarea):focus, html .vcp-ui-scope #groupSettingsContainer :is(input[type="text"], select, textarea):focus-visible {
-        border-color: var(--vcp-ui-control-focus);
+        border-color: var(--highlight-text, var(--vcp-ui-control-focus));
         outline: none;
-        box-shadow: 0 0 0 2px var(--vcp-ui-focus-ring);
+        box-shadow: none;
     }
 
     html .vcp-ui-scope #groupSettingsContainer .group-members-list-container {
-        max-height: 220px;
+        max-height: none;
+        overflow: visible;
         padding: var(--vcp-ui-space-1) 0 0;
         gap: var(--vcp-ui-space-2);
         border: 0;
@@ -230,14 +232,21 @@
 
     html .vcp-ui-scope #groupSettingsContainer .group-member-item label {
         min-width: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: flex-start;
+        min-height: 36px;
+        margin: 0;
         padding: var(--vcp-ui-space-2) var(--vcp-ui-space-3);
         border: 1px solid var(--vcp-ui-control-border);
-        border-radius: var(--vcp-ui-radius-md);
+        border-radius: var(--vcp-settings-radius, 8px);
         color: var(--vcp-ui-text-1);
         background: var(--vcp-ui-control-bg);
         box-shadow: none;
         backdrop-filter: none;
         -webkit-backdrop-filter: none;
+        box-sizing: border-box;
+        line-height: 1;
     }
 
     html .vcp-ui-scope #groupSettingsContainer .group-member-item label:hover {
@@ -293,7 +302,7 @@
         padding: var(--vcp-ui-space-2) var(--vcp-ui-space-3);
         box-sizing: border-box;
         border: 1px solid var(--vcp-ui-control-border);
-        border-radius: var(--vcp-ui-radius-md);
+        border-radius: var(--vcp-settings-radius, 8px);
         color: var(--vcp-ui-text-0);
         background: var(--vcp-ui-control-bg);
         cursor: grab;
@@ -367,6 +376,68 @@
         font-size: var(--vcp-ui-font-caption);
         color: var(--vcp-ui-text-3);
         line-height: var(--vcp-ui-line-body);
+    }
+
+    /* JEV 参数位于窄设置侧栏中，必须纵向排列，避免通用 grid 将
+       七个数值字段压进同一行。字段自身保持完整宽度和可读标签。 */
+    html .vcp-ui-scope #groupSettingsContainer #jevModeSettingsContainer {
+        width: 100%;
+        min-width: 0;
+        gap: var(--vcp-ui-space-3);
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer #jevModeSettingsContainer > .group-settings-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--vcp-ui-space-2);
+        width: 100%;
+        min-width: 0;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer #jevModeSettingsContainer > .group-settings-grid > .group-settings-field-shell {
+        width: 100%;
+        min-width: 0;
+        margin: 0;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer #jevModeSettingsContainer input[type="number"] {
+        width: 100%;
+        min-width: 0;
+        height: 34px;
+        box-sizing: border-box;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer #jevMemberStylesInputs {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--vcp-ui-space-2);
+        width: 100%;
+        min-width: 0;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .jev-member-style-item {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        height: auto;
+        min-height: 0;
+        padding: var(--vcp-ui-space-2);
+        gap: var(--vcp-ui-space-1);
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .jev-member-style-item label {
+        max-width: none;
+        padding: 0;
+        border-right: 0;
+        white-space: normal;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .jev-member-style-item textarea {
+        width: 100%;
+        min-width: 0;
+        min-height: 76px;
+        margin: 0;
+        resize: vertical;
     }
 
     html .vcp-ui-scope #groupSettingsContainer .member-tag-input-item {

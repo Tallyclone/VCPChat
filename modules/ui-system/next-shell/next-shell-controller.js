@@ -583,7 +583,7 @@
     function mountNativeTooltipBridge(scope) {
         if (!scope) return;
         const converted = new Map();
-        const isExcluded = element => element.closest?.('#nextUiInternalAppHost, #vchatAppTray');
+        const isExcluded = element => element.closest?.('#nextUiInternalAppHost, #vchatAppTray') || (element.matches?.('input, select, textarea') && element.closest?.('.vcp-settings-schema-surface, .settings-sidebar-surface-view'));
         const convert = element => {
             if (!(element instanceof Element) || isExcluded(element) || !element.hasAttribute('title')) return;
             const title = element.getAttribute('title')?.trim();
@@ -750,7 +750,10 @@
             storage: sessionStorage,
             sessionKey: TAB_SESSION_KEY,
             canPersist: () => !restoringTabs,
-            onActivate: syncEmbeddedActivation,
+            onActivate: viewId => {
+                launchpadController?.setActive(mounted && viewId === 'launchpad');
+                syncEmbeddedActivation();
+            },
             onCloseRequested: closeView,
             suppressedClicks: suppressedTabClicks,
         });
@@ -851,6 +854,7 @@
     function unmount() {
         if (!mounted) return teardownPromise || Promise.resolve();
         mounted = false;
+        launchpadController?.setActive(false);
         mountGeneration += 1;
         if (!mountScope) mountAbortController?.abort();
         if (!mountScope) {

@@ -9,6 +9,33 @@ const {
     resolveRememberedAttachmentDirectory,
     rememberAttachmentDirectory
 } = require('../services/attachmentDialogState');
+const topicTitleManager = require('../../Groupmodules/topicTitleManager');
+const { HistoryMutationQueue } = require('../services/historyMutationQueue');
+const workspaceHandlers = require('./workspaceHandlers');
+
+/**
+ * 若 filePath 属于已登记工作区且是文本/代码文件，创建真实路径实时引用；否则返回 null，
+ * 调用方继续走复制附件逻辑。超出大小上限等失败同样回退复制，不阻断附件添加。
+ */
+async function tryCreateWorkspaceLiveReference(filePath, displayName, fileTypeHint) {
+    if (typeof filePath !== 'string' || !filePath) return null;
+    const fileManager = require('../fileManager');
+    const owner = workspaceHandlers.resolveWorkspaceFile(filePath);
+    if (!owner || !fileManager.isLiveReferenceCandidate(owner.absolutePath, { workspace: true })) return null;
+    try {
+        const liveRef = await fileManager.createLiveFileReference(
+            owner.absolutePath,
+            displayName || path.basename(owner.absolutePath),
+            fileTypeHint || 'text/plain',
+            { workspace: { workspaceId: owner.workspaceId, alias: owner.alias, relPath: owner.relPath } }
+        );
+        console.log(`[ChatHandlers] Attached workspace live reference ${owner.alias}:${owner.relPath}`);
+        return liveRef;
+    } catch (error) {
+        console.warn(`[ChatHandlers] Workspace live reference failed for ${filePath}, falling back to copy:`, error.message);
+        return null;
+    }
+}
 
 function stableStringify(value) {
     if (value === null || typeof value !== 'object') {
@@ -179,7 +206,8 @@ function initialize(mainWindow, context) {
         getMusicState,
         fileWatcher,
         agentConfigManager,
-        settingsManager
+        settingsManager,
+        historyMutationQueue = new HistoryMutationQueue({ userDataDir: USER_DATA_DIR, fileWatcher })
     } = context;
 
     // Ensure the watcher is in a clean state on initialization
@@ -496,6 +524,89 @@ function initialize(mainWindow, context) {
         }
     });
 
+    ipcMain.handle('regenerate-agent-topic-title', async (event, agentId, topicId) => {
+        if (!agentId || !topicId) {
+            return { success: false, error: 'Agent ID 或话题 ID 不能为空。' };
+        }
+        try {
+            const agentConfig = agentConfigManager
+                ? await agentConfigManager.readAgentConfig(agentId)
+                : await fs.readJson(path.join(AGENT_DIR, agentId, 'config.json'));
+            const topic = agentConfig?.topics?.find(candidate => candidate.id === topicId);
+            if (!topic) {
+                return { success: false, error: `未找到 Agent 话题 ${topicId}。` };
+            }
+
+            const historyFile = path.join(USER_DATA_DIR, agentId, 'topics', topicId, 'history.json');
+            let history = [];
+            if (await fs.pathExists(historyFile)) {
+                history = await fs.readJson(historyFile);
+            }
+            const effectiveMessageCount = Array.isArray(history)
+                ? history.filter(message => message && message.role !== 'system' && message.isThinking !== true).length
+                : 0;
+            if (effectiveMessageCount === 0) {
+                return { success: false, error: '该话题还没有可用于生成标题的对话。' };
+            }
+
+            const settingsPath = path.join(APP_DATA_ROOT_IN_PROJECT, 'settings.json');
+            let settings = {};
+            if (await fs.pathExists(settingsPath)) {
+                settings = await fs.readJson(settingsPath);
+            }
+            const globalVcpSettings = {
+                vcpUrl: settings.vcpServerUrl,
+                vcpApiKey: settings.vcpApiKey,
+                userName: settings.userName || '用户',
+                topicSummaryModel: settings.topicSummaryModel
+            };
+            if (!globalVcpSettings.vcpUrl) {
+                return { success: false, error: '请先在全局设置中配置 VCP 服务器 URL。' };
+            }
+
+            const newTitle = await topicTitleManager.generateTitleForHistory(history, globalVcpSettings);
+            if (!newTitle) {
+                return { success: false, error: 'AI 未能生成有效的话题标题。' };
+            }
+
+            let savedTopics = null;
+            if (agentConfigManager) {
+                await agentConfigManager.updateAgentConfig(agentId, existingConfig => {
+                    if (!existingConfig.topics || !Array.isArray(existingConfig.topics)) {
+                        return existingConfig;
+                    }
+                    const updatedConfig = { ...existingConfig, topics: [...existingConfig.topics] };
+                    const topicIndex = updatedConfig.topics.findIndex(t => t.id === topicId);
+                    if (topicIndex !== -1) {
+                        updatedConfig.topics[topicIndex] = { ...updatedConfig.topics[topicIndex], name: newTitle };
+                    }
+                    return updatedConfig;
+                });
+                const updatedConfig = await agentConfigManager.readAgentConfig(agentId);
+                savedTopics = updatedConfig.topics;
+            } else {
+                const configPath = path.join(AGENT_DIR, agentId, 'config.json');
+                const config = await fs.readJson(configPath);
+                const topicIndex = (config.topics || []).findIndex(t => t.id === topicId);
+                if (topicIndex !== -1) {
+                    config.topics[topicIndex].name = newTitle;
+                    await fs.writeJson(configPath, config, { spaces: 2 });
+                    savedTopics = config.topics;
+                }
+            }
+
+            return {
+                success: true,
+                newTitle,
+                topics: savedTopics,
+                sourceMessageCount: Math.min(effectiveMessageCount, topicTitleManager.MIN_MESSAGES_FOR_SUMMARY)
+            };
+        } catch (error) {
+            console.error(`[ChatHandlers] 重新生成 Agent ${agentId} 话题 ${topicId} 标题失败:`, error);
+            return { success: false, error: error.message };
+        }
+    });
+
     ipcMain.handle('get-chat-history', async (event, agentId, topicId) => {
         if (!topicId) return { error: `获取Agent ${agentId} 聊天历史失败: topicId 未提供。` };
         try {
@@ -514,15 +625,11 @@ function initialize(mainWindow, context) {
     });
 
     ipcMain.handle('save-chat-history', async (event, agentId, topicId, history) => {
-        if (!topicId) return { error: `保存Agent ${agentId} 聊天历史失败: topicId 未提供。` };
+        if (!agentId || !topicId || !Array.isArray(history)) {
+            return { success: false, error: `保存Agent ${agentId} 聊天历史失败: 参数无效。` };
+        }
         try {
-            if (fileWatcher) {
-                fileWatcher.signalInternalSave();
-            }
-            const historyDir = path.join(USER_DATA_DIR, agentId, 'topics', topicId);
-            await fs.ensureDir(historyDir);
-            const historyFile = path.join(historyDir, 'history.json');
-            await fs.writeJson(historyFile, history, { spaces: 2 });
+            await historyMutationQueue.replace({ itemId: agentId, itemType: 'agent', topicId }, history);
             return { success: true };
         } catch (error) {
             console.error(`保存Agent ${agentId} 话题 ${topicId} 聊天历史失败:`, error);
@@ -685,7 +792,8 @@ function initialize(mainWindow, context) {
                 }
 
                 const fileManager = require('../fileManager');
-                storedFileObject = await fileManager.storeFile(fileData.path, originalFileName, agentId, topicId, fileTypeHint);
+                storedFileObject = await tryCreateWorkspaceLiveReference(fileData.path, originalFileName, fileTypeHint)
+                    || await fileManager.storeFile(fileData.path, originalFileName, agentId, topicId, fileTypeHint);
             } else if (fileData.type === 'base64') {
                 const fileManager = require('../fileManager');
                 const originalFileName = `pasted_image_${Date.now()}.${fileData.extension || 'png'}`;
@@ -763,7 +871,8 @@ function initialize(mainWindow, context) {
                     }
 
                     const fileManager = require('../fileManager');
-                    const storedFile = await fileManager.storeFile(filePath, originalName, agentId, topicId, fileTypeHint);
+                    const storedFile = await tryCreateWorkspaceLiveReference(filePath, originalName, fileTypeHint)
+                        || await fileManager.storeFile(filePath, originalName, agentId, topicId, fileTypeHint);
                     storedFilesInfo.push(storedFile);
                 } catch (error) {
                     console.error(`[Main - select-files-to-send] Error storing file ${filePath}:`, error);
@@ -831,9 +940,34 @@ function initialize(mainWindow, context) {
                     }
                 }
 
+                const fileManager = require('../fileManager');
+
+                // 工作区文件（@工作区 / 拖拽 / 分享）：识别为真实路径实时引用。
+                if (typeof fileData.path === 'string') {
+                    const workspaceRef = await tryCreateWorkspaceLiveReference(fileData.path, fileData.name, fileTypeHint);
+                    if (workspaceRef) {
+                        storedFilesInfo.push({ success: true, attachment: workspaceRef, name: fileData.name });
+                        continue;
+                    }
+                }
+
+                // @笔记：以实时引用方式附加真实笔记文件，不复制到 attachments 目录。
+                // AI 拿到的是笔记区真实路径，可直接修改；用户更新笔记后上下文也会同步。
+                if (fileData.liveReference === true
+                    && typeof fileData.path === 'string'
+                    && fileManager.isLiveReferenceCandidate(fileData.path)) {
+                    try {
+                        const liveRef = await fileManager.createLiveFileReference(fileData.path, fileData.name, fileTypeHint || 'text/plain');
+                        console.log(`[Main - handle-file-drop] Attached live note reference: ${liveRef.internalPath}`);
+                        storedFilesInfo.push({ success: true, attachment: liveRef, name: fileData.name });
+                        continue;
+                    } catch (liveError) {
+                        console.warn(`[Main - handle-file-drop] Live reference failed for ${fileData.path}, falling back to copy:`, liveError.message);
+                    }
+                }
+
                 console.log(`[Main - handle-file-drop] Attempting to store dropped file: ${fileData.name} (Type: ${fileTypeHint}) for Agent: ${agentId}, Topic: ${topicId}`);
 
-                const fileManager = require('../fileManager');
                 const storedFile = await fileManager.storeFile(fileSource, fileData.name, agentId, topicId, fileTypeHint);
                 storedFilesInfo.push({ success: true, attachment: storedFile, name: fileData.name });
 
@@ -1397,14 +1531,18 @@ function initialize(mainWindow, context) {
     }
 
     /**
-     function hasUserParticipation(history) {
-         return Array.isArray(history) && history.some(message =>
-             message &&
-             message.role === 'user' &&
-             message.isThinking !== true
-         );
-     }
- 
+     * 判断话题历史中是否出现过用户参与（用户真实消息）。
+     * @param {Array} history - 消息历史
+     * @returns {boolean}
+     */
+    function hasUserParticipation(history) {
+        return Array.isArray(history) && history.some(message =>
+            message &&
+            message.role === 'user' &&
+            message.isThinking !== true
+        );
+    }
+
      /**
       * Part C: 计算单个话题的未读消息数
       * @param {Object} topic - 话题对象
@@ -1478,49 +1616,40 @@ function initialize(mainWindow, context) {
     // Part A: 切换话题锁定状态
     ipcMain.handle('toggle-topic-lock', async (event, agentId, topicId) => {
         try {
-            const agentConfigPath = path.join(AGENT_DIR, agentId, 'config.json');
-            if (!await fs.pathExists(agentConfigPath)) {
-                return { success: false, error: `Agent ${agentId} 的配置文件不存在` };
+            if (!agentId || !topicId) {
+                return { success: false, error: '缺少 agentId 或 topicId。' };
             }
 
-            let config;
-            try {
-                config = await fs.readJson(agentConfigPath);
-            } catch (e) {
-                console.error(`读取Agent ${agentId} 配置文件失败 (toggle-topic-lock):`, e);
-                return { success: false, error: `读取配置文件失败: ${e.message}` };
+            if (!agentConfigManager) {
+                return { success: false, error: 'AgentConfigManager 未初始化，无法安全更新话题锁定状态。' };
             }
 
-            if (!config.topics || !Array.isArray(config.topics)) {
-                return { success: false, error: '配置文件损坏或缺少话题列表' };
-            }
+            let locked;
+            await agentConfigManager.updateAgentConfig(agentId, existingConfig => {
+                if (!Array.isArray(existingConfig.topics)) {
+                    throw new Error('配置文件损坏或缺少话题列表');
+                }
 
-            const topic = config.topics.find(t => t.id === topicId);
-            if (!topic) {
-                return { success: false, error: `未找到话题 ${topicId}` };
-            }
+                let found = false;
+                const topics = existingConfig.topics.map(topic => {
+                    if (topic.id !== topicId) return topic;
 
-            // Part A: 历史数据兼容 - 如果话题没有 locked 字段，默认设置为 true
-            if (topic.locked === undefined) {
-                topic.locked = true;
-            }
+                    found = true;
+                    locked = topic.locked === undefined ? false : !topic.locked;
+                    return { ...topic, locked };
+                });
 
-            // 切换锁定状态
-            topic.locked = !topic.locked;
+                if (!found) {
+                    throw new Error(`未找到话题 ${topicId}`);
+                }
 
-            if (agentConfigManager) {
-                await agentConfigManager.updateAgentConfig(agentId, existingConfig => ({
-                    ...existingConfig,
-                    topics: config.topics
-                }));
-            } else {
-                await fs.writeJson(agentConfigPath, config, { spaces: 2 });
-            }
+                return { ...existingConfig, topics };
+            });
 
             return {
                 success: true,
-                locked: topic.locked,
-                message: topic.locked ? '话题已锁定' : '话题已解锁'
+                locked,
+                message: locked ? '话题已锁定' : '话题已解锁'
             };
         } catch (error) {
             console.error('[toggleTopicLock] Error:', error);
@@ -1531,54 +1660,47 @@ function initialize(mainWindow, context) {
     // Part A: 设置话题未读状态
     ipcMain.handle('set-topic-unread', async (event, agentId, topicId, unread) => {
         try {
-            const agentConfigPath = path.join(AGENT_DIR, agentId, 'config.json');
-            if (!await fs.pathExists(agentConfigPath)) {
-                return { success: false, error: `Agent ${agentId} 的配置文件不存在` };
+            if (!agentId || !topicId || typeof unread !== 'boolean') {
+                return { success: false, error: '缺少有效的 agentId、topicId 或 unread 参数。' };
             }
 
-            let config;
-            try {
-                config = await fs.readJson(agentConfigPath);
-            } catch (e) {
-                console.error(`读取Agent ${agentId} 配置文件失败 (set-topic-unread):`, e);
-                return { success: false, error: `读取配置文件失败: ${e.message}` };
+            if (!agentConfigManager) {
+                return { success: false, error: 'AgentConfigManager 未初始化，无法安全更新话题未读状态。' };
             }
 
-            if (!config.topics || !Array.isArray(config.topics)) {
-                return { success: false, error: '配置文件损坏或缺少话题列表' };
-            }
+            let unreadSource = null;
+            await agentConfigManager.updateAgentConfig(agentId, existingConfig => {
+                if (!Array.isArray(existingConfig.topics)) {
+                    throw new Error('配置文件损坏或缺少话题列表');
+                }
 
-            const topic = config.topics.find(t => t.id === topicId);
-            if (!topic) {
-                return { success: false, error: `未找到话题 ${topicId}` };
-            }
+                let found = false;
+                const topics = existingConfig.topics.map(topic => {
+                    if (topic.id !== topicId) return topic;
 
-            // Part A: 历史数据兼容 - 如果话题没有 unread 字段，默认设置为 false
-            if (topic.unread === undefined) {
-                topic.unread = false;
-            }
+                    found = true;
+                    const updatedTopic = { ...topic, unread };
+                    if (unread) {
+                        // 该 IPC 入口用于用户右键手动标记；Agent 自动未读由创建方直接写入配置。
+                        updatedTopic.unreadSource = 'manual';
+                        unreadSource = 'manual';
+                    } else {
+                        delete updatedTopic.unreadSource;
+                    }
+                    return updatedTopic;
+                });
 
-            topic.unread = unread;
-            if (unread) {
-                // 该 IPC 入口用于用户右键手动标记；Agent 自动未读由创建方直接写入配置。
-                topic.unreadSource = 'manual';
-            } else {
-                delete topic.unreadSource;
-            }
+                if (!found) {
+                    throw new Error(`未找到话题 ${topicId}`);
+                }
 
-            if (agentConfigManager) {
-                await agentConfigManager.updateAgentConfig(agentId, existingConfig => ({
-                    ...existingConfig,
-                    topics: config.topics
-                }));
-            } else {
-                await fs.writeJson(agentConfigPath, config, { spaces: 2 });
-            }
+                return { ...existingConfig, topics };
+            });
 
             return {
                 success: true,
-                unread: topic.unread,
-                unreadSource: topic.unreadSource || null
+                unread,
+                unreadSource
             };
         } catch (error) {
             console.error('[setTopicUnread] Error:', error);

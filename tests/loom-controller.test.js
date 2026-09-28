@@ -2,6 +2,8 @@
 
 const assert = require('assert');
 const loomController = require('../VCPDistributedServer/Plugin/LoomController/LoomControllerService');
+const loomManifest = require('../VCPDistributedServer/Plugin/LoomController/plugin-manifest.json');
+const webAgentProtocol = require('../modules/loom/webcore/web-agent-protocol');
 
 function createFakeManager() {
     const calls = [];
@@ -41,6 +43,20 @@ function createFakeManager() {
         async closeApp(appId) {
             calls.push(['closeApp', appId]);
             return { success: true };
+        },
+        async navigateApp(appId, action) {
+            calls.push(['navigateApp', appId, action]);
+            return {
+                appId,
+                name: app.name,
+                url: action === 'home' ? app.startUrl : `${app.startUrl}${action}`,
+                loading: false,
+                canGoBack: action !== 'back',
+                canGoForward: action !== 'forward',
+                error: null,
+                action,
+                dispatched: action !== 'forward',
+            };
         },
         async readSources(appId) {
             calls.push(['readSources', appId]);
@@ -141,6 +157,37 @@ function assertContentResult(result) {
 }
 
 async function run() {
+    const registeredCommands = loomManifest.capabilities.invocationCommands
+        .map((definition) => definition.command);
+    for (const command of [
+        'NavigateBack',
+        'NavigateForward',
+        'NavigateHome',
+        'ReloadPage',
+        'click',
+        'type',
+        'send_keys',
+        'scroll',
+        'set_value',
+        'select_option',
+        'hover',
+        'check',
+        'wait_for',
+    ]) {
+        assert(
+            registeredCommands.includes(command),
+            `LoomController 清单应注册一级命令 ${command}`
+        );
+    }
+    assert.strictEqual(
+        webAgentProtocol.resolveCommand('page_press').canonical,
+        'page_send_keys'
+    );
+    assert.strictEqual(
+        webAgentProtocol.resolveCommand('press').canonical,
+        'page_send_keys'
+    );
+
     loomController._test.resetForTests();
     const manager = createFakeManager();
     loomController.initialize({
@@ -184,6 +231,40 @@ async function run() {
         id: 'test-app',
     });
     assertContentResult(closed);
+
+    const navigatedBack = await loomController.processToolCall({
+        command: 'NavigateBack',
+        appId: 'test-app',
+    });
+    assertContentResult(navigatedBack);
+    assert.strictEqual(navigatedBack.details.action, 'back');
+    assert.strictEqual(navigatedBack.details.dispatched, true);
+    assert(manager.calls.some((call) =>
+        call[0] === 'navigateApp' && call[1] === 'test-app' && call[2] === 'back'
+    ));
+
+    const navigatedForward = await loomController.processToolCall({
+        command: 'NavigateForward',
+        appId: 'test-app',
+    });
+    assertContentResult(navigatedForward);
+    assert.strictEqual(navigatedForward.details.action, 'forward');
+    assert.strictEqual(navigatedForward.details.dispatched, false);
+    assert(navigatedForward.content[0].text.includes('当前无可用历史记录'));
+
+    const navigatedHome = await loomController.processToolCall({
+        command: 'NavigateHome',
+        appId: 'test-app',
+    });
+    assertContentResult(navigatedHome);
+    assert.strictEqual(navigatedHome.details.state.url, 'https://example.com/');
+
+    const reloaded = await loomController.processToolCall({
+        command: 'ReloadPage',
+        appId: 'test-app',
+    });
+    assertContentResult(reloaded);
+    assert.strictEqual(reloaded.details.action, 'reload');
 
     const sources = await loomController.processToolCall({
         command: 'GetAppSources',
@@ -267,6 +348,82 @@ async function run() {
     assert.strictEqual(actionCall[3].target, 'vcp-searchbox-1');
     assert.deepStrictEqual(actionCall[4], { strict: true });
 
+    const legacyPress = await loomController.processToolCall({
+        command: 'ExecuteAction',
+        appId: 'test-app',
+        actionId: 'page_press',
+        params: {
+            target: 'vcp-h-1-3-9-7o6foz',
+            key: 'Enter',
+            documentGeneration: 1,
+            snapshotId: 3,
+        },
+        options: {
+            strict: true,
+            verification: true,
+        },
+    });
+    assertContentResult(legacyPress);
+    const legacyPressCall = manager.calls.filter((call) =>
+        call[0] === 'executeWebAgentAction'
+    ).at(-1);
+    assert.strictEqual(legacyPressCall[2], 'send_keys');
+    assert.strictEqual(legacyPressCall[3].keys, 'Enter');
+    assert.strictEqual(legacyPressCall[3].key, undefined);
+    assert.strictEqual(legacyPressCall[3].target, 'vcp-h-1-3-9-7o6foz');
+    assert.deepStrictEqual(legacyPressCall[4], {
+        strict: true,
+        verification: true,
+    });
+
+    const directKeys = await loomController.processToolCall({
+        command: 'send_keys',
+        appId: 'test-app',
+        target: 'vcp-searchbox-1',
+        keys: 'Enter',
+        snapshotId: '3',
+        strict: 'true',
+        verification: 'auto',
+    });
+    assertContentResult(directKeys);
+    const directKeysCall = manager.calls.filter((call) =>
+        call[0] === 'executeWebAgentAction'
+    ).at(-1);
+    assert.strictEqual(directKeysCall[2], 'send_keys');
+    assert.deepStrictEqual(directKeysCall[3], {
+        target: 'vcp-searchbox-1',
+        keys: 'Enter',
+        snapshotId: '3',
+    });
+    assert.deepStrictEqual(directKeysCall[4], {
+        strict: true,
+        verification: 'auto',
+    });
+
+    const directClick = await loomController.processToolCall({
+        command: 'click',
+        appId: 'test-app',
+        target: '登录',
+        allowFallback: 'false',
+    });
+    assertContentResult(directClick);
+    const directClickCall = manager.calls.filter((call) =>
+        call[0] === 'executeWebAgentAction'
+    ).at(-1);
+    assert.strictEqual(directClickCall[2], 'click');
+    assert.deepStrictEqual(directClickCall[3], { target: '登录' });
+    assert.deepStrictEqual(directClickCall[4], { allowFallback: false });
+
+    const serialNavigation = await loomController.processToolCall({
+        appId: 'test-app',
+        command1: 'NavigateHome',
+        command2: 'ReloadPage',
+    });
+    assertContentResult(serialNavigation);
+    assert.strictEqual(serialNavigation.details.status, 'success');
+    assert.strictEqual(serialNavigation.details.steps[0].details.action, 'home');
+    assert.strictEqual(serialNavigation.details.steps[1].details.action, 'reload');
+
     const serialStartedAt = Date.now();
     const serial = await loomController.processToolCall({
         appId: 'test-app',
@@ -298,15 +455,15 @@ async function run() {
     manager.executeWebAgentAction = async () => {
         throw new Error('模拟动作失败');
     };
-    await assert.rejects(
-        () => loomController.processToolCall({
-            appId: 'test-app',
-            command1: 'click',
-            target1: 'vcp-button-1',
-            command2: 'get_page_info',
-        }),
-        /串行步骤 1 \(click\) 失败，后续步骤已停止/
-    );
+    const serialFailure = await loomController.processToolCall({
+        appId: 'test-app',
+        command1: 'click',
+        target1: 'vcp-button-1',
+        command2: 'get_page_info',
+    });
+    assert.strictEqual(serialFailure.details.status, 'partial_failure');
+    assert.strictEqual(serialFailure.details.failedStep.index, 1);
+    assert.strictEqual(serialFailure.details.stopped, true);
     manager.executeWebAgentAction = originalExecuteAction;
     assert.strictEqual(
         manager.calls.slice(callsBeforeFailure).some((call) =>
@@ -365,14 +522,13 @@ async function run() {
         }),
         /params 不是有效的 JSON 对象/
     );
-    await assert.rejects(
-        () => loomController.processToolCall({
-            appId: 'test-app',
-            command1: 'wait',
-            waitMs1: '-1',
-        }),
-        /wait 时长必须是非负数/
-    );
+    const invalidWait = await loomController.processToolCall({
+        appId: 'test-app',
+        command1: 'wait',
+        waitMs1: '-1',
+    });
+    assert.strictEqual(invalidWait.details.status, 'partial_failure');
+    assert.match(invalidWait.details.failedStep.error, /wait 时长必须是非负数/);
     await assert.rejects(
         () => loomController.processToolCall({
             command: 'EditAppSources',
