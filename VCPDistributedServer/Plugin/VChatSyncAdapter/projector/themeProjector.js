@@ -2,6 +2,12 @@ const path = require("path");
 const fs = require("fs-extra");
 const { checksumBuffer, checksumJson } = require("../core/hash");
 const { normalizeSlashes } = require("../utils/pathRules");
+const {
+  buildThemePackageFromCss,
+  scanThemePackages,
+  themeSourceChecksum,
+  withThemeSyncLock,
+} = require("../sync/themePackageSync");
 
 function safeSegment(value, label) {
   const normalized = String(value || "").trim();
@@ -43,8 +49,8 @@ function isSafeRelativePath(value) {
 }
 
 function safeThemeCssRelativePath(manifest, themeId) {
-  const css = manifest.css || {};
-  const candidate = css.relative_path || css.relativePath;
+  const css = (manifest.manifest && manifest.manifest.css) || manifest.css || {};
+  const candidate = normalizeSlashes(css.relative_path || css.relativePath);
   if (
     isSafeRelativePath(candidate) &&
     /^styles\/themes\/[^/]+\.css$/i.test(candidate)
@@ -117,20 +123,34 @@ async function writeThemePackage(event, context) {
       (manifest.manifest && manifest.manifest.extra_css) ||
       ""
   );
-  if (cssText) {
-    await fs.ensureDir(path.dirname(cssPath));
-    await fs.writeFile(cssPath, cssText, "utf8");
-  }
+  await fs.ensureDir(path.dirname(cssPath));
+  await fs.writeFile(cssPath, cssText, "utf8");
+
+  const previous = localIndex.getFile(cssRelativePath) || {};
+  const identity = {
+    theme_id: themeId,
+    display_name: manifest.display_name || themeId,
+    version: Number(manifest.version || 1),
+    mode: manifest.mode || "dual",
+  };
+  const projected = await buildThemePackageFromCss(
+    cssPath, appRoot(config), config, identity
+  );
+  const expectedCssChecksum = checksumBuffer(Buffer.from(cssText, "utf8"));
+  const projectionUnchanged = projected.css_checksum === expectedCssChecksum;
 
   const manifestRelativePath = normalizeSlashes(
     path.relative(config.appDataPath, manifestPath)
   );
-  await localIndex.setFile(`theme_package:${themeId}`, {
-    kind: "theme_package_remote",
-    theme_id: themeId,
-    display_name: manifest.display_name || themeId,
-    version: Number(manifest.version || 1),
-    checksum: manifest.checksum || checksumJson(manifest),
+  const record = {
+    kind: "theme_package",
+    ...identity,
+    checksum: projectionUnchanged ? projected.checksum : previous.checksum,
+    source_checksum: projectionUnchanged
+      ? projected.source_checksum
+      : previous.source_checksum,
+    css_checksum: expectedCssChecksum,
+    center_checksum: manifest.checksum || checksumJson(manifest),
     manifest_path: manifestPath,
     css_path: cssPath,
     relative_path: cssRelativePath,
@@ -139,8 +159,16 @@ async function writeThemePackage(event, context) {
       .map((asset) => asset.asset_hash || asset.hash)
       .filter(Boolean),
     last_applied_seq: event.seq,
+    uploaded: true,
+    synced_from_center: true,
+    pending_theme_operation_id: null,
+    pending_theme_checksum: null,
     updated_at: new Date().toISOString(),
-  });
+  };
+  // The watcher looks up CSS paths. Keep the library lookup as an alias for
+  // bootstrap and UI consumers, but use the same baseline as a local scan.
+  await localIndex.setFile(cssRelativePath, record);
+  await localIndex.setFile(`theme_package:${themeId}`, record);
   if (logger && logger.info)
     logger.info("theme package projected", {
       theme_id: themeId,
@@ -172,6 +200,7 @@ async function writeThemeAsset(event, context) {
   const target = path.join(dir, `${hash}${extForAsset(asset)}`);
   const wallpaperRelativePath = safeWallpaperRelativePath(asset, hash);
   const wallpaperTarget = path.join(appRoot(config), wallpaperRelativePath);
+  const beforePackages = await scanThemePackages(config, localIndex);
   let downloaded = false;
   let pendingBinary = false;
   if (!(await fs.pathExists(target))) {
@@ -232,9 +261,17 @@ async function writeThemeAsset(event, context) {
     downloaded,
     pending_binary: pendingBinary,
     binary_strategy: pendingBinary ? "download_by_hash" : "local",
+    // A downloaded binary is already present in the center. A later watcher
+    // scan must not upload it again as if it were a new local wallpaper.
+    uploaded: !pendingBinary,
+    binary_uploaded: !pendingBinary,
+    bootstrap_baseline: false,
     last_applied_seq: event.seq,
     updated_at: new Date().toISOString(),
   });
+  if (!pendingBinary) {
+    await refreshThemeSourcesAfterAsset(beforePackages, wallpaperTarget, context);
+  }
   if (logger && logger.info)
     logger.info("theme asset projected", {
       hash,
@@ -249,7 +286,29 @@ async function writeThemeAsset(event, context) {
   };
 }
 
-async function applyThemeEvent(event, context) {
+async function refreshThemeSourcesAfterAsset(beforePackages, wallpaperTarget, context) {
+  const { config, localIndex } = context;
+  const beforeByPath = new Map(beforePackages.map((entry) => [entry.relative_path, entry]));
+  for (const after of await scanThemePackages(config, localIndex)) {
+    const before = beforeByPath.get(after.relative_path);
+    const record = localIndex.getFile(after.relative_path);
+    if (!before || !record || record.source_checksum !== before.source_checksum) continue;
+    // Only acknowledge the wallpaper we just projected. A user's concurrent
+    // CSS edit or a change to another wallpaper must still be uploaded.
+    if (themeSourceChecksum(before, wallpaperTarget) !== themeSourceChecksum(after, wallpaperTarget)) continue;
+    if (before.source_checksum === after.source_checksum) continue;
+    const next = {
+      ...record,
+      checksum: after.checksum,
+      source_checksum: after.source_checksum,
+      updated_at: new Date().toISOString(),
+    };
+    await localIndex.setFile(after.relative_path, next);
+    await localIndex.setFile(`theme_package:${after.theme_id}`, next);
+  }
+}
+
+async function applyThemeEventUnlocked(event, context) {
   if (event.entity_type === "theme_package") {
     if (event.action === "delete") return deleteThemePackage(event, context);
     if (["create", "update", "upsert", "baseline"].includes(event.action))
@@ -266,13 +325,19 @@ async function applyThemeEvent(event, context) {
   );
 }
 
+async function applyThemeEvent(event, context) {
+  return withThemeSyncLock(context.config, () => applyThemeEventUnlocked(event, context));
+}
+
 async function applyThemeEvents(events, context) {
-  let applied = 0;
-  for (const event of events) {
-    await applyThemeEvent(event, context);
-    applied += 1;
-  }
-  return { applied };
+  return withThemeSyncLock(context.config, async () => {
+    let applied = 0;
+    for (const event of events) {
+      await applyThemeEventUnlocked(event, context);
+      applied += 1;
+    }
+    return { applied };
+  });
 }
 
 module.exports = { applyThemeEvents, applyThemeEvent };

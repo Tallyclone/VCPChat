@@ -5,11 +5,13 @@ const assert = require("assert");
 const { diffHistory } = require("../diff/historyDiffEngine");
 const { createLocalIndex } = require("../core/localIndex");
 const { createOfflineQueue, readQueueLines } = require("../sync/offlineQueue");
+const { checksumJson } = require("../core/hash");
 
 async function main() {
   const tempRoot = await fs.mkdtemp(
     path.join(os.tmpdir(), "vchat-sync-missing-message-")
   );
+  try {
   const config = {
     appDataPath: path.join(tempRoot, "AppData"),
     syncDir: path.join(tempRoot, "AppData", "sync"),
@@ -63,10 +65,15 @@ async function main() {
     logger
   );
   await offlineQueue.start({ modeProvider: () => "active" });
+  await offlineQueue.stop();
+  await localIndex.setTopicSnapshot("user:agent-one:topic-one", {
+    last_known_server_version: 1,
+  });
   await localIndex.setMessage("user:agent-one:topic-one:m1", {
+    identity: { ...identityBase, id: "m1" },
     topic_key: "user:agent-one:topic-one",
-    last_known_checksum: "next-checksum",
-    local_projection_checksum: "next-checksum",
+    last_known_checksum: checksumJson(history[0]),
+    local_projection_checksum: checksumJson(history[0]),
     last_known_server_version: 2,
     pending_operation_id: null,
     pending_action: null,
@@ -92,32 +99,41 @@ async function main() {
           message_id: "m1",
           message: history[0],
           attachments: [],
-          local_checksum: "next-checksum",
+          local_checksum: checksumJson(history[0]),
         },
       },
     ],
     { mode: "active" }
   );
 
-  await new Promise((resolve) => setTimeout(resolve, 30));
-
   await offlineQueue.processOnce();
-  await offlineQueue.stop();
   const rows = await readQueueLines(config.queuePath, logger);
 
-  assert.deepStrictEqual(rows, []);
+  assert.strictEqual(rows.length, 1);
+  assert.strictEqual(rows[0].operation.action, "create");
+  assert.notStrictEqual(rows[0].operation.operation_id, "op-update-missing");
+  assert.strictEqual(rows[0].repair_of_operation_id, "op-update-missing");
   const repaired = localIndex.getMessage("user:agent-one:topic-one:m1");
   assert.strictEqual(repaired.last_known_server_version, null);
-  assert.strictEqual(repaired.pending_operation_id, null);
-  assert.strictEqual(repaired.pending_action, null);
-  assert.strictEqual(repaired.pending_status, "needs_create");
+  assert.strictEqual(repaired.pending_operation_id, rows[0].operation.operation_id);
+  assert.strictEqual(repaired.pending_action, "create");
+  assert.strictEqual(repaired.pending_status, "pending_create");
   assert.strictEqual(
     repaired.remote_existence_assumption_rollback_reason,
     "message update target does not exist"
   );
 
-  await fs.remove(tempRoot);
+  await offlineQueue.processOnce();
+  assert.deepStrictEqual(await readQueueLines(config.queuePath, logger), []);
+  assert.strictEqual(localIndex.getMessage("user:agent-one:topic-one:m1").last_known_server_version, 1);
+  const afterRepair = await diffHistory(identityBase, history, localIndex, { deviceId: "pc-a" });
+  assert.strictEqual(afterRepair.operations.length, 0);
   console.log("missing message repair smoke test passed");
+  } finally {
+    assert.strictEqual(path.dirname(path.resolve(tempRoot)), path.resolve(os.tmpdir()));
+    assert(path.basename(tempRoot).startsWith("vchat-sync-missing-message-"));
+    await fs.remove(tempRoot);
+  }
 }
 
 main().catch((error) => {

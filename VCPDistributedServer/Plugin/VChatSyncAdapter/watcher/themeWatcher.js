@@ -1,13 +1,14 @@
 const chokidar = require("chokidar");
-const path = require("path");
-const { debounce } = require("../utils/debounce");
 const { syncLocalThemes } = require("../diff/themeDiffEngine");
 
 function createThemeWatcher(config, localIndex, centerClient, logger, context = {}) {
   let watcher = null;
   let pending = null;
+  let stopped = true;
+  const running = new Set();
 
   async function processThemeEvent(filePath) {
+    if (stopped) return;
     if (logger && logger.debug) {
       logger.debug("theme source file changed", { filePath });
     }
@@ -21,14 +22,21 @@ function createThemeWatcher(config, localIndex, centerClient, logger, context = 
   }
 
   function schedule(filePath) {
-    if (!pending) pending = debounce(processThemeEvent, config.watchDebounceMs || 700);
-    pending(filePath);
+    if (stopped) return;
+    if (pending) clearTimeout(pending);
+    pending = setTimeout(() => {
+      pending = null;
+      const task = processThemeEvent(filePath);
+      running.add(task);
+      task.then(() => running.delete(task), () => running.delete(task));
+    }, config.watchDebounceMs || 700);
   }
 
   return {
     async start() {
       const watchPaths = [config.themeStylesDir, config.wallpaperDir].filter(Boolean);
       if (watchPaths.length === 0) return;
+      stopped = false;
       watcher = chokidar.watch(watchPaths, {
         ignoreInitial: true,
         awaitWriteFinish: false,
@@ -40,14 +48,25 @@ function createThemeWatcher(config, localIndex, centerClient, logger, context = 
       watcher.on("error", (error) => {
         if (logger && logger.error) logger.error("theme watcher error", { error: error.message });
       });
+      await new Promise((resolve, reject) => {
+        const onError = (error) => reject(error);
+        watcher.once("error", onError);
+        watcher.once("ready", () => {
+          watcher.removeListener("error", onError);
+          resolve();
+        });
+      });
       if (logger && logger.info) {
         logger.info("theme watcher started", { watchPaths });
       }
     },
     async stop() {
+      stopped = true;
+      if (pending) clearTimeout(pending);
+      pending = null;
       if (watcher) await watcher.close();
       watcher = null;
-      pending = null;
+      await Promise.allSettled([...running]);
     },
   };
 }

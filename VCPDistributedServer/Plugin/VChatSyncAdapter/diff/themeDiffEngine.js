@@ -1,5 +1,6 @@
 const fs = require("fs-extra");
-const { scanThemePackages } = require("../sync/themePackageSync");
+const { operationId } = require("../core/identity");
+const { scanThemePackages, withThemeSyncLock } = require("../sync/themePackageSync");
 const { canUploadInMode } = require("../sync/modePolicy");
 
 async function uploadThemeAsset(centerClient, themePackage, asset, config) {
@@ -26,15 +27,37 @@ async function syncThemePackage(
   logger
 ) {
   const previous = localIndex.getFile(themePackage.relative_path);
-  const changed = !previous || previous.checksum !== themePackage.checksum;
+  const changed = !previous || (previous.source_checksum
+    ? previous.source_checksum !== themePackage.source_checksum
+    : previous.checksum !== themePackage.checksum);
   const assetResults = [];
+
+  if (!changed && previous.uploaded === true && previous.synced_from_center === true) {
+    return { changed: false, assets: 0 };
+  }
 
   // Center requires an existing theme_package before a theme_asset can be linked
   // by theme_id. Upsert the package first so first-time theme sync succeeds.
   if (changed || !previous || previous.uploaded !== true) {
+    // Keep one id while retrying an upload, but give a later edit (including a
+    // return to old CSS) its own operation instead of deduplicating by content.
+    const pendingOperationId = previous &&
+      previous.pending_theme_checksum === themePackage.checksum &&
+      previous.pending_theme_operation_id ||
+      operationId(config.deviceId, "theme_package.upsert", {
+        item_type: "theme_package",
+        id: themePackage.theme_id,
+      }, themePackage.checksum);
+    await localIndex.setFile(themePackage.relative_path, {
+      ...previous,
+      kind: "theme_package",
+      theme_id: themePackage.theme_id,
+      pending_theme_checksum: themePackage.checksum,
+      pending_theme_operation_id: pendingOperationId,
+    });
     await centerClient.upsertThemePackage({
       ...themePackage.payload,
-      operation_id: `theme_package.${config.deviceId}.${themePackage.theme_id}.${themePackage.checksum}`,
+      operation_id: pendingOperationId,
     });
   }
 
@@ -83,13 +106,22 @@ async function syncThemePackage(
   }
 
   await localIndex.setFile(themePackage.relative_path, {
+    ...previous,
     kind: "theme_package",
     theme_id: themePackage.theme_id,
+    display_name: themePackage.payload.display_name,
+    version: themePackage.payload.version,
+    mode: themePackage.payload.mode,
     checksum: themePackage.checksum,
+    source_checksum: themePackage.source_checksum,
+    css_checksum: themePackage.css_checksum,
     css_path: themePackage.css_path,
     relative_path: themePackage.relative_path,
     asset_hashes: themePackage.assets.map((asset) => asset.asset_hash),
     uploaded: true,
+    synced_from_center: false,
+    pending_theme_checksum: null,
+    pending_theme_operation_id: null,
     updated_at: new Date().toISOString(),
   });
 
@@ -111,7 +143,15 @@ async function syncLocalThemes(
   logger,
   context = {}
 ) {
-  const mode = context.mode || "uninitialized";
+  return withThemeSyncLock(config, () => syncLocalThemesUnlocked(
+    config, localIndex, centerClient, logger, context
+  ));
+}
+
+async function syncLocalThemesUnlocked(config, localIndex, centerClient, logger, context) {
+  const mode = typeof context.modeProvider === "function"
+    ? context.modeProvider()
+    : context.mode || "uninitialized";
   const summary = {
     packages: 0,
     changed: 0,
@@ -124,7 +164,7 @@ async function syncLocalThemes(
     return { summary, skipped: true, reason: "mode_or_center_not_ready" };
   }
 
-  const packages = await scanThemePackages(config);
+  const packages = await scanThemePackages(config, localIndex);
   for (const themePackage of packages) {
     summary.packages += 1;
     try {

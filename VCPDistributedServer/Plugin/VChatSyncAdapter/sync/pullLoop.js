@@ -42,11 +42,44 @@ function createPullLoop(
   };
   const poisonFailures = new Map();
 
-  async function advanceStateTo(seq) {
+  async function advanceStateTo(seq, generation) {
     const state = await readState(config, logger);
     state.last_applied_seq = seq;
     state.last_pull_at = new Date().toISOString();
+    if (generation) state.center_generation = generation;
     await writeState(config, state, logger);
+  }
+
+  // The Center's change-log generation is stored next to the cursor. When it
+  // changes (a backup was restored), the local cursor no longer addresses the
+  // Center's sequence numbers. Continuing would skip every event whose number
+  // was reused, so stop and require a fresh baseline instead.
+  async function detectGenerationChange(state, changes) {
+    const remote = changes && changes.generation ? String(changes.generation) : "";
+    if (!remote) return null;
+    const local = state.center_generation ? String(state.center_generation) : "";
+    if (!local) return { adopt: remote };
+    if (local === remote) return null;
+    const nextState = {
+      ...state,
+      mode: "recovering",
+      enabled: false,
+      recovering_reason: "center_generation_changed",
+      center_generation_seen: remote,
+      center_generation_expected: local,
+      generation_changed_at: new Date().toISOString(),
+      generation_changed_last_applied_seq: state.last_applied_seq,
+    };
+    await writeState(config, nextState, logger);
+    logger.error(
+      "center change-log generation changed; local cursor is no longer valid. Re-run join_existing or merge_existing to rebuild the baseline.",
+      {
+        expected_generation: local,
+        seen_generation: remote,
+        last_applied_seq: state.last_applied_seq,
+      }
+    );
+    return { changed: true };
   }
 
   function rememberProjectionFailure(projection, events) {
@@ -136,9 +169,37 @@ function createPullLoop(
       let afterSeq = Number(state.last_applied_seq || 0);
       let totalApplied = 0;
       let hasMore = true;
+      let generation = state.center_generation || null;
 
       while (hasMore && !stopped) {
         const changes = await centerClient.getChanges(afterSeq, 1000);
+        const generationCheck = await detectGenerationChange(
+          { ...state, last_applied_seq: afterSeq, center_generation: generation },
+          changes
+        );
+        if (generationCheck && generationCheck.changed) {
+          stopped = true;
+          if (timer) clearTimeout(timer);
+          timer = null;
+          if (activityOrderTimer) clearTimeout(activityOrderTimer);
+          activityOrderTimer = null;
+          if (ws) ws.close();
+          ws = null;
+          metrics.last_finished_at = new Date().toISOString();
+          metrics.last_duration_ms = Date.now() - startedAt;
+          metrics.last_applied = totalApplied;
+          metrics.last_error = "center_generation_changed";
+          return {
+            ok: false,
+            skipped: true,
+            reason: "center_generation_changed",
+            last_applied_seq: afterSeq,
+          };
+        }
+        if (generationCheck && generationCheck.adopt) {
+          generation = generationCheck.adopt;
+          await advanceStateTo(afterSeq, generation);
+        }
         const events = (changes.events || []).sort(
           (a, b) => Number(a.seq) - Number(b.seq)
         );
@@ -185,7 +246,7 @@ function createPullLoop(
           );
           if (appliedMaxSeq > afterSeq) {
             afterSeq = appliedMaxSeq;
-            await advanceStateTo(afterSeq);
+            await advanceStateTo(afterSeq, generation);
           }
           totalApplied += projection.appliedSeqs.length;
         } else if (changes.checkpoint_seq || changes.next_after_seq) {
@@ -194,7 +255,7 @@ function createPullLoop(
           );
           if (checkpointSeq > afterSeq) {
             afterSeq = checkpointSeq;
-            await advanceStateTo(afterSeq);
+            await advanceStateTo(afterSeq, generation);
           }
         }
 

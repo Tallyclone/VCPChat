@@ -1,11 +1,18 @@
 const path = require("path");
 const fs = require("fs-extra");
-const { atomicWriteJson } = require("./atomicWriter");
+const {
+  atomicWriteJson,
+  readRawIfExists,
+  withStaleRetry,
+} = require("./atomicWriter");
 const {
   applyEventToHistory,
   updateIndexForMessageEvent,
   eventIdentity,
   topicKey,
+  isMessageDeletionEvent,
+  isMessageContentEvent,
+  toNativeHistoryMessage,
 } = require("./historyProjector");
 const { checksumJson } = require("../core/hash");
 const {
@@ -147,7 +154,7 @@ function topicMetaFromEvent(event, identity = {}) {
   return meta;
 }
 
-async function writeOwnerConfig(context, identity, nextConfig) {
+async function writeOwnerConfig(context, identity, nextConfig, options = {}) {
   const { config, writeIntentLock, localIndex, logger } = context;
   const filePath = configPathForTopicOwner(
     config.appDataPath,
@@ -165,7 +172,12 @@ async function writeOwnerConfig(context, identity, nextConfig) {
     ttl_ms: 60000,
     expireAt: Date.now() + 60000,
   });
-  await atomicWriteJson(filePath, nextConfig, { logger });
+  await atomicWriteJson(filePath, nextConfig, {
+    logger,
+    ...(options.expectedRaw !== undefined
+      ? { expectedRaw: options.expectedRaw }
+      : {}),
+  });
   await localIndex.setFile(relativePath, {
     kind: "config",
     checksum: expectedChecksum,
@@ -177,6 +189,23 @@ async function writeOwnerConfig(context, identity, nextConfig) {
   return true;
 }
 
+// Read a local config together with the exact bytes read, so a later write
+// can refuse to overwrite a file the host changed in between.
+async function readLocalConfigWithRaw(filePath) {
+  const raw = await readRawIfExists(filePath);
+  if (raw === null) return { raw: null, value: {} };
+  let value;
+  try {
+    value = JSON.parse(raw);
+  } catch (error) {
+    return { raw, value: {} };
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { raw, value: {} };
+  }
+  return { raw, value };
+}
+
 async function upsertTopicInOwnerConfig(context, identity, topicMeta) {
   const filePath = configPathForTopicOwner(
     context.config.appDataPath,
@@ -184,28 +213,61 @@ async function upsertTopicInOwnerConfig(context, identity, topicMeta) {
     identity.item_id
   );
   if (!filePath || !topicMeta.id) return false;
-  const localConfig = await readLocalConfig(filePath);
-  const topics = Array.isArray(localConfig.topics)
-    ? localConfig.topics.map((topic) => cloneJsonValue(topic))
-    : [];
-  const incomingId = String(topicMeta.id);
-  let found = false;
-  const nextTopics = topics.map((topic) => {
-    const id = topicIdOf(topic);
-    if (!id || String(id) !== incomingId) return topic;
-    found = true;
-    return {
-      ...topic,
-      ...cloneJsonValue(topicMeta),
-      id: topic.id || incomingId,
-    };
-  });
-  if (!found) {
-    nextTopics.unshift(cloneJsonValue(topicMeta));
-  }
-  return writeOwnerConfig(context, identity, {
-    ...localConfig,
-    topics: sortTopicsByCenterOrder(nextTopics),
+  const written = await withStaleRetry(async () => {
+    const { raw, value: localConfig } = await readLocalConfigWithRaw(filePath);
+    const topics = Array.isArray(localConfig.topics)
+      ? localConfig.topics.map((topic) => cloneJsonValue(topic))
+      : [];
+    const incomingId = String(topicMeta.id);
+    let found = false;
+    const nextTopics = topics.map((topic) => {
+      const id = topicIdOf(topic);
+      if (!id || String(id) !== incomingId) return topic;
+      found = true;
+      return {
+        ...topic,
+        ...cloneJsonValue(topicMeta),
+        id: topic.id || incomingId,
+      };
+    });
+    if (!found) {
+      nextTopics.unshift(cloneJsonValue(topicMeta));
+    }
+    return writeOwnerConfig(
+      context,
+      identity,
+      { ...localConfig, topics: sortTopicsByCenterOrder(nextTopics) },
+      { expectedRaw: raw }
+    );
+  }, "topic upsert projection");
+  if (written) await confirmTopicSnapshot(context, identity, topicMeta);
+  return written;
+}
+
+// A remote topic event proves the topic exists at Center. Record that on the
+// local topic snapshot so queued messages for this topic are never held back
+// by a stale "waiting for parent confirmation" marker.
+async function confirmTopicSnapshot(context, identity, topicMeta, extra = {}) {
+  const { localIndex } = context;
+  if (!localIndex || typeof localIndex.setTopicSnapshot !== "function") return;
+  const key = topicKey(identity);
+  const previous = localIndex.getTopicSnapshot(key) || {};
+  const now = new Date().toISOString();
+  await localIndex.setTopicSnapshot(key, {
+    ...previous,
+    topic_key: key,
+    item_type: identity.item_type,
+    item_id: identity.item_id,
+    topic_id: identity.topic_id,
+    ...(topicMeta ? { local_checksum: checksumJson(topicMeta) } : {}),
+    pending_operation_id: null,
+    pending_action: null,
+    pending_status: null,
+    terminal_conflict: null,
+    confirmed_at: previous.confirmed_at || now,
+    center_confirmed_at: now,
+    ...extra,
+    updated_at: now,
   });
 }
 
@@ -219,6 +281,7 @@ async function requireTopicInOwnerConfig(context, identity) {
     const error = new Error(
       `message parent owner config missing for topic ${identity.topic_id}`
     );
+    error.code = "SYNC_MESSAGE_PARENT_MISSING";
     error.failedSeq = identity.seq;
     throw error;
   }
@@ -232,6 +295,7 @@ async function requireTopicInOwnerConfig(context, identity) {
     const error = new Error(
       `message parent topic missing in owner config: ${identity.item_type}:${identity.item_id}:${identity.topic_id}`
     );
+    error.code = "SYNC_MESSAGE_PARENT_MISSING";
     error.failedSeq = identity.seq;
     throw error;
   }
@@ -523,22 +587,26 @@ async function applyPendingTopicActivityOrder(context, filter = {}) {
       identity.item_id
     );
     if (!filePath) continue;
-    const localConfig = await readLocalConfig(filePath);
-    const currentTopics = Array.isArray(localConfig.topics)
-      ? localConfig.topics
-      : [];
-    const nextTopics = applyActivityOrderToTopics(
-      currentTopics,
-      entries.map((entry) => entry.item)
-    );
-    const changed = !sameTopicOrder(currentTopics, nextTopics);
-    if (changed) {
-      await writeOwnerConfig(context, identity, {
-        ...localConfig,
-        topics: nextTopics,
-      });
-      appliedOwners += 1;
-    }
+    const applied = await withStaleRetry(async () => {
+      const { raw, value: localConfig } = await readLocalConfigWithRaw(filePath);
+      const currentTopics = Array.isArray(localConfig.topics)
+        ? localConfig.topics
+        : [];
+      const nextTopics = applyActivityOrderToTopics(
+        currentTopics,
+        entries.map((entry) => entry.item)
+      );
+      const changed = !sameTopicOrder(currentTopics, nextTopics);
+      if (!changed) return false;
+      await writeOwnerConfig(
+        context,
+        identity,
+        { ...localConfig, topics: nextTopics },
+        { expectedRaw: raw }
+      );
+      return true;
+    }, "topic activity order projection");
+    if (applied) appliedOwners += 1;
     for (const entry of entries) pending.delete(entry.key);
     appliedTopics += entries.length;
   }
@@ -570,12 +638,16 @@ async function applyTopicOrderEvent(context, event) {
     identity.item_id
   );
   if (!filePath) return false;
-  const localConfig = await readLocalConfig(filePath);
-  const nextTopics = reorderTopics(localConfig.topics, event);
-  return writeOwnerConfig(context, identity, {
-    ...localConfig,
-    topics: nextTopics,
-  });
+  return withStaleRetry(async () => {
+    const { raw, value: localConfig } = await readLocalConfigWithRaw(filePath);
+    const nextTopics = reorderTopics(localConfig.topics, event);
+    return writeOwnerConfig(
+      context,
+      identity,
+      { ...localConfig, topics: nextTopics },
+      { expectedRaw: raw }
+    );
+  }, "topic order projection");
 }
 
 function topicIdentityFromTopicEvent(event) {
@@ -710,53 +782,112 @@ function groupEvents(events) {
   };
 }
 
-async function readHistoryArray(filePath) {
-  if (!(await fs.pathExists(filePath))) return [];
-  const value = await fs.readJson(filePath);
+async function readHistoryArrayWithRaw(filePath) {
+  const raw = await readRawIfExists(filePath);
+  if (raw === null) return { raw: null, history: [] };
+  const value = JSON.parse(raw);
   if (!Array.isArray(value))
     throw new Error(`history.json root must be array: ${filePath}`);
-  return value;
+  return { raw, history: value };
+}
+
+// Attachment downloads can take a long time. Resolve them before the history
+// file is read so the read-modify-write window stays as short as possible and
+// a message the host saves meanwhile is never overwritten by a stale array.
+async function prepareIncomingMessages(bucket, context) {
+  const prepared = new Map();
+  for (const event of bucket.events) {
+    if (!isMessageContentEvent(event)) continue;
+    const payload = event.payload || {};
+    if (!payload.message || typeof payload.message !== "object") continue;
+    const identity = eventIdentity(event);
+    const native = toNativeHistoryMessage(payload.message, identity);
+    prepared.set(event, await rewriteMessageAttachments(native, context));
+  }
+  return prepared;
 }
 
 async function prepareTopicBucket(bucket, context) {
   const { config } = context;
-  await requireTopicInOwnerConfig(context, {
-    ...bucket.identity,
-    seq: bucket.events[0] && bucket.events[0].seq,
-  });
+  const deletionOnly = bucket.events.every(isMessageDeletionEvent);
+  if (!deletionOnly) {
+    try {
+      await requireTopicInOwnerConfig(context, {
+        ...bucket.identity,
+        seq: bucket.events[0] && bucket.events[0].seq,
+      });
+    } catch (error) {
+      if (!context.bootstrapReplay || error.code !== "SYNC_MESSAGE_PARENT_MISSING") throw error;
+      // Only while catching up a complete keyset export: an absent parent was
+      // either deleted during export, or created after its topic page. The
+      // bounded log replay supplies that deletion or the parent + message create
+      // in order before the adapter becomes active. Do not create phantom topics.
+      return {
+        bucket, skipFileWrite: true, skipTopicSnapshot: true,
+        applied: bucket.events.map((event) => ({
+          seq: event.seq, event,
+          result: { identity: eventIdentity(event), skipped: true, reason: "bootstrap_parent_missing" },
+        })),
+      };
+    }
+  }
   const filePath = historyPathFor(config.appDataPath, bucket.identity);
-  const history = await readHistoryArray(filePath);
+  const preparedMessages = await prepareIncomingMessages(bucket, context);
+  const skipFileWrite = deletionOnly && !(await fs.pathExists(filePath));
+  const { raw, history } = await readHistoryArrayWithRaw(filePath);
   const applied = [];
   for (const event of bucket.events) {
-    const result = applyEventToHistory(history, event);
-    if (result && result.message) {
-      result.message = await rewriteMessageAttachments(result.message, context);
-    }
+    const result = applyEventToHistory(history, event, {
+      bootstrapReplay: context.bootstrapReplay === true,
+      localIndex: context.localIndex,
+      preparedMessage: preparedMessages.get(event),
+    });
     applied.push({ seq: event.seq, event, result });
   }
   const expectedChecksum = checksumJson(history);
   const relativePath = normalizeSlashes(
     path.relative(config.appDataPath, filePath)
   );
-  return { bucket, filePath, relativePath, history, expectedChecksum, applied };
+  const keptLocal = applied.filter((item) => item.result && item.result.kept_local);
+  if (keptLocal.length > 0 && context.logger && context.logger.warn) {
+    context.logger.warn("remote message versions skipped to keep local edits", {
+      topic_key: topicKey(bucket.identity),
+      message_ids: keptLocal.map((item) => item.result.identity.id),
+      kinds: keptLocal.map((item) => item.result.local_edit_kind),
+      seqs: keptLocal.map((item) => item.seq),
+    });
+  }
+  return {
+    bucket, filePath, relativePath, history, expectedChecksum, applied,
+    deletionOnly, skipFileWrite, expectedRaw: raw,
+  };
 }
 
 async function commitPreparedTopic(prepared, context) {
   const { localIndex, writeIntentLock, logger } = context;
-  await writeIntentLock.record({
-    relative_path: prepared.relativePath,
-    filePath: prepared.filePath,
-    source: "sync_projector",
-    expectedChecksum: prepared.expectedChecksum,
-    ttl_ms: 60000,
-    expireAt: Date.now() + 60000,
-  });
-  await atomicWriteJson(prepared.filePath, prepared.history, { logger });
+  if (!prepared.skipFileWrite) {
+    await writeIntentLock.record({
+      relative_path: prepared.relativePath,
+      filePath: prepared.filePath,
+      source: "sync_projector",
+      expectedChecksum: prepared.expectedChecksum,
+      ttl_ms: 60000,
+      expireAt: Date.now() + 60000,
+    });
+    await atomicWriteJson(prepared.filePath, prepared.history, {
+      logger,
+      expectedRaw: prepared.expectedRaw,
+    });
+  }
   await localIndex.batchUpdate(async () => {
     for (const item of prepared.applied) {
       await updateIndexForMessageEvent(localIndex, item.event, item.result);
     }
+    if (prepared.skipTopicSnapshot) return;
+    const previous = localIndex.getTopicSnapshot(topicKey(prepared.bucket.identity));
+    if (prepared.skipFileWrite || (prepared.deletionOnly && !previous)) return;
     await localIndex.setTopicSnapshot(topicKey(prepared.bucket.identity), {
+      ...previous,
       topic_key: topicKey(prepared.bucket.identity),
       message_count: prepared.history.length,
       local_projection_checksum: prepared.expectedChecksum,
@@ -770,6 +901,13 @@ async function commitPreparedTopic(prepared, context) {
     relativePath: prepared.relativePath,
     applied: prepared.applied,
   };
+}
+
+async function projectTopicBucket(bucket, context) {
+  return withStaleRetry(async () => {
+    const prepared = await prepareTopicBucket(bucket, context);
+    return commitPreparedTopic(prepared, context);
+  }, "history projection");
 }
 
 async function projectEvents(events, context) {
@@ -786,7 +924,15 @@ async function projectEvents(events, context) {
     };
   }
 
-  const sorted = [...events].sort((a, b) => Number(a.seq) - Number(b.seq));
+  const sorted = events.map((event) => {
+    const payload = event.payload || {};
+    // Rejections caused by a tombstone are deletion confirmations. In
+    // particular, a rejected topic/config create must never rebuild its owner.
+    if (/_rejected_deleted$/.test(event.action || "") && payload.deleted === true) {
+      return { ...event, rejected_action: event.action, action: "delete" };
+    }
+    return event;
+  }).sort((a, b) => Number(a.seq) - Number(b.seq));
   const appliedSeqs = [];
   const counts = {
     topics: 0,
@@ -922,8 +1068,7 @@ async function projectEvents(events, context) {
       }
 
       for (const bucket of topicBuckets.values()) {
-        const prepared = await prepareTopicBucket(bucket, context);
-        const committed = await commitPreparedTopic(prepared, context);
+        const committed = await projectTopicBucket(bucket, context);
         counts.topics += 1;
         for (const item of committed.applied) appliedSeqs.push(item.seq);
       }
@@ -954,6 +1099,7 @@ module.exports = {
   groupEvents,
   historyPathFor,
   upsertTopicInOwnerConfig,
+  confirmTopicSnapshot,
   topicIdentityFromTopicEvent,
   applyPendingTopicActivityOrder,
 };

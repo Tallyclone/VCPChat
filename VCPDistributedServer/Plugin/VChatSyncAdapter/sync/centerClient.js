@@ -31,6 +31,10 @@ function createCenterClient(config, logger) {
         return await action();
       } catch (error) {
         lastError = error;
+        // A definite 4xx answer will not change on retry.
+        const status = error && error.response && Number(error.response.status);
+        if (Number.isFinite(status) && status >= 400 && status < 500 &&
+          ![408, 429].includes(status)) break;
         if (attempt >= retries) break;
         await wait(Math.min(30000, 500 * 2 ** attempt));
       }

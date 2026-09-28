@@ -12,14 +12,16 @@ async function main() {
   await atomicWriteJson(filePath, [{ id: "m1", content: "ok" }], { logger });
   assert.deepStrictEqual(await fs.readJson(filePath), [{ id: "m1", content: "ok" }]);
 
-  const originalMove = fs.move;
+  const originalRename = fs.rename;
   let injected = true;
-  fs.move = async (source, target, options) => {
+  fs.rename = async (source, target) => {
     if (injected && String(source).includes(".tmp-")) {
       injected = false;
-      throw new Error("injected rename failure");
+      const error = new Error("injected rename failure");
+      error.code = "EPERM";
+      throw error;
     }
-    return originalMove(source, target, options);
+    return originalRename(source, target);
   };
 
   try {
@@ -27,7 +29,7 @@ async function main() {
       logger,
     });
   } finally {
-    fs.move = originalMove;
+    fs.rename = originalRename;
   }
 
   assert.deepStrictEqual(await fs.readJson(filePath), [

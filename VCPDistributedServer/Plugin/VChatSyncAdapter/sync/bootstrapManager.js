@@ -398,6 +398,47 @@ async function resumeRuntimeServicesAfterFailure(
   }
 }
 
+async function persistRuntimeState(runtime, nextState) {
+  if (typeof runtime.writeState === "function") {
+    await runtime.writeState(nextState);
+  }
+  if (!runtime.state) runtime.state = {};
+  Object.assign(runtime.state, nextState);
+}
+
+// Reuse a previously reserved import session (persisted in state.json) so a
+// retried bootstrap_primary sends the same session_id. Center replays the
+// stored result for a completed session instead of refusing the import.
+async function reserveBootstrapImportSession(runtime, mode) {
+  const state = runtime.state || {};
+  const pending = state.bootstrap_import_session;
+  if (pending && pending.mode === mode && pending.session_id) {
+    return pending.session_id;
+  }
+  const sessionId = `bootstrap.${(runtime.config && runtime.config.deviceId) || "unknown"}.${mode}.${Date.now()}.${crypto
+    .randomUUID()
+    .slice(0, 8)}`;
+  await persistRuntimeState(runtime, {
+    ...state,
+    bootstrap_import_session: {
+      mode,
+      session_id: sessionId,
+      reserved_at: new Date().toISOString(),
+    },
+  });
+  return sessionId;
+}
+
+async function clearBootstrapImportSession(runtime) {
+  if (!runtime.state || !runtime.state.bootstrap_import_session) return;
+  const nextState = { ...runtime.state };
+  delete nextState.bootstrap_import_session;
+  if (typeof runtime.writeState === "function") {
+    await runtime.writeState(nextState);
+  }
+  delete runtime.state.bootstrap_import_session;
+}
+
 async function buildLocalManifest(config, options = {}) {
   const messages = [];
   const configs = [];
@@ -710,10 +751,17 @@ async function bootstrapPrimary(runtime, options = {}) {
     // Keep the sync center strictly empty until /bootstrap/import runs.
     // Uploading attachment files first writes attachments/change_log rows and makes
     // bootstrap_primary fail with "center is not empty".
+    //
+    // The session ID is persisted before the request so a retry after a lost
+    // response (or after a restart) replays the same session and Center can
+    // return the completed result instead of refusing a non-empty import.
+    const sessionId = await reserveBootstrapImportSession(runtime, "bootstrap_primary");
     const response = await centerClient.importBootstrap({
       ...manifest,
       mode: "bootstrap_primary",
+      session_id: sessionId,
     });
+    await clearBootstrapImportSession(runtime);
 
     const attachmentUploadErrors = [];
     for (const attachment of manifest.attachments) {
@@ -842,6 +890,7 @@ async function bootstrapPrimary(runtime, options = {}) {
     const state = runtime.state;
     state.mode = "active";
     state.last_applied_seq = response.latest_seq || 0;
+    if (response.generation) state.center_generation = response.generation;
     state.bootstrap_completed_at = new Date().toISOString();
     await runtime.writeState(state);
     const postBootstrapScan = await scanAppData(
@@ -965,6 +1014,7 @@ function buildBaselineEvents(baseline = {}) {
       entity_id: msg.id,
       action: "create",
       version: msg.version,
+      server_seq: msg.server_seq,
       payload: {
         message: { ...(msg.message || {}) },
         local_order: msg.local_order,
@@ -1211,8 +1261,53 @@ async function uploadSameNameAgentMergeAttachments(
   };
 }
 
+function sortBootstrapBaseline(baseline) {
+  const compareText = (left, right) => {
+    const a = String(left ?? "");
+    const b = String(right ?? "");
+    return a < b ? -1 : a > b ? 1 : 0;
+  };
+  const compareOwner = (a, b) =>
+    compareText(a.item_type, b.item_type) || compareText(a.item_id, b.item_id);
+  const orderValue = (value) => value === null || value === undefined
+    ? Number.MAX_SAFE_INTEGER
+    : Number(value);
+  // Keyset pages follow immutable identities. Restore display order only after
+  // all pages are assembled, before synthetic message events append to history.
+  baseline.messages.sort((a, b) =>
+    compareOwner(a, b) || compareText(a.topic_id, b.topic_id) ||
+    orderValue(a.local_order) - orderValue(b.local_order) ||
+    Number(a.server_seq || 0) - Number(b.server_seq || 0) ||
+    compareText(a.id, b.id)
+  );
+  baseline.topics.sort((a, b) =>
+    compareOwner(a, b) || orderValue(a.order_rank) - orderValue(b.order_rank) ||
+    compareText(a.created_at, b.created_at) || compareText(a.id, b.id)
+  );
+  baseline.message_attachments.sort((a, b) =>
+    compareOwner(a, b) || compareText(a.topic_id, b.topic_id) ||
+    compareText(a.message_id, b.message_id) ||
+    Number(a.attachment_order || 0) - Number(b.attachment_order || 0) ||
+    compareText(a.attachment_hash, b.attachment_hash)
+  );
+}
+
 async function exportCompleteBootstrap(centerClient, options = {}) {
   const first = await centerClient.exportBootstrap(options);
+  const baselineSeq = Number(first.baseline_seq ?? first.latest_seq ?? 0);
+  if (!Number.isSafeInteger(baselineSeq) || baselineSeq < 0) {
+    throw new Error("bootstrap export has an invalid baseline sequence");
+  }
+  let replayUntilSeq = baselineSeq;
+  const observePageSequence = (page) => {
+    if (first.pagination !== "keyset-v1") return;
+    const currentSeq = Number(page.latest_seq);
+    if (!Number.isSafeInteger(currentSeq) || currentSeq < baselineSeq) {
+      throw new Error("bootstrap export has an invalid page sequence");
+    }
+    replayUntilSeq = Math.max(replayUntilSeq, currentSeq);
+  };
+  observePageSequence(first);
   const baseline = { ...(first.baseline || {}) };
   const categories = [
     "messages",
@@ -1246,6 +1341,10 @@ async function exportCompleteBootstrap(centerClient, options = {}) {
         cursor,
         limit: pageInfo.limit || options.limit,
       });
+      if (page.baseline_seq !== undefined && Number(page.baseline_seq) !== baselineSeq) {
+        throw new Error(`bootstrap replay boundary changed while paging ${kind}`);
+      }
+      observePageSequence(page);
       const rows = page.baseline && page.baseline[kind];
       if (Array.isArray(rows)) baseline[kind].push(...rows);
       const nextPageInfo = page.page && page.page[kind];
@@ -1268,49 +1367,136 @@ async function exportCompleteBootstrap(centerClient, options = {}) {
     }
   }
 
-  return { ...first, baseline };
+  if (first.pagination === "keyset-v1") sortBootstrapBaseline(baseline);
+  const replayEvents = await collectBootstrapReplayEvents(centerClient, baselineSeq, replayUntilSeq);
+  return {
+    ...first, baseline, baseline_seq: baselineSeq, latest_seq: baselineSeq,
+    generation: first.generation || null,
+    replay_until_seq: replayUntilSeq,
+    replay_events: replayEvents,
+  };
+}
+
+async function collectBootstrapReplayEvents(centerClient, afterSeq, untilSeq) {
+  const collected = [];
+  // Read the complete window before touching local projections. A network
+  // failure during catch-up must leave the old baseline safe to resume.
+  while (afterSeq < untilSeq) {
+    if (typeof centerClient.getChanges !== "function") {
+      throw new Error("bootstrap catch-up requires the center changes endpoint");
+    }
+    const changes = await centerClient.getChanges(afterSeq, 1000);
+    const events = (changes.events || []).filter((event) =>
+      Number(event.seq) > afterSeq && Number(event.seq) <= untilSeq
+    ).sort((a, b) => Number(a.seq) - Number(b.seq));
+    if (events.length === 0 || events.some((event) => !Number.isSafeInteger(Number(event.seq)))) {
+      throw new Error(`bootstrap catch-up did not advance after seq ${afterSeq}`);
+    }
+    collected.push(...events);
+    afterSeq = Number(events[events.length - 1].seq);
+  }
+  return collected;
+}
+
+async function replayBootstrapWindow(exported, context) {
+  const projection = await projectEvents(exported.replay_events || [], {
+    ...context, bootstrapReplay: true,
+  });
+  if (projection.error) throw projection.error;
+  return {
+    last_applied_seq: exported.replay_until_seq ?? exported.baseline_seq ?? exported.latest_seq ?? 0,
+    generation: exported.generation || null,
+    applied: projection.appliedSeqs.length,
+  };
+}
+
+async function beginBootstrapProjection(runtime, action, exported, backupRoot) {
+  const nextState = {
+    ...runtime.state,
+    mode: "bootstrapping",
+    bootstrap_pending: {
+      action,
+      baseline_seq: exported.baseline_seq ?? exported.latest_seq ?? 0,
+      replay_until_seq: exported.replay_until_seq ?? exported.latest_seq ?? 0,
+      backup_root: backupRoot,
+      started_at: new Date().toISOString(),
+    },
+  };
+  // Persist before the first file mutation so a restart cannot run ordinary
+  // scans/pulls against a partially projected bootstrap.
+  await runtime.writeState(nextState);
+  Object.assign(runtime.state, nextState);
+}
+
+async function completeBootstrapProjection(runtime, catchup, extra = {}) {
+  const nextState = {
+    ...runtime.state,
+    mode: "active",
+    last_applied_seq: catchup.last_applied_seq,
+    ...(catchup.generation ? { center_generation: catchup.generation } : {}),
+    bootstrap_completed_at: new Date().toISOString(),
+    ...extra,
+  };
+  delete nextState.bootstrap_pending;
+  delete nextState.recovering_reason;
+  delete nextState.center_generation_seen;
+  delete nextState.center_generation_expected;
+  nextState.enabled = runtime.config.enabled;
+  await runtime.writeState(nextState);
+  Object.assign(runtime.state, nextState);
+  delete runtime.state.bootstrap_pending;
+  delete runtime.state.recovering_reason;
+  delete runtime.state.center_generation_seen;
+  delete runtime.state.center_generation_expected;
 }
 
 async function joinExisting(runtime) {
   const { config, centerClient, localIndex, writeIntentLock, logger } = runtime;
   await pauseRuntimeServices(runtime, "join_existing");
+  let projectionStarted = false;
   try {
-    await backupAppData(config, "join-existing", logger);
+    const backupRoot = await backupAppData(config, "join-existing", logger);
     const exported = await exportCompleteBootstrap(centerClient);
     const baseline = exported.baseline || {};
     const events = Array.isArray(exported.changes) ? exported.changes : [];
     const projectionEvents =
       events.length > 0 ? events : buildBaselineEvents(baseline);
-    const projection = await projectEvents(projectionEvents, {
+    const context = {
       config,
       localIndex,
       writeIntentLock,
       logger,
       centerClient,
+      syncProfileConfig: config.syncProfileConfig,
+    };
+    await beginBootstrapProjection(runtime, "join_existing", exported, backupRoot);
+    projectionStarted = true;
+    const projection = await projectEvents(projectionEvents, {
+      ...context,
+      bootstrapReplay: exported.pagination === "keyset-v1" &&
+        exported.replay_until_seq > exported.baseline_seq,
     });
     if (projection.failedSeq)
       throw new Error(
         `join_existing projection failed at seq ${projection.failedSeq}`
       );
-    runtime.state.mode = "active";
-    runtime.state.last_applied_seq = exported.latest_seq || 0;
-    runtime.state.bootstrap_completed_at = new Date().toISOString();
-    await runtime.writeState(runtime.state);
+    const catchup = await replayBootstrapWindow(exported, context);
+    await completeBootstrapProjection(runtime, catchup);
+    projectionStarted = false;
     return {
       ok: true,
       mode: "active",
       latest_seq: runtime.state.last_applied_seq,
       projection,
+      catchup,
       baseline_projection: events.length === 0,
     };
   } catch (error) {
-    // Resume services on failure to avoid leaving adapter in half-dead state
-    await resumeRuntimeServicesAfterFailure(
-      runtime,
-      "join_existing",
-      error,
-      logger
-    );
+    // Reading the export may fail safely before projection. After mutation,
+    // retain the durable non-active state so a retry can rebuild the baseline.
+    if (!projectionStarted) {
+      await resumeRuntimeServicesAfterFailure(runtime, "join_existing", error, logger);
+    }
     throw error;
   }
 }
@@ -1318,8 +1504,9 @@ async function joinExisting(runtime) {
 async function mergeExisting(runtime) {
   const { config, centerClient, localIndex, writeIntentLock, logger } = runtime;
   await pauseRuntimeServices(runtime, "merge_existing");
+  let projectionStarted = false;
   try {
-    await backupAppData(config, "merge-existing", logger);
+    const backupRoot = await backupAppData(config, "merge-existing", logger);
     const local = await buildLocalManifest(config, {
       logger,
       allowConflicts: true,
@@ -1355,12 +1542,20 @@ async function mergeExisting(runtime) {
       ...buildBaselineEvents(center),
       ...sameNameAgentMerge.events,
     ];
-    const projection = await projectEvents(projectionEvents, {
+    const context = {
       config,
       localIndex,
       writeIntentLock,
       logger,
       centerClient,
+      syncProfileConfig: config.syncProfileConfig,
+    };
+    await beginBootstrapProjection(runtime, "merge_existing", exported, backupRoot);
+    projectionStarted = true;
+    const projection = await projectEvents(projectionEvents, {
+      ...context,
+      bootstrapReplay: exported.pagination === "keyset-v1" &&
+        exported.replay_until_seq > exported.baseline_seq,
     });
     if (projection.failedSeq) {
       throw new Error(
@@ -1368,11 +1563,11 @@ async function mergeExisting(runtime) {
       );
     }
 
-    runtime.state.mode = "active";
-    runtime.state.last_applied_seq = exported.latest_seq || 0;
-    runtime.state.bootstrap_completed_at = new Date().toISOString();
-    runtime.state.merge_completed_at = new Date().toISOString();
-    await runtime.writeState(runtime.state);
+    const catchup = await replayBootstrapWindow(exported, context);
+    await completeBootstrapProjection(runtime, catchup, {
+      merge_completed_at: new Date().toISOString(),
+    });
+    projectionStarted = false;
 
     const report = {
       ok: true,
@@ -1391,6 +1586,7 @@ async function mergeExisting(runtime) {
         attachments: (center.attachments || []).length,
       },
       projection,
+      catchup,
       diffs: {
         messages: messageDiff,
         configs: configDiff,
@@ -1408,13 +1604,9 @@ async function mergeExisting(runtime) {
     });
     return report;
   } catch (error) {
-    // Resume services on failure to avoid leaving adapter in half-dead state
-    await resumeRuntimeServicesAfterFailure(
-      runtime,
-      "merge_existing",
-      error,
-      logger
-    );
+    if (!projectionStarted) {
+      await resumeRuntimeServicesAfterFailure(runtime, "merge_existing", error, logger);
+    }
     throw error;
   }
 }

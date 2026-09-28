@@ -1,0 +1,129 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "GoogleAccountManager",
+  "version": "1.1.0",
+  "displayName": "Google 账号管理器",
+  "description": "管理本机 50 个隔离 Chrome Profile。邮箱仅为本地记录，不代表在线登录。支持查询、直连/代理启动、关闭、备注类型及代理绑定；权限由可信节点命令白名单控制。",
+  "author": "VCP",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node index.js"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 900000
+  },
+  "configSchema": {
+    "GAM_SOURCE_CONFIG": "string",
+    "GAM_ALLOWED_ROOT": "string",
+    "GAM_ALLOWED_COMMANDS": "string",
+    "GAM_APPROVAL": "string"
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "list",
+        "command": "list",
+        "description": "列出 1-50 槽位，可选 type:google|other、running 布尔值、emailHint 与 noteContains 子串过滤。\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」list「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」list「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "commandIdentifier": "inspect",
+        "command": "inspect",
+        "description": "查询槽位、运行模式、备注与代理绑定；邮箱不是在线登录证明。\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」inspect「末」,\nprofile:「始」1「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」inspect「末」,\nprofile:「始」1「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "commandIdentifier": "launch",
+        "command": "launch",
+        "description": "直连启动。profile 必填；可选 http(s) url、restart:true 允许先正常关闭重启；force:true 才允许关闭不响应进程。模式冲突默认拒绝。\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」launch「末」,\nprofile:「始」1「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」launch「末」,\nprofile:「始」1「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "commandIdentifier": "proxy_login",
+        "command": "proxy_login",
+        "description": "校验绑定与代理监听，PUT 组选择并 GET 确认后代理启动；任何代理失败均禁止直连回退。参数同 launch。\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」proxy_login「末」,\nprofile:「始」1「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」proxy_login「末」,\nprofile:「始」1「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "commandIdentifier": "close",
+        "command": "close",
+        "description": "先正常关闭精确 Profile Chrome 树；confirm:true 必填，可选 force:true 才强制结束残留。\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」close「末」,\nprofile:「始」1「末」,\nconfirm:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」close「末」,\nprofile:「始」1「末」,\nconfirm:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "commandIdentifier": "proxy_status",
+        "command": "proxy_status",
+        "description": "只读代理绑定和重复警告；可选 profile、live:true 查询实时出口和组选择。\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」proxy_status「末」,\nprofile:「始」1「末」,\nlive:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」proxy_status「末」,\nprofile:「始」1「末」,\nlive:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "commandIdentifier": "refresh_proxy_bindings",
+        "command": "refresh_proxy_bindings",
+        "description": "读取 enabled direct octopus-top 出口，端口排序；优先保留有效旧绑定并全局去重。可选 force:true 重算；不足明确报告重复，不切换代理组。\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」refresh_proxy_bindings「末」,\nforce:「始」false「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」refresh_proxy_bindings「末」,\nforce:「始」false「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "commandIdentifier": "set_note",
+        "command": "set_note",
+        "description": "设置备注，profile 与 note 必填；最多2000字符，空串清除。\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」set_note「末」,\nprofile:「始」1「末」,\nnote:「始」备用账号「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」set_note「末」,\nprofile:「始」1「末」,\nnote:「始」备用账号「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "commandIdentifier": "set_type",
+        "command": "set_type",
+        "description": "设置 google 或 other 类型；默认1-30 google、31-50 other。\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」set_type「末」,\nprofile:「始」31「末」,\ntype:「始」other「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」set_type「末」,\nprofile:「始」31「末」,\ntype:「始」other「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "commandIdentifier": "find_available_account",
+        "command": "find_available_account",
+        "description": "选最小未运行槽位，可选 type、emailHint、noteContains、initialized:true。未运行不代表可登录；不预留。\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」find_available_account「末」,\ntype:「始」google「末」,\ninitialized:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」find_available_account「末」,\ntype:「始」google「末」,\ninitialized:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "commandIdentifier": "find_and_launch",
+        "command": "find_and_launch",
+        "description": "在跨进程锁内选取并启动。mode:direct|proxy 必填；过滤参数同 find_available_account，可选 http(s) url。\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」find_and_launch「末」,\nmode:「始」proxy「末」,\ntype:「始」google「末」,\ninitialized:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」find_and_launch「末」,\nmode:「始」proxy「末」,\ntype:「始」google「末」,\ninitialized:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "commandIdentifier": "close_all_managed_profiles",
+        "command": "close_all_managed_profiles",
+        "description": "关闭精确匹配本机目录下1-50槽位的Chrome树；confirm:true必填，可选force:true。逐项报告失败与complete，不会全杀Chrome/node。\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」close_all_managed_profiles「末」,\nconfirm:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」close_all_managed_profiles「末」,\nconfirm:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "commandIdentifier": "list_outlets",
+        "command": "list_outlets",
+        "description": "查询全部工位，无前缀限制。可选keyword过滤。展示禁用和托管工位，登录仅支持启用的direct工位。\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」list_outlets「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」list_outlets「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "commandIdentifier": "list_groups",
+        "command": "list_groups",
+        "description": "查询API可见策略组，可选keyword。指定outletPort可直接查询该工位的隐藏策略组。返回switchable。\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」list_groups「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」list_groups「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "commandIdentifier": "list_nodes",
+        "command": "list_nodes",
+        "description": "group必填，keyword可选。查询完整组成员，包含子策略组，选择子组不代表固定叶节点。\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」list_nodes「末」,\ngroup:「始」策略组名称「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」list_nodes「末」,\ngroup:「始」策略组名称「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "commandIdentifier": "login_with_proxy",
+        "command": "login_with_proxy",
+        "description": "指定出口启动：profile、outletPort、node必填，group可选且必须匹配工位目标。可选saveBinding:true保存手动绑定；默认临时不保存，但Clash组选择仍会改变。restart:true允许关闭重启，force:true允许强制关闭；url仅http(s)。allowSharedSwitch:true明确允许影响其他已检测Chrome会话。使用close=0避免全局断连。不支持跨组重新指向工位：reassignOutlet:true遇到目标不匹配返回OUTLET_REASSIGN_UNSUPPORTED_BY_API；fallback托管工位不允许手动切换。执行写操作必须关闭HTA。\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」login_with_proxy「末」,\nprofile:「始」12「末」,\noutletPort:「始」7900「末」,\nnode:「始」节点名称「末」,\nsaveBinding:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」login_with_proxy「末」,\nprofile:「始」12「末」,\noutletPort:「始」7900「末」,\nnode:「始」节点名称「末」,\nsaveBinding:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "commandIdentifier": "restore_auto_binding",
+        "command": "restore_auto_binding",
+        "description": "profile必填。删除插件手动覆盖，恢复原自动绑定；不改变正在运行的会话。needsRefresh:true表示尚无自动绑定，应调用refresh_proxy_bindings。\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」restore_auto_binding「末」,\nprofile:「始」12「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」GoogleAccountManager「末」,\ncommand:「始」restore_auto_binding「末」,\nprofile:「始」12「末」\n<<<[END_TOOL_REQUEST]>>>"
+      }
+    ]
+  }
+}

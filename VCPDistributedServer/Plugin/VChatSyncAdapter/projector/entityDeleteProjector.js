@@ -1,6 +1,10 @@
 const path = require("path");
 const fs = require("fs-extra");
-const { atomicWriteJson } = require("./atomicWriter");
+const {
+  atomicWriteJson,
+  readRawIfExists,
+  withStaleRetry,
+} = require("./atomicWriter");
 const { checksumJson } = require("../core/hash");
 const {
   assertInsideAppData,
@@ -115,38 +119,47 @@ function topicIdOf(topic) {
 
 async function updateConfigFile(context, filePath, mutator) {
   const { config, localIndex, writeIntentLock, logger } = context;
-  if (!filePath || !(await fs.pathExists(filePath))) return false;
-  const localConfig = await fs.readJson(filePath);
-  if (
-    !localConfig ||
-    typeof localConfig !== "object" ||
-    Array.isArray(localConfig)
-  ) {
-    return false;
-  }
-  const next = mutator({ ...localConfig });
-  if (!next) return false;
-  const expectedChecksum = checksumJson(next);
-  const relativePath = assertInsideAppData(config.appDataPath, filePath);
-  await writeIntentLock.record({
-    relative_path: relativePath,
-    filePath,
-    source: "sync_projector",
-    expectedChecksum,
-    ttl_ms: 60000,
-    expireAt: Date.now() + 60000,
-  });
-  await atomicWriteJson(filePath, next, { logger });
-  await localIndex.setFile(relativePath, {
-    kind: "config",
-    checksum: expectedChecksum,
-    last_known_checksum: expectedChecksum,
-    local_projection_checksum: expectedChecksum,
-    snapshot_json: next,
-    last_applied_seq: null,
-    updated_at: new Date().toISOString(),
-  });
-  return true;
+  if (!filePath) return false;
+  return withStaleRetry(async () => {
+    const raw = await readRawIfExists(filePath);
+    if (raw === null) return false;
+    let localConfig = null;
+    try {
+      localConfig = JSON.parse(raw);
+    } catch (error) {
+      return false;
+    }
+    if (
+      !localConfig ||
+      typeof localConfig !== "object" ||
+      Array.isArray(localConfig)
+    ) {
+      return false;
+    }
+    const next = mutator({ ...localConfig });
+    if (!next) return false;
+    const expectedChecksum = checksumJson(next);
+    const relativePath = assertInsideAppData(config.appDataPath, filePath);
+    await writeIntentLock.record({
+      relative_path: relativePath,
+      filePath,
+      source: "sync_projector",
+      expectedChecksum,
+      ttl_ms: 60000,
+      expireAt: Date.now() + 60000,
+    });
+    await atomicWriteJson(filePath, next, { logger, expectedRaw: raw });
+    await localIndex.setFile(relativePath, {
+      kind: "config",
+      checksum: expectedChecksum,
+      last_known_checksum: expectedChecksum,
+      local_projection_checksum: expectedChecksum,
+      snapshot_json: next,
+      last_applied_seq: null,
+      updated_at: new Date().toISOString(),
+    });
+    return true;
+  }, "config delete projection");
 }
 
 function validateTopicDelete(event, identity) {

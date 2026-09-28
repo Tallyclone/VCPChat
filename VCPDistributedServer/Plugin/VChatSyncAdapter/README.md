@@ -55,12 +55,20 @@ VChatSyncAdapter/
 
    - `local_index.json` 记录消息/文件 checksum、server version、last applied seq、pending 状态。
    - `offline_queue.jsonl` 持久化待提交 operation。
-   - 队列写入使用 tmp + 校验 + rename 的原子写入模式，并带 Windows move 重试。
+   - 队列、索引和 `state.json` 的写入使用 tmp + 校验 + 原地 rename 覆盖：目标文件在替换过程中不会出现"短暂缺失"，rename 失败时保留原文件。启动或读取时若发现旧版本残留的 `*.tmp-*` 文件，会合并/采用其中较新的内容并清理。
+   - 读取 `state.json` 时，文件缺失或被临时占用属于 I/O 状况，不会被当作损坏；只有 JSON 无法解析才进入 `recovering`。
+   - 每次新编辑生成独立 operation ID；重试沿用持久化 ID。同一消息按顺序提交，只合并尚未发送的尾部操作，连续编辑和恢复旧内容都能同步。
+   - 中心缺少 update 目标时，队列会持久化补建 create；已删除的消息或父项返回删除优先结果，结束对应重试。
+   - 中心已存在同 ID 但内容不同的消息（`MESSAGE_CREATE_CONFLICT`，HTTP 409）时，create 会以新 operation ID 转成基于中心版本的 update，不再无限重试。
+   - 中心返回的其它永久拒绝（4xx 校验错误）重试 3 次后写入 `offline_queue.rejected.jsonl` 死信文件并释放对应实体；网络与 5xx 错误按指数退避持续重试。
+   - 消息提交前会核对父话题：本地 `pending` 标记若对应的操作既不在队列也未确认，标记会被清除并向中心查询；话题存在则直接确认，不存在则从 `config.topics[]` 重新生成话题 upsert。远端话题事件投影成功时也会确认本地话题快照。
+   - 尚未发送的 delete 遇到同一消息被恢复/编辑时会被撤回；已发送过的 delete 保持在后续编辑之前提交。
 
 5. **中心客户端**
 
    - `sync/centerClient.js` 调用中心 REST API。
    - 支持设备注册、提交 operation、拉取 changes、上传/下载附件、主题 `/themes` 与 `/themes/assets`、bootstrap import/export。
+   - 中心 REST 请求携带 `Authorization: Bearer <VCHAT_SYNC_KEY>`，依次经过 VCPToolBox 宿主全局鉴权和 Center 插件鉴权。Adapter、Center 的 `VCHAT_SYNC_KEY` 必须与宿主全局 `Key` 保持一致，无须修改宿主 `server.js`。
    - 可选 WebSocket 只做 latest_seq 通知；关闭后仍可靠 REST 轮询。
 
 6. **远端事件投影**
@@ -68,15 +76,26 @@ VChatSyncAdapter/
    - `pullLoop` 从中心按 `after_seq` 拉取事件。
    - `projector` 按 topic 聚合并投影消息、配置、附件事件。
    - 写回使用临时文件、校验、备份、原子替换，并通过 `writeIntentLock` 防回环上传。
+   - 本地尚未提交（队列中或尚未被 watcher 观察到）的消息编辑不会被远端版本覆盖；远端版本号记入索引，随后的本地 update 以该版本为 base 提交，中心最终收敛到本地内容。
+   - 附件先下载再读取 `history.json`，写回前校验文件内容未被宿主改动，若宿主期间保存过则重新读取合并，不会丢失新消息。
+   - 拉取响应携带中心 `generation`，写入 `state.json`。中心恢复旧备份后 generation 会变化，Adapter 检测到后进入 `recovering` 并停止拉取，需重新执行 `join_existing` 或 `merge_existing` 重建基线，避免跳过被复用的序号。
 
 7. **安全配置 DTO**
 
    - 配置同步按 `profile` 分为 `bootstrap` 与 `runtime`。
    - `bootstrap` profile 表示首次导入/导出的完整安全基线。
    - Center 的 `/bootstrap/export` 会同时导出 `bootstrap` 与 `runtime` 两类 profile 配置，避免新设备 join_existing 后因游标直接前移而跳过历史 runtime 配置。
+   - Center 保存累计 runtime 投影及删除字段，新设备可恢复多次局部更新后的完整同步状态。
    - `runtime` 必须携带 `projection_fields`，接收端只修改声明字段。
    - runtime 字段删除通过 `deleted_fields` 显式表达，接收端只删除其中声明的字段。
    - DTO 会递归校验，禁止安全投影中出现未声明字段。
+
+8. **主题路径与身份保持**
+
+   - 主题包保留中心 `theme_id`，并从 `manifest.css` 读取原 CSS 文件信息。有效的原路径会还原到 `styles/themes/*.css`；未提供有效路径时使用该目录内的备用文件名，后续编辑仍沿用同一主题身份。
+   - 主题投影与扫描按应用目录串行执行，共用 CSS 相对路径对应的本地内容基线。中心写回的 CSS、随后下载的壁纸以及重复文件事件不会再次上传为新主题。
+   - 本地编辑 CSS 或壁纸会继续上传；将 CSS 改回旧内容也属于一次新修改。下载壁纸期间发生的本地 CSS 编辑不会被当作中心写回而忽略。
+   - 主题包直接通过 `/themes` 提交。每次新修改生成新的 operation ID，并将待提交 ID 与内容 checksum 保存在本地索引；请求失败或响应丢失后，同一次修改重试时沿用该 ID。
 
 推荐直接维护：
 
@@ -91,7 +110,7 @@ G:\VCP\VCPChat\VCPDistributedServer\Plugin\VChatSyncAdapter\config.env
 | `VCHAT_APPDATA_PATH`                         | `../AppData`           | VChat AppData 路径；相对路径基于 VCPDistributedServer 根目录解析                                          |
 | `VCHAT_SYNC_CENTER_URL`                      | `http://<host>:<port>` | 中心宿主地址；可只写到端口，Adapter 自动补全 `/api/plugins/VChatSyncCenter`；兼容完整 API 前缀            |
 | `VCHAT_SYNC_WS_URL`                          | 可留空                 | 可选 latest_seq WebSocket 地址；留空时由 Center URL 推导，可只写到端口并自动补全 `/vchat-sync/latest-seq` |
-| `VCHAT_SYNC_KEY`                             | 自定义                 | 必须与中心侧 `VCHAT_SYNC_KEY` 一致，生产环境请使用高强度随机字符串                                        |
+| `VCHAT_SYNC_KEY`                             | 自定义                 | 必须与中心侧 `VCHAT_SYNC_KEY` 及 VCPToolBox 宿主全局 `Key` 一致；生产环境请使用高强度随机字符串           |
 | `VCHAT_DEVICE_ID`                            | 可留空自动生成         | 设备唯一 ID；每台设备必须不同                                                                             |
 | `VCHAT_DEVICE_NAME`                          | 可留空取 hostname      | 设备显示名                                                                                                |
 | `VCHAT_WATCH_DEBOUNCE_MS`                    | `700`                  | 文件监听防抖时间                                                                                          |
@@ -235,9 +254,9 @@ GET  /api/vchat-sync-adapter/bootstrap/conflicts
 3. 首次通过 `bootstrap_primary`、`join_existing` 或 `merge_existing` 建立基线。
 4. 启动全量扫描，补齐离线期间本地变化。
 5. watcher 捕获 history/config/attachment/theme 变化并推导 operation。
-6. operation 进入 offline queue，网络恢复后提交中心。
+6. 消息与配置 operation 进入 offline queue，网络恢复后提交中心；主题包直接提交到 `/themes`，失败重试使用本地索引保存的待提交 ID。
 7. pullLoop 按 `last_applied_seq` 拉取中心事件。
-8. projector 原子写回 AppData，并把主题内容同步到 `styles/themes/*.css` 与 `assets/wallpaper/*`，同时用 write intent 防回环。
+8. projector 将消息与配置 JSON 原子写回 AppData，通过 write intent 防回环；主题写入 `styles/themes/*.css` 与 `assets/wallpaper/*`，通过共享内容基线与串行扫描/投影防回环。
 
 ## 与 VChatSyncCenter 的关系
 
@@ -257,6 +276,10 @@ Adapter 调用中心接口完成：
 - `POST /themes/assets`、`GET /themes/assets/:hash`：上传/下载主题壁纸/资源；Adapter 会把它们投影回 `assets/wallpaper/*`。
 - `/bootstrap/import`、`/bootstrap/export`：初始化或合并基线；Center 导出的配置基线包含 `bootstrap` 与 `runtime` 两类 profile，同时也会携带主题 manifest/asset 元数据。
 
+基线导出按不可变主键分页，客户端应原样传回不透明 `next_cursor`，不能将其当成 OFFSET。Adapter 保留首批 `baseline_seq`，在所有页面收集完成后回放导出期间的完整变更区间，再进入 active 模式并推进游标。分页期间的新增、删除和排序变化不会使未变更记录漏页；导出的消息会在本地恢复显示顺序。
+
+Adapter 先收齐导出期间的事件，再写入本地基线。文件投影开始前会持久化 `bootstrapping` 状态；投影中断时保持暂停并保留备份路径，重新执行 `join_existing` 或 `merge_existing` 完成初始化后才恢复普通同步。
+
 ## 安全与数据原则
 
 - 不上传 API Key、token、Cookie、密码、本机路径等敏感字段。
@@ -264,7 +287,7 @@ Adapter 调用中心接口完成：
 - 不能简单过滤所有 `role=system` 消息，只能过滤确认是本地 UI 状态的消息。
 - 消息身份使用 `item_type + item_id + topic_id + message_id` 复合键，不能只依赖 `message.id`。
 - Runtime 配置同步必须使用 `projection_fields`，未声明字段不会被改动。
-- 缺失的已声明字段表示显式删除；为兼容旧设备，默认不会声明源配置不存在的 include 字段。
+- 字段删除必须显式写入 `deleted_fields`；仅缺失或仅声明字段都不会删除接收端内容。
 - 远端投影写回必须防回环，避免 watcher 再次上传同步写入。
 - `uninitialized` 等禁止上传模式下，本地变化不能入队提交。
 
@@ -273,7 +296,7 @@ Adapter 调用中心接口完成：
 1. 先在 VCPToolBox 启用 `VChatSyncCenter`，确认中心 `/status` 正常。
 2. 修改本插件 `config.env`：
    - `VCHAT_SYNC_CENTER_URL` 指向中心插件挂载前缀。
-   - `VCHAT_SYNC_KEY` 与中心侧保持一致。
+   - `VCHAT_SYNC_KEY` 与中心侧及 VCPToolBox 宿主全局 `Key` 保持一致。
    - 每台设备使用唯一 `VCHAT_DEVICE_ID`。
 3. 首次部署保持：
    - `VCHAT_ADAPTER_MODE=uninitialized`
@@ -290,3 +313,7 @@ Adapter 调用中心接口完成：
 - 不要让两个 Adapter 实例同时操作同一个 AppData。
 - `merge_existing` 前建议备份本机 `AppData` 和中心数据库。
 - `writeIntentLock` 在多实例共享同一 AppData 时存在竞态风险，建议单机单实例运行。
+- `bootstrap_primary` 会先把导入会话 ID 持久化到 `state.json`，响应丢失后重试会复用该 ID，中心返回已完成的导入结果而不是拒绝。
+- 头像每次内容变化都使用新的 operation ID，待确认的 ID 保存在本地索引中供重试复用；A→B→A 的切换会完整同步。
+- 话题多次拖动排序推导出的 move 序列会先在本地模拟重放，保证中心重放结果与本地顺序一致。
+- 状态接口 `queue.rejected_path` 指向死信文件；里面的操作需要人工确认后重新编辑对应内容以产生新的 operation。

@@ -1,6 +1,10 @@
 const path = require("path");
 const fs = require("fs-extra");
-const { atomicWriteJson } = require("./atomicWriter");
+const {
+  atomicWriteJson,
+  readRawIfExists,
+  withStaleRetry,
+} = require("./atomicWriter");
 const { checksumJson } = require("../core/hash");
 const {
   assertInsideAppData,
@@ -52,11 +56,20 @@ function pathForConfigEvent(config, event) {
   return safeJoinAppData(config.appDataPath, relativePath);
 }
 
-async function readLocalConfig(filePath) {
-  if (!(await fs.pathExists(filePath))) return {};
-  const value = await fs.readJson(filePath);
+function parseLocalConfig(raw) {
+  if (raw === null || raw === undefined) return {};
+  let value;
+  try {
+    value = JSON.parse(raw);
+  } catch (error) {
+    return {};
+  }
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return value;
+}
+
+async function readLocalConfig(filePath) {
+  return parseLocalConfig(await readRawIfExists(filePath));
 }
 
 async function applyConfigDeleteEvent(event, context, filePath) {
@@ -121,15 +134,7 @@ async function applyConfigEvents(events, context) {
       profile,
       projection_fields: projectionFields,
     });
-    const localConfig = await readLocalConfig(filePath);
-    const next = mergeProjectedConfig(localConfig, dto, {
-      schema,
-      profile,
-      projection_fields: projectionFields,
-      deleted_fields: deletedFields,
-    });
-
-    const expectedChecksum = checksumJson(next);
+    const relativePath = assertInsideAppData(config.appDataPath, filePath);
     const remoteDtoChecksum = checksumJson({
       dto_version: payload.dto_version,
       schema,
@@ -139,17 +144,27 @@ async function applyConfigEvents(events, context) {
       deleted_fields: deletedFields,
       profile,
     });
-
-    const relativePath = assertInsideAppData(config.appDataPath, filePath);
-    await writeIntentLock.record({
-      relative_path: relativePath,
-      filePath,
-      source: "sync_projector",
-      expectedChecksum,
-      ttl_ms: 60000,
-      expireAt: Date.now() + 60000,
-    });
-    await atomicWriteJson(filePath, next, { logger });
+    const expectedChecksum = await withStaleRetry(async () => {
+      const raw = await readRawIfExists(filePath);
+      const localConfig = parseLocalConfig(raw);
+      const next = mergeProjectedConfig(localConfig, dto, {
+        schema,
+        profile,
+        projection_fields: projectionFields,
+        deleted_fields: deletedFields,
+      });
+      const checksum = checksumJson(next);
+      await writeIntentLock.record({
+        relative_path: relativePath,
+        filePath,
+        source: "sync_projector",
+        expectedChecksum: checksum,
+        ttl_ms: 60000,
+        expireAt: Date.now() + 60000,
+      });
+      await atomicWriteJson(filePath, next, { logger, expectedRaw: raw });
+      return checksum;
+    }, "config projection");
     const previousFile = localIndex.getFile(relativePath) || {};
     await localIndex.setFile(relativePath, {
       ...previousFile,

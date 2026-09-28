@@ -1,6 +1,7 @@
 const path = require("path");
 const fs = require("fs-extra");
 const { checksumBuffer } = require("../core/hash");
+const { operationId } = require("../core/identity");
 const { isAvatarPath, parseAvatarIdentity } = require("../utils/pathRules");
 
 function sanitizeExt(ext) {
@@ -310,8 +311,30 @@ async function uploadLocalAttachment(
 
   const uploaded =
     previous && previous.uploaded === true ? true : uploadedToCenter;
+  // Every new avatar content is a new modification with its own operation ID;
+  // only a retry of the same not-yet-confirmed modification reuses the ID.
+  // Deriving the ID from the content hash alone made A -> B -> A replay the
+  // first request, which Center answered idempotently without changing back.
+  const previousAvatarOperationId =
+    previous && previous.kind === "avatar" && previous.hash === hash
+      ? previous.avatar_pending_operation_id ||
+        (previous.avatar_operation_hash === hash
+          ? previous.avatar_operation_id
+          : null)
+      : null;
   const avatarOperationId = avatarIdentity
-    ? `avatar.${config.deviceId}.${avatarIdentity.owner_type}.${avatarIdentity.owner_id}.${hash}`
+    ? previousAvatarOperationId ||
+      operationId(
+        config.deviceId,
+        "avatar.upsert",
+        {
+          item_type: "avatar",
+          item_id: avatarIdentity.owner_type,
+          topic_id: avatarIdentity.owner_id,
+          id: hash,
+        },
+        hash
+      )
     : null;
   const shouldSubmitAvatarOperation = Boolean(
     isAvatar &&
@@ -324,11 +347,20 @@ async function uploadLocalAttachment(
         previous.kind !== "avatar" ||
         previous.hash !== hash ||
         previous.avatar_operation_submitted !== true ||
-        previous.avatar_operation_hash !== hash ||
-        previous.avatar_operation_id !== avatarOperationId)
+        previous.avatar_operation_hash !== hash)
   );
   let avatarOperationSubmitted = false;
   if (shouldSubmitAvatarOperation) {
+    // Persist the pending ID first so a lost response retries the same
+    // operation instead of minting a second one for the same change.
+    await localIndex.setFile(relativePath, {
+      ...(previous || {}),
+      kind: "avatar",
+      hash,
+      avatar_pending_operation_id: avatarOperationId,
+      avatar_pending_hash: hash,
+      updated_at: new Date().toISOString(),
+    });
     await centerClient.submitOperation({
       operation_id: avatarOperationId,
       device_id: config.deviceId,
@@ -379,6 +411,8 @@ async function uploadLocalAttachment(
         ? previous.avatar_operation_id
         : undefined
       : undefined,
+    avatar_pending_operation_id: undefined,
+    avatar_pending_hash: undefined,
     checksum_status: "verified",
     updated_at: new Date().toISOString(),
   });

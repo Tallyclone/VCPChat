@@ -333,6 +333,20 @@ function longestIncreasingSubsequencePositions(values) {
   return keep;
 }
 
+// Simulate Center's replay of a move on a plain ordered list. Used to verify
+// the generated operations reproduce the target order exactly.
+function applyMoveToOrder(order, topicId, payload) {
+  const without = order.filter((id) => id !== topicId);
+  if (payload.mode === "move_after") {
+    const index = without.indexOf(payload.after_topic_id);
+    if (index < 0) return order;
+    without.splice(index + 1, 0, topicId);
+    return without;
+  }
+  without.unshift(topicId);
+  return without;
+}
+
 function buildTopicOrderMoveOperations(
   owner,
   previousOrderInput,
@@ -363,6 +377,10 @@ function buildTopicOrderMoveOperations(
     ];
   }
 
+  // Keep the longest subsequence that is already in target order; move every
+  // other topic, in target order, directly behind its target predecessor.
+  // Processing left to right keeps every already-placed prefix intact, so the
+  // sequential replay of these moves yields exactly `currentOrder`.
   const previousPositions = new Map();
   previousOrder.forEach((id, index) => previousPositions.set(id, index));
   const currentWithPreviousPosition = [];
@@ -384,13 +402,9 @@ function buildTopicOrderMoveOperations(
   });
 
   const currentSet = new Set(currentOrder);
-  const mutableSet = new Set(previousOrder.filter((id) => currentSet.has(id)));
-  const mutable = previousOrder.filter((id) => currentSet.has(id));
+  let simulated = previousOrder.filter((id) => currentSet.has(id));
   for (const id of currentOrder) {
-    if (!mutableSet.has(id)) {
-      mutable.push(id);
-      mutableSet.add(id);
-    }
+    if (!simulated.includes(id)) simulated.push(id);
   }
 
   const moves = [];
@@ -400,27 +414,46 @@ function buildTopicOrderMoveOperations(
     targetIndex += 1
   ) {
     const topicId = currentOrder[targetIndex];
-    if (mutable[targetIndex] === topicId) continue;
     if (keepIds.has(topicId)) continue;
-    const fromIndex = mutable.indexOf(topicId);
-    if (fromIndex < 0) continue;
-    mutable.splice(fromIndex, 1);
-    mutable.splice(targetIndex, 0, topicId);
-    moves.push(
-      buildTopicOrderMoveOperation(
+    const operation = buildTopicOrderMoveOperation(
+      owner,
+      topicId,
+      currentOrder,
+      targetIndex,
+      context,
+      seed,
+      {
+        reason: "lis_reorder",
+        move_index: moves.length,
+        ...seed,
+      }
+    );
+    simulated = applyMoveToOrder(simulated, topicId, operation.payload);
+    moves.push(operation);
+  }
+
+  if (!sameStringArray(simulated, currentOrder)) {
+    // Defensive: fall back to placing every topic explicitly so the replayed
+    // order can never diverge from the local one.
+    const fallback = [];
+    let order = previousOrder.filter((id) => currentSet.has(id));
+    for (const id of currentOrder) {
+      if (!order.includes(id)) order.push(id);
+    }
+    currentOrder.forEach((topicId, targetIndex) => {
+      const operation = buildTopicOrderMoveOperation(
         owner,
         topicId,
         currentOrder,
         targetIndex,
         context,
         seed,
-        {
-          reason: "lis_reorder",
-          move_index: moves.length,
-          ...seed,
-        }
-      )
-    );
+        { reason: "full_reorder", move_index: fallback.length, ...seed }
+      );
+      order = applyMoveToOrder(order, topicId, operation.payload);
+      fallback.push(operation);
+    });
+    return fallback;
   }
   return moves;
 }
@@ -669,6 +702,8 @@ async function diffConfig(relativePath, parsedJson, localIndex, context = {}) {
 module.exports = {
   diffConfig,
   buildGroupMemberDeleteOperations,
+  buildTopicOrderMoveOperations,
+  applyMoveToOrder,
   normalizeUserAvatarRelativePath,
   uploadSettingsUserAvatar,
 };

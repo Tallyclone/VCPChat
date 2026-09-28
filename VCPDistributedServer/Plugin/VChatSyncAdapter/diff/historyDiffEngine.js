@@ -2,6 +2,8 @@ const { checksumJson } = require("../core/hash");
 const { messageKey, operationId } = require("../core/identity");
 const { collectAttachmentRefs } = require("../sync/attachmentSync");
 
+let observationClock = 0;
+
 function isPlaceholderMessage(message, options = {}) {
   if (!message || typeof message !== "object") return true;
   if (!message.id && options.allowMissingId !== true) return true;
@@ -83,6 +85,7 @@ function buildOperation(
     item_id: identity.item_id,
     topic_id: identity.topic_id,
     entity_id: identity.id,
+    _local_observation_id: context.localObservationId,
     base_version:
       action === "create"
         ? undefined
@@ -114,8 +117,20 @@ async function diffHistory(
   const skipped = [];
   const tKey = topicKey(identityBase);
   const previousRows = localIndex.listMessagesByTopic(tKey);
+  observationClock = Math.max(Date.now(), observationClock + 1);
+  for (const row of Object.values(previousRows)) {
+    const previousObservation = Number(row.last_local_observation_id || 0);
+    if (Number.isFinite(previousObservation)) {
+      observationClock = Math.max(observationClock, previousObservation + 1);
+    }
+  }
+  context = { ...context, localObservationId: observationClock };
+  const presentKeys = new Set();
 
   for (const message of historyArray) {
+    if (message && message.id) {
+      presentKeys.add(messageKey({ ...identityBase, id: String(message.id) }));
+    }
     if (isPlaceholderMessage(message)) {
       skipped.push({
         id: message && message.id,
@@ -128,14 +143,13 @@ async function diffHistory(
     const checksum = checksumJson(message);
     current.set(key, { identity, message, checksum });
     const previous = localIndex.getMessage(key);
-    if (!previous) {
+    if (previous && previous.terminal_conflict && previous.terminal_conflict.deleted) {
+      skipped.push({ id: message.id, reason: "conflict_delete_wins" });
+    } else if (!previous || previous.pending_status === "needs_create") {
       operations.push(
         buildOperation("create", identity, message, previous, checksum, context)
       );
-    } else if (
-      previous.last_known_checksum !== checksum &&
-      !previous.pending_operation_id
-    ) {
+    } else if (previous.last_known_checksum !== checksum) {
       operations.push(
         buildOperation(
           hasConfirmedRemoteMessage(previous) ? "update" : "create",
@@ -146,39 +160,16 @@ async function diffHistory(
           context
         )
       );
-    } else if (
-      previous.last_known_checksum !== checksum &&
-      previous.pending_operation_id
-    ) {
-      if (
-        previous.pending_action === "create" ||
-        previous.pending_status === "pending_create" ||
-        !hasConfirmedRemoteMessage(previous)
-      ) {
-        operations.push(
-          buildOperation(
-            "create",
-            identity,
-            message,
-            previous,
-            checksum,
-            context
-          )
-        );
-      } else {
-        skipped.push({
-          id: message.id,
-          reason: "pending_operation_exists",
-          pending_operation_id: previous.pending_operation_id,
-        });
-      }
     }
   }
 
   const previousEntries = Object.entries(previousRows);
 
   const candidateDeletes = previousEntries.filter(
-    ([key, previous]) => !current.has(key) && !previous.pending_operation_id
+    ([key, previous]) =>
+      !presentKeys.has(key) &&
+      previous.pending_action !== "delete" &&
+      !(previous.terminal_conflict && previous.terminal_conflict.deleted)
   );
   const deletedKeys = [];
   let bulkDeleteBlocked = null;
@@ -217,6 +208,7 @@ async function diffHistory(
         item_id: identity.item_id,
         topic_id: identity.topic_id,
         entity_id: identity.id,
+        _local_observation_id: context.localObservationId,
         base_version: hasConfirmedRemoteMessage(previous)
           ? previous.last_known_server_version
           : null,
@@ -243,26 +235,30 @@ async function diffHistory(
 }
 
 async function applyLocalSnapshot(localIndex, diffResult, enqueueResult = []) {
-  const pendingByKey = new Map();
-  const pendingActionByKey = new Map();
+  const enqueuedByKey = new Map();
   for (const item of enqueueResult) {
     if (item && item.key) {
-      pendingByKey.set(item.key, item.operation_id);
-      pendingActionByKey.set(item.key, item.action);
+      enqueuedByKey.set(item.key, item);
     }
   }
   for (const [key, row] of diffResult.current.entries()) {
+    const enqueued = enqueuedByKey.get(key);
+    // The durable queue updates the index in its serialization scope. A scan
+    // finishing after an ACK must not restore the earlier pending operation.
+    if (!enqueued || enqueued.index_managed) continue;
     const previous = localIndex.getMessage(key) || {};
-    const pendingAction = pendingActionByKey.get(key) || null;
+    if (previous.last_submitted_operation_id === enqueued.operation_id) continue;
+    const pendingAction = enqueued.action;
     await localIndex.setMessage(key, {
       ...previous,
       identity: row.identity,
       topic_key: topicKey(row.identity),
       last_known_checksum: row.checksum,
       local_projection_checksum: row.checksum,
-      pending_operation_id: pendingByKey.get(key) || null,
+      pending_operation_id: enqueued.operation_id,
       pending_action: pendingAction,
       pending_status: pendingAction ? `pending_${pendingAction}` : null,
+      pending_checksum: row.checksum,
       updated_at: new Date().toISOString(),
     });
   }
@@ -274,12 +270,15 @@ async function applyLocalSnapshot(localIndex, diffResult, enqueueResult = []) {
   );
   for (const key of diffResult.deletedKeys || []) {
     if (!enqueuedDeletes.has(key)) continue;
+    const enqueued = enqueuedByKey.get(key);
+    if (enqueued.index_managed) continue;
     const previous = localIndex.getMessage(key);
     if (!previous) continue;
+    if (previous.last_submitted_operation_id === enqueued.operation_id) continue;
     await localIndex.setMessage(key, {
       ...previous,
       pending_operation_id:
-        pendingByKey.get(key) || previous.pending_operation_id,
+        enqueued.operation_id || previous.pending_operation_id,
       pending_action: "delete",
       pending_status: "pending_delete",
       deleted_locally: true,

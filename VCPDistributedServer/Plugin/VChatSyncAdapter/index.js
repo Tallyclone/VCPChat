@@ -487,7 +487,7 @@ async function startAdapter(app, pluginConfig, projectBasePath) {
     centerClient,
     logger,
     {
-      mode: state.mode || "uninitialized",
+      modeProvider: () => runtime?.state?.mode || state.mode || "uninitialized",
       deviceId: config.deviceId,
     }
   );

@@ -15,6 +15,42 @@ const THEME_VARIABLE_PATTERN = /(--[a-zA-Z0-9_-]+)\s*:\s*([^;]+);/g;
 const WALLPAPER_PATTERN =
   /--chat-wallpaper-(dark|light)\s*:\s*url\((['"]?)([^)'";]+)\2\)\s*;/gi;
 
+const themeSyncTasks = new Map();
+
+async function withThemeSyncLock(config, action) {
+  const root = path.resolve(
+    config.appRootPath || path.resolve(config.appDataPath, "..")
+  );
+  const key = process.platform === "win32" ? root.toLowerCase() : root;
+  const previous = themeSyncTasks.get(key) || Promise.resolve();
+  const task = previous.catch(() => {}).then(action);
+  themeSyncTasks.set(key, task);
+  try {
+    return await task;
+  } finally {
+    if (themeSyncTasks.get(key) === task) themeSyncTasks.delete(key);
+  }
+}
+
+function themeSourceChecksum(themePackage, ignoredAssetPath = null) {
+  const canonicalPath = (value) => {
+    const resolved = path.resolve(value);
+    return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+  };
+  const ignored = ignoredAssetPath && canonicalPath(ignoredAssetPath);
+  return checksumJson({
+    css: themePackage.css_checksum,
+    assets: themePackage.assets
+      .filter((asset) => !ignored || canonicalPath(asset.absolute_path) !== ignored)
+      .map((asset) => ({
+        hash: asset.asset_hash,
+        asset_type: asset.asset_type,
+        slot: asset.slot,
+        relative_path: asset.relative_path,
+      })),
+  });
+}
+
 function hashThemeId(raw) {
   return crypto
     .createHash("sha256")
@@ -135,14 +171,22 @@ async function buildThemeAssetRef(cssPath, appRootPath, mode, cssUrl) {
   };
 }
 
-async function buildThemePackageFromCss(cssPath, appRootPath, config = {}) {
+async function buildThemePackageFromCss(
+  cssPath,
+  appRootPath,
+  config = {},
+  sourceRecord = {}
+) {
   const cssText = await fs.readFile(cssPath, "utf8");
-  const themeId = safeThemeIdFromFilename(cssPath);
-  const displayName = displayNameFromFilename(cssPath);
+  const themeId = sourceRecord.theme_id || safeThemeIdFromFilename(cssPath);
+  const displayName = sourceRecord.display_name || displayNameFromFilename(cssPath);
+  const version = Number(sourceRecord.version || 1);
+  const mode = sourceRecord.mode || "dual";
+  const cssChecksum = checksumBuffer(Buffer.from(cssText, "utf8"));
   const assets = [];
   let wallpaperMatch;
-  WALLPAPER_PATTERN.lastIndex = 0;
-  while ((wallpaperMatch = WALLPAPER_PATTERN.exec(cssText))) {
+  const wallpaperPattern = new RegExp(WALLPAPER_PATTERN.source, WALLPAPER_PATTERN.flags);
+  while ((wallpaperMatch = wallpaperPattern.exec(cssText))) {
     const ref = await buildThemeAssetRef(
       cssPath,
       appRootPath,
@@ -159,14 +203,14 @@ async function buildThemePackageFromCss(cssPath, appRootPath, config = {}) {
     schema_version: 1,
     theme_id: themeId,
     display_name: displayName,
-    version: 1,
-    mode: "dual",
+    version,
+    mode,
     source: "VChatSyncAdapter",
     source_device_id: config.deviceId || null,
     css: {
       filename: path.basename(cssPath),
       relative_path: normalizeSlashes(path.relative(appRootPath, cssPath)),
-      checksum: checksumBuffer(Buffer.from(cssText, "utf8")),
+      checksum: cssChecksum,
     },
     variables,
     extra_css: cssText,
@@ -185,8 +229,8 @@ async function buildThemePackageFromCss(cssPath, appRootPath, config = {}) {
   const payload = {
     theme_id: themeId,
     display_name: displayName,
-    version: 1,
-    mode: "dual",
+    version,
+    mode,
     device_id: config.deviceId,
     source_device_id: config.deviceId,
     variables,
@@ -205,17 +249,20 @@ async function buildThemePackageFromCss(cssPath, appRootPath, config = {}) {
     assets: payload.assets,
   });
 
-  return {
+  const themePackage = {
     theme_id: themeId,
     css_path: cssPath,
+    css_checksum: cssChecksum,
     relative_path: normalizeSlashes(path.relative(appRootPath, cssPath)),
     payload,
     assets,
     checksum: payload.checksum,
   };
+  themePackage.source_checksum = themeSourceChecksum(themePackage);
+  return themePackage;
 }
 
-async function scanThemePackages(config = {}) {
+async function scanThemePackages(config = {}, localIndex = null) {
   const appRootPath =
     config.appRootPath || path.resolve(config.appDataPath, "..");
   const themesDir =
@@ -225,11 +272,15 @@ async function scanThemePackages(config = {}) {
   const packages = [];
   for (const entry of entries) {
     if (!entry.isFile() || !/\.css$/i.test(entry.name)) continue;
+    const cssPath = path.join(themesDir, entry.name);
+    const relativePath = normalizeSlashes(path.relative(appRootPath, cssPath));
+    const sourceRecord = localIndex && localIndex.getFile(relativePath);
     packages.push(
       await buildThemePackageFromCss(
-        path.join(themesDir, entry.name),
+        cssPath,
         appRootPath,
-        config
+        config,
+        sourceRecord || {}
       )
     );
   }
@@ -242,4 +293,6 @@ module.exports = {
   scanThemePackages,
   safeThemeIdFromFilename,
   mimeFromFile,
+  themeSourceChecksum,
+  withThemeSyncLock,
 };

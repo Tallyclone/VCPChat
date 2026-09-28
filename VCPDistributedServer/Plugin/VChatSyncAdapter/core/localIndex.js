@@ -1,30 +1,9 @@
 const fs = require("fs-extra");
 const path = require("path");
-
-function wait(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function moveWithRetry(source, target, logger, attempts = 5) {
-  let lastError = null;
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    try {
-      await fs.move(source, target, { overwrite: true });
-      return;
-    } catch (error) {
-      lastError = error;
-      if (logger && logger.warn) {
-        logger.warn("local index move retry", {
-          target,
-          attempt: attempt + 1,
-          error: error.message,
-        });
-      }
-      await wait(Math.min(1000, 100 * 2 ** attempt));
-    }
-  }
-  throw lastError;
-}
+const {
+  moveWithRetry,
+  listOrphanTmpFiles,
+} = require("../projector/atomicWriter");
 
 function createEmptyIndex() {
   return {
@@ -42,32 +21,94 @@ function createLocalIndex(config, logger) {
   let corrupted = false;
   let batchDepth = 0;
   let dirty = false;
+  let mutationVersion = 0;
+  let saveQueue = Promise.resolve();
 
   async function persistIfNeeded() {
     dirty = true;
+    mutationVersion += 1;
     if (batchDepth === 0) await save();
+  }
+
+  function normalizeLoaded(parsed) {
+    const next = { ...createEmptyIndex(), ...parsed };
+    next.local_messages = next.local_messages || {};
+    next.local_files = next.local_files || {};
+    next.topic_snapshots = next.topic_snapshots || {};
+    return next;
+  }
+
+  // Earlier adapters deleted local_index.json before renaming their temp
+  // file, so a failed rename could leave the newest index only in
+  // `local_index.json.tmp-*`. Adopt the newest parsable snapshot when it is
+  // newer than the main file, then remove all temp leftovers.
+  async function adoptNewerTmpSnapshot(mainMtimeMs) {
+    const orphans = await listOrphanTmpFiles(config.indexPath);
+    if (orphans.length === 0) return null;
+    let adopted = null;
+    let adoptedMtime = mainMtimeMs;
+    for (const orphanPath of orphans) {
+      const stat = await fs.stat(orphanPath).catch(() => null);
+      if (!stat || stat.mtimeMs <= adoptedMtime) continue;
+      const raw = await fs.readFile(orphanPath, "utf8").catch(() => null);
+      if (raw === null) continue;
+      try {
+        const parsed = JSON.parse(raw);
+        const looksLikeIndex =
+          parsed && typeof parsed === "object" && !Array.isArray(parsed) &&
+          ["local_messages", "local_files", "topic_snapshots"].some((field) =>
+            parsed[field] && typeof parsed[field] === "object"
+          );
+        if (looksLikeIndex) {
+          adopted = parsed;
+          adoptedMtime = stat.mtimeMs;
+        }
+      } catch (_) {
+        // ignore unparsable temp snapshots
+      }
+    }
+    for (const orphanPath of orphans) {
+      await fs.remove(orphanPath).catch(() => {});
+    }
+    if (logger && logger.warn) {
+      logger.warn("local index temp files cleaned up", {
+        indexPath: config.indexPath,
+        orphan_files: orphans.length,
+        adopted_newer_snapshot: Boolean(adopted),
+      });
+    }
+    return adopted;
   }
 
   async function load() {
     await fs.ensureDir(path.dirname(config.indexPath));
     if (!(await fs.pathExists(config.indexPath))) {
+      const adopted = await adoptNewerTmpSnapshot(0);
+      if (adopted) data = normalizeLoaded(adopted);
       await save();
       return data;
     }
+    // A transient I/O failure here propagates to the caller: it must retry
+    // rather than silently rebuild an empty baseline.
+    const raw = await fs.readFile(config.indexPath, "utf8");
+    const stat = await fs.stat(config.indexPath).catch(() => null);
+    let parsed = null;
     try {
-      data = {
-        ...createEmptyIndex(),
-        ...(await fs.readJson(config.indexPath)),
-      };
-      data.local_messages = data.local_messages || {};
-      data.local_files = data.local_files || {};
-      data.topic_snapshots = data.topic_snapshots || {};
-      corrupted = false;
-      return data;
+      parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("local_index.json root must be an object");
+      }
     } catch (error) {
+      const adopted = await adoptNewerTmpSnapshot(0);
+      if (adopted) {
+        data = normalizeLoaded(adopted);
+        corrupted = false;
+        await save();
+        return data;
+      }
       corrupted = true;
       const corruptPath = `${config.indexPath}.corrupt-${Date.now()}`;
-      await fs.move(config.indexPath, corruptPath, { overwrite: true });
+      await fs.writeFile(corruptPath, raw, "utf8").catch(() => {});
       logger.error("local index corrupt; moved aside and rebuilt empty index", {
         corruptPath,
         error: error.message,
@@ -76,24 +117,37 @@ function createLocalIndex(config, logger) {
       await save();
       return data;
     }
+    const adopted = await adoptNewerTmpSnapshot(stat ? stat.mtimeMs : 0);
+    data = normalizeLoaded(adopted || parsed);
+    corrupted = false;
+    if (adopted) await save();
+    return data;
   }
 
-  async function save() {
+  async function saveSnapshot() {
     data.updated_at = new Date().toISOString();
     await fs.ensureDir(path.dirname(config.indexPath));
+    const savedVersion = mutationVersion;
+    const snapshot = JSON.parse(JSON.stringify(data));
     const token = `${process.pid}-${Date.now()}-${Math.random()
       .toString(16)
       .slice(2)}`;
     const tmp = `${config.indexPath}.tmp-${token}`;
     try {
-      await fs.writeJson(tmp, data, { spaces: 2 });
+      await fs.writeJson(tmp, snapshot, { spaces: 2 });
       await fs.readJson(tmp);
       await moveWithRetry(tmp, config.indexPath, logger);
-      dirty = false;
+      dirty = mutationVersion !== savedVersion;
     } catch (error) {
       await fs.remove(tmp).catch(() => {});
       throw error;
     }
+  }
+
+  function save() {
+    const task = saveQueue.then(saveSnapshot, saveSnapshot);
+    saveQueue = task.catch(() => {});
+    return task;
   }
 
   async function batchUpdate(mutator) {
