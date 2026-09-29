@@ -252,8 +252,15 @@ const DESKTOP_KEYS = [
     'nativeFsConfirm',
 ];
 
+const WINDOW_PIN_KEYS = [
+    'togglePinWindow',
+    'isWindowPinned',
+    'onWindowPinnedChanged',
+];
+
 const UTILITY_KEYS = [
     ...SHARED_KEYS,
+    ...WINDOW_PIN_KEYS,
     'loadForumConfig',
     'saveForumConfig',
     'loadAgentsList',
@@ -391,4 +398,5 @@ module.exports = {
     CHAT_KEYS,
     DESKTOP_KEYS,
     UTILITY_KEYS,
+    WINDOW_PIN_KEYS,
 };
